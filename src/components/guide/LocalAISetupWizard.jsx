@@ -241,7 +241,7 @@ export default function LocalAISetupWizard() {
       if (cancelRef.current) return false;
       setActiveStep(stepId);
       setStepStatus(stepId, "running");
-      pushLog(stepId, "info", `▶ ${STEP_LABEL[stepId]}`);
+      pushLog(stepId, "info", `${STEP_LABEL[stepId]} 시작`);
 
       // 모든 단계는 statusManager의 액션을 호출 — 액션 내부에서:
       //   1) 설치/시작 명령 실행 (Rust $SHELL -lc 경유)
@@ -255,23 +255,23 @@ export default function LocalAISetupWizard() {
             break;
           }
           case STEP.START_OC: {
-            pushLog(stepId, "info", "openclaw gateway --port 18789 (자식 프로세스로 spawn)");
+            pushLog(stepId, "info", "OpenClaw를 시작하고 있어요...");
             const result = await STATUS_MODULES.openclaw.start();
             if (result?.state !== "running") {
-              throw new Error(result?.message || "게이트웨이 ready 실패");
+              throw new Error(result?.message || "OpenClaw를 시작하지 못했어요");
             }
-            pushLog(stepId, "info", `✓ port ${result?.port ?? 18789} 응답`);
+            pushLog(stepId, "info", "✓ OpenClaw가 응답하고 있어요");
             break;
           }
           case STEP.INSTALL_OLLAMA: {
             if (!isMac()) {
-              pushLog(stepId, "err", "현재 자동 설치는 macOS(brew)만 지원합니다.");
+              pushLog(stepId, "err", "자동 설치는 현재 macOS에서만 가능해요.");
               pushLog(
                 stepId,
                 "info",
-                "https://ollama.com/download 에서 설치 후 [재진단]을 눌러 주세요."
+                "ollama.com/download 에서 직접 설치한 뒤 [재진단]을 눌러주세요."
               );
-              throw new Error("macOS 외 OS는 자동 설치 미지원 — 수동 설치 필요");
+              throw new Error("Mac이 아니면 직접 설치해야 해요");
             }
             const result = await STATUS_MODULES.ollama.install();
             handleInstallResult(stepId, result);
@@ -279,8 +279,8 @@ export default function LocalAISetupWizard() {
           }
           case STEP.START_OLLAMA: {
             if (!isMac()) {
-              pushLog(stepId, "info", "Ollama 앱을 실행한 뒤 [재진단]을 눌러 주세요.");
-              throw new Error("자동 시작 미지원 — Ollama 앱 직접 실행 필요");
+              pushLog(stepId, "info", "Ollama 앱을 실행한 뒤 [재진단]을 눌러주세요.");
+              throw new Error("Mac이 아니면 Ollama 앱을 직접 실행해야 해요");
             }
             const result = await STATUS_MODULES.ollama.start();
             handleInstallResult(stepId, result);
@@ -293,36 +293,33 @@ export default function LocalAISetupWizard() {
             break;
           }
           case STEP.CONFIG_OC: {
-            pushLog(stepId, "info", `$ openclaw config set ... (model = ollama/${model})`);
-            const r = await openclawUseOllama(model);
-            (r?.applied || []).forEach((a) => {
-              pushLog(stepId, "out", `  ${a.path} ← ${a.value}`);
-            });
-            pushLog(stepId, "info", "✓ OpenClaw 기본 모델이 Ollama로 설정됨");
+            pushLog(stepId, "info", `AI 모델(${model})을 OpenClaw에 연결하고 있어요...`);
+            await openclawUseOllama(model);
+            pushLog(stepId, "info", "✓ 연결 완료");
             break;
           }
           case STEP.PROMPT_TEST: {
-            pushLog(stepId, "info", `> ${PING_MESSAGE}`);
+            pushLog(stepId, "info", "AI에게 간단한 인사를 보내볼게요...");
             const reply = await Promise.race([
               agentChat(PING_MESSAGE, null),
               new Promise((_, rej) =>
                 setTimeout(
-                  () => rej(new Error("응답 대기 60초 초과 — 모델 첫 로드가 오래 걸렸을 수 있습니다")),
+                  () => rej(new Error("AI 응답이 너무 오래 걸려요. 처음 모델을 띄우면 1-2분 걸릴 수 있어요.")),
                   PROMPT_TEST_TIMEOUT_MS
                 )
               ),
             ]);
             const text = String(reply?.response ?? "").trim();
             if (!text) {
-              throw new Error("게이트웨이가 빈 응답을 반환했습니다");
+              throw new Error("AI가 응답하지 않았어요");
             }
             const preview = text.length > 200 ? `${text.slice(0, 200)}…` : text;
-            pushLog(stepId, "out", `< ${preview}`);
-            pushLog(stepId, "info", "✓ 로컬 모델 ↔ OpenClaw ↔ sidecar 경로 검증 완료");
+            pushLog(stepId, "out", `AI: ${preview}`);
+            pushLog(stepId, "info", "✓ AI 대화가 정상적으로 동작해요");
             break;
           }
           default:
-            throw new Error(`알 수 없는 단계: ${stepId}`);
+            throw new Error("알 수 없는 단계예요");
         }
         setStepStatus(stepId, "done");
         return true;
@@ -465,7 +462,7 @@ export default function LocalAISetupWizard() {
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
           <div className="flex items-center gap-2">
             <Cpu className="h-4 w-4 text-primary" />
-            <h2 className="text-sm font-semibold">로컬 AI 자동 설정 (OpenClaw + Ollama)</h2>
+            <h2 className="text-sm font-semibold">AI 자동 설정</h2>
           </div>
           <button
             type="button"
@@ -473,7 +470,7 @@ export default function LocalAISetupWizard() {
             disabled={phase === "running"}
             className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
             aria-label="닫기"
-            title={phase === "running" ? "실행 중에는 닫을 수 없습니다" : "닫기"}
+            title={phase === "running" ? "진행 중에는 닫을 수 없어요" : "닫기"}
           >
             <X className="h-4 w-4" />
           </button>
@@ -510,27 +507,27 @@ export default function LocalAISetupWizard() {
               />
             )}
 
-          {/* 에러 메시지 — 추가 안내 (Ollama 자동 설치 미지원 등) */}
+          {/* 에러 메시지 — 추가 안내 (Ollama 자동 설치 미지원 등). 자세한 사유는 각 단계의 [기술 정보 보기]에서 확인. */}
           {phase === "error" && errorMsg && (
             <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">
-              <p className="font-semibold">단계 실행 중 문제가 발생했습니다.</p>
-              <p className="mt-1 break-all">{errorMsg}</p>
+              <p className="font-semibold">작업 중 문제가 발생했어요.</p>
+              <p className="mt-1">{errorMsg}</p>
               {(stepStates[STEP.INSTALL_OLLAMA]?.status === "error" ||
                 stepStates[STEP.START_OLLAMA]?.status === "error") && (
                 <p className="mt-2">
-                  Ollama를 직접 설치/실행한 뒤 [재진단]을 눌러 주세요.{" "}
+                  Ollama를 직접 설치하거나 실행한 뒤 [재진단]을 눌러주세요.{" "}
                   <a
                     href="https://ollama.com/download"
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center gap-1 underline"
                   >
-                    ollama.com/download
+                    Ollama 다운로드
                     <ExternalLink className="h-3 w-3" />
                   </a>
                   {isMac() && (
                     <span className="block mt-1 opacity-80">
-                      Mac 자동 설치는 Homebrew(<code className="font-mono">brew</code>)가 필요합니다.
+                      Mac에서 자동 설치를 쓰려면 Homebrew가 먼저 설치되어 있어야 해요.
                     </span>
                   )}
                 </p>
@@ -543,10 +540,10 @@ export default function LocalAISetupWizard() {
             <div className="rounded-md border border-green-300 bg-green-50/60 p-3 text-sm text-green-800 dark:border-green-900/40 dark:bg-green-950/30 dark:text-green-300">
               <div className="flex items-center gap-2 font-semibold">
                 <Check className="h-4 w-4" />
-                로컬 AI가 준비됐습니다.
+                AI 사용 준비가 끝났어요!
               </div>
               <p className="mt-1 text-xs">
-                OpenClaw 게이트웨이가 18789에서 응답하고, Ollama({model})이 OpenClaw의 기본 모델로 등록됐습니다.
+                {model} 모델로 AI 대화를 시작할 수 있어요.
               </p>
             </div>
           )}
@@ -570,7 +567,7 @@ export default function LocalAISetupWizard() {
                       </Button>
                       <Button size="sm" onClick={runAll}>
                         <Zap className="mr-1.5 h-3.5 w-3.5" />
-                        프롬프트 대화 검증
+                        AI 대화 테스트
                       </Button>
                     </>
                   ) : (
@@ -632,12 +629,14 @@ function DiagnosisCard({ diag, model }) {
   const ollRun = !!diag.oll?.running;
   const modelInst = hasModelInstalled(diag.oll?.models, model);
 
+  // 사용자 친화적 표현 — 포트/데몬/게이트웨이 같은 용어는 표시하지 않음.
+  // 버전은 hint(우측 메타)로만 작게 표시.
   const items = [
     { label: "OpenClaw 설치", ok: ocInst, hint: diag.ocInstalled?.version },
-    { label: "OpenClaw 게이트웨이 (18789)", ok: ocRun },
+    { label: "OpenClaw 실행", ok: ocRun },
     { label: "Ollama 설치", ok: ollInst, hint: diag.oll?.version },
-    { label: "Ollama 데몬 (11434)", ok: ollRun },
-    { label: `Ollama 모델 ${model}`, ok: modelInst },
+    { label: "Ollama 실행", ok: ollRun },
+    { label: `AI 모델 (${model})`, ok: modelInst },
   ];
 
   return (
@@ -669,7 +668,7 @@ function ModelPicker({ model, onChange }) {
     <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
       <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold">
         <Download className="h-3.5 w-3.5 text-primary" />
-        Ollama 모델 선택
+        AI 모델 선택
       </p>
       <div className="space-y-1.5">
         {RECOMMENDED_MODELS.map((m) => (
@@ -741,7 +740,7 @@ function PlanList({ plan, stepStates, activeStep, phase, onRunStep, onCancel }) 
       {plan.skipped.length > 0 && (
         <>
           <p className="mb-1.5 text-xs font-semibold text-muted-foreground">
-            이미 완료된 항목 ({plan.skipped.length}) — 다시 수행하지 않습니다
+            이미 완료된 항목 ({plan.skipped.length}) — 다시 실행하지 않아요
           </p>
           <ul className="mb-3 space-y-1">
             {plan.skipped.map((id) => (
@@ -760,7 +759,7 @@ function PlanList({ plan, stepStates, activeStep, phase, onRunStep, onCancel }) 
         </>
       )}
       <p className="mb-1.5 text-xs font-semibold text-muted-foreground">
-        실행 계획 ({plan.todo.length}) — 단계별로 [실행]을 눌러 진행하세요
+        해야 할 작업 ({plan.todo.length}) — 단계별로 [실행]을 눌러주세요
       </p>
       <ul className="space-y-1.5">
         {plan.todo.map((id) => (
@@ -781,21 +780,24 @@ function PlanList({ plan, stepStates, activeStep, phase, onRunStep, onCancel }) 
 
 /**
  * 단일 단계 행 — 라벨 + 상태 + [실행/재시도/중단] 버튼 + 인라인 로그.
+ *
+ * 로그/세부 정보는 기본적으로 숨김(토글). 일반 사용자가 압도되지 않도록.
  */
 function PlanStepRow({ stepId, state, isActive, isAnyRunning, onRun, onCancel }) {
   const status = state?.status ?? "pending";
   const logs = state?.logs ?? [];
   const logBoxRef = useRef(null);
+  const [showLogs, setShowLogs] = useState(false);
   const isRunning = status === "running" && isActive;
   const isDone = status === "done";
   const isError = status === "error";
 
   // 활성 단계 로그 자동 스크롤
   useEffect(() => {
-    if (logBoxRef.current && isRunning) {
+    if (logBoxRef.current && isRunning && showLogs) {
       logBoxRef.current.scrollTop = logBoxRef.current.scrollHeight;
     }
-  }, [logs, isRunning]);
+  }, [logs, isRunning, showLogs]);
 
   // 우측 버튼 결정
   let actionButton = null;
@@ -861,10 +863,40 @@ function PlanStepRow({ stepId, state, isActive, isAnyRunning, onRun, onCancel })
         <span className="ml-auto">{actionButton}</span>
       </div>
 
-      {/* 인라인 로그 — 실행 중이거나 실패한 경우에만 노출.
-          완료된 단계의 로그는 사용자 요청대로 숨김(글자만 표시).
-          별도 LogBox 컴포넌트 대신 여기서 직접 렌더 — title 없는 컴팩트 버전. */}
-      {(isRunning || isError) && logs.length > 0 && (
+      {/* 진행 중 안내 메시지 — 일반 사용자가 보기엔 raw 로그가 부담스러우므로
+          기본적으로 친화적 안내만 보여주고, raw 로그는 "상세 보기"로 숨김. */}
+      {isRunning && (
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <span className="text-[11px] text-muted-foreground">
+            진행 중이에요. 보통 1-2분 정도 걸려요.
+          </span>
+          {logs.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowLogs((v) => !v)}
+              className="text-[11px] text-primary underline-offset-2 hover:underline"
+            >
+              {showLogs ? "상세 숨기기" : "상세 보기"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* 실패 시 toggle 영역 */}
+      {isError && logs.length > 0 && (
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={() => setShowLogs((v) => !v)}
+            className="text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          >
+            {showLogs ? "기술 정보 숨기기" : "기술 정보 보기"}
+          </button>
+        </div>
+      )}
+
+      {/* raw 로그 박스 — 토글 켜진 경우에만 노출. 개발자 도움이 필요한 사용자를 위한 도구. */}
+      {(isRunning || isError) && showLogs && logs.length > 0 && (
         <div
           ref={logBoxRef}
           className="mt-2 max-h-[200px] overflow-y-auto rounded-md border border-border bg-zinc-950 p-2 font-mono text-[11px] leading-relaxed text-zinc-100"
@@ -905,6 +937,8 @@ function PlanStepRow({ stepId, state, isActive, isAnyRunning, onRun, onCancel })
  */
 function FailureContext({ result, stepId }) {
   const [copied, setCopied] = useState(false);
+  const [showTech, setShowTech] = useState(false);
+
   const handleCopy = async () => {
     const cmd = result?.eacces && stepId === "install-oc"
       ? `sudo ${result.manual_command.replace(/^sudo\s+/, "")}`
@@ -918,30 +952,27 @@ function FailureContext({ result, stepId }) {
     }
   };
 
+  // 사용자가 한 번에 보면 좋을 핵심 정보만 노출.
+  // exit code / stderr 같은 기술 정보는 "기술 정보 보기" 토글로 숨김.
+  const hasTech =
+    result.code != null ||
+    (Array.isArray(result.stderr_tail) && result.stderr_tail.length > 0);
+
   return (
     <div className="mt-2 space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-2 text-[11px]">
       {result.eacces ? (
         <div className="text-destructive">
-          <p className="font-semibold">관리자 권한이 필요합니다.</p>
+          <p className="font-semibold">관리자 권한이 필요해요.</p>
           <p className="mt-1 text-destructive/80">
-            앱 내에서는 비밀번호 입력이 불가능합니다. 아래 명령을 터미널에서 직접 실행해 주세요.
+            앱에서는 관리자 비밀번호를 입력할 수 없어요. 아래 명령을 터미널에서 직접 실행해주세요.
           </p>
         </div>
       ) : (
         <div className="text-destructive">
-          <p className="font-semibold">
-            실패 {result.code != null ? `(종료 코드 ${result.code})` : ""}
+          <p className="font-semibold">설치에 실패했어요.</p>
+          <p className="mt-1 text-destructive/80">
+            아래 명령을 터미널에서 직접 실행해보거나, 잠시 후 다시 시도해주세요.
           </p>
-          {Array.isArray(result.stderr_tail) && result.stderr_tail.length > 0 && (
-            <div className="mt-1.5">
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                마지막 출력
-              </p>
-              <pre className="mt-0.5 whitespace-pre-wrap break-all rounded bg-zinc-950 p-1.5 font-mono text-[10px] text-amber-300">
-                {result.stderr_tail.slice(-8).join("\n")}
-              </pre>
-            </div>
-          )}
         </div>
       )}
 
@@ -966,16 +997,43 @@ function FailureContext({ result, stepId }) {
           </div>
           {result.eacces && stepId === "install-oc" && (
             <p className="mt-1 text-[10px] text-muted-foreground">
-              또는 nvm을 설치하면 sudo 없이도 전역 설치가 가능합니다:{" "}
+              또는 nvm을 사용하면 관리자 권한 없이도 설치할 수 있어요:{" "}
               <a
                 href="https://github.com/nvm-sh/nvm#installing-and-updating"
                 target="_blank"
                 rel="noreferrer"
                 className="underline underline-offset-2"
               >
-                nvm 설치 가이드
+                nvm 설치 안내
               </a>
             </p>
+          )}
+        </div>
+      )}
+
+      {/* 기술 정보 토글 — 개발자나 문제 해결이 필요한 사용자가 펼쳐서 볼 수 있게. */}
+      {hasTech && (
+        <div className="border-t border-destructive/20 pt-1.5">
+          <button
+            type="button"
+            onClick={() => setShowTech((v) => !v)}
+            className="text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          >
+            {showTech ? "기술 정보 숨기기" : "기술 정보 보기"}
+          </button>
+          {showTech && (
+            <div className="mt-1.5 space-y-1">
+              {result.code != null && (
+                <p className="text-[10px] text-muted-foreground">
+                  종료 코드: {result.code}
+                </p>
+              )}
+              {Array.isArray(result.stderr_tail) && result.stderr_tail.length > 0 && (
+                <pre className="whitespace-pre-wrap break-all rounded bg-zinc-950 p-1.5 font-mono text-[10px] text-amber-300">
+                  {result.stderr_tail.slice(-8).join("\n")}
+                </pre>
+              )}
+            </div>
           )}
         </div>
       )}

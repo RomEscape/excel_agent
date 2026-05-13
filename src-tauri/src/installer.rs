@@ -101,19 +101,16 @@ fn run_shell_streaming(
 ) -> Result<InstallResult, String> {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
 
-    emit_log(
-        &app,
-        step_id,
-        "info",
-        format!("$ {} -lc '{}'", shell, shell_cmd),
-    );
+    // 사용자가 보기 부담스러운 shell 명령 echo($ /bin/zsh -lc '...')는 띄우지 않는다.
+    // 친화적 안내 한 줄로 시작 — 이후 실제 stdout/stderr 라인이 따라옴.
+    emit_log(&app, step_id, "info", "작업을 시작합니다...".to_string());
 
     let mut child = Command::new(&shell)
         .args(["-lc", shell_cmd])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("셸 실행 실패: {} ($SHELL={})", e, shell))?;
+        .map_err(|_e| "작업을 시작하지 못했어요. 잠시 후 다시 시도해주세요.".to_string())?;
 
     // PID 등록 — cancel_install이 이 PID에 kill 시그널을 보낼 수 있도록.
     let pid = child.id();
@@ -175,15 +172,14 @@ fn run_shell_streaming(
         || combined_stderr.contains("permission denied")
         || combined_stderr.contains("operation not permitted");
 
+    // 사용자에게 보일 짧은 요약 메시지 — 기술 정보(종료 코드 등)는 별도 필드(`code`)로
+    // 전달하고, message는 일반 사용자가 한눈에 이해할 수 있게 작성.
     let message = if ok {
-        "성공".to_string()
+        "완료".to_string()
     } else if eacces {
-        "관리자 권한이 필요합니다 (EACCES)".to_string()
+        "관리자 권한이 필요해요".to_string()
     } else {
-        match code {
-            Some(c) => format!("종료 코드 {}", c),
-            None => "프로세스가 비정상 종료되었습니다 (시그널 종료 가능)".to_string(),
-        }
+        "작업에 실패했어요".to_string()
     };
 
     Ok(InstallResult {

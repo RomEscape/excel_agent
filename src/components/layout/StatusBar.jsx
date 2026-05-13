@@ -265,36 +265,23 @@ export default function StatusBar() {
 
   const ocTooltip = (
     <div className="space-y-1">
-      <p className="font-semibold text-foreground">OpenClaw 게이트웨이</p>
+      <p className="font-semibold text-foreground">OpenClaw</p>
       <p className="text-muted-foreground">상태: {toneLabel(oc.tone)}</p>
-      {ocModule.port && <p className="text-muted-foreground">포트: {ocModule.port}</p>}
-      {ocModule.version && (
-        <p className="text-[11px] text-muted-foreground">버전: {ocModule.version}</p>
-      )}
-      {ocModule.message && (
-        <p className="text-[11px] text-muted-foreground">{ocModule.message}</p>
-      )}
-      <p className="pt-1 text-[11px] text-muted-foreground">클릭 → 설정 / OpenClaw 설치</p>
+      <p className="pt-1 text-[11px] text-muted-foreground">클릭하면 설치 가이드로 이동해요</p>
     </div>
   );
 
   const masked = secStats?.masking?.total ?? 0;
   const blocked = secStats?.blocked_count?.total ?? 0;
-  const lastBlockedAt = secStats?.last_blocked_at;
   const secTooltip = (
     <div className="space-y-1">
-      <p className="font-semibold text-foreground">보안 (Zero-Trust)</p>
+      <p className="font-semibold text-foreground">보안</p>
       <p className="text-muted-foreground">상태: {toneLabel(sec.tone)}</p>
-      <p className="text-muted-foreground">자동 마스킹: {Number(masked).toLocaleString?.() ?? masked}건</p>
-      <p className="text-muted-foreground">차단된 명령: {Number(blocked).toLocaleString?.() ?? blocked}건</p>
-      {lastBlockedAt && (
-        <p className="text-[11px] text-muted-foreground">
-          마지막 차단: {new Date(lastBlockedAt).toLocaleString?.("ko-KR") ?? lastBlockedAt}
-        </p>
-      )}
+      <p className="text-muted-foreground">민감 정보 자동 보호: {Number(masked).toLocaleString?.() ?? masked}회</p>
+      <p className="text-muted-foreground">위험 명령 차단: {Number(blocked).toLocaleString?.() ?? blocked}회</p>
       {pendingCount > 0 && (
         <p className="pt-1 text-amber-600 dark:text-amber-400">
-          승인 대기 {pendingCount}건 — 클릭하면 검토합니다
+          승인이 필요한 작업이 {pendingCount}건 있어요 — 클릭해서 검토하세요
         </p>
       )}
     </div>
@@ -306,20 +293,20 @@ export default function StatusBar() {
       <p className="text-muted-foreground">{llm.label}</p>
       <p className="text-muted-foreground">상태: {toneLabel(llm.tone)}</p>
       {llm.sub && <p className="text-[11px] text-muted-foreground">{llm.sub}</p>}
-      <p className="pt-1 text-[11px] text-muted-foreground">클릭 → 설정 / 일반</p>
+      <p className="pt-1 text-[11px] text-muted-foreground">클릭하면 설정으로 이동해요</p>
     </div>
   );
 
   const MessengerIcon = MESSENGER_ICONS[selectedMessenger] ?? MessageCircle;
   const messengerTooltip = (
     <div className="space-y-1">
-      <p className="font-semibold text-foreground">{messenger.label} 봇</p>
+      <p className="font-semibold text-foreground">{messenger.label}</p>
       <p className="text-muted-foreground">상태: {toneLabel(messenger.tone)}</p>
       {messenger.sub && (
         <p className="text-[11px] text-muted-foreground">{messenger.sub}</p>
       )}
       <p className="pt-1 text-[11px] text-muted-foreground">
-        클릭 → {messenger.tone === "ok" ? "대화 페이지" : "설정 / 메신저"}
+        클릭하면 {messenger.tone === "ok" ? "대화 화면" : "메신저 설정"}으로 이동해요
       </p>
     </div>
   );

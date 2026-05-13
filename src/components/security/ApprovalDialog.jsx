@@ -338,35 +338,19 @@ export default function ApprovalDialog({
             {danger ? "위험한 작업 — 추가 확인 필요" : "보안 확인 요청"}
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            에이전트가 사용자 확인이 필요한 작업을 요청했습니다.
-            {danger && " 이 작업은 되돌릴 수 없을 수 있습니다."}
+            AI가 사용자 확인이 필요한 작업을 요청했어요.
+            {danger && " 이 작업은 되돌릴 수 없을 수 있어요."}
           </p>
         </div>
 
-        {/* 메타: 요청자 / 스킬 / 세션 */}
-        {hasMeta && (
+        {/* 메타: 요청자만 사용자 친화적으로 표시.
+            도구명/세션 ID 같은 기술 정보는 숨김 — 일반 사용자에게는 의미 없음. */}
+        {sourceLabel && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-md border border-border bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
-            {sourceLabel && (
-              <span className="inline-flex items-center gap-1">
-                <Bot className="h-3 w-3" />
-                요청자: <span className="font-medium text-foreground">{sourceLabel}</span>
-              </span>
-            )}
-            {toolName && (
-              <span className="inline-flex items-center gap-1">
-                <Wrench className="h-3 w-3" />
-                스킬: <span className="font-mono font-medium text-foreground">{toolName}</span>
-              </span>
-            )}
-            {sessionShort && (
-              <span
-                className="inline-flex items-center gap-1"
-                title={`세션 전체 ID: ${sessionId}`}
-              >
-                <Hash className="h-3 w-3" />
-                세션: <span className="font-mono font-medium text-foreground">{sessionShort}</span>
-              </span>
-            )}
+            <span className="inline-flex items-center gap-1">
+              <Bot className="h-3 w-3" />
+              요청자: <span className="font-medium text-foreground">{sourceLabel}</span>
+            </span>
           </div>
         )}
 

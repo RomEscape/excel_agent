@@ -105,7 +105,7 @@ export default function Settings() {
       setLLMConfig(config);
       setLLMMsg("저장 완료!");
     } catch (e) {
-      setLLMMsg(toUserMessage(e, "LLM 설정 저장에 실패했습니다."));
+      setLLMMsg(toUserMessage(e, "AI 설정을 저장하지 못했어요."));
       setLLMMsgError(true);
     } finally {
       setSavingLLM(false);
@@ -259,35 +259,35 @@ export default function Settings() {
       <div>
         <h1 className="text-2xl font-bold">설정</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          LLM 엔진 및 앱 환경을 설정합니다
+          AI 엔진과 앱 환경을 설정해요
         </p>
       </div>
 
-      {/* LLM Engine settings */}
+      {/* AI Engine settings */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
             <Cpu className="h-4 w-4 text-primary" />
-            <CardTitle className="text-base">LLM 엔진 설정</CardTitle>
+            <CardTitle className="text-base">AI 엔진 설정</CardTitle>
           </div>
           <CardDescription>
-            모든 AI 기능에 사용할 언어 모델 엔진을 선택합니다.
-            민감 데이터는 로컬 Ollama를 권장합니다.
+            앱에서 사용할 AI를 선택해요. 민감한 자료를 다룬다면 내 컴퓨터에서만
+            동작하는 Ollama를 추천해요.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="llm-provider">엔진 선택</Label>
+            <Label htmlFor="llm-provider">AI 선택</Label>
             <Select value={provider} onValueChange={handleProviderChange}>
               <SelectTrigger id="llm-provider" className="w-64">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ollama">
-                  Ollama (로컬 — 완전 오프라인)
+                  Ollama (내 컴퓨터에서만 동작)
                 </SelectItem>
                 <SelectItem value="claude">
-                  Claude API (클라우드)
+                  Claude (인터넷을 통한 클라우드 AI)
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -310,9 +310,8 @@ export default function Settings() {
                   placeholder="claude-sonnet-4-20250514"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Claude API 키를 <strong>자격증명 관리</strong>에서{" "}
-                  <code className="rounded bg-muted px-1 py-0.5">claude_api_key</code>로
-                  저장해야 합니다.
+                  Claude를 사용하려면 <strong>자격증명 관리</strong>에서 API 키를
+                  저장해야 해요.
                 </p>
               </>
             )}

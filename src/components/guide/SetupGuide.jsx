@@ -194,8 +194,7 @@ export function AutoInstallModal({ open, onClose, onOnline, onInstalled, skipIns
     setPhase("starting");
     setLogs((prev) => [
       ...prev,
-      { kind: "info", text: `$ ${startCmdLabel}` },
-      { kind: "info", text: "게이트웨이 시작 + ready 대기 중 (최대 30초)..." },
+      { kind: "info", text: "OpenClaw를 시작하고 있어요 (최대 30초)..." },
     ]);
     try {
       const result = await openclawEnsureRunning();
@@ -208,16 +207,16 @@ export function AutoInstallModal({ open, onClose, onOnline, onInstalled, skipIns
         setPhase("done");
         setLogs((prev) => [
           ...prev,
-          { kind: "info", text: `게이트웨이 온라인 — 포트 ${result?.port ?? 18789}.` },
+          { kind: "info", text: "OpenClaw가 정상적으로 실행됐어요." },
         ]);
         onOnline?.();
         onInstalled?.();
       } else {
         setPhase("error");
-        setErrorMsg(result?.message || "게이트웨이가 응답하지 않습니다");
+        setErrorMsg(result?.message || "OpenClaw가 응답하지 않아요");
         setLogs((prev) => [
           ...prev,
-          { kind: "err", text: result?.message || "게이트웨이 ready 실패" },
+          { kind: "err", text: "OpenClaw가 응답하지 않아요. 잠시 후 다시 시도해주세요." },
         ]);
       }
     } catch (err) {
@@ -231,7 +230,7 @@ export function AutoInstallModal({ open, onClose, onOnline, onInstalled, skipIns
   // npm install 단계 — 종료 후 자동으로 starting 으로 전환
   const runInstallPhase = useCallback(async () => {
     setPhase("installing");
-    setLogs([{ kind: "info", text: `$ ${installCmdLabel}` }]);
+    setLogs([{ kind: "info", text: "설치를 시작했어요..." }]);
     try {
       const { Command } = await import("@tauri-apps/plugin-shell");
       const cmd = Command.create("npm", ["install", "-g", "openclaw@latest"]);
@@ -248,14 +247,14 @@ export function AutoInstallModal({ open, onClose, onOnline, onInstalled, skipIns
         setExitCode(code);
         childRef.current = null;
         if (code === 0) {
-          setLogs((prev) => [...prev, { kind: "info", text: "설치 완료. 자동으로 게이트웨이를 시작합니다." }]);
+          setLogs((prev) => [...prev, { kind: "info", text: "설치가 끝났어요. 이어서 OpenClaw를 시작할게요." }]);
           // 설치 성공 → starting 단계로 자동 전환
           runStartPhase();
         } else {
           setPhase("error");
           setLogs((prev) => [
             ...prev,
-            { kind: "info", text: `npm 종료 코드 ${code} — 설치 실패.` },
+            { kind: "info", text: "설치에 실패했어요." },
           ]);
         }
       });
@@ -310,11 +309,11 @@ export function AutoInstallModal({ open, onClose, onOnline, onInstalled, skipIns
   const isWorking = phase === "installing" || phase === "starting";
   const canCloseSafely = !isWorking;
 
-  const headerTitle = skipInstall ? "OpenClaw 게이트웨이 시작" : "OpenClaw 자동 설치 + 시작";
+  const headerTitle = skipInstall ? "OpenClaw 시작" : "OpenClaw 자동 설치";
   const confirmCmd = skipInstall ? startCmdLabel : `${installCmdLabel}\n${startCmdLabel}`;
   const confirmDesc = skipInstall
-    ? "OpenClaw는 이미 설치되어 있어 시작 단계만 실행합니다."
-    : "이 명령은 OpenClaw를 전역 설치한 뒤 게이트웨이를 자식 프로세스로 시작합니다.";
+    ? "OpenClaw는 이미 설치되어 있어서 실행만 시작할게요."
+    : "OpenClaw를 자동으로 설치하고 실행할게요. 보통 1-2분 정도 걸려요.";
 
   return (
     <div className="fixed inset-0 z-[1100] overflow-y-auto bg-black/50">
@@ -353,18 +352,26 @@ export function AutoInstallModal({ open, onClose, onOnline, onInstalled, skipIns
           {phase === "confirm" && (
             <>
               <p className="text-sm">
-                ajou-ai가 다음 명령을 PC에서 실행합니다. 진행하시겠습니까?
+                {skipInstall
+                  ? "OpenClaw를 시작할게요. 진행할까요?"
+                  : "OpenClaw를 자동으로 설치하고 시작할게요. 진행할까요?"}
               </p>
-              <div className="flex items-start gap-2 rounded-md border border-border bg-muted/60 px-3 py-2">
-                <Terminal className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                <code className="flex-1 select-all whitespace-pre-line break-all font-mono text-xs">{confirmCmd}</code>
-              </div>
               <div className="rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300">
                 <p className="flex items-start gap-1.5">
                   <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <span>{confirmDesc}</span>
                 </p>
               </div>
+              {/* 실행할 명령은 기본적으로 숨기고 "상세 보기" 토글로만 노출 */}
+              <details className="text-xs text-muted-foreground">
+                <summary className="cursor-pointer select-none hover:text-foreground">
+                  실행할 명령 보기 (선택사항)
+                </summary>
+                <div className="mt-2 flex items-start gap-2 rounded-md border border-border bg-muted/60 px-3 py-2">
+                  <Terminal className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <code className="flex-1 select-all whitespace-pre-line break-all font-mono text-xs">{confirmCmd}</code>
+                </div>
+              </details>
               <div className="flex justify-end gap-2 pt-1">
                 <Button variant="outline" size="sm" onClick={onClose}>
                   취소
@@ -377,7 +384,7 @@ export function AutoInstallModal({ open, onClose, onOnline, onInstalled, skipIns
             </>
           )}
 
-          {/* 실행 중 / 결과 단계 — 콘솔 표시 */}
+          {/* 실행 중 / 결과 단계 */}
           {phase !== "confirm" && (
             <>
               <div className="flex items-center justify-between text-xs">
@@ -391,19 +398,19 @@ export function AutoInstallModal({ open, onClose, onOnline, onInstalled, skipIns
                   {phase === "starting" && (
                     <>
                       <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                      게이트웨이 시작 중...
+                      OpenClaw 시작 중...
                     </>
                   )}
                   {phase === "done" && (
                     <>
                       <Check className="h-3.5 w-3.5 text-green-600" />
-                      온라인
+                      준비됨
                     </>
                   )}
                   {phase === "error" && (
                     <>
                       <AlertCircle className="h-3.5 w-3.5 text-destructive" />
-                      실패{exitCode != null ? ` (code ${exitCode})` : ""}
+                      실패
                     </>
                   )}
                   {phase === "cancelled" && (
@@ -424,36 +431,45 @@ export function AutoInstallModal({ open, onClose, onOnline, onInstalled, skipIns
                 )}
               </div>
 
-              <div
-                ref={logBoxRef}
-                className="max-h-[280px] overflow-y-auto rounded-md border border-border bg-zinc-950 p-3 font-mono text-[11px] leading-relaxed text-zinc-100"
-              >
-                {logs.length === 0 ? (
-                  <span className="text-zinc-500">출력 대기 중...</span>
-                ) : (
-                  logs.map((l, i) => (
-                    <div
-                      key={i}
-                      className={
-                        l.kind === "err"
-                          ? "text-amber-300"
-                          : l.kind === "info"
-                          ? "text-zinc-400"
-                          : "text-zinc-100"
-                      }
-                    >
-                      {l.text}
-                    </div>
-                  ))
-                )}
-              </div>
+              {isWorking && (
+                <p className="text-xs text-muted-foreground">
+                  진행 중이에요. 보통 1-2분 정도 걸려요.
+                </p>
+              )}
+
+              {/* 진행 로그는 기본 숨김 — 개발자가 필요할 때만 펼침 */}
+              {logs.length > 0 && (
+                <details>
+                  <summary className="cursor-pointer select-none text-xs text-muted-foreground hover:text-foreground">
+                    상세 진행 로그 보기
+                  </summary>
+                  <div
+                    ref={logBoxRef}
+                    className="mt-2 max-h-[280px] overflow-y-auto rounded-md border border-border bg-zinc-950 p-3 font-mono text-[11px] leading-relaxed text-zinc-100"
+                  >
+                    {logs.map((l, i) => (
+                      <div
+                        key={i}
+                        className={
+                          l.kind === "err"
+                            ? "text-amber-300"
+                            : l.kind === "info"
+                            ? "text-zinc-400"
+                            : "text-zinc-100"
+                        }
+                      >
+                        {l.text}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
 
               {phase === "error" && (
                 <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">
-                  <p className="font-semibold">자동 처리에 실패했습니다.</p>
-                  {errorMsg && <p className="mt-1 break-all">{errorMsg}</p>}
+                  <p className="font-semibold">자동 처리에 실패했어요.</p>
                   <p className="mt-2">
-                    아래 명령을 복사해 터미널에서 직접 실행하세요.
+                    아래 명령을 복사해 터미널에서 직접 실행해보세요.
                   </p>
                   <div className="mt-2 flex items-center gap-2 rounded-md border border-border bg-background px-2 py-1 font-mono text-foreground">
                     <code className="flex-1 select-all break-all">{installCmdLabel} && {startCmdLabel}</code>
@@ -466,6 +482,17 @@ export function AutoInstallModal({ open, onClose, onOnline, onInstalled, skipIns
                       복사
                     </button>
                   </div>
+                  {/* 원래 errorMsg(기술적)는 [기술 정보 보기] 토글 안으로 숨김 */}
+                  {errorMsg && (
+                    <details className="mt-2">
+                      <summary className="cursor-pointer select-none text-[10px] text-muted-foreground hover:text-foreground">
+                        기술 정보 보기
+                      </summary>
+                      <p className="mt-1 break-all text-[10px] text-muted-foreground">
+                        {errorMsg}
+                      </p>
+                    </details>
+                  )}
                 </div>
               )}
 
@@ -504,8 +531,8 @@ function OpenClawGuide() {
           <div className="text-sm">
             <p className="font-semibold text-foreground">왜 OpenClaw가 필요한가요?</p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              ajou-ai는 OpenClaw 게이트웨이를 통해 PC 작업(파일/메일/문서)을 안전하게
-              수행합니다. 모든 명령은 OpenClaw가 실행하기 전에 보안 정책으로 검사됩니다.
+              ajou-ai는 OpenClaw를 통해 PC 작업(파일·메일·문서 등)을 안전하게
+              수행해요. 모든 명령은 실행 전에 보안 정책으로 검사돼요.
             </p>
           </div>
         </div>
@@ -617,11 +644,11 @@ function OpenClawGuide() {
         )}
 
         <Step number={3} title="OpenClaw 실행">
-          <p>설치가 끝나면 아래 명령으로 게이트웨이를 시작합니다.</p>
+          <p>설치가 끝나면 아래 명령으로 OpenClaw를 시작해요.</p>
           <CopyableCommand command="openclaw start" />
           <p>
-            기본 포트 <CodeBlock>18789</CodeBlock>에서 게이트웨이가 시작됩니다.
-            ajou-ai 앱 우측 상단의 <strong>OpenClaw</strong> 표시가 녹색으로 바뀌면 정상입니다.
+            ajou-ai 앱 우측 상단의 <strong>OpenClaw</strong> 표시가 초록색으로 바뀌면
+            정상이에요.
           </p>
         </Step>
 
@@ -911,7 +938,7 @@ export default function SetupGuide() {
       <div>
         <h1 className="text-2xl font-bold">설치 가이드</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          OpenClaw 게이트웨이 설치부터 메신저 봇 연결까지 단계별로 안내합니다.
+          OpenClaw 설치부터 메신저 봇 연결까지 단계별로 안내해요.
         </p>
       </div>
 

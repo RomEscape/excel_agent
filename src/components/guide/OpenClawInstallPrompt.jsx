@@ -129,22 +129,11 @@ export default function OpenClawInstallPrompt() {
   };
 
   const needsInstall = diag === "needs_install";
-  const headerTitle = needsInstall ? "OpenClaw 설치가 필요합니다" : "OpenClaw 게이트웨이를 시작할까요?";
-  const bodyTitle = needsInstall ? "지금 자동으로 설치하고 시작할까요?" : "지금 게이트웨이를 시작할까요?";
-  const bodyDesc = needsInstall ? (
-    <>
-      터미널을 직접 열 필요 없이 ajou-ai가{" "}
-      <code className="rounded bg-muted px-1 font-mono">npm install -g openclaw@latest</code>
-      를 실행한 뒤 <code className="rounded bg-muted px-1 font-mono">openclaw gateway --port 18789</code>
-      을 자동으로 띄웁니다. 약 1~2분 소요.
-    </>
-  ) : (
-    <>
-      OpenClaw는 이미 설치되어 있어요. ajou-ai가{" "}
-      <code className="rounded bg-muted px-1 font-mono">openclaw gateway --port 18789</code>
-      를 자식 프로세스로 시작합니다. 앱이 종료되면 함께 종료됩니다.
-    </>
-  );
+  const headerTitle = needsInstall ? "OpenClaw 설치가 필요해요" : "OpenClaw를 시작할까요?";
+  const bodyTitle = needsInstall ? "지금 자동으로 설치하고 시작할까요?" : "지금 OpenClaw를 시작할까요?";
+  const bodyDesc = needsInstall
+    ? "터미널을 직접 열 필요 없이 ajou-ai가 자동으로 설치한 뒤 실행해 드려요. 보통 1-2분 정도 걸려요."
+    : "OpenClaw는 이미 설치되어 있어요. 앱과 함께 실행되며, 앱을 종료하면 같이 종료돼요.";
   const ctaLabel = needsInstall ? "지금 설치" : "지금 시작";
 
   return (
@@ -176,7 +165,7 @@ export default function OpenClawInstallPrompt() {
 
             <div className="space-y-3 p-5">
               <p className="text-sm">
-                ajou-ai가 동작하려면 <strong>OpenClaw 게이트웨이(18789)</strong>가 실행 중이어야 합니다.
+                ajou-ai를 사용하려면 <strong>OpenClaw</strong>가 먼저 실행되어 있어야 해요.
               </p>
 
               <div className="flex items-start gap-2 rounded-md border border-primary/30 bg-primary/5 p-3 text-xs">

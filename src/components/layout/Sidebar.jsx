@@ -63,7 +63,7 @@ function CollapsedLabel({ label, gated }) {
           {gated && (
             <span className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400">
               <Lock className="h-2.5 w-2.5" />
-              OpenClaw 설치 필요
+              OpenClaw가 준비되면 사용할 수 있어요
             </span>
           )}
         </span>
@@ -155,7 +155,7 @@ export default function Sidebar() {
                   aria-label={collapsed ? label : undefined}
                   title={
                     !collapsed && isGated
-                      ? "OpenClaw가 실행되어야 사용할 수 있습니다 — 클릭하여 설치 가이드로 이동"
+                      ? "OpenClaw가 준비되면 사용할 수 있어요 — 클릭해서 설치 가이드로 이동"
                       : undefined
                   }
                 >
@@ -164,15 +164,15 @@ export default function Sidebar() {
                     <>
                       <span className="flex-1 text-left">{label}</span>
                       {isGated && (
-                        <Lock className="h-3 w-3 shrink-0 text-amber-500" aria-label="OpenClaw 미실행" />
+                        <Lock className="h-3 w-3 shrink-0 text-amber-500" aria-label="OpenClaw 준비 필요" />
                       )}
                     </>
                   )}
                   {collapsed && isGated && (
                     <span
                       className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-100 ring-2 ring-amber-300 dark:bg-amber-900/60 dark:ring-amber-700"
-                      aria-label="OpenClaw 미실행 — 잠김"
-                      title="OpenClaw 설치 필요"
+                      aria-label="OpenClaw 준비 필요 — 잠김"
+                      title="OpenClaw가 준비되면 사용할 수 있어요"
                     >
                       <Lock className="h-2.5 w-2.5 text-amber-600 dark:text-amber-300" />
                     </span>

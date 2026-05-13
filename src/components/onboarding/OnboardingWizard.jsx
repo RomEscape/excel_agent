@@ -138,7 +138,7 @@ function StepOpenClaw({ onNext, onPrev, stepIndex }) {
         </div>
         <h2 className="text-xl font-bold">OpenClaw 설치 확인</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          ajou-ai는 OpenClaw 게이트웨이를 통해 AI 스킬을 실행합니다.
+          ajou-ai는 OpenClaw를 통해 AI 기능을 실행해요.
         </p>
       </div>
 
@@ -147,7 +147,7 @@ function StepOpenClaw({ onNext, onPrev, stepIndex }) {
           tone="pending"
           icon={Bot}
           title="OpenClaw 확인 중"
-          description="설치 및 게이트웨이 응답을 확인하고 있습니다..."
+          description="설치와 실행 상태를 확인하고 있어요..."
         />
       )}
 
@@ -156,7 +156,7 @@ function StepOpenClaw({ onNext, onPrev, stepIndex }) {
           tone="ok"
           icon={Bot}
           title="OpenClaw 준비됨"
-          description="게이트웨이가 정상적으로 응답하고 있습니다."
+          description="OpenClaw가 정상적으로 실행되고 있어요."
         />
       )}
 
@@ -355,7 +355,7 @@ function StepLLM({ onNext, onPrev }) {
             <div className="flex items-start gap-2">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
               <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">
-                Ollama가 설치되어 있지 않습니다.
+                Ollama가 설치되어 있지 않아요.
               </p>
             </div>
 
@@ -410,10 +410,10 @@ function StepLLM({ onNext, onPrev }) {
         <Card className="border-blue-300 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20">
           <CardContent className="space-y-2 py-3">
             <p className="text-xs font-medium text-blue-700 dark:text-blue-400">
-              Ollama가 설치되었습니다. 아직 모델이 없습니다.
+              Ollama가 설치되었어요. 이제 AI 모델을 받아야 해요.
             </p>
             <p className="text-xs text-blue-600 dark:text-blue-500">
-              터미널에서 권장 모델을 설치하세요:
+              터미널에서 추천 모델을 받아주세요:
             </p>
             <div className="flex items-center gap-2 rounded bg-blue-100 dark:bg-blue-900/40 px-3 py-2">
               <code className="flex-1 text-xs font-mono">ollama pull llama3.2</code>

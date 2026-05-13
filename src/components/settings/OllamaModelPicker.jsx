@@ -62,13 +62,13 @@ export default function OllamaModelPicker({ id, value, onChange, className }) {
       <HintBox
         icon={AlertTriangle}
         tone="warning"
-        title="Ollama가 설치되어 있지 않습니다"
-        description="모델을 선택하려면 먼저 Ollama를 설치하세요."
+        title="Ollama가 설치되어 있지 않아요"
+        description="모델을 선택하려면 먼저 Ollama를 설치해야 해요."
         actions={
           <>
             <Button size="sm" variant="outline" onClick={handleRefresh} disabled={refreshing}>
               {refreshing ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <RefreshCw className="mr-1 h-3 w-3" />}
-              재진단
+              다시 확인
             </Button>
             <Button size="sm" onClick={handleOpenWizard}>
               자동 설치 마법사 열기
@@ -85,13 +85,13 @@ export default function OllamaModelPicker({ id, value, onChange, className }) {
       <HintBox
         icon={AlertTriangle}
         tone="warning"
-        title="Ollama 데몬이 실행 중이 아닙니다"
-        description="11434 포트에서 응답이 없습니다. Ollama 앱을 실행하거나 brew services start ollama 하세요."
+        title="Ollama가 실행되고 있지 않아요"
+        description="Ollama 앱을 실행하거나, 아래 [자동 시작] 버튼을 눌러주세요."
         actions={
           <>
             <Button size="sm" variant="outline" onClick={handleRefresh} disabled={refreshing}>
               {refreshing ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <RefreshCw className="mr-1 h-3 w-3" />}
-              재진단
+              다시 확인
             </Button>
             <Button size="sm" onClick={handleOpenWizard}>
               자동 시작
@@ -108,21 +108,13 @@ export default function OllamaModelPicker({ id, value, onChange, className }) {
       <HintBox
         icon={Download}
         tone="warning"
-        title="설치된 모델이 없습니다"
-        description={
-          <>
-            터미널에서{" "}
-            <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">
-              ollama pull llama3.2
-            </code>
-            처럼 모델을 받거나, 자동 설치 마법사에서 받으세요.
-          </>
-        }
+        title="설치된 AI 모델이 없어요"
+        description="자동 설치 마법사에서 추천 모델을 받거나, 직접 받을 수도 있어요."
         actions={
           <>
             <Button size="sm" variant="outline" onClick={handleRefresh} disabled={refreshing}>
               {refreshing ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <RefreshCw className="mr-1 h-3 w-3" />}
-              재진단
+              다시 확인
             </Button>
             <Button size="sm" onClick={handleOpenWizard}>
               자동 다운로드
@@ -176,13 +168,12 @@ export default function OllamaModelPicker({ id, value, onChange, className }) {
       {!valueInList && value && (
         <p className="mt-1 flex items-start gap-1 text-xs text-amber-600 dark:text-amber-400">
           <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-          저장된 모델 <strong className="mx-0.5">{value}</strong>이(가) 현재 Ollama에 없습니다.
-          위 목록에서 다른 모델을 선택하거나{" "}
-          <code className="rounded bg-muted px-1 font-mono">ollama pull {value}</code>로 다시 받으세요.
+          저장된 모델 <strong className="mx-0.5">{value}</strong>이(가) 지금은 설치되어 있지 않아요.
+          위에서 다른 모델을 선택하거나, 자동 설치 마법사에서 다시 받을 수 있어요.
         </p>
       )}
       <p className="mt-1 text-xs text-muted-foreground">
-        총 {models.length}개 모델 설치됨 · Ollama 11434
+        설치된 모델 {models.length}개
       </p>
     </div>
   );

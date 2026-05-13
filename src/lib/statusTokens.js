@@ -84,7 +84,7 @@ export function getOpenClawStatus(state) {
   return {
     tone: "warning",
     label: "OpenClaw 문제 있음",
-    sub: state === "error" ? "연결 오류" : "실행 안 됨",
+    sub: "설치 또는 실행이 필요해요",
   };
 }
 
@@ -107,12 +107,12 @@ export function getLLMStatus({ sidecarState, llmReachable, provider, model }) {
     return { tone: "pending", label: fullLabel, sub: "확인 중" };
   }
   if (sidecarState === "error") {
-    return { tone: "warning", label: fullLabel, sub: "백그라운드 서비스 연결 실패" };
+    return { tone: "warning", label: fullLabel, sub: "앱과 연결할 수 없어요" };
   }
   if (provider === "ollama") {
     return llmReachable
       ? { tone: "ok", label: fullLabel }
-      : { tone: "warning", label: fullLabel, sub: "Ollama 데몬 응답 없음" };
+      : { tone: "warning", label: fullLabel, sub: "Ollama가 실행되고 있지 않아요" };
   }
   // Claude API — sidecar OK면 ok로 간주
   return { tone: "ok", label: fullLabel };
@@ -152,9 +152,9 @@ export function getSecurityStatus({ pendingCount, ocRunning }) {
     };
   }
   if (!ocRunning) {
-    return { tone: "pending", label: "보안", sub: "OpenClaw 준비 후 활성" };
+    return { tone: "pending", label: "보안", sub: "OpenClaw가 준비되면 활성화돼요" };
   }
-  return { tone: "ok", label: "보안", sub: "모니터링 중" };
+  return { tone: "ok", label: "보안", sub: "안전하게 보호 중" };
 }
 
 /** 메신저 표시 이름 — id → 한국어 라벨 */

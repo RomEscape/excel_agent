@@ -25,12 +25,12 @@ export const STEP = Object.freeze({
 
 export const STEP_LABEL = Object.freeze({
   [STEP.INSTALL_OC]: "OpenClaw 설치",
-  [STEP.START_OC]: "OpenClaw 게이트웨이 시작",
+  [STEP.START_OC]: "OpenClaw 실행",
   [STEP.INSTALL_OLLAMA]: "Ollama 설치",
-  [STEP.START_OLLAMA]: "Ollama 데몬 시작",
-  [STEP.PULL_MODEL]: "Ollama 모델 다운로드",
-  [STEP.CONFIG_OC]: "OpenClaw → Ollama 연결",
-  [STEP.PROMPT_TEST]: "프롬프트 대화 검증",
+  [STEP.START_OLLAMA]: "Ollama 실행",
+  [STEP.PULL_MODEL]: "AI 모델 다운로드",
+  [STEP.CONFIG_OC]: "OpenClaw에 AI 모델 연결",
+  [STEP.PROMPT_TEST]: "AI 대화 테스트",
 });
 
 /**

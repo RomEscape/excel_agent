@@ -84,7 +84,7 @@ function OpenClawBanner({ state, port, message, onConfigure }) {
         tone="ok"
         icon={Bot}
         title="OpenClaw 준비됨"
-        description={`포트 ${port ?? 18789} — 에이전트 명령을 처리할 준비가 되었습니다.`}
+        description="AI 명령을 받을 준비가 됐어요."
       />
     );
   }
@@ -95,25 +95,19 @@ function OpenClawBanner({ state, port, message, onConfigure }) {
         tone="pending"
         icon={Bot}
         title="OpenClaw 확인 중"
-        description="게이트웨이 응답을 확인하고 있습니다..."
+        description="현재 상태를 확인하고 있어요..."
       />
     );
   }
 
-  // warning — 설치 안 됨 또는 게이트웨이 중지 (사용자 입장에선 모두 "문제 있음")
+  // warning — 설치 안 됨 또는 실행 안 됨
+  // 사용자 친화적 메시지만 표시, 기술적 message 필드는 숨김 (필요 시 위저드에서 확인)
   return (
     <StatusBanner
       tone="warning"
       icon={Bot}
-      title="OpenClaw 문제 있음"
-      description={
-        <>
-          <span>비개발자도 따라할 수 있는 단계별 설치 가이드를 준비했습니다.</span>
-          {message && (
-            <span className="mt-1 block font-mono text-xs opacity-80">{message}</span>
-          )}
-        </>
-      }
+      title="OpenClaw 준비가 필요해요"
+      description="비개발자도 따라할 수 있는 단계별 설치 가이드를 준비했어요."
       actions={
         <Button size="sm" onClick={onConfigure}>
           지금 자동 설치
