@@ -788,6 +788,61 @@ export async function ollamaStatus() {
   return parseResponse(raw);
 }
 
+// ── Installer commands ───────────────────────────────────────────────────────
+//
+// macOS GUI 앱의 PATH 제한($SHELL 미적용)을 우회하기 위해 Rust 측에서
+// `$SHELL -lc "..."`로 실행하고, stdout/stderr를 `installer:log` Tauri 이벤트로
+// 실시간 스트리밍한다. 프론트는 `listen("installer:log", ...)`로 받아 표시.
+//
+// 모든 함수의 반환 형태:
+//   {
+//     ok: boolean,
+//     code: number|null,
+//     stderr_tail: string[],   // stderr 마지막 N줄 (실패 컨텍스트)
+//     eacces: boolean,         // 권한 오류 감지 → sudo 안내 UI로 분기
+//     message: string,
+//     manual_command: string,  // 사용자가 직접 실행할 명령 (실패 시 복사 제공)
+//   }
+
+/**
+ * `npm install -g openclaw@latest` — 사용자 로그인 셸 경유.
+ * @returns {Promise<object>} InstallResult
+ */
+export async function installerInstallOpenClaw() {
+  // invoke는 직접 객체를 반환 (parseResponse 불필요 — Rust가 serde_json::Value로 반환)
+  return invoke("install_openclaw");
+}
+
+/**
+ * `brew install ollama` (macOS 전용).
+ * @returns {Promise<object>} InstallResult
+ */
+export async function installerInstallOllama() {
+  return invoke("install_ollama");
+}
+
+/**
+ * `brew services start ollama`.
+ * @returns {Promise<object>} InstallResult
+ */
+export async function installerStartOllama() {
+  return invoke("start_ollama");
+}
+
+/**
+ * `ollama pull <model>` — 모델명은 Rust에서 validate_model_name으로 사전 검증.
+ * @param {string} model
+ * @returns {Promise<object>} InstallResult
+ */
+export async function installerPullModel(model) {
+  return invoke("pull_ollama_model", { model });
+}
+
+/** 진행 중인 설치 자식 프로세스를 kill한다. NO-OP if none. */
+export async function installerCancel() {
+  return invoke("cancel_install");
+}
+
 /**
  * OpenClaw 세션을 통해 AI 에이전트와 대화한다.
  *

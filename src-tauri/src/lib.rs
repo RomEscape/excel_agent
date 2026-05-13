@@ -1,3 +1,4 @@
+mod installer;
 mod ipc;
 mod ollama;
 mod openclaw;
@@ -14,6 +15,9 @@ pub fn run() {
         .setup(|app| {
             // Register OpenClaw state (before spawning so IPC commands can access it)
             app.manage(std::sync::Mutex::new(openclaw::OpenClawState::default()));
+
+            // Installer state — 진행 중인 설치 자식 프로세스 핸들 (cancel용).
+            app.manage(std::sync::Mutex::new(installer::InstallerState::default()));
 
             // Spawn the OpenClaw gateway first, then the Python sidecar
             let app_handle = app.handle().clone();
@@ -80,6 +84,12 @@ pub fn run() {
             ipc::openclaw_ensure_running,
             ipc::openclaw_use_ollama,
             ipc::ollama_status,
+            // Installer: macOS GUI PATH 우회 + 실시간 로그 스트리밍
+            installer::install_openclaw,
+            installer::install_ollama,
+            installer::start_ollama,
+            installer::pull_ollama_model,
+            installer::cancel_install,
             ipc::skills_installed,
             ipc::skills_install,
             ipc::skills_catalog,

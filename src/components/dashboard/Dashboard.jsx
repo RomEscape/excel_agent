@@ -12,16 +12,14 @@
  *   - 메일/엑셀/문서 빠른시작 카드 (deprecated 모듈)
  *   - LLM/Gmail/Telegram 개별 카드 (Settings에서 관리 — 대시보드는 핵심 신호만)
  */
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   Bot,
   CheckCircle2,
   Clock,
-  Loader2,
   Shield,
   ShieldAlert,
-  AlertCircle,
   ArrowRight,
   MessageCircle,
   Copy,
@@ -29,10 +27,12 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { StatusBanner } from "@/components/ui/status";
+import { getOpenClawStatus } from "@/lib/statusTokens";
 import { cn } from "@/lib/utils";
 import useAppStore from "@/store/appStore";
+import useStatusStore from "@/store/statusStore";
 import {
-  openclawStatus,
   getCommandAuditLogs,
   getCommandAuditStats,
   securityStats,
@@ -71,66 +71,56 @@ function SummaryCard({ icon: Icon, label, value, hint, accent, loading, onClick 
 }
 
 // ── OpenClaw 상태 배너 (가장 강조되는 영역) ────────────────────────────────────
-
+//
+// 통일된 톤 시스템 사용 — getOpenClawStatus가 반환한 tone/label을 그대로 표시.
+// 어디서든 동일하게 "준비됨/문제 있음/확인 중" 어휘로 표시된다.
+//
 function OpenClawBanner({ state, port, message, onConfigure }) {
-  if (state === "running") {
+  const { tone } = getOpenClawStatus(state);
+
+  if (tone === "ok") {
     return (
-      <Card className="border-green-200 bg-green-50/50 dark:border-green-900/40 dark:bg-green-950/20">
-        <CardContent className="flex items-center gap-4 p-5">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/40">
-            <Bot className="h-6 w-6 text-green-600 dark:text-green-400" />
-          </div>
-          <div className="flex-1">
-            <p className="font-semibold text-green-900 dark:text-green-100">
-              OpenClaw 정상 실행 중
-            </p>
-            <p className="mt-0.5 text-sm text-green-700 dark:text-green-300">
-              포트 {port ?? 18789} — 에이전트 명령을 처리할 준비가 되었습니다.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      <StatusBanner
+        tone="ok"
+        icon={Bot}
+        title="OpenClaw 준비됨"
+        description={`포트 ${port ?? 18789} — 에이전트 명령을 처리할 준비가 되었습니다.`}
+      />
     );
   }
 
-  if (state === "checking") {
+  if (tone === "pending") {
     return (
-      <Card className="border-amber-200 bg-amber-50/50">
-        <CardContent className="flex items-center gap-4 p-5">
-          <Loader2 className="h-6 w-6 shrink-0 animate-spin text-amber-600" />
-          <p className="text-sm text-amber-800">OpenClaw 게이트웨이 확인 중...</p>
-        </CardContent>
-      </Card>
+      <StatusBanner
+        tone="pending"
+        icon={Bot}
+        title="OpenClaw 확인 중"
+        description="게이트웨이 응답을 확인하고 있습니다..."
+      />
     );
   }
 
+  // warning — 설치 안 됨 또는 게이트웨이 중지 (사용자 입장에선 모두 "문제 있음")
   return (
-    <Card className="border-amber-300 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/30">
-      <CardContent className="flex items-start gap-4 p-5">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/40">
-          <AlertCircle className="h-6 w-6 text-amber-600 dark:text-amber-400" />
-        </div>
-        <div className="flex-1">
-          <p className="font-semibold text-amber-900 dark:text-amber-100">
-            {state === "error" ? "OpenClaw 연결 오류" : "OpenClaw가 설치되지 않았습니다"}
-          </p>
-          <p className="mt-0.5 text-sm text-amber-800 dark:text-amber-200">
-            비개발자도 따라할 수 있는 단계별 설치 가이드를 준비했습니다.
-          </p>
+    <StatusBanner
+      tone="warning"
+      icon={Bot}
+      title="OpenClaw 문제 있음"
+      description={
+        <>
+          <span>비개발자도 따라할 수 있는 단계별 설치 가이드를 준비했습니다.</span>
           {message && (
-            <p className="mt-1 font-mono text-xs text-amber-700 dark:text-amber-300">{message}</p>
+            <span className="mt-1 block font-mono text-xs opacity-80">{message}</span>
           )}
-          <Button
-            size="sm"
-            className="mt-3"
-            onClick={onConfigure}
-          >
-            지금 자동 설치
-            <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+        </>
+      }
+      actions={
+        <Button size="sm" onClick={onConfigure}>
+          지금 자동 설치
+          <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+        </Button>
+      }
+    />
   );
 }
 
@@ -328,8 +318,22 @@ function FirstCommandGuide({ botUsername, onGoToConversations, onGoToMessenger }
 
 export default function Dashboard() {
   const setCurrentPage = useAppStore((s) => s.setCurrentPage);
-  const ocStatus = useAppStore((s) => s.openclawStatus);
-  const setOpenClawStatus = useAppStore((s) => s.setOpenClawStatus);
+  // 중앙 status store에서 OpenClaw 모듈 상태 구독 — App의 useStatusPoller가 자동 갱신.
+  // Dashboard는 더 이상 자체 openclawStatus fetch를 하지 않는다.
+  const ocModule = useStatusStore((s) => s.modules.openclaw);
+  // 기존 코드 호환을 위해 ocStatus 동등 객체 변환 (state/port/message)
+  const ocStatus = useMemo(
+    () => ({
+      state: ocModule.running
+        ? "running"
+        : ocModule.state === "unknown"
+        ? "checking"
+        : "stopped",
+      port: ocModule.port ?? 18789,
+      message: ocModule.message,
+    }),
+    [ocModule]
+  );
 
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState(null);
@@ -337,26 +341,15 @@ export default function Dashboard() {
   const [secStats, setSecStats] = useState(null);
   const [botUsername, setBotUsername] = useState(null);
 
+  // OpenClaw 상태는 중앙 store가 담당 → 여기선 audit/security/telegram만 fetch.
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [ocResult, statsResult, logsResult, secResult, tgResult] = await Promise.allSettled([
-      openclawStatus(),
+    const [statsResult, logsResult, secResult, tgResult] = await Promise.allSettled([
       getCommandAuditStats(),
       getCommandAuditLogs(5, 0),
       securityStats(),
       telegramStatus(),
     ]);
-
-    if (ocResult.status === "fulfilled") {
-      const oc = ocResult.value;
-      setOpenClawStatus({
-        state: oc?.state ?? "error",
-        message: oc?.message ?? "",
-        port: oc?.port,
-      });
-    } else {
-      setOpenClawStatus({ state: "error", message: "OpenClaw 상태 확인 실패" });
-    }
 
     setStats(statsResult.status === "fulfilled" ? statsResult.value : null);
     setRecentLogs(
@@ -369,7 +362,7 @@ export default function Dashboard() {
       setBotUsername(u);
     }
     setLoading(false);
-  }, [setOpenClawStatus]);
+  }, []);
 
   useEffect(() => {
     loadData();

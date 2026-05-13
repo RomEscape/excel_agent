@@ -9,7 +9,9 @@ import {
   Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getOpenClawStatus } from "@/lib/statusTokens";
 import useAppStore from "@/store/appStore";
+import useStatusStore from "@/store/statusStore";
 
 /**
  * 단순화된 Sidebar.
@@ -73,12 +75,19 @@ function CollapsedLabel({ label, gated }) {
 export default function Sidebar() {
   const currentPage = useAppStore((s) => s.currentPage);
   const setCurrentPage = useAppStore((s) => s.setCurrentPage);
-  const ocStatus = useAppStore((s) => s.openclawStatus);
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
+  // 중앙 status store에서 OpenClaw 상태 — Dashboard/StatusBar와 동일한 데이터 소스
+  const ocModule = useStatusStore((s) => s.modules.openclaw);
 
-  // OpenClaw가 stopped/error 상태이면 워크스페이스/대화 메뉴를 자물쇠로 표시.
-  // checking 상태에서는 가드하지 않음 (확인 중일 뿐 아직 결론 안 남).
-  const ocBlocked = ocStatus.state === "stopped" || ocStatus.state === "error";
+  // OpenClaw가 "준비됨" 상태가 아니면 워크스페이스/대화 메뉴를 자물쇠로 가드.
+  // 통합 톤 매퍼(getOpenClawStatus)로 판정 — StatusBar/Dashboard와 정확히 일치.
+  // unknown(=초기/확인 중)에서는 가드하지 않음 (확인 결과 나오기 전).
+  const ocState = ocModule.running
+    ? "running"
+    : ocModule.state === "unknown"
+    ? "checking"
+    : "stopped";
+  const ocBlocked = getOpenClawStatus(ocState).tone === "warning";
   const collapsed = !!sidebarCollapsed;
 
   const isSettingsActive =

@@ -25,14 +25,18 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { StatusRow } from "@/components/ui/status";
 import useAppStore from "@/store/appStore";
+import useStatusStore from "@/store/statusStore";
 import {
-  openclawStatus,
-  openclawInstalled,
-  openclawEnsureRunning,
+  STATUS_MODULES,
+  refreshAllModules,
+  getDerivedDiag,
+} from "@/lib/statusManager";
+import {
   openclawUseOllama,
-  ollamaStatus,
   agentChat,
+  installerCancel,
 } from "@/lib/api";
 import {
   STEP,
@@ -65,53 +69,55 @@ const PROMPT_TEST_TIMEOUT_MS = 60_000;
 export default function LocalAISetupWizard() {
   const onboardingComplete = useAppStore((s) => s.onboardingComplete);
   const llmConfig = useAppStore((s) => s.llmConfig);
-  const setOpenClawStatus = useAppStore((s) => s.setOpenClawStatus);
   const setCurrentPage = useAppStore((s) => s.setCurrentPage);
+
+  // 새 중앙 상태 store에서 모듈 데이터 구독 — App 루트의 useStatusPoller가 자동 갱신.
+  // 이 wizard는 더 이상 자체 fetch를 하지 않고 store의 데이터를 읽기만 한다.
+  const ocModule = useStatusStore((s) => s.modules.openclaw);
+  const ollamaModule = useStatusStore((s) => s.modules.ollama);
 
   const [open, setOpen] = useState(false);
   const [dismissed, setDismissed] = useState(false);
-  const [diag, setDiag] = useState(null); // null | { oc, ocInstalled, oll }
   const [model, setModel] = useState(DEFAULT_MODEL);
   const [phase, setPhase] = useState("idle"); // idle | running | done | error
   const [stepStates, setStepStates] = useState({});
   // stepStates[id] = { status: 'pending'|'running'|'done'|'skipped'|'error', logs: [{kind, text}] }
   const [activeStep, setActiveStep] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
-  const childRef = useRef(null);
+  // 진행 중인 설치는 Rust 측 installer에서 PID로 관리하므로 frontend childRef 불필요.
+  // cancelRef.current는 runAll 루프의 다음 step 진입 직전 검사용으로만 사용.
   const cancelRef = useRef(false);
-  const logBoxRef = useRef(null);
 
-  // 진단 — OpenClaw 설치/실행 + Ollama 설치/실행/모델
-  const runDiagnosis = useCallback(async () => {
-    try {
-      const [oc, ocInst, oll] = await Promise.all([
-        openclawStatus().catch(() => ({ state: "stopped", message: "" })),
-        openclawInstalled().catch(() => ({ installed: false })),
-        ollamaStatus().catch(() => ({ installed: false, running: false, models: [] })),
-      ]);
-      setDiag({ oc, ocInstalled: ocInst, oll });
-      // store 동기화
-      setOpenClawStatus({
-        state: oc?.state ?? "stopped",
-        message: oc?.message ?? "",
-        port: oc?.port,
-      });
-    } catch {
-      setDiag({
-        oc: { state: "error" },
-        ocInstalled: { installed: false },
-        oll: { installed: false, running: false, models: [] },
-      });
+  // store 모듈 상태 → buildPlan/isAllReady가 받는 diag 형태로 변환 (호환성).
+  // 두 모듈 모두 unknown(=한 번도 check 안 됨)이면 diag=null로 두어 로딩 표시.
+  const diag = useMemo(() => {
+    if (ocModule.state === "unknown" && ollamaModule.state === "unknown") {
+      return null;
     }
-  }, [setOpenClawStatus]);
+    return {
+      oc: {
+        state: ocModule.running ? "running" : "stopped",
+        message: ocModule.message,
+        port: ocModule.port,
+      },
+      ocInstalled: { installed: ocModule.installed, version: ocModule.version },
+      oll: {
+        installed: ollamaModule.installed,
+        running: ollamaModule.running,
+        models: ollamaModule.models,
+        version: ollamaModule.version,
+      },
+    };
+  }, [ocModule, ollamaModule]);
 
-  // 앱 시작 직후 1회 진단 → 부족하면 모달 자동 노출
-  useEffect(() => {
-    const t = setTimeout(() => {
-      runDiagnosis();
-    }, DETECTION_DELAY_MS);
-    return () => clearTimeout(t);
-  }, [runDiagnosis]);
+  // 진단 트리거 — 실제 fetch는 statusManager가 담당, 결과는 store로 자동 반영.
+  // 단계별 실행 후 readiness 판정에 사용하기 위해 fresh diag도 반환한다.
+  const runDiagnosis = useCallback(async () => {
+    await refreshAllModules();
+    return getDerivedDiag();
+  }, []);
+
+  // 앱 시작 직후 1회 진단은 App.jsx의 useStatusPoller가 처리 — 여기선 별도 트리거 불필요.
 
   // 모달 자동 노출 결정 — provider=ollama인 사용자에게만 자동 노출
   // (Claude API 사용자는 글로벌 이벤트로 수동 트리거 가능)
@@ -133,12 +139,20 @@ export default function LocalAISetupWizard() {
     }
   }, [llmConfig?.provider, llmConfig?.model]);
 
-  // 글로벌 이벤트 — Dashboard 등에서 다시 열기
+  // 글로벌 이벤트 — Dashboard "지금 자동 설치" 등에서 다시 열기.
+  // 모달을 *즉시* 열어 사용자에게 피드백을 주고, 진단은 백그라운드로 갱신한다.
+  // (이전에는 진단을 await 없이 호출하면서 setOpen만 동기로 실행했는데,
+  //  렌더 가드 `if (!open || !diag) return null` 때문에 첫 진단이 끝날 때까지
+  //  아무 것도 보이지 않는 문제가 있었다.)
   useEffect(() => {
     const handler = () => {
       setDismissed(false);
-      runDiagnosis();
       setOpen(true);
+      // 이전 단계별 상태를 초기화 — 새로 열린 세션에는 깨끗한 화면을 보여준다
+      setStepStates({});
+      setPhase("idle");
+      setErrorMsg("");
+      runDiagnosis();
     };
     window.addEventListener("private-claw:open-local-ai-setup", handler);
     // 기존 이벤트 호환
@@ -148,13 +162,6 @@ export default function LocalAISetupWizard() {
       window.removeEventListener("private-claw:open-openclaw-install", handler);
     };
   }, [runDiagnosis]);
-
-  // 자동 스크롤 — 활성 단계 로그
-  useEffect(() => {
-    if (logBoxRef.current) {
-      logBoxRef.current.scrollTop = logBoxRef.current.scrollHeight;
-    }
-  }, [stepStates, activeStep]);
 
   // 필요한 단계 / 이미 완료된 단계 분리
   const plan = useMemo(() => {
@@ -183,35 +190,50 @@ export default function LocalAISetupWizard() {
     }));
   }, []);
 
-  // 셸 명령 실행 — stdout/stderr 라이브 스트리밍
-  const runShell = useCallback(
-    async (stepId, name, args) => {
-      const { Command } = await import("@tauri-apps/plugin-shell");
-      return new Promise((resolve, reject) => {
-        try {
-          const cmd = Command.create(name, args);
-          cmd.stdout.on("data", (line) => pushLog(stepId, "out", String(line).trimEnd()));
-          cmd.stderr.on("data", (line) => pushLog(stepId, "err", String(line).trimEnd()));
-          cmd.on("close", (data) => {
-            childRef.current = null;
-            const code = data?.code ?? 0;
-            if (code === 0) resolve();
-            else reject(new Error(`종료 코드 ${code}`));
-          });
-          cmd.on("error", (err) => {
-            childRef.current = null;
-            reject(new Error(String(err)));
-          });
-          cmd.spawn().then((child) => {
-            childRef.current = child;
-          }).catch(reject);
-        } catch (e) {
-          reject(e);
-        }
-      });
+  // Tauri installer 명령 결과 → throw + state 첨부.
+  // 실패 시 errorResult를 stepStates에 함께 저장해 PlanStepRow가 EACCES/stderr_tail/manual_command를
+  // 의미 있게 렌더할 수 있도록 한다.
+  const handleInstallResult = useCallback(
+    (stepId, result) => {
+      if (result?.ok) return;
+      // 실패 — 풍부한 컨텍스트 첨부
+      const err = new Error(result?.message || "설치 실패");
+      err.installResult = result;
+      throw err;
     },
-    [pushLog]
+    []
   );
+
+  // installer:log 이벤트 → pushLog로 라우팅.
+  // Rust 측 streaming이 emit하는 라인을 받아 PlanStepRow의 인라인 로그에 표시.
+  useEffect(() => {
+    let unlisten = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        const off = await listen("installer:log", (event) => {
+          const payload = event?.payload || {};
+          const { step, kind, text } = payload;
+          if (!step || typeof text !== "string") return;
+          // Rust kind ("stdout"/"stderr"/"info") → 기존 frontend kind 매핑
+          const mappedKind = kind === "stderr" ? "err" : kind === "info" ? "info" : "out";
+          pushLog(step, mappedKind, text);
+        });
+        if (cancelled) {
+          off();
+        } else {
+          unlisten = off;
+        }
+      } catch {
+        // Tauri 비-환경(브라우저 단독 테스트 등) — 조용히 무시
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (unlisten) unlisten();
+    };
+  }, [pushLog]);
 
   // 개별 단계 실행
   const runStep = useCallback(
@@ -221,21 +243,20 @@ export default function LocalAISetupWizard() {
       setStepStatus(stepId, "running");
       pushLog(stepId, "info", `▶ ${STEP_LABEL[stepId]}`);
 
+      // 모든 단계는 statusManager의 액션을 호출 — 액션 내부에서:
+      //   1) 설치/시작 명령 실행 (Rust $SHELL -lc 경유)
+      //   2) 자동으로 check() 호출 → 설치 위치/실행 상태 검증 → store 갱신
+      // 결과는 InstallResult — handleInstallResult가 실패 시 throw + 컨텍스트 첨부.
       try {
         switch (stepId) {
           case STEP.INSTALL_OC: {
-            pushLog(stepId, "info", "$ npm install -g openclaw@latest");
-            await runShell(stepId, "npm", ["install", "-g", "openclaw@latest"]);
+            const result = await STATUS_MODULES.openclaw.install();
+            handleInstallResult(stepId, result);
             break;
           }
           case STEP.START_OC: {
             pushLog(stepId, "info", "openclaw gateway --port 18789 (자식 프로세스로 spawn)");
-            const result = await openclawEnsureRunning();
-            setOpenClawStatus({
-              state: result?.state ?? "stopped",
-              message: result?.message ?? "",
-              port: result?.port,
-            });
+            const result = await STATUS_MODULES.openclaw.start();
             if (result?.state !== "running") {
               throw new Error(result?.message || "게이트웨이 ready 실패");
             }
@@ -243,10 +264,7 @@ export default function LocalAISetupWizard() {
             break;
           }
           case STEP.INSTALL_OLLAMA: {
-            if (isMac()) {
-              pushLog(stepId, "info", "$ brew install ollama");
-              await runShell(stepId, "brew-install-ollama", ["install", "ollama"]);
-            } else {
+            if (!isMac()) {
               pushLog(stepId, "err", "현재 자동 설치는 macOS(brew)만 지원합니다.");
               pushLog(
                 stepId,
@@ -255,40 +273,23 @@ export default function LocalAISetupWizard() {
               );
               throw new Error("macOS 외 OS는 자동 설치 미지원 — 수동 설치 필요");
             }
+            const result = await STATUS_MODULES.ollama.install();
+            handleInstallResult(stepId, result);
             break;
           }
           case STEP.START_OLLAMA: {
-            if (isMac()) {
-              pushLog(stepId, "info", "$ brew services start ollama");
-              try {
-                await runShell(stepId, "brew-services-start-ollama", [
-                  "services",
-                  "start",
-                  "ollama",
-                ]);
-              } catch (e) {
-                pushLog(stepId, "err", `brew services 실패: ${e?.message ?? e}`);
-                pushLog(stepId, "info", "Ollama.app을 직접 실행한 뒤 [재진단]을 눌러 주세요.");
-                throw e;
-              }
-            } else {
+            if (!isMac()) {
               pushLog(stepId, "info", "Ollama 앱을 실행한 뒤 [재진단]을 눌러 주세요.");
               throw new Error("자동 시작 미지원 — Ollama 앱 직접 실행 필요");
             }
-            // 잠깐 기다린 뒤 ready 확인
-            for (let i = 0; i < 30; i++) {
-              await new Promise((r) => setTimeout(r, 500));
-              const s = await ollamaStatus().catch(() => ({ running: false }));
-              if (s?.running) {
-                pushLog(stepId, "info", "✓ Ollama 11434 응답");
-                return true;
-              }
-            }
-            throw new Error("Ollama 데몬이 15초 내에 응답하지 않습니다");
+            const result = await STATUS_MODULES.ollama.start();
+            handleInstallResult(stepId, result);
+            // start()는 내부에서 ready polling + check를 이미 수행. 추가 확인 불필요.
+            break;
           }
           case STEP.PULL_MODEL: {
-            pushLog(stepId, "info", `$ ollama pull ${model}`);
-            await runShell(stepId, "ollama-pull", ["pull", model]);
+            const result = await STATUS_MODULES.ollama.pullModel(model);
+            handleInstallResult(stepId, result);
             break;
           }
           case STEP.CONFIG_OC: {
@@ -328,12 +329,22 @@ export default function LocalAISetupWizard() {
       } catch (err) {
         const msg = String(err?.message ?? err);
         pushLog(stepId, "err", `✗ ${msg}`);
-        setStepStatus(stepId, "error");
+        // err.installResult가 있으면 stepStates에 함께 저장 — PlanStepRow가
+        // EACCES 안내 / stderr_tail / manual_command 복사 UI를 렌더.
+        const installResult = err?.installResult;
+        setStepStates((prev) => ({
+          ...prev,
+          [stepId]: {
+            ...(prev[stepId] || { logs: [] }),
+            status: "error",
+            installResult,
+          },
+        }));
         setErrorMsg(msg);
         return false;
       }
     },
-    [model, pushLog, runShell, setOpenClawStatus, setStepStatus]
+    [model, pushLog, handleInstallResult, setStepStatus]
   );
 
   // 전체 자동 실행 — todo 단계만 순차 실행. skipped는 UI에서 "이미 완료"로만 표시.
@@ -357,20 +368,52 @@ export default function LocalAISetupWizard() {
     }
     setActiveStep(null);
     // 마지막 검증 진단
-    await runDiagnosis();
-    setPhase("done");
-  }, [plan.todo, runDiagnosis, runStep]);
+    const fresh = await runDiagnosis();
+    setPhase(isAllReady(fresh, model) ? "done" : "idle");
+  }, [plan.todo, runDiagnosis, runStep, model]);
 
-  // 취소
+  // 단일 단계 실행 — 사용자가 PlanList의 각 [실행] 버튼을 눌렀을 때 호출.
+  //
+  //   1) cancelRef/phase=running 설정으로 다른 버튼 비활성화
+  //   2) 해당 stepId의 이전 로그/상태 초기화 후 runStep 호출
+  //   3) 성공 시 즉시 진단 재실행 → 다음 todo 갱신
+  //   4) 모든 사전조건이 충족(isAllReady)되면 phase=done, 아니면 phase=idle
+  //   5) 실패 시 phase=error — PlanList의 [재시도] 버튼은 그대로 동작
+  const runSingleStep = useCallback(
+    async (stepId) => {
+      cancelRef.current = false;
+      setPhase("running");
+      setErrorMsg("");
+      // 이 단계의 이전 상태(특히 logs)만 비워 새로 시작
+      setStepStates((prev) => {
+        const next = { ...prev };
+        delete next[stepId];
+        return next;
+      });
+
+      const ok = await runStep(stepId);
+      setActiveStep(null);
+
+      if (!ok || cancelRef.current) {
+        setPhase("error");
+        return;
+      }
+
+      const fresh = await runDiagnosis();
+      setPhase(isAllReady(fresh, model) ? "done" : "idle");
+    },
+    [runStep, runDiagnosis, model]
+  );
+
+  // 취소 — 진행 중인 Rust 측 자식 프로세스에 SIGTERM 전송.
+  // installer.rs가 저장된 PID에 kill -TERM을 보내고, child.wait이 비정상 종료로 리턴됨.
+  // cancelRef.current는 runAll의 다음 step 진입 전 검사에서 중단 신호로 사용.
   const cancelAll = useCallback(async () => {
     cancelRef.current = true;
-    if (childRef.current) {
-      try {
-        await childRef.current.kill();
-      } catch {
-        // ignore
-      }
-      childRef.current = null;
+    try {
+      await installerCancel();
+    } catch {
+      // ignore — 이미 종료됐거나 PID 없음
     }
   }, []);
 
@@ -398,17 +441,20 @@ export default function LocalAISetupWizard() {
     await runDiagnosis();
   };
 
-  if (!open || !diag) return null;
+  if (!open) return null;
 
-  const allReady = isAllReady(diag, model);
+  // diag가 아직 없으면 wizard는 열되 "확인 중..." 표시 (이전 동작은 완전 숨김이었음)
+  const diagReady = !!diag;
+  const allReady = diagReady && isAllReady(diag, model);
 
   return (
-    <div
-      className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/50 px-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && phase !== "running") handleClose();
-      }}
-    >
+    <div className="fixed inset-0 z-[1100] overflow-y-auto bg-black/50">
+      <div
+        className="flex min-h-full items-center justify-center p-4"
+        onClick={(e) => {
+          if (e.target === e.currentTarget && phase !== "running") handleClose();
+        }}
+      >
       <div
         role="dialog"
         aria-modal="true"
@@ -434,34 +480,40 @@ export default function LocalAISetupWizard() {
         </div>
 
         <div className="space-y-4 p-5">
-          {/* 진단 결과 + 모델 선택 — phase=idle 또는 done */}
-          {(phase === "idle" || phase === "done") && (
-            <DiagnosisCard diag={diag} model={model} />
+          {/* 진단 미완료 상태 — 초기 로딩 표시 */}
+          {!diagReady && (
+            <div className="flex items-center gap-3 rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              현재 상태를 확인하고 있습니다...
+            </div>
           )}
 
-          {/* 모델 선택 — idle 단계에서만 */}
-          {phase === "idle" && !allReady && (
+          {/* 진단 결과 — 항상 표시 (단계별 클릭 흐름에서 사용자가 현재 상태를 계속 봐야 함) */}
+          {diagReady && <DiagnosisCard diag={diag} model={model} />}
+
+          {/* 모델 선택 — idle 단계에서만 (running 중 모델 변경 방지) */}
+          {diagReady && phase === "idle" && !allReady && (
             <ModelPicker model={model} onChange={setModel} />
           )}
 
-          {/* 계획 체크리스트 — idle / running / error */}
-          {phase !== "done" && (plan.todo.length > 0 || plan.skipped.length > 0) && (
-            <PlanList plan={plan} stepStates={stepStates} activeStep={activeStep} />
-          )}
+          {/* 계획 체크리스트 — 단계별 [실행] 버튼 + 인라인 로그.
+              완료된 단계는 글자로만, 미완료 단계는 클릭 가능한 버튼으로 표시. */}
+          {diagReady && phase !== "done" &&
+            (plan.todo.length > 0 || plan.skipped.length > 0) && (
+              <PlanList
+                plan={plan}
+                stepStates={stepStates}
+                activeStep={activeStep}
+                phase={phase}
+                onRunStep={runSingleStep}
+                onCancel={cancelAll}
+              />
+            )}
 
-          {/* 활성 단계 로그 — running */}
-          {phase === "running" && activeStep && (
-            <LogBox
-              title={STEP_LABEL[activeStep]}
-              logs={stepStates[activeStep]?.logs ?? []}
-              ref={logBoxRef}
-            />
-          )}
-
-          {/* 에러 메시지 */}
+          {/* 에러 메시지 — 추가 안내 (Ollama 자동 설치 미지원 등) */}
           {phase === "error" && errorMsg && (
             <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">
-              <p className="font-semibold">자동 설정 중 문제가 발생했습니다.</p>
+              <p className="font-semibold">단계 실행 중 문제가 발생했습니다.</p>
               <p className="mt-1 break-all">{errorMsg}</p>
               {(stepStates[STEP.INSTALL_OLLAMA]?.status === "error" ||
                 stepStates[STEP.START_OLLAMA]?.status === "error") && (
@@ -509,7 +561,7 @@ export default function LocalAISetupWizard() {
               수동 설치 안내 보기
             </button>
             <div className="flex gap-2">
-              {phase === "idle" && (
+              {phase === "idle" && diagReady && (
                 <>
                   {allReady ? (
                     <>
@@ -526,9 +578,11 @@ export default function LocalAISetupWizard() {
                       <Button variant="outline" size="sm" onClick={handleLater}>
                         나중에
                       </Button>
-                      <Button size="sm" onClick={runAll}>
+                      {/* 단계별 [실행]을 일일이 누르는 대신 남은 단계를 모두 한 번에 실행.
+                          이전 단계가 실패하면 거기서 멈춤. */}
+                      <Button size="sm" onClick={runAll} disabled={plan.todo.length === 0}>
                         <Zap className="mr-1.5 h-3.5 w-3.5" />
-                        모두 자동 설정
+                        남은 단계 한 번에 실행
                       </Button>
                     </>
                   )}
@@ -536,7 +590,7 @@ export default function LocalAISetupWizard() {
               )}
               {phase === "running" && (
                 <Button variant="outline" size="sm" onClick={cancelAll}>
-                  중단
+                  전체 중단
                 </Button>
               )}
               {phase === "error" && (
@@ -547,9 +601,8 @@ export default function LocalAISetupWizard() {
                   <Button size="sm" onClick={handleRediagnose}>
                     재진단
                   </Button>
-                  <Button size="sm" onClick={runAll}>
-                    재시도
-                  </Button>
+                  {/* 단계별 [재시도] 버튼이 PlanList에 있으므로 하단 일괄 재시도는 제거.
+                      특정 단계만 다시 실행하려면 해당 행의 [재시도] 클릭. */}
                 </>
               )}
               {phase === "done" && (
@@ -561,12 +614,17 @@ export default function LocalAISetupWizard() {
           </div>
         </div>
       </div>
+      </div>
     </div>
   );
 }
 
 // ── 하위 컴포넌트 ──────────────────────────────────────────────────────────
 
+// 진단 카드 — 사용자에게 *세부* 항목별 상태를 보여주는 유일한 화면.
+// 다른 위치(StatusBar/Dashboard)는 "OpenClaw 준비됨/문제 있음" 단일 표시지만,
+// 여기서는 진단 목적이므로 설치/실행/모델을 모두 분리해서 보여준다.
+// 통일된 톤 시스템(STATUS_TONE) 사용 — "준비됨"(ok) / "문제 있음"(warning).
 function DiagnosisCard({ diag, model }) {
   const ocInst = !!diag.ocInstalled?.installed;
   const ocRun = diag.oc?.state === "running";
@@ -587,32 +645,21 @@ function DiagnosisCard({ diag, model }) {
       <p className="mb-2 text-xs font-semibold text-muted-foreground">현재 상태</p>
       <ul className="space-y-1">
         {items.map((it, i) => (
-          <li key={i} className="flex items-center gap-2 text-xs">
-            <StatusDot ok={it.ok} />
-            <span className={it.ok ? "text-foreground" : "text-muted-foreground"}>
-              {it.label}
-            </span>
-            {it.hint && (
-              <code className="ml-1 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
-                {it.hint}
-              </code>
-            )}
-          </li>
+          <StatusRow
+            key={i}
+            tone={it.ok ? "ok" : "warning"}
+            title={it.label}
+            right={
+              it.hint ? (
+                <code className="rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
+                  {it.hint}
+                </code>
+              ) : null
+            }
+          />
         ))}
       </ul>
     </div>
-  );
-}
-
-function StatusDot({ ok }) {
-  return (
-    <span
-      className={`inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full ${
-        ok ? "bg-green-500/20 text-green-600" : "bg-amber-500/20 text-amber-600"
-      }`}
-    >
-      {ok ? <Check className="h-2.5 w-2.5" /> : <span className="text-[8px]">○</span>}
-    </span>
   );
 }
 
@@ -676,7 +723,19 @@ function ModelPicker({ model, onChange }) {
   );
 }
 
-function PlanList({ plan, stepStates, activeStep }) {
+/**
+ * 단계별 실행 계획 UI.
+ *
+ * 핵심 UX:
+ *   - 완료(skipped)된 단계는 글자만 표시 (다시 수행하지 않음)
+ *   - 미완료(todo)된 단계는 [실행] / [재시도] 버튼으로 클릭 가능
+ *   - 실행 중 단계는 인라인 로그가 펼쳐짐 + [중단] 버튼
+ *   - 실패한 단계는 인라인 로그 + [재시도] 버튼
+ *   - 다른 단계가 실행 중이면 모든 버튼 비활성화 (동시 실행 방지)
+ */
+function PlanList({ plan, stepStates, activeStep, phase, onRunStep, onCancel }) {
+  const isAnyRunning = phase === "running";
+
   return (
     <div className="rounded-md border border-border bg-background p-3">
       {plan.skipped.length > 0 && (
@@ -693,7 +752,7 @@ function PlanList({ plan, stepStates, activeStep }) {
                 <Check className="h-3.5 w-3.5 shrink-0 text-green-600/70" />
                 <span>{STEP_LABEL[id]}</span>
                 <span className="ml-auto text-[10px] uppercase tracking-wide text-green-700/70 dark:text-green-400/70">
-                  설치됨
+                  완료
                 </span>
               </li>
             ))}
@@ -701,56 +760,116 @@ function PlanList({ plan, stepStates, activeStep }) {
         </>
       )}
       <p className="mb-1.5 text-xs font-semibold text-muted-foreground">
-        실행 계획 ({plan.todo.length})
+        실행 계획 ({plan.todo.length}) — 단계별로 [실행]을 눌러 진행하세요
       </p>
-      <ul className="space-y-1">
-        {plan.todo.map((id) => {
-          const s = stepStates[id];
-          const status = s?.status ?? "pending";
-          return (
-            <li key={id} className="flex items-center gap-2 text-xs">
-              <StepIcon status={status} active={activeStep === id} />
-              <span
-                className={
-                  status === "done"
-                    ? "text-foreground"
-                    : status === "error"
-                    ? "text-destructive"
-                    : status === "running"
-                    ? "text-primary"
-                    : "text-muted-foreground"
-                }
-              >
-                {STEP_LABEL[id]}
-              </span>
-            </li>
-          );
-        })}
+      <ul className="space-y-1.5">
+        {plan.todo.map((id) => (
+          <PlanStepRow
+            key={id}
+            stepId={id}
+            state={stepStates[id]}
+            isActive={activeStep === id}
+            isAnyRunning={isAnyRunning}
+            onRun={() => onRunStep(id)}
+            onCancel={onCancel}
+          />
+        ))}
       </ul>
     </div>
   );
 }
 
-function StepIcon({ status, active }) {
-  if (status === "done") return <Check className="h-3.5 w-3.5 shrink-0 text-green-600" />;
-  if (status === "error") return <AlertCircle className="h-3.5 w-3.5 shrink-0 text-destructive" />;
-  if (status === "running" || active)
-    return <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />;
-  return <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />;
-}
+/**
+ * 단일 단계 행 — 라벨 + 상태 + [실행/재시도/중단] 버튼 + 인라인 로그.
+ */
+function PlanStepRow({ stepId, state, isActive, isAnyRunning, onRun, onCancel }) {
+  const status = state?.status ?? "pending";
+  const logs = state?.logs ?? [];
+  const logBoxRef = useRef(null);
+  const isRunning = status === "running" && isActive;
+  const isDone = status === "done";
+  const isError = status === "error";
 
-const LogBox = React.forwardRef(function LogBox({ title, logs }, ref) {
-  return (
-    <div>
-      <p className="mb-1 text-xs font-medium">{title}</p>
-      <div
-        ref={ref}
-        className="max-h-[200px] overflow-y-auto rounded-md border border-border bg-zinc-950 p-3 font-mono text-[11px] leading-relaxed text-zinc-100"
+  // 활성 단계 로그 자동 스크롤
+  useEffect(() => {
+    if (logBoxRef.current && isRunning) {
+      logBoxRef.current.scrollTop = logBoxRef.current.scrollHeight;
+    }
+  }, [logs, isRunning]);
+
+  // 우측 버튼 결정
+  let actionButton = null;
+  if (isRunning) {
+    actionButton = (
+      <Button size="sm" variant="outline" onClick={onCancel}>
+        중단
+      </Button>
+    );
+  } else if (isDone) {
+    // 완료된 단계는 버튼 없음 — 사용자 요청대로 글자만 표시
+    actionButton = null;
+  } else {
+    actionButton = (
+      <Button
+        size="sm"
+        variant={isError ? "outline" : "default"}
+        onClick={onRun}
+        disabled={isAnyRunning}
       >
-        {logs.length === 0 ? (
-          <span className="text-zinc-500">출력 대기 중...</span>
-        ) : (
-          logs.map((l, i) => (
+        <Zap className="mr-1 h-3 w-3" />
+        {isError ? "재시도" : "실행"}
+      </Button>
+    );
+  }
+
+  // 상태 라벨 (글자)
+  let statusLabel = null;
+  if (isDone) {
+    statusLabel = (
+      <span className="text-[10px] uppercase tracking-wide text-green-700/80 dark:text-green-400/80">
+        완료
+      </span>
+    );
+  } else if (isError) {
+    statusLabel = (
+      <span className="text-[10px] uppercase tracking-wide text-destructive">실패</span>
+    );
+  } else if (isRunning) {
+    statusLabel = (
+      <span className="text-[10px] uppercase tracking-wide text-primary">실행 중</span>
+    );
+  }
+
+  return (
+    <li className="rounded-md border border-border/60 bg-muted/20 p-2">
+      <div className="flex items-center gap-2 text-xs">
+        <StepIcon status={status} active={isActive} />
+        <span
+          className={
+            isDone
+              ? "text-foreground"
+              : isError
+              ? "text-destructive"
+              : isRunning
+              ? "text-primary font-medium"
+              : "text-foreground/80"
+          }
+        >
+          {STEP_LABEL[stepId]}
+        </span>
+        {statusLabel}
+        <span className="ml-auto">{actionButton}</span>
+      </div>
+
+      {/* 인라인 로그 — 실행 중이거나 실패한 경우에만 노출.
+          완료된 단계의 로그는 사용자 요청대로 숨김(글자만 표시).
+          별도 LogBox 컴포넌트 대신 여기서 직접 렌더 — title 없는 컴팩트 버전. */}
+      {(isRunning || isError) && logs.length > 0 && (
+        <div
+          ref={logBoxRef}
+          className="mt-2 max-h-[200px] overflow-y-auto rounded-md border border-border bg-zinc-950 p-2 font-mono text-[11px] leading-relaxed text-zinc-100"
+        >
+          {logs.map((l, i) => (
             <div
               key={i}
               className={
@@ -763,9 +882,111 @@ const LogBox = React.forwardRef(function LogBox({ title, logs }, ref) {
             >
               {l.text}
             </div>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
+
+      {/* 실패 시 풍부한 컨텍스트: EACCES 안내 / stderr 꼬리 / 수동 명령 복사.
+          Rust installer가 채워준 state.installResult를 사용 — 단순 "종료 코드 N"보다
+          훨씬 의미 있는 정보를 제공한다. */}
+      {isError && state?.installResult && (
+        <FailureContext result={state.installResult} stepId={stepId} />
+      )}
+    </li>
+  );
+}
+
+/**
+ * 실패 컨텍스트 패널 — Rust installer가 넘긴 InstallResult를 표시.
+ *
+ *   - EACCES → 빨간 경고 + "관리자 권한 필요" + nvm 대안 안내
+ *   - stderr_tail → 마지막 N줄 (npm ERR! / brew error: 같은 핵심 정보)
+ *   - manual_command → 한 줄 복사 버튼
+ */
+function FailureContext({ result, stepId }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    const cmd = result?.eacces && stepId === "install-oc"
+      ? `sudo ${result.manual_command.replace(/^sudo\s+/, "")}`
+      : result.manual_command;
+    try {
+      await navigator.clipboard.writeText(cmd);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // ignore
+    }
+  };
+
+  return (
+    <div className="mt-2 space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-2 text-[11px]">
+      {result.eacces ? (
+        <div className="text-destructive">
+          <p className="font-semibold">관리자 권한이 필요합니다.</p>
+          <p className="mt-1 text-destructive/80">
+            앱 내에서는 비밀번호 입력이 불가능합니다. 아래 명령을 터미널에서 직접 실행해 주세요.
+          </p>
+        </div>
+      ) : (
+        <div className="text-destructive">
+          <p className="font-semibold">
+            실패 {result.code != null ? `(종료 코드 ${result.code})` : ""}
+          </p>
+          {Array.isArray(result.stderr_tail) && result.stderr_tail.length > 0 && (
+            <div className="mt-1.5">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                마지막 출력
+              </p>
+              <pre className="mt-0.5 whitespace-pre-wrap break-all rounded bg-zinc-950 p-1.5 font-mono text-[10px] text-amber-300">
+                {result.stderr_tail.slice(-8).join("\n")}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+
+      {result.manual_command && (
+        <div>
+          <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+            터미널에서 직접 실행
+          </p>
+          <div className="flex items-center gap-2 rounded border border-border bg-background px-2 py-1 font-mono text-[11px]">
+            <code className="flex-1 select-all break-all">
+              {result.eacces && stepId === "install-oc"
+                ? `sudo ${result.manual_command.replace(/^sudo\s+/, "")}`
+                : result.manual_command}
+            </code>
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="inline-flex shrink-0 items-center gap-1 rounded border border-border bg-muted px-2 py-0.5 text-[10px] hover:bg-muted/80"
+            >
+              {copied ? "복사됨" : "복사"}
+            </button>
+          </div>
+          {result.eacces && stepId === "install-oc" && (
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              또는 nvm을 설치하면 sudo 없이도 전역 설치가 가능합니다:{" "}
+              <a
+                href="https://github.com/nvm-sh/nvm#installing-and-updating"
+                target="_blank"
+                rel="noreferrer"
+                className="underline underline-offset-2"
+              >
+                nvm 설치 가이드
+              </a>
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
-});
+}
+
+function StepIcon({ status, active }) {
+  if (status === "done") return <Check className="h-3.5 w-3.5 shrink-0 text-green-600" />;
+  if (status === "error") return <AlertCircle className="h-3.5 w-3.5 shrink-0 text-destructive" />;
+  if (status === "running" || active)
+    return <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />;
+  return <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />;
+}

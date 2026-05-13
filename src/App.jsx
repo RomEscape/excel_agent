@@ -4,6 +4,7 @@ import OnboardingWizard from "@/components/onboarding/OnboardingWizard";
 import LocalAISetupWizard from "@/components/guide/LocalAISetupWizard";
 import ApprovalDialog from "@/components/security/ApprovalDialog";
 import useAppStore from "@/store/appStore";
+import { useStatusPoller } from "@/hooks/useStatusPoller";
 import { telegramStatus, telegramStart, securityGetPendingApprovals, securityRespondApproval } from "@/lib/api";
 
 /**
@@ -30,6 +31,10 @@ export default function App() {
   const onboardingComplete = useAppStore((s) => s.onboardingComplete);
   const telegramConnected = useAppStore((s) => s.telegramConnected);
   const autoStartAttempted = useRef(false);
+
+  // 시스템 상태 중앙 폴러 — openclaw/ollama 등 모든 모듈 상태를 30초마다 자동 갱신.
+  // Dashboard/StatusBar/LocalAISetupWizard는 모두 statusStore에서 동일한 데이터를 읽는다.
+  useStatusPoller();
 
   // Phase 2: 보안 UI 승인 상태
   const [pendingSecurityApproval, setPendingSecurityApproval] = useState(null);
