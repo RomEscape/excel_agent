@@ -1,0 +1,544 @@
+/**
+ * CommandPalette — Cmd/Ctrl+K 명령 팔레트.
+ *
+ * 직접 구현 (cmdk/headlessui 같은 외부 패키지 사용 안 함).
+ * - 페이지 4개 + Settings 7탭 + 액션 (OpenClaw 재시작, 봇 재시작, 워크스페이스 폴더 열기, 실행 기록 초기화)
+ * - 250ms debounce, fuzzy 한/영 검색
+ * - 키보드: ↑↓ Enter Esc, Tab 그룹 jump
+ *
+ * Layout이 글로벌 이벤트 listener로 토글한다 (window 'private-claw:open-cmdk').
+ */
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Command as CmdIcon,
+  LayoutDashboard,
+  FolderOpen,
+  MessagesSquare,
+  Settings as SettingsIcon,
+  Bot,
+  KeyRound,
+  ClipboardList,
+  ShieldCheck,
+  ShieldAlert,
+  SlidersHorizontal,
+  RefreshCw,
+  Trash2,
+  AlertCircle,
+  CornerDownLeft,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import useAppStore from "@/store/appStore";
+import {
+  openWorkspaceFolder,
+  telegramStop,
+  telegramStart,
+  telegramStatus,
+  slackStart,
+  slackStop,
+  slackStatus,
+  discordStart,
+  discordStop,
+  discordStatus,
+  clearCommandAuditLogs,
+} from "@/lib/api";
+
+// ── 명령 카탈로그 ───────────────────────────────────────────────────────────
+//
+// 각 항목: { id, group, label, hint, icon, danger, run(ctx) }
+// ctx: { setCurrentPage, requestConfirm, close, notify }
+//
+
+// 메신저 재시작 — sidecar에 stop이 없을 수 있어 모두 try-catch.
+// 친절한 토스트로 결과/실패를 안내한다.
+async function restartMessenger(kind, notify) {
+  const stopFn = kind === "telegram" ? telegramStop : kind === "slack" ? slackStop : discordStop;
+  const startFn =
+    kind === "telegram" ? telegramStart : kind === "slack" ? slackStart : discordStart;
+  const label = kind === "telegram" ? "Telegram" : kind === "slack" ? "Slack" : "Discord";
+
+  let stopOk = true;
+  let stopErr = null;
+  try {
+    await stopFn();
+  } catch (err) {
+    stopOk = false;
+    stopErr = String(err);
+  }
+
+  try {
+    await startFn();
+    if (!stopOk) {
+      notify(`${label} 봇 재시작됨 (정지 단계는 미지원: ${stopErr})`);
+    } else {
+      notify(`${label} 봇이 재시작되었습니다.`);
+    }
+  } catch (err) {
+    notify(`${label} 봇 재시작 실패: ${err}`);
+  }
+}
+
+const buildCommands = ({ tgConfigured, slackConfigured, discordConfigured } = {}) => [
+  // 그룹: 페이지
+  { id: "nav.dashboard", group: "페이지", label: "대시보드", hint: "작업 요약 / 핵심 상태", icon: LayoutDashboard, run: ({ setCurrentPage, close }) => { setCurrentPage("dashboard"); close(); } },
+  { id: "nav.workspace", group: "페이지", label: "워크스페이스", hint: "파일 탐색기", icon: FolderOpen, run: ({ setCurrentPage, close }) => { setCurrentPage("workspace"); close(); } },
+  { id: "nav.conversations", group: "페이지", label: "대화", hint: "메신저 모니터링", icon: MessagesSquare, run: ({ setCurrentPage, close }) => { setCurrentPage("conversations"); close(); } },
+  { id: "nav.settings", group: "페이지", label: "설정", hint: "통합 설정 허브", icon: SettingsIcon, run: ({ setCurrentPage, close }) => { setCurrentPage("settings"); close(); } },
+
+  // 그룹: 설정
+  { id: "settings.guide", group: "설정", label: "OpenClaw 설치", icon: Bot, run: ({ setCurrentPage, close }) => { setCurrentPage("guide"); close(); } },
+  { id: "settings.general", group: "설정", label: "일반", icon: SlidersHorizontal, run: ({ setCurrentPage, close }) => { setCurrentPage("settings"); close(); } },
+  { id: "settings.messenger", group: "설정", label: "메신저", icon: MessagesSquare, run: ({ setCurrentPage, close }) => { setCurrentPage("messenger_settings"); close(); } },
+  { id: "settings.credentials", group: "설정", label: "자격증명", icon: KeyRound, run: ({ setCurrentPage, close }) => { setCurrentPage("credentials"); close(); } },
+  { id: "settings.security", group: "설정", label: "보안", icon: ShieldCheck, run: ({ setCurrentPage, close }) => { setCurrentPage("security"); close(); } },
+  { id: "settings.permissions", group: "설정", label: "에이전트 허용 범위", icon: ShieldAlert, run: ({ setCurrentPage, close }) => { setCurrentPage("permissions"); close(); } },
+  { id: "settings.audit", group: "설정", label: "실행 기록", icon: ClipboardList, run: ({ setCurrentPage, close }) => { setCurrentPage("audit"); close(); } },
+
+  // 그룹: 액션
+  {
+    id: "action.openclaw_settings",
+    group: "액션",
+    label: "OpenClaw 설치 가이드 열기",
+    hint: "게이트웨이가 멈춘 경우 재설치/재실행 안내",
+    icon: RefreshCw,
+    run: ({ setCurrentPage, close }) => {
+      setCurrentPage("guide");
+      close();
+    },
+  },
+  {
+    id: "action.telegram_restart",
+    group: "액션",
+    label: "Telegram 봇 재시작",
+    hint: tgConfigured === false ? "설정 / 메신저에서 먼저 토큰을 등록하세요" : "Telegram 봇 정지 후 재시작",
+    icon: RefreshCw,
+    danger: true,
+    disabled: tgConfigured === false,
+    run: async ({ requestConfirm, notify, close }) => {
+      const ok = await requestConfirm({
+        title: "Telegram 봇 재시작",
+        description: "Telegram 봇을 정지 후 재시작합니다. 처리 중인 메신저 작업이 끊길 수 있습니다.",
+        confirmLabel: "재시작",
+      });
+      if (!ok) return;
+      await restartMessenger("telegram", notify);
+      close();
+    },
+  },
+  {
+    id: "action.slack_restart",
+    group: "액션",
+    label: "Slack 봇 재시작",
+    hint: slackConfigured === false ? "설정 / 메신저에서 먼저 토큰을 등록하세요" : "Slack 봇 정지 후 재시작",
+    icon: RefreshCw,
+    danger: true,
+    disabled: slackConfigured === false,
+    run: async ({ requestConfirm, notify, close }) => {
+      const ok = await requestConfirm({
+        title: "Slack 봇 재시작",
+        description: "Slack 봇을 정지 후 재시작합니다. 처리 중인 메신저 작업이 끊길 수 있습니다.",
+        confirmLabel: "재시작",
+      });
+      if (!ok) return;
+      await restartMessenger("slack", notify);
+      close();
+    },
+  },
+  {
+    id: "action.discord_restart",
+    group: "액션",
+    label: "Discord 봇 재시작",
+    hint: discordConfigured === false ? "설정 / 메신저에서 먼저 토큰을 등록하세요" : "Discord 봇 정지 후 재시작",
+    icon: RefreshCw,
+    danger: true,
+    disabled: discordConfigured === false,
+    run: async ({ requestConfirm, notify, close }) => {
+      const ok = await requestConfirm({
+        title: "Discord 봇 재시작",
+        description: "Discord 봇을 정지 후 재시작합니다. 처리 중인 메신저 작업이 끊길 수 있습니다.",
+        confirmLabel: "재시작",
+      });
+      if (!ok) return;
+      await restartMessenger("discord", notify);
+      close();
+    },
+  },
+  {
+    id: "action.open_workspace",
+    group: "액션",
+    label: "워크스페이스 폴더 열기",
+    hint: "OS 파일 탐색기로 엽니다",
+    icon: FolderOpen,
+    run: async ({ notify, close }) => {
+      try {
+        await openWorkspaceFolder();
+      } catch (err) {
+        notify(`폴더 열기 실패: ${err}`);
+      }
+      close();
+    },
+  },
+  {
+    id: "action.clear_audit",
+    group: "액션",
+    label: "실행 기록 초기화",
+    hint: "모든 명령 감사 기록을 삭제합니다",
+    icon: Trash2,
+    danger: true,
+    run: async ({ requestConfirm, notify, close }) => {
+      const ok = await requestConfirm({
+        title: "실행 기록 초기화",
+        description: "모든 실행 기록이 영구 삭제됩니다. 보안 감사 목적으로 보관 중인 기록도 함께 사라집니다. 계속할까요?",
+        confirmLabel: "삭제",
+      });
+      if (!ok) return;
+      try {
+        await clearCommandAuditLogs();
+        notify("실행 기록이 초기화되었습니다.");
+      } catch (err) {
+        notify(`초기화 실패: ${err}`);
+      }
+      close();
+    },
+  },
+];
+
+// ── Fuzzy 검색 (한/영) ─────────────────────────────────────────────────────
+//
+// 단순한 가중치 기반: 정확한 부분 일치 + 토큰별 부분 일치.
+// 한글은 그대로 substring 매칭 (ko-KR는 자모 분해까지 안 해도 충분).
+//
+function score(query, item) {
+  if (!query) return 1;
+  const q = query.trim().toLowerCase();
+  const haystack = `${item.label} ${item.hint ?? ""} ${item.group} ${item.id}`.toLowerCase();
+  if (haystack.includes(q)) return 10;
+  // 토큰별 부분 일치
+  const tokens = q.split(/\s+/).filter(Boolean);
+  let hits = 0;
+  for (const t of tokens) {
+    if (haystack.includes(t)) hits += 1;
+  }
+  return hits / Math.max(tokens.length, 1);
+}
+
+// ── ConfirmInline 다이얼로그 ───────────────────────────────────────────────
+
+function ConfirmInline({ open, title, description, confirmLabel, onConfirm, onCancel }) {
+  if (!open) return null;
+  return (
+    <div className="border-t border-border bg-amber-50 dark:bg-amber-950/30 p-4">
+      <div className="flex items-start gap-3">
+        <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">{title}</p>
+          <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-200">{description}</p>
+          <div className="mt-3 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded border border-border bg-background px-3 py-1 text-xs hover:bg-muted"
+            >
+              취소
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              className="rounded bg-destructive px-3 py-1 text-xs font-medium text-destructive-foreground hover:bg-destructive/90"
+            >
+              {confirmLabel ?? "확인"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 메인 ───────────────────────────────────────────────────────────────────
+
+export default function CommandPalette({ open, onClose }) {
+  const setCurrentPage = useAppStore((s) => s.setCurrentPage);
+
+  const [query, setQuery] = useState("");
+  const [debounced, setDebounced] = useState("");
+  const [activeIdx, setActiveIdx] = useState(0);
+  const [confirmState, setConfirmState] = useState(null); // { title, description, confirmLabel, resolve }
+  const [toast, setToast] = useState(null);
+
+  const inputRef = useRef(null);
+  const listRef = useRef(null);
+
+  // 메신저 봇 configured 상태 — 열릴 때마다 갱신해 disabled 라벨 동기화
+  const [botStatuses, setBotStatuses] = useState({
+    tgConfigured: undefined, // undefined = 미확인 → 표시는 enable
+    slackConfigured: undefined,
+    discordConfigured: undefined,
+  });
+
+  // 250ms debounce
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(query), 250);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  // 열림 시 포커스 + 상태 초기화 + 봇 상태 fetch
+  useEffect(() => {
+    if (open) {
+      setQuery("");
+      setDebounced("");
+      setActiveIdx(0);
+      setConfirmState(null);
+      setToast(null);
+      // 다음 tick에 input focus
+      setTimeout(() => inputRef.current?.focus(), 0);
+
+      // 메신저 봇 상태 확인 (실패는 조용히)
+      Promise.allSettled([telegramStatus(), slackStatus(), discordStatus()]).then(
+        ([tg, sl, dc]) => {
+          setBotStatuses({
+            tgConfigured: tg.status === "fulfilled" ? !!(tg.value?.configured ?? tg.value?.bot_username) : undefined,
+            slackConfigured: sl.status === "fulfilled" ? !!sl.value?.configured : undefined,
+            discordConfigured: dc.status === "fulfilled" ? !!dc.value?.configured : undefined,
+          });
+        }
+      );
+    }
+  }, [open]);
+
+  // toast 자동 dismiss
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2500);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const commands = useMemo(() => buildCommands(botStatuses), [botStatuses]);
+
+  const filtered = useMemo(() => {
+    const scored = commands
+      .map((c) => ({ ...c, _score: score(debounced, c) }))
+      .filter((c) => c._score > 0);
+    // 정렬: 점수 높은 순, 동점은 원 순서 유지
+    scored.sort((a, b) => b._score - a._score);
+    return scored;
+  }, [commands, debounced]);
+
+  // 그룹별 묶기
+  const grouped = useMemo(() => {
+    const map = new Map();
+    for (const c of filtered) {
+      if (!map.has(c.group)) map.set(c.group, []);
+      map.get(c.group).push(c);
+    }
+    // 그룹 순서 고정
+    const order = ["페이지", "설정", "액션"];
+    return order
+      .filter((g) => map.has(g))
+      .map((g) => ({ group: g, items: map.get(g) }));
+  }, [filtered]);
+
+  // flat list — 키보드 nav용
+  const flat = useMemo(() => grouped.flatMap((g) => g.items), [grouped]);
+
+  // activeIdx 범위 보정
+  useEffect(() => {
+    if (activeIdx >= flat.length) setActiveIdx(0);
+  }, [flat.length, activeIdx]);
+
+  const requestConfirm = (opts) =>
+    new Promise((resolve) => {
+      setConfirmState({ ...opts, resolve });
+    });
+
+  const notify = (message) => setToast({ message });
+
+  const runItem = (item) => {
+    if (!item) return;
+    if (item.disabled) {
+      notify(item.hint ?? "이 명령은 사용할 수 없습니다.");
+      return;
+    }
+    item.run({
+      setCurrentPage,
+      requestConfirm,
+      notify,
+      close: onClose,
+    });
+  };
+
+  const onKeyDown = (e) => {
+    // IME 조합 중에는 모든 단축키 무시 — 한글 검색 중 Enter가 항목 실행으로 흘러가는 것 방지.
+    // (확정 Enter는 isComposing이 false일 때 들어옴)
+    if (e.nativeEvent?.isComposing || e.keyCode === 229) return;
+
+    if (confirmState) {
+      // confirm 모달이 떠 있으면 Esc만 처리
+      if (e.key === "Escape") {
+        e.preventDefault();
+        confirmState.resolve(false);
+        setConfirmState(null);
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        confirmState.resolve(true);
+        setConfirmState(null);
+      }
+      return;
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onClose();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIdx((i) => Math.min(flat.length - 1, i + 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIdx((i) => Math.max(0, i - 1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      runItem(flat[activeIdx]);
+    } else if (e.key === "Tab") {
+      // 그룹 jump: 다음 그룹의 첫 항목으로 이동
+      e.preventDefault();
+      const cur = flat[activeIdx];
+      if (!cur) return;
+      const curGroupIdx = grouped.findIndex((g) => g.group === cur.group);
+      if (curGroupIdx < 0) return;
+      const next = e.shiftKey
+        ? grouped[(curGroupIdx - 1 + grouped.length) % grouped.length]
+        : grouped[(curGroupIdx + 1) % grouped.length];
+      const targetItem = next.items[0];
+      const idx = flat.findIndex((it) => it.id === targetItem.id);
+      if (idx >= 0) setActiveIdx(idx);
+    }
+  };
+
+  // active 항목이 보이도록 스크롤
+  useEffect(() => {
+    if (!listRef.current) return;
+    const node = listRef.current.querySelector(`[data-idx="${activeIdx}"]`);
+    if (node) node.scrollIntoView({ block: "nearest" });
+  }, [activeIdx]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[1000] flex items-start justify-center bg-black/40 pt-[14vh]"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="명령 팔레트"
+        className="w-[640px] max-w-[90vw] overflow-hidden rounded-lg border border-border bg-popover shadow-2xl"
+        onKeyDown={onKeyDown}
+      >
+        {/* 검색 입력 */}
+        <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+          <CmdIcon className="h-4 w-4 text-muted-foreground" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setActiveIdx(0);
+            }}
+            placeholder="명령 또는 페이지 검색..."
+            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+          />
+          <span className="text-[10px] text-muted-foreground">ESC</span>
+        </div>
+
+        {/* 결과 리스트 */}
+        <div ref={listRef} className="max-h-[420px] overflow-y-auto py-1">
+          {grouped.length === 0 ? (
+            <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+              일치하는 명령이 없습니다.
+            </div>
+          ) : (
+            grouped.map((g) => (
+              <div key={g.group} className="py-1">
+                <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {g.group}
+                </div>
+                {g.items.map((it) => {
+                  const idx = flat.findIndex((x) => x.id === it.id);
+                  const active = idx === activeIdx;
+                  const Icon = it.icon ?? CmdIcon;
+                  return (
+                    <button
+                      key={it.id}
+                      type="button"
+                      data-idx={idx}
+                      onClick={() => runItem(it)}
+                      onMouseEnter={() => setActiveIdx(idx)}
+                      aria-disabled={it.disabled || undefined}
+                      className={cn(
+                        "flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors",
+                        active ? "bg-accent text-accent-foreground" : "hover:bg-muted/60",
+                        it.disabled && "opacity-50"
+                      )}
+                    >
+                      <Icon
+                        className={cn(
+                          "h-4 w-4 shrink-0",
+                          it.danger ? "text-destructive" : "text-muted-foreground"
+                        )}
+                      />
+                      <span className="flex-1 truncate">
+                        <span className="font-medium">{it.label}</span>
+                        {it.hint && (
+                          <span className="ml-2 text-xs text-muted-foreground">{it.hint}</span>
+                        )}
+                      </span>
+                      {it.disabled && (
+                        <span className="rounded border border-border bg-muted/40 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                          미설정
+                        </span>
+                      )}
+                      {active && !it.disabled && <CornerDownLeft className="h-3.5 w-3.5 text-muted-foreground" />}
+                    </button>
+                  );
+                })}
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* 하단 hint */}
+        <div className="flex items-center justify-between border-t border-border bg-muted/30 px-4 py-2 text-[11px] text-muted-foreground">
+          <span>↑↓ 이동 · ⏎ 실행 · Tab 그룹 이동 · Esc 닫기</span>
+          <span>Cmd/Ctrl+K</span>
+        </div>
+
+        {/* 위험 액션 confirm */}
+        <ConfirmInline
+          open={!!confirmState}
+          title={confirmState?.title}
+          description={confirmState?.description}
+          confirmLabel={confirmState?.confirmLabel}
+          onConfirm={() => {
+            confirmState?.resolve(true);
+            setConfirmState(null);
+          }}
+          onCancel={() => {
+            confirmState?.resolve(false);
+            setConfirmState(null);
+          }}
+        />
+      </div>
+
+      {/* 토스트 */}
+      {toast && (
+        <div className="pointer-events-none absolute bottom-8 left-1/2 -translate-x-1/2">
+          <div className="rounded-md border border-border bg-popover px-4 py-2 text-xs shadow-md">
+            {toast.message}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
