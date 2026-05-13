@@ -19,7 +19,9 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import AlertDialog from "@/components/ui/dialog";
+import OllamaModelPicker from "@/components/settings/OllamaModelPicker";
 import useAppStore from "@/store/appStore";
+import useStatusStore from "@/store/statusStore";
 import { getLLMSettings, saveLLMSettings, getFilterRules, updateFilterRules, maintenanceCleanup, backupExport, backupImport } from "@/lib/api";
 import { toUserMessage } from "@/lib/errorMessages";
 import packageJson from "../../../package.json";
@@ -235,13 +237,20 @@ export default function Settings() {
     return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
   };
 
-  // Auto-set default model when provider changes
+  // Auto-set default model when provider changes.
+  // Ollama: 실제 설치된 모델 목록(중앙 statusStore)에서 첫 번째를 기본값으로.
+  // 없으면 sentinel "llama3.2"로 두고 picker가 "현재 설치 안 됨" 경고 표시.
   const handleProviderChange = (val) => {
     setProvider(val);
     if (val === "claude") {
       setModel("claude-sonnet-4-20250514");
     } else {
-      setModel("llama3.2");
+      const installed = useStatusStore.getState().modules.ollama.models;
+      if (Array.isArray(installed) && installed.length > 0) {
+        setModel(installed[0].name);
+      } else {
+        setModel("llama3.2");
+      }
     }
   };
 
@@ -286,26 +295,27 @@ export default function Settings() {
 
           <div className="space-y-1.5">
             <Label htmlFor="llm-model">모델</Label>
-            <Input
-              id="llm-model"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className="w-64"
-              placeholder={
-                provider === "claude" ? "claude-sonnet-4-20250514" : "llama3.2"
-              }
-            />
-            <p className="text-xs text-muted-foreground">
-              {provider === "claude" ? (
-                <>
-                  Claude API 키를{" "}
-                  <strong>자격증명 관리</strong>에서{" "}
-                  <code className="rounded bg-muted px-1 py-0.5">claude_api_key</code>로 저장해야 합니다.
-                </>
-              ) : (
-                "Ollama가 로컬에 설치되어 있어야 합니다 (http://localhost:11434)"
-              )}
-            </p>
+            {provider === "ollama" ? (
+              // Ollama: 실제 설치된 모델만 선택 가능 (자유 입력 제거).
+              // 모델 목록·상태는 OllamaModelPicker가 중앙 statusStore에서 구독.
+              <OllamaModelPicker id="llm-model" value={model} onChange={setModel} />
+            ) : (
+              // Claude: 모델명 문자열 자유 입력 (anthropic.com에서 사용 가능한 ID 그대로)
+              <>
+                <Input
+                  id="llm-model"
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  className="w-64"
+                  placeholder="claude-sonnet-4-20250514"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Claude API 키를 <strong>자격증명 관리</strong>에서{" "}
+                  <code className="rounded bg-muted px-1 py-0.5">claude_api_key</code>로
+                  저장해야 합니다.
+                </p>
+              </>
+            )}
           </div>
 
           <div className="flex items-center gap-3">
