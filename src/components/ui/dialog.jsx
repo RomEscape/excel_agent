@@ -65,28 +65,26 @@ export function AlertDialog({
   if (!open) return null;
 
   return (
-    /* Backdrop */
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-labelledby="alert-dialog-title"
       aria-describedby={description ? "alert-dialog-desc" : undefined}
     >
-      {/* Overlay */}
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={onCancel}
-        aria-hidden="true"
-      />
-
-      {/* Dialog panel */}
-      <div
-        className={cn(
-          "relative z-10 w-full max-w-sm rounded-lg border bg-background p-6 shadow-lg",
-          "animate-in fade-in-0 zoom-in-95"
-        )}
+        className="flex min-h-full items-center justify-center p-4"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onCancel();
+        }}
       >
+        {/* Dialog panel */}
+        <div
+          className={cn(
+            "relative z-10 w-full max-w-sm rounded-lg border bg-background p-6 shadow-lg",
+            "animate-in fade-in-0 zoom-in-95"
+          )}
+        >
         <h2
           id="alert-dialog-title"
           className="text-base font-semibold text-foreground"
@@ -115,6 +113,7 @@ export function AlertDialog({
           <Button variant={confirmVariant} size="sm" onClick={onConfirm}>
             {confirmLabel}
           </Button>
+        </div>
         </div>
       </div>
     </div>

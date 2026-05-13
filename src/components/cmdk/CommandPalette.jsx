@@ -422,12 +422,13 @@ export default function CommandPalette({ open, onClose }) {
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-[1000] flex items-start justify-center bg-black/40 pt-[14vh]"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
+    <div className="fixed inset-0 z-[1000] overflow-y-auto bg-black/40">
+      <div
+        className="flex min-h-full items-start justify-center p-4 pt-[14vh]"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
       <div
         role="dialog"
         aria-modal="true"
@@ -530,10 +531,11 @@ export default function CommandPalette({ open, onClose }) {
           }}
         />
       </div>
+      </div>
 
       {/* 토스트 */}
       {toast && (
-        <div className="pointer-events-none absolute bottom-8 left-1/2 -translate-x-1/2">
+        <div className="pointer-events-none fixed bottom-8 left-1/2 -translate-x-1/2">
           <div className="rounded-md border border-border bg-popover px-4 py-2 text-xs shadow-md">
             {toast.message}
           </div>

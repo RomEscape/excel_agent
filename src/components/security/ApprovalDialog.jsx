@@ -315,13 +315,15 @@ export default function ApprovalDialog({
   const hasMeta = sourceLabel || toolName || sessionShort;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-sm">
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={() => submitReject()}
-      />
+        className="flex min-h-full items-center justify-center p-4"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) submitReject();
+        }}
+      >
       <div
-        className="relative z-10 mx-4 w-full max-w-lg space-y-4 rounded-lg border bg-background p-6 shadow-lg"
+        className="relative z-10 w-full max-w-lg space-y-4 rounded-lg border bg-background p-6 shadow-lg"
         role="dialog"
         aria-modal="true"
         aria-labelledby="approval-dialog-title"
@@ -503,6 +505,7 @@ export default function ApprovalDialog({
             </button>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

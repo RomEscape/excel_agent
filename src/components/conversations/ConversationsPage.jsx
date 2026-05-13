@@ -13,12 +13,13 @@ import {
   MessageCircle,
   MessagesSquare,
   AlertCircle,
-  CheckCircle2,
   Plus,
   Settings as SettingsIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { StatusBadge } from "@/components/ui/status";
+import { STATUS_TONE, getMessengerStatus } from "@/lib/statusTokens";
 import EmptyState from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import useAppStore from "@/store/appStore";
@@ -56,24 +57,19 @@ const CHANNELS = [
   },
 ];
 
-function StatusBadge({ state, label }) {
-  const styles = {
-    connected: "bg-green-100 text-green-700 border-green-200",
-    pending: "bg-amber-100 text-amber-700 border-amber-200",
-    disconnected: "bg-muted text-muted-foreground border-border",
-  };
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium",
-        styles[state]
-      )}
-    >
-      {state === "connected" && <CheckCircle2 className="h-3 w-3" />}
-      {state === "disconnected" && <AlertCircle className="h-3 w-3" />}
-      {label}
-    </span>
-  );
+/**
+ * 채널 상태 → StatusBadge 톤/라벨로 변환.
+ * 'connected' → ok / 'disconnected' → warning / 'pending' → pending.
+ * MessengerSettings, StatusBar와 동일한 어휘 사용.
+ */
+function ChannelStatusBadge({ state }) {
+  if (state === "connected") {
+    return <StatusBadge tone="ok">연결됨</StatusBadge>;
+  }
+  if (state === "pending") {
+    return <StatusBadge tone="pending">확인 중</StatusBadge>;
+  }
+  return <StatusBadge tone="warning">미연결</StatusBadge>;
 }
 
 // ── 채널 사이드 리스트 ────────────────────────────────────────────────────────
@@ -160,7 +156,9 @@ function ChannelRow({ channel, status, active, onSelect, muted }) {
           <span
             className={cn(
               "h-1.5 w-1.5 shrink-0 rounded-full",
-              status === "connected" ? "bg-green-500" : "bg-muted-foreground/40"
+              status === "connected"
+                ? STATUS_TONE.ok.dot
+                : STATUS_TONE.warning.dot
             )}
             aria-label={status === "connected" ? "연결됨" : "미연결"}
           />
@@ -342,10 +340,7 @@ export default function ConversationsPage() {
             <div className="flex items-center gap-2">
               <channelMeta.icon className={cn("h-5 w-5", channelMeta.accent)} />
               <h2 className="text-lg font-semibold">{channelMeta.label}</h2>
-              <StatusBadge
-                state={channelStatus}
-                label={channelStatus === "connected" ? "연결됨" : "미연결"}
-              />
+              <ChannelStatusBadge state={channelStatus} />
             </div>
             <Button
               variant="ghost"

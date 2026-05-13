@@ -22,6 +22,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatusBadge } from "@/components/ui/status";
+import { getMessengerStatus } from "@/lib/statusTokens";
 import { invoke } from "@tauri-apps/api/core";
 import { parseResponse } from "@/lib/api";
 
@@ -32,17 +34,15 @@ async function call(cmd, args = {}) {
   return parseResponse(raw);
 }
 
-// ── 연결 상태 dot ─────────────────────────────────────────────────────────────
-
-function StatusDot({ running }) {
-  return (
-    <span
-      className={`inline-block h-2 w-2 rounded-full ${
-        running ? "bg-green-500" : "bg-red-400"
-      }`}
-      title={running ? "연결됨" : "미연결"}
-    />
-  );
+/**
+ * 메신저 상태 배지 — 통일된 톤 시스템 사용.
+ * StatusBar, ConversationsPage와 동일한 어휘로 표시된다.
+ *
+ * @param {{ running?: boolean, configured?: boolean }} props
+ */
+function MessengerStatusBadge({ running, configured }) {
+  const { tone, sub } = getMessengerStatus({ running, configured });
+  return <StatusBadge tone={tone}>{sub}</StatusBadge>;
 }
 
 // ── 비밀번호 입력 토글 ────────────────────────────────────────────────────────
@@ -140,9 +140,8 @@ function TelegramCard() {
         <CardTitle className="flex items-center gap-2 text-base">
           <MessageCircle className="h-4 w-4 text-blue-500" />
           텔레그램
-          <StatusDot running={status.running} />
-          <span className="ml-auto text-xs text-muted-foreground font-normal">
-            {status.running ? "실행 중" : "중지됨"}
+          <span className="ml-auto font-normal">
+            <MessengerStatusBadge running={status.running} configured={status.configured ?? status.bot_username} />
           </span>
         </CardTitle>
       </CardHeader>
@@ -262,9 +261,8 @@ function SlackCard() {
         <CardTitle className="flex items-center gap-2 text-base">
           <span className="text-[#4A154B] font-bold text-sm">#</span>
           슬랙 (Slack)
-          <StatusDot running={status.running} />
-          <span className="ml-auto text-xs text-muted-foreground font-normal">
-            {status.running ? "실행 중" : status.configured ? "설정됨" : "미설정"}
+          <span className="ml-auto font-normal">
+            <MessengerStatusBadge running={status.running} configured={status.configured} />
           </span>
         </CardTitle>
       </CardHeader>
@@ -383,9 +381,8 @@ function DiscordCard() {
         <CardTitle className="flex items-center gap-2 text-base">
           <span className="text-[#5865F2] font-bold text-sm">DC</span>
           디스코드 (Discord)
-          <StatusDot running={status.running} />
-          <span className="ml-auto text-xs text-muted-foreground font-normal">
-            {status.running ? "실행 중" : status.configured ? "설정됨" : "미설정"}
+          <span className="ml-auto font-normal">
+            <MessengerStatusBadge running={status.running} configured={status.configured} />
           </span>
         </CardTitle>
       </CardHeader>

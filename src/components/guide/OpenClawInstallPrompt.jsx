@@ -152,11 +152,12 @@ export default function OpenClawInstallPrompt() {
       {/* 권한 확인 prompt */}
       {confirmOpen && (
         <div
-          className="fixed inset-0 z-[1050] flex items-center justify-center bg-black/50 px-4"
+          className="fixed inset-0 z-[1050] overflow-y-auto bg-black/50"
           role="dialog"
           aria-modal="true"
           aria-label="OpenClaw 시작 안내"
         >
+          <div className="flex min-h-full items-center justify-center p-4">
           <div className="w-full max-w-md overflow-hidden rounded-lg border border-border bg-popover shadow-2xl">
             <div className="flex items-center justify-between border-b border-border px-5 py-3">
               <div className="flex items-center gap-2">
@@ -205,6 +206,7 @@ export default function OpenClawInstallPrompt() {
                 </div>
               </div>
             </div>
+          </div>
           </div>
         </div>
       )}

@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { StatusBanner } from "@/components/ui/status";
 import useAppStore from "@/store/appStore";
 import {
   saveLLMSettings,
@@ -142,31 +143,30 @@ function StepOpenClaw({ onNext, onPrev, stepIndex }) {
       </div>
 
       {status === "checking" && (
-        <div className="flex flex-col items-center gap-3 py-6 text-sm text-muted-foreground">
-          <RefreshCw className="h-6 w-6 animate-spin" />
-          OpenClaw 게이트웨이 확인 중...
-        </div>
+        <StatusBanner
+          tone="pending"
+          icon={Bot}
+          title="OpenClaw 확인 중"
+          description="설치 및 게이트웨이 응답을 확인하고 있습니다..."
+        />
       )}
 
       {status === "ok" && (
-        <div className="flex flex-col items-center gap-3 py-4">
-          <CheckCircle2 className="h-10 w-10 text-green-500" />
-          <p className="text-sm font-medium text-green-600 dark:text-green-400">
-            OpenClaw 게이트웨이가 실행 중입니다!
-          </p>
-        </div>
+        <StatusBanner
+          tone="ok"
+          icon={Bot}
+          title="OpenClaw 준비됨"
+          description="게이트웨이가 정상적으로 응답하고 있습니다."
+        />
       )}
 
       {status === "missing" && (
-        <Card className="border-amber-300 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20">
-          <CardContent className="space-y-3 py-4">
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-              <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
-                OpenClaw가 감지되지 않았습니다.
-              </p>
-            </div>
-            <ol className="ml-6 space-y-2 text-xs text-amber-700 dark:text-amber-400 list-decimal">
+        <StatusBanner
+          tone="warning"
+          icon={Bot}
+          title="OpenClaw 문제 있음"
+          description={
+            <ol className="ml-4 space-y-2 list-decimal">
               <li>
                 Node.js 22+ 가 설치되어 있는지 확인하세요.{" "}
                 <a href="https://nodejs.org" target="_blank" rel="noreferrer" className="underline underline-offset-2">
@@ -175,14 +175,14 @@ function StepOpenClaw({ onNext, onPrev, stepIndex }) {
               </li>
               <li>
                 터미널에서 아래 명령어를 실행하세요:
-                <code className="ml-2 block mt-1 rounded bg-amber-100 px-2 py-1 font-mono dark:bg-amber-900/40">
+                <code className="ml-2 mt-1 block rounded bg-amber-100 px-2 py-1 font-mono dark:bg-amber-900/40">
                   npm install -g openclaw@latest
                 </code>
               </li>
               <li>앱을 재시작하거나 아래 "재확인" 버튼을 누르세요.</li>
             </ol>
-          </CardContent>
-        </Card>
+          }
+        />
       )}
 
       <div className="flex gap-2">
@@ -1151,20 +1151,22 @@ export default function OnboardingWizard() {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm">
-      <div className="w-full max-w-md px-4">
-        <div className="mb-2 text-center">
-          <span className="text-3xl select-none">🦞</span>
-          <p className="mt-1 text-xs text-muted-foreground uppercase tracking-widest">
-            ajou-ai 시작하기
-          </p>
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-background/95 backdrop-blur-sm">
+      <div className="flex min-h-full items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="mb-2 text-center">
+            <span className="text-3xl select-none">🦞</span>
+            <p className="mt-1 text-xs text-muted-foreground uppercase tracking-widest">
+              ajou-ai 시작하기
+            </p>
+          </div>
+
+          <StepDots current={step} />
+
+          <Card>
+            <CardContent className="pt-6 pb-6">{steps[step]}</CardContent>
+          </Card>
         </div>
-
-        <StepDots current={step} />
-
-        <Card>
-          <CardContent className="pt-6 pb-6">{steps[step]}</CardContent>
-        </Card>
       </div>
     </div>
   );

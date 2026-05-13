@@ -68,12 +68,13 @@ export default function ShortcutHelp({ open, onClose }) {
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40 px-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
+    <div className="fixed inset-0 z-[1100] overflow-y-auto bg-black/40">
+      <div
+        className="flex min-h-full items-center justify-center p-4"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
       <div
         role="dialog"
         aria-modal="true"
@@ -117,6 +118,7 @@ export default function ShortcutHelp({ open, onClose }) {
           <span>입력 필드 포커스 시 단일키 단축키는 비활성화됩니다 · 한글/일본어 입력 중에도 안전.</span>
           <span>Esc 닫기</span>
         </div>
+      </div>
       </div>
     </div>
   );

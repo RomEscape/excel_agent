@@ -317,12 +317,13 @@ export function AutoInstallModal({ open, onClose, onOnline, onInstalled, skipIns
     : "이 명령은 OpenClaw를 전역 설치한 뒤 게이트웨이를 자식 프로세스로 시작합니다.";
 
   return (
-    <div
-      className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/50 px-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && canCloseSafely) onClose();
-      }}
-    >
+    <div className="fixed inset-0 z-[1100] overflow-y-auto bg-black/50">
+      <div
+        className="flex min-h-full items-center justify-center p-4"
+        onClick={(e) => {
+          if (e.target === e.currentTarget && canCloseSafely) onClose();
+        }}
+      >
       <div
         role="dialog"
         aria-modal="true"
@@ -481,6 +482,7 @@ export function AutoInstallModal({ open, onClose, onOnline, onInstalled, skipIns
             </>
           )}
         </div>
+      </div>
       </div>
     </div>
   );
