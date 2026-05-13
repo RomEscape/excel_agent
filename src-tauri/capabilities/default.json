@@ -1,0 +1,67 @@
+{
+  "identifier": "default",
+  "description": "Default capabilities for ajou-ai",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:default",
+    "shell:allow-execute",
+    "shell:allow-spawn",
+    "shell:allow-stdin-write",
+    "shell:allow-kill",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "office-claw-sidecar",
+          "sidecar": true,
+          "args": true
+        },
+        {
+          "name": "npm",
+          "cmd": "npm",
+          "args": [
+            "install",
+            "-g",
+            "openclaw@latest"
+          ]
+        },
+        {
+          "name": "brew-install-ollama",
+          "cmd": "brew",
+          "args": [
+            "install",
+            "ollama"
+          ]
+        },
+        {
+          "name": "brew-services-start-ollama",
+          "cmd": "brew",
+          "args": [
+            "services",
+            "start",
+            "ollama"
+          ]
+        },
+        {
+          "name": "ollama-pull",
+          "cmd": "ollama",
+          "args": [
+            "pull",
+            { "validator": "^[A-Za-z0-9._:/\\-]+$" }
+          ]
+        },
+        {
+          "name": "ollama-serve",
+          "cmd": "ollama",
+          "args": [
+            "serve"
+          ]
+        }
+      ]
+    },
+    "updater:default",
+    "updater:allow-check",
+    "updater:allow-download-and-install"
+  ]
+}
