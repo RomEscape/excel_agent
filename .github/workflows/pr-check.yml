@@ -16,6 +16,10 @@ jobs:
   # 1. Python sidecar 검증 (AI 로직 핵심)
   python-check:
     runs-on: ubuntu-latest
+    env:
+      # CI 러너에는 OS 키링 백엔드가 없어 keyring.errors.NoKeyringError 발생.
+      # null 백엔드로 no-op 처리 (get→None, set→ignore) — 테스트는 응답 구조만 확인하므로 충분.
+      PYTHON_KEYRING_BACKEND: keyring.backends.null.Keyring
     defaults:
       run:
         working-directory: python-sidecar
