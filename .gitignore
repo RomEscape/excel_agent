@@ -1,0 +1,42 @@
+# Node / Vite
+node_modules/
+dist/
+.vite/
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/binaries/office-claw-sidecar-*
+
+# Python
+python-sidecar/__pycache__/
+python-sidecar/**/__pycache__/
+python-sidecar/*.egg-info/
+python-sidecar/dist/
+python-sidecar/build/
+python-sidecar/.eggs/
+**/.pytest_cache/
+*.pyc
+*.pyo
+
+# PyInstaller
+*.spec.bak
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Claude Code local
+.claude/
+
+# Environment / secrets
+.env
+.env.local
+credentials.json

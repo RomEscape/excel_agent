@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "office-claw-sidecar"
+version = "0.1.0"
+description = "Privacy-focused AI work agent - Python sidecar backend"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "keyring>=25.3.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.9.0",
+    "google-auth>=2.29.0",
+    "google-auth-oauthlib>=1.2.0",
+    "google-api-python-client>=2.130.0",
+    "python-telegram-bot>=21.0",
+    "python-multipart>=0.0.6",
+    "openpyxl>=3.1.0",
+    "pandas>=2.2.0",
+    "xlsxwriter>=3.2.0",
+    "python-docx>=1.1.0",
+    "reportlab>=4.2.0",
+    # Phase 3: 멀티 메신저 어댑터
+    "slack-bolt>=1.18.0",
+    "discord.py>=2.3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pyinstaller>=6.0",
+]
+
+[project.scripts]
+office-claw-sidecar = "office_claw_sidecar.main:main"

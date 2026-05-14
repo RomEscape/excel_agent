@@ -1,0 +1,132 @@
+name: Release
+
+# 버전 태그(v1.0.0 등)를 push할 때만 실행
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin     # macOS M1/M2
+            sidecar_suffix: aarch64-apple-darwin
+          - os: macos-13
+            target: x86_64-apple-darwin      # macOS Intel
+            sidecar_suffix: x86_64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc   # Windows
+            sidecar_suffix: x86_64-pc-windows-msvc
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      # 1. 코드 체크아웃
+      - uses: actions/checkout@v4
+
+      # 2. Python + uv 설치
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Python 3.12 설치
+        run: uv python install 3.12
+
+      - name: Python 의존성 설치 (uv venv)
+        working-directory: python-sidecar
+        run: |
+          uv sync
+          uv pip install pyinstaller
+
+      # 3. PyInstaller로 사이드카 바이너리 빌드
+      #    출력 바이너리를 Tauri externalBin 규칙(binaries/{name}-{target})으로 저장
+      - name: 사이드카 바이너리 빌드 (Unix)
+        if: runner.os != 'Windows'
+        working-directory: python-sidecar
+        run: |
+          uv run pyinstaller \
+            --onefile \
+            --name office-claw-sidecar \
+            --hidden-import office_claw_sidecar \
+            --hidden-import uvicorn \
+            --hidden-import fastapi \
+            --hidden-import slack_bolt \
+            --hidden-import discord \
+            office_claw_sidecar/__main__.py
+          mkdir -p ../src-tauri/binaries
+          cp dist/office-claw-sidecar \
+             "../src-tauri/binaries/office-claw-sidecar-${{ matrix.sidecar_suffix }}"
+
+      - name: 사이드카 바이너리 빌드 (Windows)
+        if: runner.os == 'Windows'
+        working-directory: python-sidecar
+        shell: pwsh
+        run: |
+          uv run pyinstaller `
+            --onefile `
+            --name office-claw-sidecar `
+            --hidden-import office_claw_sidecar `
+            --hidden-import uvicorn `
+            --hidden-import fastapi `
+            --hidden-import slack_bolt `
+            --hidden-import discord `
+            office_claw_sidecar/__main__.py
+          New-Item -ItemType Directory -Force -Path ../src-tauri/binaries
+          Copy-Item dist/office-claw-sidecar.exe `
+            "../src-tauri/binaries/office-claw-sidecar-${{ matrix.sidecar_suffix }}.exe"
+
+      # 4. Node.js 설치 및 JS 빌드
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: JS 의존성 설치
+        run: npm ci
+
+      - name: React 빌드
+        run: npm run build
+
+      # 5. Rust 설치
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust 캐시
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: 'src-tauri -> target'
+
+      # 6. Tauri 빌드 및 GitHub Releases 업로드
+      #    tauri-apps/tauri-action이 빌드 + 릴리즈 생성 + 아티팩트 업로드를 한 번에 처리
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'ajou-ai ${{ github.ref_name }}'
+          releaseBody: |
+            ## 변경사항
+            이 릴리즈의 변경사항은 커밋 히스토리를 참고하세요.
+
+            ## 설치 방법
+            - **macOS (Apple Silicon / M1·M2)**: `ajou-ai_aarch64.dmg` 다운로드 후 설치
+            - **macOS (Intel)**: `ajou-ai_x64.dmg` 다운로드 후 설치
+            - **Windows**: `ajou-ai_x64_en-US.msi` 또는 `.exe` 다운로드 후 설치
+
+            ## 시스템 요구사항
+            - macOS 12 Monterey 이상 / Windows 10 이상
+            - 메모리 4GB 이상 권장
+            - Ollama 설치 (로컬 LLM 사용 시) — 앱 내 설치 가이드 제공
+          releaseDraft: true   # Draft로 생성 → 직접 검토 후 Publish
+          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}
+          args: --target ${{ matrix.target }}

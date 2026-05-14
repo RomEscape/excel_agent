@@ -1,0 +1,165 @@
+/**
+ * 앱 전체 상태 표시 통일을 위한 단일 진실 공급원.
+ *
+ * 톤(tone) 3단계 — 사용자가 "되는지/안 되는지/확인 중인지"만 알면 충분하다.
+ * 세부 사유는 tooltip/배너 본문 텍스트에서 풀어 쓴다.
+ *
+ *   ok      → 녹색, "준비됨"        (정상 동작 가능)
+ *   warning → 호박색, "문제 있음"   (설치 안 됨/중지/연결 실패 — 사용자 조치 필요)
+ *   pending → 회색 spinner, "확인 중" (초기 헬스 체크 진행 중)
+ *
+ * 도메인별 매퍼는 sidecar/store 응답 형태를 받아 톤 + 라벨로 변환한다.
+ * UI 컴포넌트는 `components/ui/status.jsx`의 StatusDot/StatusBadge/StatusRow를 사용한다.
+ */
+
+import {
+  Check,
+  AlertTriangle,
+  Loader2,
+} from "lucide-react";
+
+/**
+ * 톤 정의 — 색상 클래스/라벨/아이콘.
+ *
+ * dot/text/bg는 각각 dot 표시, 텍스트 강조, 배경 강조용. 카드/배지에서 골라 쓴다.
+ */
+export const STATUS_TONE = Object.freeze({
+  ok: {
+    label: "준비됨",
+    dot: "bg-green-500",
+    text: "text-green-600 dark:text-green-400",
+    border: "border-green-200 dark:border-green-900/40",
+    bg: "bg-green-50 dark:bg-green-950/20",
+    badgeBg: "bg-green-100 dark:bg-green-900/30",
+    badgeText: "text-green-700 dark:text-green-300",
+    icon: Check,
+    iconBg: "bg-green-100 dark:bg-green-900/40",
+    iconText: "text-green-600 dark:text-green-400",
+  },
+  warning: {
+    label: "문제 있음",
+    dot: "bg-amber-500",
+    text: "text-amber-600 dark:text-amber-400",
+    border: "border-amber-200 dark:border-amber-900/40",
+    bg: "bg-amber-50 dark:bg-amber-950/30",
+    badgeBg: "bg-amber-100 dark:bg-amber-900/30",
+    badgeText: "text-amber-700 dark:text-amber-300",
+    icon: AlertTriangle,
+    iconBg: "bg-amber-100 dark:bg-amber-900/40",
+    iconText: "text-amber-600 dark:text-amber-400",
+  },
+  pending: {
+    label: "확인 중",
+    dot: "bg-muted-foreground/40",
+    text: "text-muted-foreground",
+    border: "border-border",
+    bg: "bg-muted/30",
+    badgeBg: "bg-muted",
+    badgeText: "text-muted-foreground",
+    icon: Loader2,
+    iconBg: "bg-muted",
+    iconText: "text-muted-foreground",
+    iconSpin: true,
+  },
+});
+
+/**
+ * OpenClaw 게이트웨이 상태 → tone + 사용자용 라벨.
+ *
+ * sidecar가 노출하는 state: 'running' | 'stopped' | 'error' | 'checking'.
+ * 사용자에게는 install/start 구분 없이 "준비됨/문제 있음/확인 중"만 노출.
+ * (세부 구분이 필요한 LocalAISetupWizard의 진단 화면은 별도 처리)
+ *
+ * @param {string} state
+ * @returns {{ tone: 'ok'|'warning'|'pending', label: string, sub?: string }}
+ */
+export function getOpenClawStatus(state) {
+  if (state === "running") {
+    return { tone: "ok", label: "OpenClaw 준비됨" };
+  }
+  if (state === "checking") {
+    return { tone: "pending", label: "OpenClaw 확인 중" };
+  }
+  // stopped | error | 그 외 — 모두 "문제 있음"으로 통일
+  return {
+    tone: "warning",
+    label: "OpenClaw 문제 있음",
+    sub: "설치 또는 실행이 필요해요",
+  };
+}
+
+/**
+ * AI 엔진(LLM) 상태 → tone + 라벨.
+ *
+ * 입력:
+ *  - sidecarState: 'ok'|'checking'|'error'
+ *  - llmReachable: null|true|false  (Ollama인 경우만 의미 있음)
+ *  - provider: 'ollama'|'claude'
+ *
+ * Claude API는 sidecar reachable이면 ok 처리 (실제 API 키 유무는 사용 시점 검증).
+ * Ollama는 reachable === true일 때만 ok.
+ */
+export function getLLMStatus({ sidecarState, llmReachable, provider, model }) {
+  const engineName = provider === "claude" ? "Claude API" : "Ollama";
+  const fullLabel = model ? `${engineName} · ${model}` : engineName;
+
+  if (sidecarState === "checking" || llmReachable === null) {
+    return { tone: "pending", label: fullLabel, sub: "확인 중" };
+  }
+  if (sidecarState === "error") {
+    return { tone: "warning", label: fullLabel, sub: "앱과 연결할 수 없어요" };
+  }
+  if (provider === "ollama") {
+    return llmReachable
+      ? { tone: "ok", label: fullLabel }
+      : { tone: "warning", label: fullLabel, sub: "Ollama가 실행되고 있지 않아요" };
+  }
+  // Claude API — sidecar OK면 ok로 간주
+  return { tone: "ok", label: fullLabel };
+}
+
+/**
+ * 메신저 봇 상태 → tone + 라벨.
+ *
+ * 입력: { running, configured } — Telegram/Slack/Discord status() 응답 공통 필드.
+ * 응답을 못 받았으면 `unknown=true`로 표시.
+ */
+export function getMessengerStatus({ running, configured, unknown, name }) {
+  const label = name || "메신저";
+  if (unknown) {
+    return { tone: "pending", label, sub: "확인 중" };
+  }
+  if (running) {
+    return { tone: "ok", label, sub: "실행 중" };
+  }
+  if (configured) {
+    return { tone: "warning", label, sub: "중지됨" };
+  }
+  return { tone: "warning", label, sub: "미설정" };
+}
+
+/**
+ * 보안 상태 → tone + 라벨.
+ *
+ * pendingCount > 0이면 "승인 대기"로 warning. sidecar/OpenClaw 자체가 문제면 pending.
+ */
+export function getSecurityStatus({ pendingCount, ocRunning }) {
+  if (pendingCount > 0) {
+    return {
+      tone: "warning",
+      label: "보안",
+      sub: `승인 대기 ${pendingCount}건`,
+    };
+  }
+  if (!ocRunning) {
+    return { tone: "pending", label: "보안", sub: "OpenClaw가 준비되면 활성화돼요" };
+  }
+  return { tone: "ok", label: "보안", sub: "안전하게 보호 중" };
+}
+
+/** 메신저 표시 이름 — id → 한국어 라벨 */
+export const MESSENGER_LABELS = Object.freeze({
+  telegram: "Telegram",
+  slack: "Slack",
+  discord: "Discord",
+});

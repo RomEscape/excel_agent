@@ -1,0 +1,355 @@
+"""
+Tool Registry — 텔레그램 에이전트의 샌드박스 화이트리스트.
+
+샌드박스 원칙:
+  이 레지스트리에 등록된 도구만 실행 가능.
+  등록되지 않은 모든 작업(파일 삭제, 셸 실행 등)은 물리적으로 불가.
+
+PermissionLevel:
+  SAFE    — 즉시 실행 (조회, 읽기, AI 생성)
+  CONFIRM — 텔레그램으로 사용자 확인 후 실행
+  DENIED  — 항상 거부 (위험 작업 명시적 차단)
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from enum import Enum
+
+
+class PermissionLevel(Enum):
+    SAFE = "safe"
+    CONFIRM = "confirm"
+    DENIED = "denied"
+
+
+@dataclass
+class ToolDef:
+    name: str
+    description: str                  # 한국어 설명 (LLM 분류용)
+    permission: PermissionLevel
+    example_triggers: list[str] = field(default_factory=list)
+
+
+# ── 화이트리스트 — 여기 없는 것은 실행 불가 ──────────────────────────────────
+
+TOOL_REGISTRY: list[ToolDef] = [
+    # ── 일반 대화 ────────────────────────────────────────────────────────────
+    ToolDef(
+        name="chat",
+        description="일반 대화, 질문 답변, 정보 요청, 위의 어떤 도구에도 해당하지 않는 모든 메시지",
+        permission=PermissionLevel.SAFE,
+        example_triggers=["안녕", "질문", "설명해줘", "어떻게", "뭐야", "알려줘"],
+    ),
+    # ── Gmail ────────────────────────────────────────────────────────────────
+    ToolDef(
+        name="gmail.fetch_emails",
+        description="최근 받은 이메일 목록 조회 및 중요도 분류 (읽기 전용)",
+        permission=PermissionLevel.SAFE,
+        example_triggers=["메일 확인", "이메일 보여줘", "받은 메일", "최근 메일", "이메일 목록"],
+    ),
+    ToolDef(
+        name="gmail.summarize_recent",
+        description="최근 이메일 중 중요한 것을 골라 내용 요약",
+        permission=PermissionLevel.SAFE,
+        example_triggers=["메일 요약", "이메일 요약해줘", "중요한 메일 요약", "메일 내용 알려줘"],
+    ),
+    # ── 문서 생성 ────────────────────────────────────────────────────────────
+    ToolDef(
+        name="document.generate",
+        description=(
+            "보고서, 기획안, 회의록, 계약서초안, 이메일, 제안서 등 업무 문서 초안 작성. "
+            "params: doc_type(보고서|기획안|회의록|계약서초안|이메일|제안서), "
+            "content(핵심 내용), tone(공식적|친근한|전문적), length(짧게|보통|길게)"
+        ),
+        permission=PermissionLevel.SAFE,
+        example_triggers=["보고서 작성", "기획안 써줘", "회의록", "이메일 초안", "문서 만들어줘", "제안서"],
+    ),
+    # ── 시스템 ───────────────────────────────────────────────────────────────
+    ToolDef(
+        name="status.check",
+        description="시스템 상태 확인 (Gmail 연결, AI 엔진, 봇 상태)",
+        permission=PermissionLevel.SAFE,
+        example_triggers=["상태 확인", "시스템 상태", "연결 상태", "잘 돼?", "작동해?"],
+    ),
+    ToolDef(
+        name="help",
+        description="사용 가능한 명령어와 기능 목록 표시",
+        permission=PermissionLevel.SAFE,
+        example_triggers=["도움말", "명령어", "뭘 할 수 있어", "기능 목록"],
+    ),
+    # ── OpenClaw 스킬 매핑 (Phase 4) ─────────────────────────────────────────
+    # GOG/GWS 스킬 — Gmail
+    ToolDef(
+        name="gog.gmail.read",
+        description="Gmail 읽기 및 검색 (OpenClaw GOG 스킬, 읽기 전용)",
+        permission=PermissionLevel.SAFE,
+        example_triggers=["gmail", "이메일 확인", "메일 읽기", "받은 편지함"],
+    ),
+    ToolDef(
+        name="gog.gmail.send",
+        description="Gmail 이메일 전송 (OpenClaw GOG 스킬, 전송 필요)",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["이메일 보내", "메일 전송", "답장 보내"],
+    ),
+    # GOG/GWS 스킬 — Google Sheets
+    ToolDef(
+        name="gog.sheets.read",
+        description="Google Sheets 읽기 및 분석 (읽기 전용)",
+        permission=PermissionLevel.SAFE,
+        example_triggers=["시트 읽기", "스프레드시트", "구글 시트"],
+    ),
+    ToolDef(
+        name="gog.sheets.write",
+        description="Google Sheets 쓰기 및 수정 (쓰기 작업 포함)",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["시트 쓰기", "스프레드시트 수정", "셀 업데이트"],
+    ),
+    # Excel 자동화 스킬
+    ToolDef(
+        name="excel.analyze",
+        description="Excel 파일 분석 및 데이터 요약 (읽기 전용)",
+        permission=PermissionLevel.SAFE,
+        example_triggers=["엑셀 분석", "엑셀 읽기", "스프레드시트 분석"],
+    ),
+    ToolDef(
+        name="excel.report",
+        description="Excel 데이터 기반 보고서 생성",
+        permission=PermissionLevel.SAFE,
+        example_triggers=["엑셀 보고서", "데이터 보고서"],
+    ),
+    # ── 명시적 거부 목록 — 어떤 경우에도 실행 불가 ──────────────────────────
+    ToolDef(
+        name="DENIED.file_delete",
+        description="파일 삭제 — 항상 거부",
+        permission=PermissionLevel.DENIED,
+        example_triggers=["파일 삭제", "파일 지워", "rm ", "delete file"],
+    ),
+    ToolDef(
+        name="DENIED.shell_execute",
+        description="셸/터미널 명령 실행 — 항상 거부",
+        permission=PermissionLevel.DENIED,
+        example_triggers=["터미널", "명령어 실행", "bash", "shell", "exec", "subprocess"],
+    ),
+    ToolDef(
+        name="DENIED.system_modify",
+        description="시스템 설정 변경 — 항상 거부",
+        permission=PermissionLevel.DENIED,
+        example_triggers=["설정 변경", "레지스트리", "시스템 설정"],
+    ),
+]
+
+# ── 조회 헬퍼 ────────────────────────────────────────────────────────────────
+
+_REGISTRY_MAP: dict[str, ToolDef] = {t.name: t for t in TOOL_REGISTRY}
+
+# SAFE 실행 가능 도구 이름 집합 (intent 분류 LLM에 전달)
+SAFE_TOOL_NAMES: set[str] = {
+    t.name for t in TOOL_REGISTRY if t.permission == PermissionLevel.SAFE
+}
+
+# CONFIRM 권한 스킬 한국어 표시명
+TOOL_DISPLAY_NAMES: dict[str, str] = {
+    "gog.gmail.send": "Gmail 이메일 전송",
+    "gog.sheets.write": "Google Sheets 수정",
+}
+
+# ── 화이트리스트 오버라이드 (런타임에 사용자가 변경 가능) ─────────────────────
+
+import json as _json
+import logging as _logging
+
+_wl_logger = _logging.getLogger(__name__)
+
+# 런타임 오버라이드: 스킬 이름 → PermissionLevel
+_whitelist_overrides: dict[str, PermissionLevel] = {}
+
+
+def load_whitelist() -> None:
+    """
+    skill_whitelist.json을 읽어 _whitelist_overrides를 갱신한다.
+
+    파일이 없거나 파싱 실패 시 코드 기본값을 유지한다.
+    앱 시작 시 1회 호출하면 된다.
+    """
+    from office_claw_sidecar.config import get_whitelist_path
+
+    path = get_whitelist_path()
+    if not path.exists():
+        return
+    try:
+        data: dict = _json.loads(path.read_text(encoding="utf-8"))
+        _whitelist_overrides.clear()
+        for skill_name, level_str in data.items():
+            try:
+                _whitelist_overrides[skill_name] = PermissionLevel(level_str)
+            except ValueError:
+                _wl_logger.warning("[tool_registry] 알 수 없는 권한 레벨: %s=%s", skill_name, level_str)
+        _wl_logger.info("[tool_registry] 화이트리스트 로드: %d개", len(_whitelist_overrides))
+    except Exception as exc:
+        _wl_logger.error("[tool_registry] 화이트리스트 로드 실패 (기본값 사용): %s", exc)
+
+
+def save_whitelist(overrides: dict[str, str]) -> None:
+    """
+    스킬 권한 오버라이드를 skill_whitelist.json에 저장하고 메모리를 갱신한다.
+
+    임시 파일 → rename 패턴으로 파일 손상을 방지한다.
+    """
+    import tempfile
+    import shutil
+    from office_claw_sidecar.config import get_whitelist_path
+
+    path = get_whitelist_path()
+    # 유효성 검증
+    validated: dict[str, str] = {}
+    new_overrides: dict[str, PermissionLevel] = {}
+    for skill_name, level_str in overrides.items():
+        try:
+            perm = PermissionLevel(level_str)
+            validated[skill_name] = level_str
+            new_overrides[skill_name] = perm
+        except ValueError:
+            raise ValueError(f"유효하지 않은 권한 레벨: '{level_str}' (허용: safe, confirm, denied)")
+
+    # 임시 파일 → rename
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+        try:
+            with open(tmp_fd, "w", encoding="utf-8") as f:
+                _json.dump(validated, f, ensure_ascii=False, indent=2)
+            shutil.move(tmp_path, str(path))
+        except Exception:
+            import os
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+            raise
+    except Exception as exc:
+        raise RuntimeError(f"화이트리스트 저장 실패: {exc}") from exc
+
+    # 메모리 갱신
+    _whitelist_overrides.clear()
+    _whitelist_overrides.update(new_overrides)
+    _wl_logger.info("[tool_registry] 화이트리스트 저장: %d개", len(new_overrides))
+
+
+def get_whitelist_state() -> list[dict]:
+    """
+    현재 스킬별 권한 상태 목록을 반환한다 (화이트리스트 오버라이드 반영).
+
+    Returns:
+        [{"name": "gog.gmail.send", "display_name": "...", "default_permission": "confirm",
+          "current_permission": "safe", "overridden": True}, ...]
+    """
+    result: list[dict] = []
+    for tool in TOOL_REGISTRY:
+        if tool.name.startswith("DENIED."):
+            continue  # 내부 거부 도구는 제외
+        default_perm = tool.permission.value
+        current_perm = _whitelist_overrides.get(tool.name, tool.permission).value
+        result.append({
+            "name": tool.name,
+            "display_name": TOOL_DISPLAY_NAMES.get(tool.name, tool.name),
+            "description": tool.description,
+            "default_permission": default_perm,
+            "current_permission": current_perm,
+            "overridden": tool.name in _whitelist_overrides,
+        })
+    return result
+
+
+def get_tool(name: str) -> ToolDef | None:
+    """현재 유효한 PermissionLevel을 반영한 ToolDef를 반환한다 (화이트리스트 오버라이드 포함)."""
+    tool = _REGISTRY_MAP.get(name)
+    if tool is None:
+        return None
+    overridden = _whitelist_overrides.get(name)
+    if overridden is not None and overridden != tool.permission:
+        # 화이트리스트 오버라이드: 새 ToolDef 반환 (원본 불변 유지)
+        from dataclasses import replace as _dc_replace
+        return _dc_replace(tool, permission=overridden)
+    return tool
+
+
+def get_tools_description() -> str:
+    """SAFE 도구만 포함한 LLM 프롬프트용 설명 문자열."""
+    lines = []
+    for t in TOOL_REGISTRY:
+        if t.permission == PermissionLevel.SAFE:
+            lines.append(f"- {t.name}: {t.description}")
+    return "\n".join(lines)
+
+
+# ── 질문/설명 맥락 패턴 (SAFE_CONTEXT) ───────────────────────────────────────
+# 이 패턴에 매칭되면 실행 의도가 아닌 것으로 판단 → SAFE 반환
+_SAFE_CONTEXT_PATTERNS: list[re.Pattern] = [
+    # 한국어 질문/설명 요청
+    re.compile(
+        r"(설명|알려|뭐야|뜻|개념|차이|비교|방법|관련|규정|정리|요약|이해|학습)"
+        r".*?(줘|주세요|요|해줘|해주세요|할게요|드릴게요)$"
+    ),
+    # 영어 질문/설명 요청
+    re.compile(r"\b(what|explain|describe|how|tell\s+me|define|clarify)\b", re.IGNORECASE),
+]
+
+# 짧은 영어 트리거(2글자 이하)는 동사 + 목적어 컨텍스트가 있어야만 차단
+# 예: "rm file", "rm -rf", "rm /" 등에서는 차단
+# "rm 코스메틱", "rm 콜라보" 등 일반 명사 뒤에는 차단하지 않음
+_SHORT_TRIGGER_VERB_PATTERNS: dict[str, re.Pattern] = {
+    # "rm " 트리거: 뒤에 파일 경로 패턴 or "-" 옵션이 있을 때만 차단
+    "rm": re.compile(r"\brm\s+(?:-[a-z]+\s*|[/~\.]|[a-z_]+\.[a-z]+)", re.IGNORECASE),
+}
+
+
+def _is_korean(text: str) -> bool:
+    """텍스트에 한글이 포함되어 있는지 확인."""
+    return bool(re.search(r"[가-힣]", text))
+
+
+def is_denied_intent(message: str) -> tuple[bool, str | None]:
+    """
+    메시지가 DENIED 도구의 트리거 키워드를 포함하는지 확인한다.
+
+    개선 사항 (Phase 5-2):
+    - 영어 트리거에 word boundary(\b) 적용 → false positive 대폭 감소
+    - 질문/설명 맥락(safe context) 감지 시 SAFE 반환
+    - 한국어 트리거는 기존 substring 매칭 유지 (그 자체가 의미 단위)
+
+    Returns:
+        (is_denied, matched_trigger): 차단 여부 + 매칭된 키워드 힌트
+        차단 아닌 경우: (False, None)
+    """
+    msg_lower = message.lower()
+
+    # 질문/설명 맥락이면 실행 의도가 아님 → 즉시 SAFE 반환
+    for pattern in _SAFE_CONTEXT_PATTERNS:
+        if pattern.search(msg_lower):
+            return False, None
+
+    for tool in TOOL_REGISTRY:
+        if tool.permission != PermissionLevel.DENIED:
+            continue
+        for trigger in tool.example_triggers:
+            trigger_lower = trigger.lower().strip()
+            if _is_korean(trigger_lower):
+                # 한국어 트리거: substring 매칭
+                if trigger_lower in msg_lower:
+                    return True, trigger
+            else:
+                # 짧은 트리거(공백 제거 후 2글자 이하): 별도 컨텍스트 패턴 확인
+                bare_trigger = trigger_lower.strip()
+                if len(bare_trigger) <= 2 and bare_trigger in _SHORT_TRIGGER_VERB_PATTERNS:
+                    if _SHORT_TRIGGER_VERB_PATTERNS[bare_trigger].search(msg_lower):
+                        return True, trigger
+                    continue  # 컨텍스트 패턴에 안 걸리면 무시
+
+                # 영어 트리거: word boundary 매칭
+                pattern_str = r"\b" + re.escape(trigger_lower) + r"\b"
+                if re.search(pattern_str, msg_lower):
+                    return True, trigger
+
+    return False, None

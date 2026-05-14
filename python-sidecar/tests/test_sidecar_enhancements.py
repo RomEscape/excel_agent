@@ -1,0 +1,168 @@
+"""
+Sprint 2 사이드카 보강 5건 통합 테스트.
+
+검증 항목:
+  1. bot_username 노출 — telegram/slack/discord status 응답 구조
+  2. confirm_pending — command_audit_stats 응답 필드 존재 및 실제 대기 건수 반영
+  3. source enum 정규화 — normalize_source 함수 + log() 저장 후 get_recent() 반환값
+  4. slack_stop / discord_stop — 엔드포인트 200 응답 (noop 시 not_running)
+  5. last_blocked_at / last_approval_at — security_stats 응답 구조
+"""
+
+import pytest
+from fastapi.testclient import TestClient
+
+from office_claw_sidecar.main import app
+from office_claw_sidecar.command_audit import normalize_source, get_command_audit_logger
+
+client = TestClient(app)
+
+HEADERS = {"Authorization": "Bearer dev-token"}
+
+
+# ── 1. bot_username 노출 ─────────────────────────────────────────────────────
+
+class TestBotUsernameExposure:
+    def test_telegram_status_has_bot_username_field(self):
+        resp = client.get("/telegram/status", headers=HEADERS)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "running" in data
+        assert "bot_username" in data  # null 허용, 키는 반드시 존재
+
+    def test_slack_status_has_bot_username_field(self):
+        resp = client.get("/slack/status", headers=HEADERS)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "configured" in data
+        assert "running" in data
+        assert "bot_username" in data
+
+    def test_discord_status_has_bot_username_field(self):
+        resp = client.get("/discord/status", headers=HEADERS)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "configured" in data
+        assert "running" in data
+        assert "bot_username" in data
+
+
+# ── 2. confirm_pending ───────────────────────────────────────────────────────
+
+class TestConfirmPending:
+    def test_audit_stats_has_confirm_pending(self):
+        resp = client.get("/security/audit/stats", headers=HEADERS)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "confirm_pending" in data, "confirm_pending 필드가 없음"
+        assert isinstance(data["confirm_pending"], int)
+        assert data["confirm_pending"] >= 0
+
+    def test_confirm_pending_non_negative(self):
+        """confirm_pending은 항상 0 이상이어야 한다."""
+        cmd_audit = get_command_audit_logger()
+        stats = cmd_audit.get_stats(extra_pending=0)
+        assert stats.get("confirm_pending", 0) >= 0
+
+    def test_confirm_pending_extra_counts_ui_queue(self):
+        """extra_pending이 합산되는지 검증."""
+        cmd_audit = get_command_audit_logger()
+        base = cmd_audit.get_stats(extra_pending=0).get("confirm_pending", 0)
+        with_extra = cmd_audit.get_stats(extra_pending=3).get("confirm_pending", 0)
+        assert with_extra == base + 3
+
+
+# ── 3. source enum 정규화 ─────────────────────────────────────────────────────
+
+class TestSourceEnumNormalization:
+    @pytest.mark.parametrize("raw,expected", [
+        ("telegram", "telegram"),
+        ("telegram_bot", "telegram"),
+        ("telegram_agent", "telegram"),
+        ("slack", "slack"),
+        ("slack_bot", "slack"),
+        ("discord", "discord"),
+        ("discord_bot", "discord"),
+        ("agent", "agent"),
+        ("webui", "webui"),
+        ("web", "webui"),
+        ("ui", "webui"),
+        ("frontend", "webui"),
+        ("unknown_random", "agent"),  # 알 수 없는 값 → 기본값 agent
+        ("", "agent"),
+    ])
+    def test_normalize_source(self, raw, expected):
+        assert normalize_source(raw) == expected
+
+    def test_log_saves_normalized_source(self):
+        """log() 저장 시 source가 정규화되어 DB에 저장되는지 검증."""
+        cmd_audit = get_command_audit_logger()
+        row_id = cmd_audit.log(
+            grade="SAFE",
+            command="print('test')",
+            reason="테스트",
+            source="telegram_bot",  # alias → "telegram" 으로 정규화
+        )
+        assert row_id > 0
+
+        entry = cmd_audit.get_by_id(row_id)
+        assert entry is not None
+        assert entry["source"] == "telegram", (
+            f"source가 정규화되지 않음: {entry['source']}"
+        )
+
+    def test_get_recent_includes_source(self):
+        """get_recent() 반환값에 source 필드가 포함되는지 검증."""
+        cmd_audit = get_command_audit_logger()
+        cmd_audit.log(
+            grade="SAFE",
+            command="ls",
+            reason="테스트",
+            source="webui",
+        )
+        logs = cmd_audit.get_recent(limit=1)
+        assert len(logs) >= 1
+        assert "source" in logs[0]
+
+
+# ── 4. slack_stop / discord_stop ─────────────────────────────────────────────
+
+class TestMessengerStopEndpoints:
+    def test_slack_stop_returns_200(self):
+        """봇이 실행 중이 아닌 경우 not_running을 200으로 반환."""
+        resp = client.post("/slack/stop", headers=HEADERS)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "status" in data
+        assert data["status"] in ("not_running", "stopped")
+
+    def test_discord_stop_returns_200(self):
+        """봇이 실행 중이 아닌 경우 not_running을 200으로 반환."""
+        resp = client.post("/discord/stop", headers=HEADERS)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "status" in data
+        assert data["status"] in ("not_running", "stopped")
+
+
+# ── 5. last_blocked_at / last_approval_at ─────────────────────────────────────
+
+class TestSecurityTimestamps:
+    def test_security_stats_has_timestamp_fields(self):
+        resp = client.get("/security/stats", headers=HEADERS)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "last_blocked_at" in data, "last_blocked_at 필드 없음"
+        assert "last_approval_at" in data, "last_approval_at 필드 없음"
+
+    def test_timestamp_fields_are_null_or_iso_string(self):
+        """타임스탬프는 None 또는 ISO-8601 형식 문자열이어야 한다."""
+        from datetime import datetime
+        resp = client.get("/security/stats", headers=HEADERS)
+        data = resp.json()
+
+        for field in ("last_blocked_at", "last_approval_at"):
+            val = data[field]
+            if val is not None:
+                # ISO-8601 파싱 가능 여부 확인
+                datetime.fromisoformat(val)

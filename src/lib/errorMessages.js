@@ -1,0 +1,280 @@
+/**
+ * Error message mapping utility.
+ *
+ * Converts raw technical error strings (from Rust/Python) into
+ * user-friendly Korean messages for non-developer users.
+ */
+
+/**
+ * @typedef {{ pattern: RegExp; message: string }} ErrorMapping
+ */
+
+/** @type {ErrorMapping[]} */
+const ERROR_MAPPINGS = [
+  // Network / connection errors
+  {
+    // Sidecar not running — connection refused on port 19532
+    pattern: /Connection refused.*19532|19532.*Connection refused|connect.*19532/i,
+    message: "백그라운드 서비스에 연결할 수 없습니다. 앱을 재시작해 주세요.",
+  },
+  {
+    // Ollama not running: connection refused on port 11434
+    pattern: /Connection refused.*11434|11434.*Connection refused|connect.*11434/i,
+    message: "Ollama가 실행되지 않고 있습니다. 터미널에서 'ollama serve'를 실행해주세요.",
+  },
+  {
+    pattern: /Connection refused|tcp connect error|error trying to connect/i,
+    message: "백그라운드 서비스에 연결할 수 없습니다. 앱을 재시작해 주세요.",
+  },
+  {
+    pattern: /Health check failed/i,
+    message: "서비스 상태 확인에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+  },
+  {
+    pattern: /timeout|timed out/i,
+    message: "요청 시간이 초과되었습니다. 네트워크 상태를 확인하고 다시 시도해 주세요.",
+  },
+  {
+    pattern: /network|NETWORK/,
+    message: "네트워크 오류가 발생했습니다. 인터넷 연결을 확인해 주세요.",
+  },
+
+  // Auth errors
+  {
+    pattern: /401|Unauthorized|unauthorized/,
+    message: "인증에 실패했습니다. 자격증명을 확인해 주세요.",
+  },
+  {
+    pattern: /403|Forbidden|forbidden/,
+    message: "접근 권한이 없습니다. 자격증명 설정을 확인해 주세요.",
+  },
+  {
+    pattern: /invalid.*token|token.*invalid|Invalid credentials/i,
+    message: "저장된 토큰이 유효하지 않습니다. 자격증명 관리에서 토큰을 다시 저장해 주세요.",
+  },
+
+  // OAuth / Gmail specific
+  {
+    pattern: /oauth|OAuth/,
+    message: "Google 인증 오류가 발생했습니다. Google 자격증명(client_id, client_secret)을 확인해 주세요.",
+  },
+  {
+    pattern: /gmail|Gmail/i,
+    message: "Gmail 연동 중 오류가 발생했습니다. Gmail 연결 상태를 확인해 주세요.",
+  },
+
+  // Telegram specific
+  {
+    pattern: /telegram.*token|bot.*token/i,
+    message: "텔레그램 봇 토큰이 올바르지 않습니다. 자격증명 관리에서 telegram_bot_token을 확인해 주세요.",
+  },
+  {
+    pattern: /chat.*id|Chat.*ID/i,
+    message: "텔레그램 Chat ID가 설정되지 않았습니다. 자격증명 관리에서 telegram_chat_id를 저장해 주세요.",
+  },
+
+  // LLM / AI errors
+  {
+    pattern: /ollama|Ollama/,
+    message: "Ollama 서비스에 연결할 수 없습니다. Ollama가 로컬에 설치되고 실행 중인지 확인해 주세요.",
+  },
+  {
+    pattern: /claude.*api|API.*claude/i,
+    message: "Claude API 오류가 발생했습니다. 자격증명 관리에서 claude_api_key를 확인해 주세요.",
+  },
+  {
+    // LLM request timeout — separate from generic network timeout
+    pattern: /AI 답장|draft.*reply|prioritize.*email|LLM.*timeout|llm.*timed/i,
+    message: "AI 응답 시간이 초과되었습니다. AI 서비스가 바쁩니다. 잠시 후 다시 시도해 주세요.",
+  },
+  {
+    pattern: /rate.?limit|RateLimit/i,
+    message: "API 요청 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.",
+  },
+
+  // Gmail token / credential expiry
+  {
+    pattern: /token.*expired|expired.*token|Token has been expired|invalid_grant/i,
+    message: "Gmail 인증 토큰이 만료되었습니다. 메일 AI 화면에서 Gmail을 다시 연결해 주세요.",
+  },
+  {
+    pattern: /refresh.*token|token.*refresh/i,
+    message: "Gmail 세션이 만료되었습니다. 다시 연결해 주세요.",
+  },
+
+  // Server errors
+  {
+    pattern: /500|Internal Server Error/i,
+    message: "서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+  },
+  {
+    pattern: /404|Not Found/i,
+    message: "요청한 항목을 찾을 수 없습니다.",
+  },
+  {
+    pattern: /HTTP [45]\d{2}/,
+    message: "서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+  },
+
+  // Keychain / credential store
+  {
+    pattern: /keychain|keyring|credential.*store/i,
+    message: "OS 보안 저장소 접근에 실패했습니다. 시스템 권한을 확인해 주세요.",
+  },
+  {
+    pattern: /not found.*credential|credential.*not found/i,
+    message: "자격증명을 찾을 수 없습니다. 자격증명 관리에서 저장 여부를 확인해 주세요.",
+  },
+
+  // JSON parse / data errors
+  {
+    pattern: /JSON|parse.*error|invalid.*json/i,
+    message: "데이터를 읽는 중 오류가 발생했습니다. 다시 시도해 주세요.",
+  },
+
+  // OpenClaw gateway
+  {
+    pattern: /openclaw|gateway.*18789|18789.*gateway/i,
+    message: "OpenClaw 게이트웨이에 연결할 수 없습니다. OpenClaw가 설치되고 실행 중인지 확인해 주세요.",
+  },
+
+  // WebSocket / realtime connection
+  {
+    pattern: /WebSocket|ws:\/\//i,
+    message: "실시간 연결이 끊어졌습니다. 앱을 재시작해 주세요.",
+  },
+
+  // Skill install failure
+  {
+    pattern: /skill.*install|install.*skill|npm.*install.*fail/i,
+    message: "스킬 설치에 실패했습니다. 네트워크 연결을 확인하고 다시 시도해 주세요.",
+  },
+
+  // Session expiry
+  {
+    pattern: /session.*expired|session.*not found/i,
+    message: "세션이 만료되었습니다. 새 대화를 시작해 주세요.",
+  },
+
+  // File size / request too large
+  {
+    pattern: /413|too.*large|file.*size.*exceed/i,
+    message: "파일 크기가 너무 큽니다. 더 작은 파일을 사용해 주세요.",
+  },
+
+  // Broken pipe / connection reset
+  {
+    pattern: /ECONNRESET|EPIPE|broken.*pipe/i,
+    message: "서버와의 연결이 끊어졌습니다. 잠시 후 다시 시도해 주세요.",
+  },
+
+  // Disk full
+  {
+    pattern: /disk.*full|no.*space/i,
+    message: "디스크 공간이 부족합니다. 불필요한 파일을 삭제해 주세요.",
+  },
+
+  // Version mismatch / upgrade required
+  {
+    pattern: /upgrade.*required|version.*mismatch/i,
+    message: "앱 버전이 맞지 않습니다. 최신 버전으로 업데이트해 주세요.",
+  },
+
+  // File system
+  {
+    pattern: /permission denied|Permission denied/,
+    message: "파일 접근 권한이 없습니다. 앱 권한 설정을 확인해 주세요.",
+  },
+  {
+    pattern: /No such file|file.*not found/i,
+    message: "파일을 찾을 수 없습니다.",
+  },
+
+  // Excel / file parsing
+  {
+    pattern: /지원하지 않는 파일 형식|unsupported.*format|not.*xlsx|not.*csv/i,
+    message: "지원하지 않는 파일 형식입니다. xlsx 또는 csv 파일을 사용해 주세요.",
+  },
+  {
+    pattern: /파일을 읽을 수 없습니다|parse.*excel|excel.*parse|openpyxl|xlrd/i,
+    message: "파일을 읽을 수 없습니다. 파일이 손상되지 않은 올바른 엑셀/CSV 파일인지 확인해 주세요.",
+  },
+  {
+    // Stale file_id — file was cleaned up (24h expiry) or app was restarted
+    pattern: /파일을 찾을 수 없습니다|file_id.*not found|HTTP 404.*excel|HTTP 404.*document/i,
+    message: "업로드된 파일을 찾을 수 없습니다. 파일을 다시 업로드해 주세요.",
+  },
+  {
+    pattern: /Excel 업로드|excel.*upload/i,
+    message: "파일 업로드에 실패했습니다. 파일 크기와 형식을 확인하고 다시 시도해 주세요.",
+  },
+  {
+    pattern: /Excel 내보내기|excel.*export/i,
+    message: "Excel 파일 내보내기에 실패했습니다. 다시 시도해 주세요.",
+  },
+  {
+    pattern: /차트 데이터|chart.*data/i,
+    message: "차트 데이터를 불러올 수 없습니다. 파일에 숫자형 데이터가 포함되어 있는지 확인해 주세요.",
+  },
+
+  // Document generation / export
+  {
+    pattern: /지원하지 않는 문서 유형|unsupported.*doc.*type/i,
+    message: "선택한 문서 유형을 지원하지 않습니다. 다른 유형을 선택해 주세요.",
+  },
+  {
+    pattern: /문서 생성|document.*generat/i,
+    message: "문서 초안 생성에 실패했습니다. AI 서비스 연결 상태를 확인하고 다시 시도해 주세요.",
+  },
+  {
+    pattern: /Word 파일|docx|python.?docx/i,
+    message: "Word 파일 생성에 실패했습니다. 다시 시도해 주세요.",
+  },
+  {
+    pattern: /한글 PDF 생성에 필요한 폰트|AppleGothic|맑은 고딕.*설치/i,
+    message: "한글 PDF 생성에 필요한 폰트를 찾을 수 없습니다. Word(.docx) 형식을 사용해 주세요.",
+  },
+  {
+    pattern: /PDF 파일|reportlab/i,
+    message: "PDF 파일 생성에 실패했습니다. 다시 시도해 주세요.",
+  },
+  {
+    pattern: /파일 저장 실패|file.*save.*fail/i,
+    message: "파일 저장에 실패했습니다. 다운로드 폴더 접근 권한을 확인해 주세요.",
+  },
+];
+
+/**
+ * Convert a raw technical error value to a user-friendly Korean message.
+ *
+ * @param {unknown} error - The caught error (Error object, string, etc.)
+ * @param {string} [fallback] - Optional custom fallback message
+ * @returns {string} Korean user-friendly error message
+ */
+export function toUserMessage(error, fallback) {
+  const raw =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+      ? error
+      : String(error);
+
+  for (const { pattern, message } of ERROR_MAPPINGS) {
+    if (pattern.test(raw)) {
+      return message;
+    }
+  }
+
+  return fallback ?? "오류가 발생했습니다. 다시 시도해 주세요.";
+}
+
+/**
+ * Format an error for display with an operation-specific prefix.
+ *
+ * @param {string} operation - Korean operation name (e.g., "연결", "저장")
+ * @param {unknown} error
+ * @returns {string}
+ */
+export function formatError(operation, error) {
+  return `${operation} 실패: ${toUserMessage(error)}`;
+}
