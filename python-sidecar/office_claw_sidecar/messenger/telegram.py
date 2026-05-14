@@ -18,7 +18,6 @@ TelegramAdapter 클래스는 TelegramService를 wrapping하는 thin proxy로만 
 
 from __future__ import annotations
 
-import asyncio
 import re
 
 # ── 자연어 패턴 ──────────────────────────────────────────────────────────────
@@ -134,7 +133,7 @@ def _parse_write_command(text: str) -> tuple[str | None, str | None]:
 
 # ── TelegramAdapter (thin proxy) ──────────────────────────────────────────────
 
-from office_claw_sidecar.messenger.base import MessengerAdapter
+from office_claw_sidecar.messenger.base import MessengerAdapter  # noqa: E402
 
 
 class TelegramAdapter(MessengerAdapter):

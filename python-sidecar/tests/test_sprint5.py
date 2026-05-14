@@ -19,12 +19,9 @@ Sprint 5 사이드카 통합 테스트.
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 import zipfile
 from pathlib import Path
 
-import pytest
 from fastapi.testclient import TestClient
 
 from office_claw_sidecar.main import app

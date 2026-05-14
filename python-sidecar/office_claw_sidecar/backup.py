@@ -21,18 +21,12 @@ from __future__ import annotations
 import json
 import logging
 import shutil
-import sqlite3
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 from office_claw_sidecar.config import (
     get_data_dir,
-    get_audit_log_path,
-    get_credentials_registry_path,
-    get_whitelist_path,
-    SERVICE_NAMESPACE,
 )
 
 logger = logging.getLogger(__name__)

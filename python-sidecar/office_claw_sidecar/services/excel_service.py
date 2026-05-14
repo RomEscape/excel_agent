@@ -11,7 +11,6 @@ caller controls which provider (Ollama / Claude) is used.
 
 from __future__ import annotations
 
-import io
 import json
 import logging
 from datetime import datetime

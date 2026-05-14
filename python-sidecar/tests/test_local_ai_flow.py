@@ -17,7 +17,6 @@ from __future__ import annotations
 
 from typing import AsyncIterator
 
-import pytest
 from fastapi.testclient import TestClient
 
 from office_claw_sidecar.main import app

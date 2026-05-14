@@ -385,7 +385,7 @@ class TelegramService:
             )
             if ollama_models:
                 lines.append(f"설치된 모델: {', '.join(ollama_models[:5])}")
-        lines.append(f"봇: ✅ 실행 중")
+        lines.append("봇: ✅ 실행 중")
 
         audit.log("telegram_tool", "status.check")
         return "\n".join(lines)
@@ -694,7 +694,7 @@ class TelegramService:
                             )
                         else:
                             await update.message.reply_text(
-                                f"❌ 파일 쓰기가 취소되었습니다.",
+                                "❌ 파일 쓰기가 취소되었습니다.",
                             )
                         return
                 result = _cmd_ws_write(filename or "", content or "")

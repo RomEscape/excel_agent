@@ -158,8 +158,6 @@ async def generate_document(
 
 def _apply_markdown_to_docx(doc, markdown_content: str) -> None:
     """Parse simple markdown and add styled paragraphs to a python-docx Document."""
-    from docx.shared import Pt
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
 
     lines = markdown_content.splitlines()
     i = 0
@@ -173,7 +171,7 @@ def _apply_markdown_to_docx(doc, markdown_content: str) -> None:
         elif line.startswith("# "):
             doc.add_heading(line[2:].strip(), level=1)
         elif line.startswith("- ") or line.startswith("* "):
-            p = doc.add_paragraph(line[2:].strip(), style="List Bullet")
+            doc.add_paragraph(line[2:].strip(), style="List Bullet")
         elif re.match(r"^\d+\.\s", line):
             text = re.sub(r"^\d+\.\s", "", line).strip()
             doc.add_paragraph(text, style="List Number")
@@ -195,7 +193,7 @@ def export_to_docx(title: str, markdown_content: str, output_dir: Path) -> str:
     Saves to output_dir/<sanitised_title>.docx and returns the file path.
     """
     from docx import Document
-    from docx.shared import Pt, Cm
+    from docx.shared import Cm
     from docx.enum.text import WD_ALIGN_PARAGRAPH
 
     doc = Document()
@@ -236,9 +234,8 @@ def export_to_pdf(title: str, markdown_content: str, output_dir: Path) -> str:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import cm
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    from reportlab.lib.enums import TA_CENTER
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-    from reportlab.lib import colors
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
 
@@ -335,17 +332,6 @@ def export_to_pdf(title: str, markdown_content: str, output_dir: Path) -> str:
         leading=16,
         spaceAfter=4,
     )
-    bullet_style = ParagraphStyle(
-        "DocBullet",
-        parent=styles["Normal"],
-        fontName=_font,
-        fontSize=10,
-        leading=16,
-        leftIndent=20,
-        spaceAfter=2,
-        bulletText="•",
-    )
-
     story = [Paragraph(title, title_style), Spacer(1, 0.3 * cm)]
 
     for line in markdown_content.splitlines():

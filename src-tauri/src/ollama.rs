@@ -66,12 +66,10 @@ pub async fn list_ollama_models() -> serde_json::Value {
     };
     let url = format!("http://127.0.0.1:{}/api/tags", OLLAMA_PORT);
     match client.get(&url).send().await {
-        Ok(resp) if resp.status().is_success() => {
-            match resp.json::<serde_json::Value>().await {
-                Ok(json) => json,
-                Err(_) => serde_json::json!({ "models": [] }),
-            }
-        }
+        Ok(resp) if resp.status().is_success() => match resp.json::<serde_json::Value>().await {
+            Ok(json) => json,
+            Err(_) => serde_json::json!({ "models": [] }),
+        },
         _ => serde_json::json!({ "models": [] }),
     }
 }
@@ -109,10 +107,7 @@ pub async fn configure_openclaw_ollama(model: &str) -> Result<serde_json::Value,
             "models.providers.ollama.baseUrl",
             format!("http://127.0.0.1:{}", OLLAMA_PORT),
         ),
-        (
-            "agents.defaults.model",
-            format!("ollama/{}", model),
-        ),
+        ("agents.defaults.model", format!("ollama/{}", model)),
     ];
 
     let mut applied = Vec::new();
@@ -146,12 +141,14 @@ async fn run_openclaw_config_set(path: &str, value: &str) -> Result<String, Stri
         }
         // 2차: 로그인 셸
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-        let cmd = format!("openclaw config set {} {}", shell_quote(&path), shell_quote(&value));
+        let cmd = format!(
+            "openclaw config set {} {}",
+            shell_quote(&path),
+            shell_quote(&value)
+        );
         let via_shell = Command::new(&shell).args(["-lc", &cmd]).output();
         match via_shell {
-            Ok(out) if out.status.success() => {
-                Ok(String::from_utf8_lossy(&out.stdout).to_string())
-            }
+            Ok(out) if out.status.success() => Ok(String::from_utf8_lossy(&out.stdout).to_string()),
             Ok(out) => Err(format!(
                 "openclaw config set 실패 (code {:?}): {}",
                 out.status.code(),
@@ -224,9 +221,9 @@ mod tests {
             "phi3.5`whoami`",
             "phi3.5$IFS",
             "phi3.5\\nrm",
-            " phi3.5",   // leading whitespace
-            "phi3.5\n",  // trailing newline
-            "phi 3.5",   // embedded space
+            " phi3.5",  // leading whitespace
+            "phi3.5\n", // trailing newline
+            "phi 3.5",  // embedded space
         ] {
             assert!(
                 validate_model_name(bad).is_err(),
@@ -239,7 +236,10 @@ mod tests {
     #[test]
     fn shell_quote_escapes_single_quotes() {
         // path 자체에 dot이 있어 따옴표 처리 필요. 만약 path에 따옴표가 들어가도 깨지면 안 됨.
-        assert_eq!(shell_quote("agents.defaults.model"), "'agents.defaults.model'");
+        assert_eq!(
+            shell_quote("agents.defaults.model"),
+            "'agents.defaults.model'"
+        );
         assert_eq!(shell_quote("foo'bar"), "'foo'\\''bar'");
     }
 

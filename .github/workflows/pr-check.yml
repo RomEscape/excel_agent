@@ -1,0 +1,110 @@
+name: PR-Check
+
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'CHANGELOG.md'
+
+concurrency:
+  group: pr-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # 1. Python sidecar 검증 (AI 로직 핵심)
+  python-check:
+    runs-on: ubuntu-latest
+    env:
+      # CI 러너에는 OS 키링 백엔드가 없어 keyring.errors.NoKeyringError 발생.
+      # null 백엔드로 no-op 처리 (get→None, set→ignore) — 테스트는 응답 구조만 확인하므로 충분.
+      PYTHON_KEYRING_BACKEND: keyring.backends.null.Keyring
+    defaults:
+      run:
+        working-directory: python-sidecar
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: uv 설치
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Python 3.12 설치
+        run: uv python install 3.12
+
+      - name: 의존성 설치 (dev extras 포함, lockfile 고정)
+        run: uv sync --frozen --extra dev
+
+      - name: Lint 체크 (Ruff)
+        run: uvx ruff check .
+
+      - name: Unit Test 실행
+        run: uv run pytest -q
+
+  # 2. Frontend 검증
+  frontend-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node.js 20 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: Lint (스크립트 존재 시)
+        run: npm run lint --if-present
+
+      - name: Unit Test (스크립트 존재 시)
+        run: npm run test:unit --if-present
+
+  # 3. Rust(Tauri) 문법/린트 검증
+  rust-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tauri 시스템 의존성 설치 (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            build-essential \
+            libssl-dev
+
+      - name: Rust toolchain (clippy + rustfmt)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cargo 캐시
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Cargo fmt 체크
+        run: cargo fmt --check
+
+      # Tauri build.rs는 externalBin(사이드카) 바이너리 존재를 검사한다.
+      # CI에서는 PyInstaller 빌드를 돌리지 않으므로 더미 파일로 통과시킨다.
+      # (clippy는 컴파일 안 함 → 실제 실행 안 되므로 stub로 충분)
+      - name: 사이드카 더미 바이너리 생성 (clippy 용)
+        run: |
+          mkdir -p binaries
+          touch binaries/office-claw-sidecar-x86_64-unknown-linux-gnu
+          chmod +x binaries/office-claw-sidecar-x86_64-unknown-linux-gnu
+
+      - name: Clippy 린트
+        run: cargo clippy --all-targets -- -D warnings

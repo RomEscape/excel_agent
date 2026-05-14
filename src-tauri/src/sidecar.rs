@@ -38,7 +38,10 @@ pub async fn spawn_sidecar(app: &AppHandle) -> Result<(), String> {
     if cfg!(debug_assertions) {
         let port: u16 = 19532;
         let auth_token = "dev-token".to_string();
-        println!("[office-claw] Dev mode: connecting to sidecar on port {}", port);
+        println!(
+            "[office-claw] Dev mode: connecting to sidecar on port {}",
+            port
+        );
         app.manage(Mutex::new(SidecarState {
             port,
             auth_token: auth_token.clone(),
