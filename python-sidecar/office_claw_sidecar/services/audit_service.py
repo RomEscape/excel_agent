@@ -112,7 +112,7 @@ class AuditService:
             if "마스킹:" in detail:
                 try:
                     count_part, types_part = detail.split("마스킹:", 1)
-                    count = int(count_part.strip().replace("건", ""))
+                    int(count_part.strip().replace("건", ""))
                     types = [t.strip() for t in types_part.split(",")]
                 except (ValueError, IndexError):
                     continue

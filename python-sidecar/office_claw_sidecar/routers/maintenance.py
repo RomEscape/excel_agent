@@ -1,9 +1,8 @@
 """Maintenance endpoints — on-demand cleanup of temporary files."""
 
-import time
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from office_claw_sidecar.config import get_data_dir
 

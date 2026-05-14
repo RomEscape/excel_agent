@@ -48,9 +48,7 @@ impl Drop for OpenClawState {
 ///   3. 최대 30초 health-poll 후 결과 반환
 ///
 /// 사용자 요청에 의해 dev/prod 동일하게 spawn-and-go 방식으로 통일.
-pub async fn spawn_openclaw(
-    state: &tauri::State<'_, Mutex<OpenClawState>>,
-) -> Result<(), String> {
+pub async fn spawn_openclaw(state: &tauri::State<'_, Mutex<OpenClawState>>) -> Result<(), String> {
     let port = {
         let s = state.lock().map_err(|e| e.to_string())?;
         s.port

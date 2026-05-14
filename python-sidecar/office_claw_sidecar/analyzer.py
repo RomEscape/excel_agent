@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import ast
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal
 
 
@@ -280,7 +280,7 @@ class CommandAnalyzer:
 
         try:
             tree = ast.parse(code)
-        except SyntaxError as e:
+        except SyntaxError:
             # 파싱 실패 시 셸로 재분석
             return self._analyze_shell(code)
 
@@ -414,7 +414,6 @@ class _PythonASTVisitor(ast.NodeVisitor):
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         module = node.module or ""
-        base = module.split(".")[0]
         for alias in node.names:
             full = alias.asname or alias.name
             self._aliases[full] = f"{module}.{alias.name}"

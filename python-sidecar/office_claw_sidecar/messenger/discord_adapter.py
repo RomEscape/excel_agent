@@ -124,7 +124,6 @@ class DiscordAdapter(MessengerAdapter):
             logger.warning("[Discord] 봇 미실행 상태에서 send_message 호출됨")
             return
         try:
-            import discord
             channel = self._client.get_channel(int(channel_id))
             if not channel:
                 channel = await self._client.fetch_channel(int(channel_id))
@@ -188,7 +187,6 @@ class DiscordAdapter(MessengerAdapter):
         )
 
         try:
-            import discord
 
             channel = self._client.get_channel(int(channel_id))
             if not channel:

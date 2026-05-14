@@ -23,7 +23,8 @@ pub fn run() {
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 // Step 1: Start OpenClaw gateway
-                let openclaw_state = app_handle.state::<std::sync::Mutex<openclaw::OpenClawState>>();
+                let openclaw_state =
+                    app_handle.state::<std::sync::Mutex<openclaw::OpenClawState>>();
                 match openclaw::spawn_openclaw(&openclaw_state).await {
                     Ok(()) => println!("[office-claw] OpenClaw gateway started"),
                     Err(e) => eprintln!("[office-claw] OpenClaw gateway unavailable: {}", e),
@@ -130,7 +131,7 @@ pub fn run() {
             ipc::workspace_list_files,
             ipc::workspace_read_file,
             ipc::workspace_write_file,
-            ipc::workspace_write_file_binary,  // Sprint 3: 바이너리 업로드 (S-2 해소)
+            ipc::workspace_write_file_binary, // Sprint 3: 바이너리 업로드 (S-2 해소)
             ipc::telegram_setup,
             // Sprint 5: 채팅 세션 영속화
             ipc::chat_save_message,

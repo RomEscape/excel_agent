@@ -107,7 +107,7 @@ async def install_skill(req: InstallRequest) -> dict:
             "detail": result,
         }
 
-    except OpenClawUnavailableError as exc:
+    except OpenClawUnavailableError:
         raise HTTPException(
             status_code=503,
             detail=(

@@ -4,7 +4,6 @@ import argparse
 import logging
 import time
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 import uvicorn
 from fastapi import Depends, FastAPI, Request, HTTPException

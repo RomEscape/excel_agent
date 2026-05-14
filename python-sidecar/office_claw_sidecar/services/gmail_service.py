@@ -15,8 +15,6 @@ import base64
 import json
 import logging
 import webbrowser
-from datetime import datetime, timezone
-from email.utils import parsedate_to_datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from threading import Thread
 from urllib.parse import urlparse, parse_qs
@@ -27,7 +25,6 @@ from googleapiclient.discovery import build
 
 from office_claw_sidecar.services.audit_service import AuditService
 from office_claw_sidecar.services.keyring_service import KeyringService
-from office_claw_sidecar.config import get_data_dir
 
 logger = logging.getLogger(__name__)
 audit = AuditService()

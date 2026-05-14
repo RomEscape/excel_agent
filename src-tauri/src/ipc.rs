@@ -83,7 +83,7 @@ async fn download_file_response(
         .headers()
         .get("content-disposition")
         .and_then(|v| v.to_str().ok())
-        .and_then(|s| parse_content_disposition_filename(s))
+        .and_then(parse_content_disposition_filename)
         .unwrap_or_else(|| fallback_filename.to_string());
 
     let bytes = resp
@@ -101,7 +101,11 @@ async fn download_file_response(
 pub async fn health_check(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/health"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/health"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let resp = client
@@ -122,7 +126,11 @@ pub async fn store_credential(
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/credentials"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/credentials"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let body = serde_json::json!({
@@ -190,12 +198,14 @@ pub async fn delete_credential(
 }
 
 #[tauri::command]
-pub async fn list_credentials(
-    state: State<'_, Mutex<SidecarState>>,
-) -> Result<String, String> {
+pub async fn list_credentials(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/credentials"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/credentials"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let resp = client
@@ -216,7 +226,11 @@ pub async fn chat(
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/llm/chat"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/llm/chat"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let body = serde_json::json!({
@@ -265,10 +279,18 @@ pub async fn get_audit_logs(
 pub async fn gmail_status(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/gmail/status"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/gmail/status"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
-    let resp = client.get(&url).bearer_auth(&token).send().await
+    let resp = client
+        .get(&url)
+        .bearer_auth(&token)
+        .send()
+        .await
         .map_err(|e| format!("Gmail status failed: {}", e))?;
     read_response(resp).await
 }
@@ -277,12 +299,19 @@ pub async fn gmail_status(state: State<'_, Mutex<SidecarState>>) -> Result<Strin
 pub async fn gmail_connect(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/gmail/connect"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/gmail/connect"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
-    let resp = client.post(&url).bearer_auth(&token)
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
         .timeout(std::time::Duration::from_secs(180))
-        .send().await
+        .send()
+        .await
         .map_err(|e| format!("Gmail connect failed: {}", e))?;
     read_response(resp).await
 }
@@ -291,10 +320,18 @@ pub async fn gmail_connect(state: State<'_, Mutex<SidecarState>>) -> Result<Stri
 pub async fn gmail_disconnect(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/gmail/disconnect"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/gmail/disconnect"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
-    let resp = client.post(&url).bearer_auth(&token).send().await
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
+        .send()
+        .await
         .map_err(|e| format!("Gmail disconnect failed: {}", e))?;
     read_response(resp).await
 }
@@ -307,12 +344,19 @@ pub async fn gmail_fetch_emails(
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
         let param = max_results.map_or(String::new(), |n| format!("?max_results={}", n));
-        (sidecar_url(&s, &format!("/gmail/emails{}", param)), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, &format!("/gmail/emails{}", param)),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
-    let resp = client.get(&url).bearer_auth(&token)
+    let resp = client
+        .get(&url)
+        .bearer_auth(&token)
         .timeout(std::time::Duration::from_secs(30))
-        .send().await
+        .send()
+        .await
         .map_err(|e| format!("Gmail fetch failed: {}", e))?;
     read_response(resp).await
 }
@@ -324,10 +368,18 @@ pub async fn gmail_get_email_body(
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, &format!("/gmail/emails/{}/body", message_id)), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, &format!("/gmail/emails/{}/body", message_id)),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
-    let resp = client.get(&url).bearer_auth(&token).send().await
+    let resp = client
+        .get(&url)
+        .bearer_auth(&token)
+        .send()
+        .await
         .map_err(|e| format!("Gmail get body failed: {}", e))?;
     read_response(resp).await
 }
@@ -339,12 +391,19 @@ pub async fn gmail_summarize_email(
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, &format!("/gmail/emails/{}/summarize", message_id)), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, &format!("/gmail/emails/{}/summarize", message_id)),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
-    let resp = client.post(&url).bearer_auth(&token)
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
         .timeout(std::time::Duration::from_secs(120))
-        .send().await
+        .send()
+        .await
         .map_err(|e| format!("Gmail summarize failed: {}", e))?;
     read_response(resp).await
 }
@@ -357,12 +416,19 @@ pub async fn gmail_summarize_batch(
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
         let param = max_results.map_or(String::new(), |n| format!("?max_results={}", n));
-        (sidecar_url(&s, &format!("/gmail/emails/summarize-batch{}", param)), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, &format!("/gmail/emails/summarize-batch{}", param)),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
-    let resp = client.post(&url).bearer_auth(&token)
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
         .timeout(std::time::Duration::from_secs(300))
-        .send().await
+        .send()
+        .await
         .map_err(|e| format!("Gmail batch summarize failed: {}", e))?;
     read_response(resp).await
 }
@@ -371,10 +437,18 @@ pub async fn gmail_summarize_batch(
 pub async fn get_filter_rules(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/gmail/filter-rules"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/gmail/filter-rules"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
-    let resp = client.get(&url).bearer_auth(&token).send().await
+    let resp = client
+        .get(&url)
+        .bearer_auth(&token)
+        .send()
+        .await
         .map_err(|e| format!("Get filter rules failed: {}", e))?;
     read_response(resp).await
 }
@@ -386,10 +460,19 @@ pub async fn update_filter_rules(
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/gmail/filter-rules"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/gmail/filter-rules"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
-    let resp = client.put(&url).bearer_auth(&token).json(&rules).send().await
+    let resp = client
+        .put(&url)
+        .bearer_auth(&token)
+        .json(&rules)
+        .send()
+        .await
         .map_err(|e| format!("Update filter rules failed: {}", e))?;
     read_response(resp).await
 }
@@ -398,10 +481,18 @@ pub async fn update_filter_rules(
 pub async fn telegram_status(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/telegram/status"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/telegram/status"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
-    let resp = client.get(&url).bearer_auth(&token).send().await
+    let resp = client
+        .get(&url)
+        .bearer_auth(&token)
+        .send()
+        .await
         .map_err(|e| format!("Telegram status failed: {}", e))?;
     read_response(resp).await
 }
@@ -410,10 +501,18 @@ pub async fn telegram_status(state: State<'_, Mutex<SidecarState>>) -> Result<St
 pub async fn telegram_start(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/telegram/start"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/telegram/start"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
-    let resp = client.post(&url).bearer_auth(&token).send().await
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
+        .send()
+        .await
         .map_err(|e| format!("Telegram start failed: {}", e))?;
     read_response(resp).await
 }
@@ -422,10 +521,18 @@ pub async fn telegram_start(state: State<'_, Mutex<SidecarState>>) -> Result<Str
 pub async fn telegram_stop(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/telegram/stop"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/telegram/stop"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
-    let resp = client.post(&url).bearer_auth(&token).send().await
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
+        .send()
+        .await
         .map_err(|e| format!("Telegram stop failed: {}", e))?;
     read_response(resp).await
 }
@@ -484,7 +591,11 @@ pub async fn excel_analyze(
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/excel/analyze"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/excel/analyze"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let body = serde_json::json!({ "file_id": file_id, "question": question });
@@ -508,7 +619,11 @@ pub async fn excel_report(
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/excel/report"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/excel/report"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let body = serde_json::json!({ "file_id": file_id });
@@ -532,7 +647,11 @@ pub async fn excel_formulas(
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/excel/formulas"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/excel/formulas"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let body = serde_json::json!({ "file_id": file_id });
@@ -562,7 +681,11 @@ pub async fn excel_chart_data(
             urlencoding_simple(&file_id),
             urlencoding_simple(&sheet_name)
         );
-        (sidecar_url(&s, &path), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, &path),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let resp = client
@@ -615,7 +738,11 @@ pub async fn document_generate(
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/document/generate"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/document/generate"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let body = serde_json::json!({
@@ -645,7 +772,10 @@ pub async fn document_export_docx(
 ) -> Result<String, String> {
     let (url, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/document/export/docx"), s.auth_token.clone())
+        (
+            sidecar_url(&s, "/document/export/docx"),
+            s.auth_token.clone(),
+        )
     };
 
     let body = serde_json::json!({ "title": title, "content": content });
@@ -671,7 +801,10 @@ pub async fn document_export_pdf(
 ) -> Result<String, String> {
     let (url, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/document/export/pdf"), s.auth_token.clone())
+        (
+            sidecar_url(&s, "/document/export/pdf"),
+            s.auth_token.clone(),
+        )
     };
 
     let body = serde_json::json!({ "title": title, "content": content });
@@ -747,9 +880,7 @@ pub async fn gmail_prioritize(
 // ── Maintenance commands ─────────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn maintenance_cleanup(
-    state: State<'_, Mutex<SidecarState>>,
-) -> Result<String, String> {
+pub async fn maintenance_cleanup(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
         (
@@ -774,9 +905,7 @@ pub async fn maintenance_cleanup(
 /// OpenClaw 게이트웨이 현재 상태 확인.
 /// React UI에서 연결 상태 배지를 렌더링하는 데 사용.
 #[tauri::command]
-pub async fn openclaw_status(
-    oc_state: State<'_, Mutex<OpenClawState>>,
-) -> Result<String, String> {
+pub async fn openclaw_status(oc_state: State<'_, Mutex<OpenClawState>>) -> Result<String, String> {
     let status = crate::openclaw::get_openclaw_status(&oc_state).await;
     Ok(status.to_string())
 }
@@ -830,7 +959,11 @@ pub async fn agent_chat(
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/agent/chat"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/agent/chat"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let body = serde_json::json!({
@@ -852,12 +985,14 @@ pub async fn agent_chat(
 
 /// 활성 OpenClaw 세션 목록 조회.
 #[tauri::command]
-pub async fn agent_sessions(
-    state: State<'_, Mutex<SidecarState>>,
-) -> Result<String, String> {
+pub async fn agent_sessions(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/agent/sessions"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/agent/sessions"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let resp = client
@@ -873,12 +1008,14 @@ pub async fn agent_sessions(
 
 /// 설치된 OpenClaw 스킬 목록.
 #[tauri::command]
-pub async fn skills_installed(
-    state: State<'_, Mutex<SidecarState>>,
-) -> Result<String, String> {
+pub async fn skills_installed(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/skills/installed"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/skills/installed"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let resp = client
@@ -899,7 +1036,11 @@ pub async fn skills_install(
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/skills/install"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/skills/install"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let body = serde_json::json!({ "skill_name": skill_name });
@@ -918,12 +1059,14 @@ pub async fn skills_install(
 
 /// ClawHub 스킬 카탈로그 조회.
 #[tauri::command]
-pub async fn skills_catalog(
-    state: State<'_, Mutex<SidecarState>>,
-) -> Result<String, String> {
+pub async fn skills_catalog(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/skills/catalog"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/skills/catalog"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let resp = client
@@ -950,7 +1093,11 @@ pub async fn agent_submit_approval(
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/agent/approval"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/agent/approval"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     // rejection_reason이 있으면 body에 포함 (None이면 키 자체를 제외)
@@ -985,7 +1132,11 @@ pub async fn agent_pending_approvals(
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/agent/approval/pending"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/agent/approval/pending"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let resp = client
@@ -1003,12 +1154,14 @@ pub async fn agent_pending_approvals(
 
 /// 마스킹/차단 통계를 반환한다.
 #[tauri::command]
-pub async fn security_stats(
-    state: State<'_, Mutex<SidecarState>>,
-) -> Result<String, String> {
+pub async fn security_stats(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/security/stats"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/security/stats"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let resp = client
@@ -1056,7 +1209,11 @@ pub async fn security_get_whitelist(
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/security/whitelist"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/security/whitelist"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let resp = client
@@ -1078,7 +1235,11 @@ pub async fn security_update_whitelist(
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/security/whitelist"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/security/whitelist"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let body = serde_json::json!({ "overrides": overrides });
@@ -1102,7 +1263,11 @@ pub async fn security_get_masking_settings(
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/security/masking-settings"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/security/masking-settings"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let resp = client
@@ -1125,7 +1290,11 @@ pub async fn security_update_masking_settings(
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/security/masking-settings"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/security/masking-settings"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let body = serde_json::json!({ "mask_email": mask_email, "mask_phone": mask_phone });
@@ -1153,15 +1322,24 @@ pub async fn slack_setup(
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/slack/setup"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/slack/setup"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
     let body = serde_json::json!({
         "bot_token": bot_token,
         "app_token": app_token,
         "allowed_user_ids": allowed_user_ids,
     });
-    let resp = client.post(&url).bearer_auth(&token).json(&body)
-        .timeout(std::time::Duration::from_secs(15)).send().await
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(15))
+        .send()
+        .await
         .map_err(|e| format!("Slack 설정 실패: {}", e))?;
     read_response(resp).await
 }
@@ -1170,10 +1348,18 @@ pub async fn slack_setup(
 pub async fn slack_status(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/slack/status"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/slack/status"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
-    let resp = client.get(&url).bearer_auth(&token)
-        .timeout(std::time::Duration::from_secs(5)).send().await
+    let resp = client
+        .get(&url)
+        .bearer_auth(&token)
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
         .map_err(|e| format!("Slack 상태 조회 실패: {}", e))?;
     read_response(resp).await
 }
@@ -1182,9 +1368,17 @@ pub async fn slack_status(state: State<'_, Mutex<SidecarState>>) -> Result<Strin
 pub async fn slack_start(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/slack/start"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/slack/start"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
-    let resp = client.post(&url).bearer_auth(&token).send().await
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
+        .send()
+        .await
         .map_err(|e| format!("Slack 시작 실패: {}", e))?;
     read_response(resp).await
 }
@@ -1193,9 +1387,17 @@ pub async fn slack_start(state: State<'_, Mutex<SidecarState>>) -> Result<String
 pub async fn slack_stop(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/slack/stop"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/slack/stop"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
-    let resp = client.post(&url).bearer_auth(&token).send().await
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
+        .send()
+        .await
         .map_err(|e| format!("Slack 중지 실패: {}", e))?;
     read_response(resp).await
 }
@@ -1211,15 +1413,24 @@ pub async fn discord_setup(
 ) -> Result<String, String> {
     let (url, client, auth_token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/discord/setup"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/discord/setup"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
     let body = serde_json::json!({
         "token": token,
         "allowed_guild_id": allowed_guild_id,
         "allowed_user_ids": allowed_user_ids,
     });
-    let resp = client.post(&url).bearer_auth(&auth_token).json(&body)
-        .timeout(std::time::Duration::from_secs(15)).send().await
+    let resp = client
+        .post(&url)
+        .bearer_auth(&auth_token)
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(15))
+        .send()
+        .await
         .map_err(|e| format!("Discord 설정 실패: {}", e))?;
     read_response(resp).await
 }
@@ -1228,10 +1439,18 @@ pub async fn discord_setup(
 pub async fn discord_status(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/discord/status"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/discord/status"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
-    let resp = client.get(&url).bearer_auth(&token)
-        .timeout(std::time::Duration::from_secs(5)).send().await
+    let resp = client
+        .get(&url)
+        .bearer_auth(&token)
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
         .map_err(|e| format!("Discord 상태 조회 실패: {}", e))?;
     read_response(resp).await
 }
@@ -1240,9 +1459,17 @@ pub async fn discord_status(state: State<'_, Mutex<SidecarState>>) -> Result<Str
 pub async fn discord_start(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/discord/start"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/discord/start"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
-    let resp = client.post(&url).bearer_auth(&token).send().await
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
+        .send()
+        .await
         .map_err(|e| format!("Discord 시작 실패: {}", e))?;
     read_response(resp).await
 }
@@ -1251,9 +1478,17 @@ pub async fn discord_start(state: State<'_, Mutex<SidecarState>>) -> Result<Stri
 pub async fn discord_stop(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/discord/stop"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/discord/stop"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
-    let resp = client.post(&url).bearer_auth(&token).send().await
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
+        .send()
+        .await
         .map_err(|e| format!("Discord 중지 실패: {}", e))?;
     read_response(resp).await
 }
@@ -1264,10 +1499,18 @@ pub async fn discord_stop(state: State<'_, Mutex<SidecarState>>) -> Result<Strin
 pub async fn permissions_get(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/permissions"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/permissions"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
-    let resp = client.get(&url).bearer_auth(&token)
-        .timeout(std::time::Duration::from_secs(10)).send().await
+    let resp = client
+        .get(&url)
+        .bearer_auth(&token)
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
         .map_err(|e| format!("권한 설정 조회 실패: {}", e))?;
     read_response(resp).await
 }
@@ -1282,7 +1525,11 @@ pub async fn permissions_update(
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/permissions"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/permissions"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
     let body = serde_json::json!({
         "allowed_folders": allowed_folders,
@@ -1290,8 +1537,13 @@ pub async fn permissions_update(
         "shell_command_whitelist": shell_command_whitelist,
         "python_module_whitelist": python_module_whitelist,
     });
-    let resp = client.put(&url).bearer_auth(&token).json(&body)
-        .timeout(std::time::Duration::from_secs(10)).send().await
+    let resp = client
+        .put(&url)
+        .bearer_auth(&token)
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
         .map_err(|e| format!("권한 설정 저장 실패: {}", e))?;
     read_response(resp).await
 }
@@ -1305,11 +1557,21 @@ pub async fn permissions_whitelist_add(
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/permissions/whitelist"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/permissions/whitelist"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
-    let body = serde_json::json!({ "command": command, "command_type": command_type, "reason": reason });
-    let resp = client.post(&url).bearer_auth(&token).json(&body)
-        .timeout(std::time::Duration::from_secs(10)).send().await
+    let body =
+        serde_json::json!({ "command": command, "command_type": command_type, "reason": reason });
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
         .map_err(|e| format!("화이트리스트 추가 실패: {}", e))?;
     read_response(resp).await
 }
@@ -1328,8 +1590,12 @@ pub async fn permissions_whitelist_remove(
             s.auth_token.clone(),
         )
     };
-    let resp = client.delete(&url).bearer_auth(&token)
-        .timeout(std::time::Duration::from_secs(10)).send().await
+    let resp = client
+        .delete(&url)
+        .bearer_auth(&token)
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
         .map_err(|e| format!("화이트리스트 제거 실패: {}", e))?;
     read_response(resp).await
 }
@@ -1343,7 +1609,11 @@ pub async fn security_get_pending_approvals(
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/security/approval/pending"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/security/approval/pending"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let resp = client
@@ -1401,7 +1671,10 @@ pub async fn command_audit_list(
         let limit_val = limit.unwrap_or(50);
         let offset_val = offset.unwrap_or(0);
         (
-            sidecar_url(&s, &format!("/security/audit?limit={}&offset={}", limit_val, offset_val)),
+            sidecar_url(
+                &s,
+                &format!("/security/audit?limit={}&offset={}", limit_val, offset_val),
+            ),
             client_with_auth(&s).0,
             s.auth_token.clone(),
         )
@@ -1420,12 +1693,14 @@ pub async fn command_audit_list(
 
 /// 명령 감사 로그 등급별 통계를 반환한다.
 #[tauri::command]
-pub async fn command_audit_stats(
-    state: State<'_, Mutex<SidecarState>>,
-) -> Result<String, String> {
+pub async fn command_audit_stats(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/security/audit/stats"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/security/audit/stats"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let resp = client
@@ -1441,12 +1716,14 @@ pub async fn command_audit_stats(
 
 /// 명령 감사 로그 전체를 초기화한다.
 #[tauri::command]
-pub async fn command_audit_clear(
-    state: State<'_, Mutex<SidecarState>>,
-) -> Result<String, String> {
+pub async fn command_audit_clear(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/security/audit"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/security/audit"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let resp = client
@@ -1480,9 +1757,13 @@ pub async fn open_workspace_folder(_app: tauri::AppHandle) -> Result<String, Str
     #[cfg(target_os = "macos")]
     let result = std::process::Command::new("open").arg(&path_str).status();
     #[cfg(target_os = "windows")]
-    let result = std::process::Command::new("explorer").arg(&path_str).status();
+    let result = std::process::Command::new("explorer")
+        .arg(&path_str)
+        .status();
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let result = std::process::Command::new("xdg-open").arg(&path_str).status();
+    let result = std::process::Command::new("xdg-open")
+        .arg(&path_str)
+        .status();
 
     result.map_err(|e| format!("폴더 열기 실패: {}", e))?;
 
@@ -1529,7 +1810,10 @@ pub async fn workspace_read_file(
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
         (
-            sidecar_url(&s, &format!("/workspace/file?path={}", urlencoding_simple(&path))),
+            sidecar_url(
+                &s,
+                &format!("/workspace/file?path={}", urlencoding_simple(&path)),
+            ),
             client_with_auth(&s).0,
             s.auth_token.clone(),
         )
@@ -1603,8 +1887,7 @@ pub async fn workspace_write_file_binary(
     }
 
     // 3. 워크스페이스 루트 확인 및 생성
-    let home = dirs_home()
-        .ok_or_else(|| "홈 디렉토리를 찾을 수 없습니다".to_string())?;
+    let home = dirs_home().ok_or_else(|| "홈 디렉토리를 찾을 수 없습니다".to_string())?;
     let workspace_root = home.join("PrivateClaw").join("Workspace");
     if !workspace_root.exists() {
         std::fs::create_dir_all(&workspace_root)
@@ -1619,8 +1902,7 @@ pub async fn workspace_write_file_binary(
 
     // 5. 부모 디렉토리 생성
     if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("디렉토리 생성 실패: {}", e))?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("디렉토리 생성 실패: {}", e))?;
     }
 
     // 6. base64 디코드
@@ -1630,8 +1912,7 @@ pub async fn workspace_write_file_binary(
         .map_err(|e| format!("base64 디코딩 실패: {}", e))?;
 
     // 7. 바이너리 쓰기
-    std::fs::write(&target, &bytes)
-        .map_err(|e| format!("파일 쓰기 실패: {}", e))?;
+    std::fs::write(&target, &bytes).map_err(|e| format!("파일 쓰기 실패: {}", e))?;
 
     let saved_path = target.to_string_lossy().to_string();
     let response = serde_json::json!({
@@ -1652,7 +1933,11 @@ pub async fn telegram_setup(
 ) -> Result<String, String> {
     let (url, client, auth_token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/telegram/setup"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/telegram/setup"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let body = serde_json::json!({ "token": token, "chat_id": chat_id });
@@ -1712,6 +1997,7 @@ pub async fn check_for_update(app: tauri::AppHandle) -> Result<String, String> {
 
 /// 채팅 메시지를 영속 저장한다.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri IPC 명령은 입력을 평면 인자로 받는 게 관례
 pub async fn chat_save_message(
     state: State<'_, Mutex<SidecarState>>,
     session_id: String,
@@ -1724,7 +2010,11 @@ pub async fn chat_save_message(
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/chat/messages"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/chat/messages"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let body = serde_json::json!({
@@ -1785,7 +2075,13 @@ pub async fn chat_get_messages(
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
         (
-            sidecar_url(&s, &format!("/chat/sessions/{}/messages", urlencoding_simple(&session_id))),
+            sidecar_url(
+                &s,
+                &format!(
+                    "/chat/sessions/{}/messages",
+                    urlencoding_simple(&session_id)
+                ),
+            ),
             client_with_auth(&s).0,
             s.auth_token.clone(),
         )
@@ -1811,7 +2107,10 @@ pub async fn chat_delete_session(
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
         (
-            sidecar_url(&s, &format!("/chat/sessions/{}", urlencoding_simple(&session_id))),
+            sidecar_url(
+                &s,
+                &format!("/chat/sessions/{}", urlencoding_simple(&session_id)),
+            ),
             client_with_auth(&s).0,
             s.auth_token.clone(),
         )
@@ -1832,12 +2131,14 @@ pub async fn chat_delete_session(
 
 /// 현재 데이터를 ~/Downloads/ajou-ai-backup-{timestamp}.zip으로 내보낸다.
 #[tauri::command]
-pub async fn backup_export(
-    state: State<'_, Mutex<SidecarState>>,
-) -> Result<String, String> {
+pub async fn backup_export(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/backup/export"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/backup/export"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let resp = client
@@ -1859,7 +2160,11 @@ pub async fn backup_import(
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/backup/import"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/backup/import"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
     let body = serde_json::json!({ "file_path": file_path });
@@ -1883,8 +2188,9 @@ fn urlencoding_simple(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for byte in s.bytes() {
         match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9'
-            | b'-' | b'_' | b'.' | b'~' => out.push(byte as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char)
+            }
             _ => out.push_str(&format!("%{:02X}", byte)),
         }
     }
@@ -1912,10 +2218,18 @@ fn dirs_home() -> Option<std::path::PathBuf> {
 pub async fn get_llm_settings(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/settings/llm"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/settings/llm"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
-    let resp = client.get(&url).bearer_auth(&token).send().await
+    let resp = client
+        .get(&url)
+        .bearer_auth(&token)
+        .send()
+        .await
         .map_err(|e| format!("Get LLM settings failed: {}", e))?;
     read_response(resp).await
 }
@@ -1927,10 +2241,19 @@ pub async fn save_llm_settings(
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
-        (sidecar_url(&s, "/settings/llm"), client_with_auth(&s).0, s.auth_token.clone())
+        (
+            sidecar_url(&s, "/settings/llm"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
     };
 
-    let resp = client.post(&url).bearer_auth(&token).json(&config).send().await
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
+        .json(&config)
+        .send()
+        .await
         .map_err(|e| format!("Save LLM settings failed: {}", e))?;
     read_response(resp).await
 }

@@ -15,8 +15,6 @@ Sprint 3 사이드카 변경 통합 테스트.
     3-4. DB에 rejection_reason 실제 저장 확인
 """
 
-import pytest
-import uuid
 from fastapi.testclient import TestClient
 
 from office_claw_sidecar.main import app

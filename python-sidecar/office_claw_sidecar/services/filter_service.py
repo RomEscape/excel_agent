@@ -2,7 +2,6 @@
 
 import json
 import logging
-from pathlib import Path
 
 from office_claw_sidecar.config import get_data_dir
 from office_claw_sidecar.services.audit_service import AuditService

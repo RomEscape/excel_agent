@@ -10,7 +10,6 @@ Sprint 4 사이드카 통합 테스트 — N-1 reason path 연결 검증.
     4-5. /security/approval/{id}/respond (기존 path) 회귀 없음 확인
 """
 
-import pytest
 from fastapi.testclient import TestClient
 
 from office_claw_sidecar.main import app
@@ -53,7 +52,7 @@ class TestAgentApprovalReasonPath:
         cmd_audit = get_command_audit_logger()
         return cmd_audit.log(
             grade="CONFIRM",
-            command=f"send_mail(to='boss@company.com')",
+            command="send_mail(to='boss@company.com')",
             reason="민감 작업 확인 필요",
             tool_name=tool_name,
             session_id=session_id,
