@@ -97,5 +97,14 @@ jobs:
       - name: Cargo fmt 체크
         run: cargo fmt --check
 
+      # Tauri build.rs는 externalBin(사이드카) 바이너리 존재를 검사한다.
+      # CI에서는 PyInstaller 빌드를 돌리지 않으므로 더미 파일로 통과시킨다.
+      # (clippy는 컴파일 안 함 → 실제 실행 안 되므로 stub로 충분)
+      - name: 사이드카 더미 바이너리 생성 (clippy 용)
+        run: |
+          mkdir -p binaries
+          touch binaries/office-claw-sidecar-x86_64-unknown-linux-gnu
+          chmod +x binaries/office-claw-sidecar-x86_64-unknown-linux-gnu
+
       - name: Clippy 린트
         run: cargo clippy --all-targets -- -D warnings
