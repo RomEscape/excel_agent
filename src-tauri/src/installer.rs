@@ -220,7 +220,7 @@ pub async fn install_ollama(
     #[cfg(not(target_os = "macos"))]
     {
         let _ = (app, state);
-        return Err("자동 설치는 macOS(Homebrew)에서만 지원됩니다. https://ollama.com/download 에서 직접 설치해 주세요.".to_string());
+        Err("자동 설치는 macOS(Homebrew)에서만 지원됩니다. https://ollama.com/download 에서 직접 설치해 주세요.".to_string())
     }
 
     #[cfg(target_os = "macos")]
