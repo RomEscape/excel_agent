@@ -902,3 +902,73 @@ export async function skillsCatalog() {
   return parseResponse(raw);
 }
 
+// ── OpenClaw CLI 서브프로세스 wrapper (2026-05-20) ──────────────────────────
+//
+// `openclaw gateway call <method>` / `openclaw agent`를 spawn해 결과 JSON을 반환.
+// WebSocket 직결 대신 OpenClaw 자체 CLI에 핸드셰이크/auth/세션을 위임 — 게이트웨이
+// 마이너 버전이 바뀌어도 우리 wrapper는 영향받지 않는다.
+//
+// 사용자 셋업 책임: Ollama 프로바이더 등록 (`openclaw configure` 또는
+// `OLLAMA_API_KEY=*`), device pairing 등은 별도. 이 wrapper는 그저 CLI를 부른다.
+
+/**
+ * 게이트웨이 메서드 호출 — health / system-presence / cron.* 등.
+ *
+ * @param {string} method
+ * @param {object|null} [params] — `--params` JSON
+ * @param {{ token?:string, password?:string, url?:string, timeoutMs?:number, expectFinal?:boolean }} [opts]
+ * @returns {Promise<any>} stdout JSON
+ */
+export async function openclawCliCall(method, params, opts) {
+  return invoke("openclaw_cli_call", {
+    method,
+    params: params ?? null,
+    opts: opts
+      ? {
+          token: opts.token ?? null,
+          password: opts.password ?? null,
+          url: opts.url ?? null,
+          timeout_ms: opts.timeoutMs ?? null,
+          expect_final: !!opts.expectFinal,
+        }
+      : null,
+  });
+}
+
+/**
+ * 에이전트 한 턴 실행 — 메신저 봇이 받은 메시지를 게이트웨이로 전달할 때 사용.
+ *
+ * @param {{
+ *   message: string,
+ *   agent?: string,
+ *   sessionId?: string,
+ *   to?: string,
+ *   channel?: string,
+ *   model?: string,
+ *   deliver?: boolean,
+ *   opts?: object,
+ * }} req
+ */
+export async function openclawCliAgent(req) {
+  return invoke("openclaw_cli_agent", {
+    req: {
+      message: req.message,
+      agent: req.agent ?? null,
+      session_id: req.sessionId ?? null,
+      to: req.to ?? null,
+      channel: req.channel ?? null,
+      model: req.model ?? null,
+      deliver: !!req.deliver,
+      opts: req.opts
+        ? {
+            token: req.opts.token ?? null,
+            password: req.opts.password ?? null,
+            url: req.opts.url ?? null,
+            timeout_ms: req.opts.timeoutMs ?? null,
+            expect_final: !!req.opts.expectFinal,
+          }
+        : { token: null, password: null, url: null, timeout_ms: null, expect_final: false },
+    },
+  });
+}
+

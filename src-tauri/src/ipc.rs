@@ -947,6 +947,34 @@ pub async fn ollama_status() -> Result<String, String> {
     Ok(info.to_string())
 }
 
+// ── OpenClaw CLI 서브프로세스 wrapper (2026-05-20) ───────────────────────────
+//
+// 게이트웨이에 WebSocket으로 직접 붙는 대신, `openclaw gateway call` / `openclaw agent`
+// 서브프로세스를 spawn해 결과 JSON을 받는다. 게이트웨이 프로토콜 변경 내성이 강하다.
+
+/// 게이트웨이 메서드 호출 — health, system-presence, cron.* 등.
+#[tauri::command]
+pub async fn openclaw_cli_call(
+    method: String,
+    params: Option<serde_json::Value>,
+    opts: Option<crate::openclaw_cli::CallOpts>,
+) -> Result<serde_json::Value, String> {
+    let opts = opts.unwrap_or_default();
+    crate::openclaw_cli::gateway_call(&method, params.as_ref(), &opts)
+        .await
+        .map_err(|e| e.into_string())
+}
+
+/// 에이전트 한 턴 실행 — 메신저 봇 메시지를 게이트웨이로 전달할 때 사용.
+#[tauri::command]
+pub async fn openclaw_cli_agent(
+    req: crate::openclaw_cli::AgentTurnRequest,
+) -> Result<serde_json::Value, String> {
+    crate::openclaw_cli::agent_turn(&req)
+        .await
+        .map_err(|e| e.into_string())
+}
+
 /// OpenClaw 세션을 통해 메시지를 전송한다.
 /// Python 보안 레이어를 경유: /agent/chat
 ///
