@@ -1,5 +1,7 @@
+mod audit;
 mod installer;
 mod ipc;
+mod keyring_svc;
 mod ollama;
 mod openclaw;
 mod sidecar;
@@ -85,6 +87,16 @@ pub fn run() {
             ipc::openclaw_ensure_running,
             ipc::openclaw_use_ollama,
             ipc::ollama_status,
+            // Phase 3 (2026-05): Rust keyring + audit — Python과 같은 저장소 공유
+            ipc::rust_credential_set,
+            ipc::rust_credential_get,
+            ipc::rust_credential_delete,
+            ipc::rust_credential_list,
+            ipc::rust_audit_log,
+            ipc::rust_audit_recent,
+            ipc::rust_audit_masking_stats,
+            ipc::rust_audit_blocked,
+            ipc::rust_audit_last_blocked_at,
             // Installer: macOS GUI PATH 우회 + 실시간 로그 스트리밍
             installer::install_openclaw,
             installer::install_ollama,

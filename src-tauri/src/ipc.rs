@@ -947,6 +947,75 @@ pub async fn ollama_status() -> Result<String, String> {
     Ok(info.to_string())
 }
 
+// ── Phase 3 (2026-05): Rust keyring + audit ─────────────────────────────────
+//
+// Python의 KeyringService/AuditService와 *동일한* 저장소(OS keychain +
+// JSONL 파일)를 공유한다. 기존 ipc::store_credential 등은 Python을 경유하지만
+// 아래 rust_* 명령은 Rust가 직접 OS에 붙는다 — Python 경로의 가용성과 독립.
+
+#[tauri::command]
+pub fn rust_credential_set(
+    app: tauri::AppHandle,
+    key: String,
+    value: String,
+) -> Result<(), String> {
+    crate::keyring_svc::store(&app, &key, &value)
+}
+
+#[tauri::command]
+pub fn rust_credential_get(
+    app: tauri::AppHandle,
+    key: String,
+) -> Result<Option<String>, String> {
+    crate::keyring_svc::retrieve(&app, &key)
+}
+
+#[tauri::command]
+pub fn rust_credential_delete(app: tauri::AppHandle, key: String) -> Result<(), String> {
+    crate::keyring_svc::delete(&app, &key)
+}
+
+#[tauri::command]
+pub fn rust_credential_list(app: tauri::AppHandle) -> Vec<String> {
+    crate::keyring_svc::list_keys(&app)
+}
+
+#[tauri::command]
+pub fn rust_audit_log(
+    app: tauri::AppHandle,
+    action: String,
+    target: String,
+    detail: Option<String>,
+) {
+    crate::audit::log(&app, &action, &target, detail.as_deref().unwrap_or(""));
+}
+
+#[tauri::command]
+pub fn rust_audit_recent(
+    app: tauri::AppHandle,
+    limit: Option<u32>,
+) -> Vec<crate::audit::AuditEntry> {
+    crate::audit::get_logs(&app, limit.unwrap_or(100) as usize)
+}
+
+#[tauri::command]
+pub fn rust_audit_masking_stats(app: tauri::AppHandle) -> crate::audit::MaskingStats {
+    crate::audit::masking_stats(&app)
+}
+
+#[tauri::command]
+pub fn rust_audit_blocked(
+    app: tauri::AppHandle,
+    limit: Option<u32>,
+) -> Vec<crate::audit::AuditEntry> {
+    crate::audit::get_blocked_log(&app, limit.unwrap_or(50) as usize)
+}
+
+#[tauri::command]
+pub fn rust_audit_last_blocked_at(app: tauri::AppHandle) -> Option<String> {
+    crate::audit::last_blocked_at(&app)
+}
+
 /// OpenClaw 세션을 통해 메시지를 전송한다.
 /// Python 보안 레이어를 경유: /agent/chat
 ///
