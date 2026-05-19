@@ -4,6 +4,7 @@ mod ipc;
 mod keyring_svc;
 mod ollama;
 mod openclaw;
+mod openclaw_cli;
 mod sidecar;
 mod tray;
 
@@ -97,6 +98,9 @@ pub fn run() {
             ipc::rust_audit_masking_stats,
             ipc::rust_audit_blocked,
             ipc::rust_audit_last_blocked_at,
+            // OpenClaw CLI 서브프로세스 wrapper (2026-05-20)
+            ipc::openclaw_cli_call,
+            ipc::openclaw_cli_agent,
             // Installer: macOS GUI PATH 우회 + 실시간 로그 스트리밍
             installer::install_openclaw,
             installer::install_ollama,
