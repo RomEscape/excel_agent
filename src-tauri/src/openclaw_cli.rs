@@ -44,12 +44,9 @@ impl std::fmt::Display for OpenClawCliError {
             OpenClawCliError::SpawnFailed(m) => {
                 write!(f, "openclaw CLI 실행 실패: {}", m)
             }
-            OpenClawCliError::NonZeroExit { code, stderr } => write!(
-                f,
-                "openclaw CLI 오류 (exit {:?}): {}",
-                code,
-                stderr.trim()
-            ),
+            OpenClawCliError::NonZeroExit { code, stderr } => {
+                write!(f, "openclaw CLI 오류 (exit {:?}): {}", code, stderr.trim())
+            }
             OpenClawCliError::InvalidJson { stdout, error } => write!(
                 f,
                 "openclaw stdout JSON 파싱 실패: {} (raw: {:.300})",
@@ -192,13 +189,10 @@ async fn run_and_parse(mut cmd: Command, timeout_ms: u64) -> Result<Value, OpenC
         .spawn()
         .map_err(|e| OpenClawCliError::SpawnFailed(e.to_string()))?;
 
-    let output = tokio::time::timeout(
-        Duration::from_millis(timeout_ms),
-        child.wait_with_output(),
-    )
-    .await
-    .map_err(|_| OpenClawCliError::Timeout(timeout_ms))?
-    .map_err(|e| OpenClawCliError::SpawnFailed(format!("wait_with_output: {}", e)))?;
+    let output = tokio::time::timeout(Duration::from_millis(timeout_ms), child.wait_with_output())
+        .await
+        .map_err(|_| OpenClawCliError::Timeout(timeout_ms))?
+        .map_err(|e| OpenClawCliError::SpawnFailed(format!("wait_with_output: {}", e)))?;
 
     if !output.status.success() {
         return Err(OpenClawCliError::NonZeroExit {
@@ -288,7 +282,13 @@ mod tests {
 
     #[test]
     fn method_validator_rejects_shell_metachars() {
-        for bad in ["health; rm -rf /", "health|nc", "h`whoami`", "h$(id)", "h\n"] {
+        for bad in [
+            "health; rm -rf /",
+            "health|nc",
+            "h`whoami`",
+            "h$(id)",
+            "h\n",
+        ] {
             assert!(validate_method(bad).is_err(), "통과됨: {:?}", bad);
         }
     }
