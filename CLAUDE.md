@@ -49,6 +49,57 @@
   주의: `invoke()` 호출은 모두 실패한다 (Tauri runtime 없음 → "cannot read properties of undefined").
 - Rust 변경 후에는 `tauri:dev`를 재시작해야 새 IPC 명령이 등록된다.
 
+## 커밋/푸시 전 체크 (CI 미러)
+
+`.github/workflows/pr-check.yml`에 정의된 3개 잡(`rust-check`, `python-check`, `frontend-check`)을 그대로 미러링한다. **커밋 전 영역별로 해당 명령을 직접 돌려 통과 확인.** 빠뜨리고 푸시하면 GitHub Actions에서 떨어진다.
+
+### Rust (`src-tauri/`)
+
+```bash
+cd src-tauri
+cargo fmt --check                          # 또는 자동 적용: cargo fmt
+cargo clippy --all-targets -- -D warnings  # -D warnings = 경고를 에러로 승격
+```
+
+- `cargo fmt --check` 가 가장 자주 떨어지는 항목 — fmt 기본 스타일과 다른 코드를 그대로 푸시하면 즉시 실패.
+- `cargo clippy --no-deps` 만 돌리면 안 됨 — CI는 `--all-targets -- -D warnings`라서 테스트 코드의 경고까지 잡힘.
+- (참고) CI는 `binaries/office-claw-sidecar-*` 더미 파일을 만들고 clippy를 돌린다. 로컬은 PyInstaller 산출물이 있으면 그걸 쓰고, 없으면 동일하게 더미를 만들거나 `cargo check`로 컴파일 가능 여부만 봐도 됨.
+
+### Python (`python-sidecar/`)
+
+```bash
+cd python-sidecar
+uvx ruff check .                           # lint
+uv run pytest -q                           # unit tests
+```
+
+- `uv`가 없으면: `brew install uv` (또는 `astral.sh/setup-uv`의 설치 스크립트).
+- 의존성 변경 시 `uv sync --frozen --extra dev` 한 번 더 (CI는 lockfile 고정).
+- macOS 로컬은 OS Keychain 백엔드가 있어 keyring 호출이 실제 동작 — CI는 `PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring` 환경변수로 no-op 처리한다는 점이 다름. 테스트가 OS Keychain에 부수효과를 남기지 않는지 확인할 것.
+
+### Frontend (repo root)
+
+```bash
+npm ci                                     # CI와 동일하게 lockfile 고정 설치
+npm run lint --if-present                  # lint 스크립트 존재 시
+npm run test:unit --if-present             # 현재: node --test src/lib/*.test.js
+```
+
+- 빠른 확인이면 `npm run build`만 돌려도 import 경로 깨짐은 잡힘.
+
+### 한 번에 다 — 추천 alias
+
+`.zshrc` / `.bashrc`에:
+
+```bash
+alias oc-precheck='cd /Users/skim/Desktop/project/office_claw && \
+  (cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings) && \
+  (cd python-sidecar && uvx ruff check . && uv run pytest -q) && \
+  npm run test:unit --if-present'
+```
+
+PR 만들기 직전 `oc-precheck` 한 번 — 셋 다 통과하면 CI도 통과.
+
 ## 한국어
 
 - 코드 주석·UI 문자열·커밋 메시지: 한국어
