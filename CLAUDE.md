@@ -34,13 +34,17 @@
 
 ### 좋은 예시 (이 프로젝트의 기존 패턴)
 
-| 도메인 | Store | Manager/Lib | UI primitive |
-|---|---|---|---|
-| 시스템 상태 | `store/statusStore.js` | `lib/statusManager.js`, `lib/statusTokens.js` | `components/ui/status.jsx` |
-| 로컬 AI 설정 단계 | — | `lib/localAISetup.js` (buildPlan/isAllReady) | `components/guide/LocalAISetupWizard.jsx` (조합만) |
-| Tauri IPC | — | `lib/api.js` (모든 invoke wrapper 1곳) | — |
+| 도메인 | Store | Manager/Lib | Rust 모듈 | UI primitive |
+|---|---|---|---|---|
+| 시스템 상태 | `store/statusStore.js` | `lib/statusManager.js`, `lib/statusTokens.js` | — | `components/ui/status.jsx` |
+| 로컬 AI 설정 단계 | — | `lib/localAISetup.js` (buildPlan/isAllReady) | — | `components/guide/LocalAISetupWizard.jsx` (조합만) |
+| Tauri IPC | — | `lib/api.js` (모든 invoke wrapper 1곳) | `src-tauri/src/ipc.rs` | — |
+| OS 자격증명 | — | api.js의 `rustCredential*` | `src-tauri/src/keyring_svc.rs` | — |
+| 감사 로그 | — | api.js의 `rustAudit*` | `src-tauri/src/audit.rs` | — |
 
 새 기능을 추가할 때 이 표에 한 줄이 더 늘어나야 한다.
+
+> **2026-05 Rust 보안 계층 노트**: Keyring · Audit 두 도메인은 Python sidecar의 동명 서비스와 *같은* OS Keychain·파일(`audit.jsonl`, `credentials_registry.json`)을 공유한다. 신규 코드는 Rust 경로(`rustCredential*`, `rustAudit*`)를 우선 사용하되, Python 측은 자체 라우터 안에서 자기 서비스를 계속 쓴다. OpenClaw 통합(메신저 봇 → 게이트웨이)은 별도 트랙에서 진행 중 — `docs/RUST_MIGRATION_PLAN.md` 참조.
 
 ## 빌드/실행
 

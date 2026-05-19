@@ -902,6 +902,50 @@ export async function skillsCatalog() {
   return parseResponse(raw);
 }
 
+// ── Phase 3 (2026-05): Rust keyring + audit (Python sidecar 우회 경로) ──────
+//
+// Python의 KeyringService/AuditService와 동일한 OS keychain + audit.jsonl
+// 파일을 공유한다. 기존 storeCredential/getAuditLogs는 Python을 경유하지만
+// 아래는 Rust가 OS에 직결 — Python 경로 가용성과 독립.
+
+export async function rustCredentialSet(key, value) {
+  return invoke("rust_credential_set", { key, value });
+}
+
+/** @returns {Promise<string|null>} */
+export async function rustCredentialGet(key) {
+  return invoke("rust_credential_get", { key });
+}
+
+export async function rustCredentialDelete(key) {
+  return invoke("rust_credential_delete", { key });
+}
+
+/** @returns {Promise<string[]>} */
+export async function rustCredentialList() {
+  return invoke("rust_credential_list");
+}
+
+export async function rustAuditLog(action, target, detail) {
+  return invoke("rust_audit_log", { action, target, detail: detail ?? null });
+}
+
+export async function rustAuditRecent(limit) {
+  return invoke("rust_audit_recent", { limit: limit ?? null });
+}
+
+export async function rustAuditMaskingStats() {
+  return invoke("rust_audit_masking_stats");
+}
+
+export async function rustAuditBlocked(limit) {
+  return invoke("rust_audit_blocked", { limit: limit ?? null });
+}
+
+export async function rustAuditLastBlockedAt() {
+  return invoke("rust_audit_last_blocked_at");
+}
+
 // ── OpenClaw CLI 서브프로세스 wrapper (2026-05-20) ──────────────────────────
 //
 // `openclaw gateway call <method>` / `openclaw agent`를 spawn해 결과 JSON을 반환.
