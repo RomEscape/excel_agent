@@ -963,10 +963,7 @@ pub fn rust_credential_set(
 }
 
 #[tauri::command]
-pub fn rust_credential_get(
-    app: tauri::AppHandle,
-    key: String,
-) -> Result<Option<String>, String> {
+pub fn rust_credential_get(app: tauri::AppHandle, key: String) -> Result<Option<String>, String> {
     crate::keyring_svc::retrieve(&app, &key)
 }
 
