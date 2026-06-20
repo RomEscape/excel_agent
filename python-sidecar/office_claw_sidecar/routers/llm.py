@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, HTTPException
 
+from office_claw_sidecar.local_stack import get_default_llm_config
 from office_claw_sidecar.models.llm import ChatRequest, ChatResponse
 from office_claw_sidecar.services.ollama_service import OllamaService
 from office_claw_sidecar.services.claude_service import ClaudeService
@@ -20,7 +21,7 @@ async def chat(request: ChatRequest):
         else:
             response = await ollama_svc.chat(
                 request.message,
-                request.model or "llama3.2",
+                request.model or get_default_llm_config()["model"],
             )
         return ChatResponse(response=response)
     except Exception as e:

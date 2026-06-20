@@ -17,6 +17,7 @@ import logging
 from abc import ABC, abstractmethod
 
 from office_claw_sidecar.config import get_data_dir
+from office_claw_sidecar.local_stack import get_default_llm_config
 from office_claw_sidecar.services.ollama_service import OllamaService
 from office_claw_sidecar.services.claude_service import ClaudeService
 
@@ -25,10 +26,7 @@ logger = logging.getLogger(__name__)
 # Config file lives next to audit.jsonl in the app data directory
 _CONFIG_FILENAME = "llm_config.json"
 
-_DEFAULT_CONFIG: dict = {
-    "provider": "ollama",
-    "model": "llama3.2",
-}
+_DEFAULT_CONFIG: dict = get_default_llm_config()
 
 
 # ── Config helpers ────────────────────────────────────────────────────────
@@ -99,7 +97,8 @@ class OllamaProvider(LLMProvider):
 
     async def chat(self, messages: list[dict], model: str | None = None) -> str:
         # 전체 대화 히스토리를 그대로 Ollama에 전달 (멀티턴 지원)
-        return await self._svc.chat_messages(messages, model=model or "llama3.2")
+        default_model = get_default_llm_config()["model"]
+        return await self._svc.chat_messages(messages, model=model or default_model)
 
 
 class ClaudeProvider(LLMProvider):

@@ -1,0 +1,29 @@
+# Team 503 AI (officeclaw) — Python sidecar 의존성 단일 진입점 (루트 통합)
+# 2026-06-20 업데이트: Excel Live 경계선/범위참조 + 경계선 가시성 + 파싱 실패 폴백 제거 반영 (런타임 deps 변경 없음)
+#
+# conda/venv에서 설치:
+#   pip install -r requirements.txt
+#
+# 권장(동기화): cd python-sidecar && uv sync --frozen
+# 이 파일과 python-sidecar/pyproject.toml의 런타임 deps는 동일하게 유지한다.
+
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+keyring>=25.3.0
+httpx>=0.27.0
+pydantic>=2.9.0
+google-auth>=2.29.0
+google-auth-oauthlib>=1.2.0
+google-api-python-client>=2.130.0
+python-telegram-bot>=21.0
+python-multipart>=0.0.6
+openpyxl>=3.1.0
+pandas>=2.2.0
+xlsxwriter>=3.2.0
+python-docx>=1.1.0
+reportlab>=4.2.0
+slack-bolt>=1.18.0
+discord.py>=2.3.0
+websockets>=12.0
+xlwings>=0.33.0
+pywin32>=306; platform_system == "Windows"

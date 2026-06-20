@@ -1,18 +1,7 @@
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
-python-multipart>=0.0.6
-google-api-python-client>=2.100.0
-google-auth>=2.26.0
-google-auth-oauthlib>=1.1.0
-python-telegram-bot>=20.0
-keyring==25.3.0
-httpx==0.27.2
-pydantic==2.9.2
-pyinstaller==6.10.0
-openpyxl==3.1.5
-pandas==2.2.3
-xlsxwriter==3.2.0
-python-docx==1.1.2
-reportlab==4.2.5
-# Phase 4: OpenClaw WebSocket 클라이언트
-websockets>=12.0
+# Python sidecar pip 설치는 루트 requirements를 단일 소스로 사용.
+# 2026-06-20 업데이트: Excel Live 경계선/범위참조 + 경계선 가시성 + 파싱 실패 폴백 제거 반영 (의존성 추가 없음)
+# 프로젝트 루트에서:
+#   pip install -r requirements.txt
+#
+# sidecar 폴더에서 직접 실행할 때도 동일 의존성을 참조하도록 유지.
+-r ../requirements.txt

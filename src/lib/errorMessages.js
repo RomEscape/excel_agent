@@ -134,6 +134,11 @@ const ERROR_MAPPINGS = [
 
   // OpenClaw gateway
   {
+    pattern: /gateway token mismatch|token mismatch|provide gateway auth token/i,
+    message:
+      "OpenClaw 인증 토큰이 일치하지 않습니다. LocalAISetupWizard에서 OpenClaw 재시작을 다시 실행해 주세요.",
+  },
+  {
     pattern: /openclaw|gateway.*18789|18789.*gateway/i,
     message: "OpenClaw 게이트웨이에 연결할 수 없습니다. OpenClaw가 설치되고 실행 중인지 확인해 주세요.",
   },
@@ -191,6 +196,17 @@ const ERROR_MAPPINGS = [
   },
 
   // Excel / file parsing
+  {
+    // Excel COM 인스턴스 미실행/연결 실패 (깨진 문자열 포함)
+    pattern:
+      /excel.*(인스턴스|instance)|실행 중인 Excel 인스턴스|활성화된 Excel 인스턴스|Excel Live 오류/i,
+    message: "실행 중인 Excel을 찾지 못했습니다. Excel 파일을 먼저 열고 다시 시도해 주세요.",
+  },
+  {
+    // write_range 파라미터 누락/형식 오류
+    pattern: /values_2d|write_range.*2차원|2차원.*배열/i,
+    message: "엑셀 입력 형식이 올바르지 않습니다. 셀 범위와 값을 다시 확인해 주세요.",
+  },
   {
     pattern: /지원하지 않는 파일 형식|unsupported.*format|not.*xlsx|not.*csv/i,
     message: "지원하지 않는 파일 형식입니다. xlsx 또는 csv 파일을 사용해 주세요.",

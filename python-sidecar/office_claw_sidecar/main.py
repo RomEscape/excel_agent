@@ -16,6 +16,7 @@ from office_claw_sidecar.routers import (
     chat,
     credentials,
     discord,
+    excel_live,
     health,
     legacy,
     llm,
@@ -176,6 +177,7 @@ app.include_router(permissions.router, prefix="/permissions", dependencies=[Depe
 # ── Sprint 5: 채팅 세션 영속화 + 백업/복원 ─────────────────────────────────────
 app.include_router(chat.router, prefix="/chat", dependencies=[Depends(verify_auth)])
 app.include_router(backup.router, prefix="/backup", dependencies=[Depends(verify_auth)])
+app.include_router(excel_live.router, prefix="/excel-live", dependencies=[Depends(verify_auth)])
 
 # ── Legacy 라우터 (410 Gone — Graceful Deprecation) ──────────────────────────
 # gmail / excel / document 직접 API는 Private-Claw 피봇(v3.0) 이후 deprecated.
@@ -186,6 +188,20 @@ app.include_router(legacy.router, prefix="/document", dependencies=[Depends(veri
 
 
 def main() -> None:
+    # Windows 콘솔에서 한글 경로/로그 깨짐 방지
+    import os
+    import sys
+
+    os.environ.setdefault("PYTHONUTF8", "1")
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        if stream and hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
     parser = argparse.ArgumentParser(description="Office Claw Sidecar")
     parser.add_argument("--port", type=int, default=19532)
     parser.add_argument("--auth-token", type=str, default=None)
@@ -194,6 +210,10 @@ def main() -> None:
 
     global _auth_token
     _auth_token = args.auth_token
+    # dev 모드(tauri에서 auth-token=dev-token)에서는 gateway 토큰도 dev-token으로 고정해
+    # OpenClaw gateway 인증 토큰 mismatch를 방지한다.
+    if args.auth_token == "dev-token" and not os.environ.get("OPENCLAW_GATEWAY_TOKEN"):
+        os.environ["OPENCLAW_GATEWAY_TOKEN"] = "dev-token"
 
     uvicorn.run(
         "office_claw_sidecar.main:app",

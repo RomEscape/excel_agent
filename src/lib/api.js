@@ -301,6 +301,60 @@ export async function excelExport(fileId, reportMarkdown) {
   return parseResponse(raw);
 }
 
+// ── Excel Live(COM) ────────────────────────────────────────────────────────
+
+/**
+ * Excel Live 연결 상태와 열린 워크북 목록을 조회한다.
+ */
+export async function excelLiveStatus() {
+  const raw = await call("excel_live_status");
+  return parseResponse(raw);
+}
+
+/**
+ * 자연어 엑셀 명령을 실행한다.
+ *
+ * @param {string} message
+ * @param {string | null} workbookId
+ * @param {string | null} sheetName
+ * @param {boolean} approve
+ */
+export async function excelLiveCommand(message, workbookId = null, sheetName = null, approve = false) {
+  const raw = await call("excel_live_command", {
+    message,
+    workbookId,
+    sheetName,
+    approve,
+  });
+  return parseResponse(raw);
+}
+
+/**
+ * Excel Live 승인 요청에 대해 승인/거부를 전달한다.
+ *
+ * @param {string} approvalId
+ * @param {boolean} approved
+ * @param {string | null} reason
+ */
+export async function excelLiveSubmitApproval(approvalId, approved, reason = null) {
+  const raw = await call("excel_live_submit_approval", {
+    approvalId,
+    approved,
+    rejectionReason: reason,
+  });
+  return parseResponse(raw);
+}
+
+/**
+ * 현재 Excel Live 대상 통합문서를 즉시 저장한다.
+ *
+ * @param {string | null} workbookId
+ */
+export async function excelLiveSaveWorkbook(workbookId = null) {
+  const raw = await call("excel_live_save_workbook", { workbookId });
+  return parseResponse(raw);
+}
+
 // ── Document AI ───────────────────────────────────────────────────────────
 
 /**
@@ -539,6 +593,21 @@ export async function workspaceWriteFile(path, content) {
 }
 
 /**
+ * 워크스페이스에 새 엑셀(.xlsx) 파일을 생성한다.
+ *
+ * @param {string} path - 파일 경로 (확장자 .xlsx는 생략 가능)
+ * @param {string} [sheetName] - 첫 시트명 (기본: Sheet1)
+ * @returns {Promise<{ ok: boolean, path: string, sheet_name: string }>}
+ */
+export async function workspaceCreateExcelFile(path, sheetName = "Sheet1") {
+  const raw = await call("workspace_create_excel_file", {
+    path,
+    sheet_name: sheetName,
+  });
+  return parseResponse(raw);
+}
+
+/**
  * 워크스페이스에 바이너리 파일을 base64로 인코딩하여 쓴다.
  * sidecar에 `workspace_write_file_binary`가 없으면 throw — 호출자가 fallback 처리.
  *
@@ -561,6 +630,17 @@ export async function workspaceWriteFileBinary(path, contentBase64) {
  */
 export async function openWorkspaceFolder() {
   const raw = await call("open_workspace_folder");
+  return parseResponse(raw);
+}
+
+/**
+ * 워크스페이스 내 파일을 OS 기본 앱으로 연다.
+ *
+ * @param {string} path - 워크스페이스 기준 상대 경로
+ * @returns {Promise<{ ok: boolean, path: string, absolute_path: string }>}
+ */
+export async function openWorkspaceFile(path) {
+  const raw = await call("open_workspace_file", { path });
   return parseResponse(raw);
 }
 
@@ -770,7 +850,7 @@ export async function openclawEnsureRunning() {
  * OpenClaw config를 Ollama 프로바이더로 비인터랙티브 설정한다.
  * `models.providers.ollama.baseUrl` + `agents.defaults.model = ollama/<model>`을 set.
  *
- * @param {string} model — 예: "llama3.2", "qwen2.5:7b" (provider prefix 없이)
+ * @param {string} model — 예: "qwen3:4b", "qwen3:8b" (provider prefix 없이)
  * @returns {Promise<{ ok: boolean, applied: Array, model: string }>}
  */
 export async function openclawUseOllama(model) {

@@ -726,6 +726,133 @@ pub async fn excel_export(
     download_file_response(resp, "AI_report.xlsx").await
 }
 
+// ── Excel Live(COM) commands ────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn excel_live_status(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
+    let (url, client, token) = {
+        let s = state.lock().map_err(|e| e.to_string())?;
+        (
+            sidecar_url(&s, "/excel-live/status"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
+    };
+
+    let resp = client
+        .get(&url)
+        .bearer_auth(&token)
+        .send()
+        .await
+        .map_err(|e| format!("Excel Live 상태 조회 실패: {}", e))?;
+
+    read_response(resp).await
+}
+
+#[tauri::command]
+pub async fn excel_live_command(
+    state: State<'_, Mutex<SidecarState>>,
+    message: String,
+    workbook_id: Option<String>,
+    sheet_name: Option<String>,
+    approve: Option<bool>,
+) -> Result<String, String> {
+    let (url, client, token) = {
+        let s = state.lock().map_err(|e| e.to_string())?;
+        (
+            sidecar_url(&s, "/excel-live/command"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
+    };
+
+    let body = serde_json::json!({
+        "message": message,
+        "workbook_id": workbook_id,
+        "sheet_name": sheet_name,
+        "approve": approve.unwrap_or(false),
+    });
+
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(180))
+        .send()
+        .await
+        .map_err(|e| format!("Excel Live 명령 실행 실패: {}", e))?;
+
+    read_response(resp).await
+}
+
+#[tauri::command]
+pub async fn excel_live_submit_approval(
+    state: State<'_, Mutex<SidecarState>>,
+    approval_id: String,
+    approved: bool,
+    rejection_reason: Option<String>,
+) -> Result<String, String> {
+    let (url, client, token) = {
+        let s = state.lock().map_err(|e| e.to_string())?;
+        (
+            sidecar_url(&s, "/excel-live/approval"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
+    };
+
+    let body = serde_json::json!({
+        "approval_id": approval_id,
+        "approved": approved,
+        "rejection_reason": rejection_reason,
+    });
+
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(120))
+        .send()
+        .await
+        .map_err(|e| format!("Excel Live 승인 응답 실패: {}", e))?;
+
+    read_response(resp).await
+}
+
+#[tauri::command]
+pub async fn excel_live_save_workbook(
+    state: State<'_, Mutex<SidecarState>>,
+    workbook_id: Option<String>,
+) -> Result<String, String> {
+    let (url, client, token) = {
+        let s = state.lock().map_err(|e| e.to_string())?;
+        (
+            sidecar_url(&s, "/excel-live/action"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
+    };
+
+    let body = serde_json::json!({
+        "action": "excel_live.save_workbook",
+        "params": {},
+        "workbook_id": workbook_id,
+        "sheet_name": serde_json::Value::Null,
+        "approve": true,
+    });
+
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(30))
+        .send()
+        .await
+        .map_err(|e| format!("Excel 저장 요청 실패: {}", e))?;
+
+    read_response(resp).await
+}
+
 // ── Document AI commands ────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -1864,6 +1991,68 @@ pub async fn open_workspace_folder(_app: tauri::AppHandle) -> Result<String, Str
     Ok(path_str)
 }
 
+/// 워크스페이스 내 파일을 OS 기본 연결 앱으로 연다.
+///
+/// 보안:
+///   - 절대 경로 차단 (상대 경로만 허용)
+///   - `..` 포함 경로 차단 (워크스페이스 탈출 방지)
+#[tauri::command]
+pub async fn open_workspace_file(path: String) -> Result<String, String> {
+    // 1) 입력 경로 검증
+    if path.starts_with('/') || path.starts_with('\\') {
+        return Err("절대 경로는 허용되지 않습니다. 상대 경로를 사용하세요.".to_string());
+    }
+    let candidate = std::path::Path::new(&path);
+    for component in candidate.components() {
+        if component == std::path::Component::ParentDir {
+            return Err("경로에 '..'가 포함될 수 없습니다.".to_string());
+        }
+    }
+
+    // 2) 워크스페이스 루트 확인/생성
+    let home = dirs_home().ok_or_else(|| "홈 디렉토리를 찾을 수 없습니다".to_string())?;
+    let workspace_root = home.join("PrivateClaw").join("Workspace");
+    if !workspace_root.exists() {
+        std::fs::create_dir_all(&workspace_root)
+            .map_err(|e| format!("워크스페이스 폴더 생성 실패: {}", e))?;
+    }
+
+    // 3) 대상 파일 경로 계산 + 경계 확인
+    let target = workspace_root.join(&path);
+    if !target.starts_with(&workspace_root) {
+        return Err("워크스페이스 경계를 벗어나는 경로입니다.".to_string());
+    }
+    if !target.exists() {
+        return Err(format!("파일을 찾을 수 없습니다: {}", path));
+    }
+    if target.is_dir() {
+        return Err("디렉토리는 open_workspace_folder로 열어주세요.".to_string());
+    }
+
+    let target_str = target.to_string_lossy().to_string();
+
+    // 4) OS 기본 앱으로 열기
+    #[cfg(target_os = "macos")]
+    let result = std::process::Command::new("open").arg(&target_str).status();
+    #[cfg(target_os = "windows")]
+    let result = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-Command", "Start-Process", "-FilePath", &target_str])
+        .status();
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let result = std::process::Command::new("xdg-open")
+        .arg(&target_str)
+        .status();
+
+    result.map_err(|e| format!("파일 열기 실패: {}", e))?;
+
+    let response = serde_json::json!({
+        "ok": true,
+        "path": path,
+        "absolute_path": target_str,
+    });
+    Ok(response.to_string())
+}
+
 /// 워크스페이스 파일 목록을 반환한다.
 #[tauri::command]
 pub async fn workspace_list_files(
@@ -1950,6 +2139,39 @@ pub async fn workspace_write_file(
         .send()
         .await
         .map_err(|e| format!("파일 쓰기 실패: {}", e))?;
+
+    read_response(resp).await
+}
+
+/// 워크스페이스에 새 엑셀(.xlsx) 파일을 생성한다.
+#[tauri::command]
+pub async fn workspace_create_excel_file(
+    state: State<'_, Mutex<SidecarState>>,
+    path: String,
+    sheet_name: Option<String>,
+) -> Result<String, String> {
+    let (url, client, token) = {
+        let s = state.lock().map_err(|e| e.to_string())?;
+        (
+            sidecar_url(&s, "/workspace/excel-file"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
+    };
+
+    let body = serde_json::json!({
+        "path": path,
+        "sheet_name": sheet_name,
+    });
+
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(|e| format!("엑셀 파일 생성 실패: {}", e))?;
 
     read_response(resp).await
 }

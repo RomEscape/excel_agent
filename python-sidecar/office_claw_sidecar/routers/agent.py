@@ -199,6 +199,15 @@ async def agent_chat(req: ChatRequest) -> ChatResponse:
 
     except OpenClawUnavailableError as exc:
         logger.warning("[agent] OpenClaw 게이트웨이 사용 불가: %s", exc)
+        exc_text = str(exc).lower()
+        if "gateway token mismatch" in exc_text or "token mismatch" in exc_text:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "OpenClaw 게이트웨이 인증 토큰이 sidecar와 일치하지 않습니다. "
+                    "앱을 완전히 재시작한 뒤 LocalAISetupWizard에서 OpenClaw 재시작을 한 번 더 실행해 주세요."
+                ),
+            )
         raise HTTPException(
             status_code=503,
             detail=(

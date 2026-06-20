@@ -21,6 +21,7 @@ import {
   Eye,
   X,
   FolderOpen,
+  FileSpreadsheet,
   Bot,
   AlertCircle,
   Zap,
@@ -32,20 +33,28 @@ import {
   MessageCircle,
   History,
   Trash2,
+  Save,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import EmptyState from "@/components/ui/empty-state";
 import AlertDialog from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { toUserMessage } from "@/lib/errorMessages";
+import { splitExcelCompositeCommand } from "@/lib/excelCommandUtils";
 import useAppStore from "@/store/appStore";
 import {
   workspaceListFiles,
   workspaceReadFile,
   workspaceWriteFile,
+  workspaceCreateExcelFile,
   workspaceWriteFileBinary,
   openWorkspaceFolder,
+  openWorkspaceFile,
   agentChat,
+  excelLiveCommand,
+  excelLiveSubmitApproval,
+  excelLiveSaveWorkbook,
   telegramStatus,
   chatSaveMessage,
   chatListSessions,
@@ -60,8 +69,18 @@ const TEXT_EXT = new Set([
   "yaml", "yml", "toml", "sh", "html", "css", "log", "xml",
 ]);
 
+// 파서/테스트로 검증된 Excel Live 예시만 노출한다.
+const VERIFIED_EXCEL_EXAMPLES = Object.freeze([
+  "A1:C3 범위 읽어줘",
+  "B2:D2에 이름,수량,금액 입력",
+  "A열 20보다 큰 값 빨간색으로 칠해줘",
+  "C1에 A1:A10 합계 수식 넣어줘",
+]);
+
 const ACCEPT_ATTR =
   ".txt,.md,.csv,.json,.py,.js,.ts,.jsx,.tsx,.yaml,.yml,.toml,.sh,.html,.css,.log,.xml,.xlsx,.pdf,.docx,.pptx,.png,.jpg,.jpeg";
+
+const EXCEL_EXT = new Set(["xlsx", "xls", "xlsm", "xlsb"]);
 
 // ArrayBuffer → base64 (chunked, 큰 파일에서 stack overflow 방지)
 function arrayBufferToBase64(buffer) {
@@ -79,6 +98,90 @@ function getExt(name) {
   const dot = name.lastIndexOf(".");
   if (dot < 0) return "";
   return name.slice(dot + 1).toLowerCase();
+}
+
+// Microsoft Office(Excel/Word/PowerPoint)가 파일 열림 상태에서 생성하는 잠금 임시 파일.
+// 예: ~$text_1.xlsx
+function isOfficeLockTempFile(name) {
+  return typeof name === "string" && name.startsWith("~$");
+}
+
+function shouldRouteToExcelLive(message) {
+  const text = message.trim();
+  const lower = text.toLowerCase();
+  if (!text) return false;
+  if (/\[\[excel_range:[a-z0-9:]+\]\]/i.test(text)) return true;
+
+  const keywordHit = [
+    "엑셀", "excel", "워크북", "workbook", "시트", "sheet",
+    "셀", "cell", "수식", "formula", "조건부", "강조", "경계선", "테두리", "border",
+  ].some((kw) => lower.includes(kw));
+  if (keywordHit) return true;
+
+  const rangePattern = /\b[A-Z]{1,3}\d{1,7}(?::[A-Z]{1,3}\d{1,7})?\b/i;
+  const columnPattern = /[a-zA-Z]\s*열/;
+  return rangePattern.test(text) || columnPattern.test(text);
+}
+
+function extractExcelRangeTag(text) {
+  const m = String(text || "").match(/\[\[EXCEL_RANGE:([A-Z0-9:]+)\]\]/i);
+  return m ? m[1].toUpperCase() : null;
+}
+
+function stripExcelContextBlock(text) {
+  return String(text || "")
+    .replace(/\[\[EXCEL_RANGE:[A-Z0-9:]+\]\]/gi, "")
+    .replace(/\[\[EXCEL_VALUES_TSV\]\][\s\S]*?\[\[\/EXCEL_VALUES_TSV\]\]/gi, "")
+    .trim();
+}
+
+function hasExplicitRangeInCommand(cmd) {
+  return /\b([A-Z]{1,3}\d{1,7}:[A-Z]{1,3}\d{1,7}|[A-Z]{1,3}:[A-Z]{1,3}|[A-Z]{1,3}\d{1,7})\b/i.test(cmd);
+}
+
+function applyRangeContextToCommand(cmd, rangeRef) {
+  const text = String(cmd || "").trim();
+  if (!rangeRef || !text || hasExplicitRangeInCommand(text)) return text;
+  if (!/(이\s*범위|해당\s*범위|복사한\s*범위|선택한\s*범위|여기)/i.test(text)) return text;
+  return `${rangeRef} ${text}`;
+}
+
+function stringifyTsv(values, maxRows = 12, maxCols = 8) {
+  if (!Array.isArray(values) || values.length === 0) return "";
+  const sliced = values.slice(0, maxRows).map((row) => (
+    Array.isArray(row) ? row.slice(0, maxCols) : [row]
+  ));
+  return sliced
+    .map((row) => row.map((cell) => (cell == null ? "" : String(cell))).join("\t"))
+    .join("\n");
+}
+
+function formatExcelLiveResult(action, result = {}) {
+  if (!result || typeof result !== "object") return "엑셀 작업이 완료되었습니다.";
+  if (action === "excel_live.list_workbooks") {
+    const rows = Array.isArray(result.workbooks) ? result.workbooks : [];
+    if (rows.length === 0) return "열려 있는 엑셀 통합문서가 없습니다.";
+    return `열린 통합문서 ${rows.length}개: ${rows.map((r) => r.name || r.workbook_id).join(", ")}`;
+  }
+  if (action === "excel_live.read_range") {
+    return `${result.address || ""} 범위를 읽었습니다 (${result.row_count || 0}행 × ${result.col_count || 0}열).`;
+  }
+  if (action === "excel_live.write_range") {
+    return `${result.address || ""} 범위에 ${result.written_cells || 0}개 셀을 기록했습니다.`;
+  }
+  if (action === "excel_live.highlight_by_condition") {
+    return `${result.address || ""} 범위에서 ${result.changed_cells || 0}개 셀을 강조했습니다.`;
+  }
+  if (action === "excel_live.apply_border") {
+    return `${result.address || ""} 범위에 경계선을 적용했습니다 (${result.changed_cells || 0}개 셀).`;
+  }
+  if (action === "excel_live.set_formula") {
+    return `${result.address || ""} 범위에 수식을 적용했습니다 (${result.formula_applied_cells || 0}개 셀).`;
+  }
+  if (action === "excel_live.save_workbook") {
+    return `엑셀 파일을 저장했습니다 (${result.name || result.full_path || "현재 통합문서"}).`;
+  }
+  return "엑셀 작업이 완료되었습니다.";
 }
 
 // ── localStorage 키 ──────────────────────────────────────────────────────────
@@ -145,11 +248,18 @@ function FilePreview({ file, onClose }) {
   const [content, setContent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const ext = getExt(file.name);
+  const isTextPreviewable = TEXT_EXT.has(ext);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError("");
+    if (!isTextPreviewable) {
+      setContent(null);
+      setLoading(false);
+      return () => { cancelled = true; };
+    }
     workspaceReadFile(file.path)
       .then((data) => {
         if (!cancelled) {
@@ -159,12 +269,12 @@ function FilePreview({ file, onClose }) {
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(String(err));
+          setError(toUserMessage(err, "파일 미리보기를 불러오지 못했습니다."));
           setLoading(false);
         }
       });
     return () => { cancelled = true; };
-  }, [file.path]);
+  }, [file.path, isTextPreviewable]);
 
   return (
     <Card className="flex flex-col h-full">
@@ -184,6 +294,15 @@ function FilePreview({ file, onClose }) {
         {error && (
           <p className="text-sm text-destructive">{error}</p>
         )}
+        {!isTextPreviewable && !loading && !error && (
+          <div className="rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+            <p className="font-medium text-foreground">미리보기 미지원 형식</p>
+            <p className="mt-1">
+              `{file.name}` 파일은 바이너리 형식이라 앱 내 텍스트 미리보기를 지원하지 않습니다.
+              엑셀/전용 앱에서 열어 편집해 주세요.
+            </p>
+          </div>
+        )}
         {content !== null && !loading && (
           <pre className="text-xs font-mono whitespace-pre-wrap break-all leading-relaxed">
             {content || "(빈 파일)"}
@@ -200,7 +319,7 @@ function FilePreview({ file, onClose }) {
 // 템플릿: "이 파일 요약해줘 - {name}" → 클립보드 복사 + 봇 딥링크 알림.
 //
 
-function FileList({ files, botUsername, onNavigate, onPreview }) {
+function FileList({ files, botUsername, onNavigate, onOpenFile }) {
   const [copiedPath, setCopiedPath] = useState(null);
 
   const handleCopyTemplate = async (e, entry) => {
@@ -238,7 +357,7 @@ function FileList({ files, botUsername, onNavigate, onPreview }) {
               if (entry.is_dir) {
                 onNavigate(entry.path);
               } else {
-                onPreview(entry);
+                onOpenFile(entry);
               }
             }}
           >
@@ -337,6 +456,12 @@ function ChatSidePanel({ openclawState }) {
   const [sessionsAvailable, setSessionsAvailable] = useState(true); // sidecar 미지원이면 false
   const [hoveredSession, setHoveredSession] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null); // {session_id, preview} | null
+  const [pendingExcelApproval, setPendingExcelApproval] = useState(null);
+  const [excelApprovalBusy, setExcelApprovalBusy] = useState(false);
+  const [excelSaving, setExcelSaving] = useState(false);
+  const [insertingRangeContext, setInsertingRangeContext] = useState(false);
+  const [pendingTaskLabel, setPendingTaskLabel] = useState("");
+  const [pendingExcelComposite, setPendingExcelComposite] = useState(null);
   const pendingUserMsgRef = useRef(null); // session 발급 전 첫 user msg 임시 보관
 
   // textarea auto-grow: 1행 ~ 5행 (최대 ~120px)
@@ -395,7 +520,7 @@ function ChatSidePanel({ openclawState }) {
     } catch (err) {
       addAgentMessage({
         role: "system",
-        text: `세션을 불러올 수 없습니다 — ${err?.message || err}`,
+        text: `세션을 불러올 수 없습니다 — ${toUserMessage(err)}`,
       });
     }
   }, [setAgentMessages, setActiveSessionId, addAgentMessage]);
@@ -415,7 +540,7 @@ function ChatSidePanel({ openclawState }) {
     } catch (err) {
       addAgentMessage({
         role: "system",
-        text: `세션 삭제에 실패했습니다 — ${err?.message || err}`,
+        text: `세션 삭제에 실패했습니다 — ${toUserMessage(err)}`,
       });
     }
   }, [confirmDelete, activeSessionId, setActiveSessionId, setAgentMessages, refreshSessions, addAgentMessage]);
@@ -435,32 +560,70 @@ function ChatSidePanel({ openclawState }) {
 
     setLoading(true);
     try {
-      const result = await agentChat(trimmed, activeSessionId);
-      const newSessionId = result.session_id;
-      addAgentMessage({
-        role: "agent",
-        text: result.response,
-        toolCalls: result.tool_calls,
-        maskedCount: result.masked_count,
-        maskedTypes: result.masked_types,
-      });
-      if (newSessionId) setActiveSessionId(newSessionId);
+      if (shouldRouteToExcelLive(trimmed)) {
+        const rangeRef = extractExcelRangeTag(trimmed);
+        const cleanedInput = stripExcelContextBlock(trimmed);
+        const commands = splitExcelCompositeCommand(cleanedInput)
+          .map((cmd) => applyRangeContextToCommand(cmd, rangeRef));
+        for (let i = 0; i < commands.length; i += 1) {
+          const cmd = commands[i];
+          setPendingTaskLabel(`엑셀 명령 ${i + 1}/${commands.length} 실행 중...`);
+          const excelResult = await excelLiveCommand(cmd, null, null, false);
+          if (excelResult?.approval_required && excelResult?.pending_approval) {
+            setPendingExcelApproval(excelResult.pending_approval);
+            setPendingExcelComposite({
+              commands,
+              currentIndex: i,
+            });
+            addAgentMessage({
+              role: "agent",
+              text:
+                commands.length > 1
+                  ? `복합 작업 ${i + 1}/${commands.length} 단계는 승인 후 실행됩니다.`
+                  : "엑셀 변경 작업은 승인 후 실행됩니다.",
+            });
+            break;
+          }
 
-      // 영속화 — 세션 ID가 새로 발급된 경우 user 메시지도 함께 저장
-      const sid = newSessionId || activeSessionId;
-      if (sid) {
-        if (pendingUserMsgRef.current) {
-          persistMessageSilent(sid, "user", pendingUserMsgRef.current);
+          const answer = formatExcelLiveResult(excelResult?.action, excelResult?.result);
+          const text = commands.length > 1 ? `[${i + 1}/${commands.length}] ${answer}` : answer;
+          addAgentMessage({ role: "agent", text });
+          if (activeSessionId) persistMessageSilent(activeSessionId, "agent", text);
+        }
+
+        if (activeSessionId && pendingUserMsgRef.current) {
+          persistMessageSilent(activeSessionId, "user", pendingUserMsgRef.current);
           pendingUserMsgRef.current = null;
         }
-        persistMessageSilent(sid, "agent", result.response, {
+      } else {
+        setPendingTaskLabel("AI가 답변을 생성하는 중...");
+        const result = await agentChat(trimmed, activeSessionId);
+        const newSessionId = result.session_id;
+        addAgentMessage({
+          role: "agent",
+          text: result.response,
           toolCalls: result.tool_calls,
           maskedCount: result.masked_count,
           maskedTypes: result.masked_types,
         });
+        if (newSessionId) setActiveSessionId(newSessionId);
+
+        // 영속화 — 세션 ID가 새로 발급된 경우 user 메시지도 함께 저장
+        const sid = newSessionId || activeSessionId;
+        if (sid) {
+          if (pendingUserMsgRef.current) {
+            persistMessageSilent(sid, "user", pendingUserMsgRef.current);
+            pendingUserMsgRef.current = null;
+          }
+          persistMessageSilent(sid, "agent", result.response, {
+            toolCalls: result.tool_calls,
+            maskedCount: result.masked_count,
+            maskedTypes: result.masked_types,
+          });
+        }
       }
     } catch (err) {
-      const errText = err?.message || String(err);
+      const errText = toUserMessage(err, "작업 처리 중 오류가 발생했습니다. 다시 시도해 주세요.");
       addAgentMessage({
         role: "agent",
         text: null,
@@ -472,8 +635,149 @@ function ChatSidePanel({ openclawState }) {
       }
     } finally {
       setLoading(false);
+      setPendingTaskLabel("");
     }
   };
+
+  const handleExcelApprovalConfirm = useCallback(async () => {
+    if (!pendingExcelApproval) return;
+    setExcelApprovalBusy(true);
+    let hasNextPendingApproval = false;
+    try {
+      const out = await excelLiveSubmitApproval(pendingExcelApproval.approval_id, true, null);
+      const approvalStepText = formatExcelLiveResult(out?.action, out?.result);
+      const isComposite = !!pendingExcelComposite?.commands?.length;
+      const approvalStepLabel = isComposite
+        ? `[${pendingExcelComposite.currentIndex + 1}/${pendingExcelComposite.commands.length}] ${approvalStepText}`
+        : approvalStepText;
+      addAgentMessage({
+        role: "agent",
+        text: approvalStepLabel,
+      });
+      if (activeSessionId) {
+        persistMessageSilent(activeSessionId, "agent", approvalStepLabel);
+      }
+
+      // 복합 명령의 승인 단계였다면 남은 단계를 이어서 실행한다.
+      if (
+        pendingExcelComposite?.commands?.length &&
+        pendingExcelComposite.currentIndex + 1 < pendingExcelComposite.commands.length
+      ) {
+        const { commands } = pendingExcelComposite;
+        for (let i = pendingExcelComposite.currentIndex + 1; i < commands.length; i += 1) {
+          setPendingTaskLabel(`엑셀 명령 ${i + 1}/${commands.length} 실행 중...`);
+          const excelResult = await excelLiveCommand(commands[i], null, null, false);
+          if (excelResult?.approval_required && excelResult?.pending_approval) {
+            setPendingExcelApproval(excelResult.pending_approval);
+            setPendingExcelComposite({ commands, currentIndex: i });
+            addAgentMessage({
+              role: "agent",
+              text: `복합 작업 ${i + 1}/${commands.length} 단계는 승인 후 실행됩니다.`,
+            });
+            hasNextPendingApproval = true;
+            return;
+          }
+          const text = `[${i + 1}/${commands.length}] ${formatExcelLiveResult(
+            excelResult?.action,
+            excelResult?.result,
+          )}`;
+          addAgentMessage({ role: "agent", text });
+          if (activeSessionId) {
+            persistMessageSilent(activeSessionId, "agent", text);
+          }
+        }
+      }
+    } catch (err) {
+      addAgentMessage({
+        role: "agent",
+        error: toUserMessage(err, "엑셀 승인 처리 중 오류가 발생했습니다. 다시 시도해 주세요."),
+      });
+    } finally {
+      setExcelApprovalBusy(false);
+      if (!hasNextPendingApproval) {
+        setPendingExcelApproval(null);
+        setPendingExcelComposite(null);
+      }
+      setPendingTaskLabel("");
+    }
+  }, [pendingExcelApproval, pendingExcelComposite, addAgentMessage, activeSessionId]);
+
+  const handleExcelApprovalCancel = useCallback(async () => {
+    if (!pendingExcelApproval) return;
+    setExcelApprovalBusy(true);
+    try {
+      await excelLiveSubmitApproval(pendingExcelApproval.approval_id, false, "사용자 거부");
+      addAgentMessage({
+        role: "system",
+        text: "엑셀 작업 실행을 취소했습니다.",
+      });
+    } catch {
+      // ignore
+    } finally {
+      setExcelApprovalBusy(false);
+      setPendingExcelApproval(null);
+      setPendingExcelComposite(null);
+      setPendingTaskLabel("");
+    }
+  }, [pendingExcelApproval, addAgentMessage]);
+
+  const handleSaveWorkbook = useCallback(async () => {
+    if (loading || excelSaving || isUnavailable) return;
+    setExcelSaving(true);
+    try {
+      const out = await excelLiveSaveWorkbook(null);
+      const text = formatExcelLiveResult(out?.action, out?.result);
+      addAgentMessage({ role: "system", text });
+      if (activeSessionId) {
+        persistMessageSilent(activeSessionId, "system", text);
+      }
+    } catch (err) {
+      addAgentMessage({
+        role: "agent",
+        error: toUserMessage(err, "엑셀 저장 중 오류가 발생했습니다. 다시 시도해 주세요."),
+      });
+    } finally {
+      setExcelSaving(false);
+    }
+  }, [loading, excelSaving, isUnavailable, addAgentMessage, activeSessionId]);
+
+  const handleInsertExcelRangeContext = useCallback(async () => {
+    if (loading || isUnavailable || insertingRangeContext) return;
+    setInsertingRangeContext(true);
+    try {
+      const out = await excelLiveCommand("지금 선택한 범위 읽어줘", null, null, false);
+      const result = out?.result || {};
+      const address = String(result.address || "").toUpperCase();
+      if (!address) {
+        throw new Error("선택 범위 주소를 가져오지 못했습니다.");
+      }
+      const rows = Number(result.row_count || 0);
+      const cols = Number(result.col_count || 0);
+      const tsv = stringifyTsv(result.values, 12, 8);
+      const hasMore = rows > 12 || cols > 8;
+      const block = [
+        `[[EXCEL_RANGE:${address}]]`,
+        "[[EXCEL_VALUES_TSV]]",
+        tsv || "(빈 범위)",
+        hasMore ? `... (미리보기 제한: 최대 12행 x 8열, 실제 범위 ${rows}행 x ${cols}열)` : "",
+        "[[/EXCEL_VALUES_TSV]]",
+      ]
+        .filter(Boolean)
+        .join("\n");
+      setInput((prev) => (prev ? `${prev}\n\n${block}\n` : `${block}\n`));
+      addAgentMessage({
+        role: "system",
+        text: `선택 범위 ${address} (${rows}행 × ${cols}열) 참조가 입력창에 삽입되었습니다.`,
+      });
+    } catch (err) {
+      addAgentMessage({
+        role: "agent",
+        error: toUserMessage(err, "엑셀 선택 범위를 가져오지 못했습니다. 먼저 Excel에서 범위를 선택해 주세요."),
+      });
+    } finally {
+      setInsertingRangeContext(false);
+    }
+  }, [loading, isUnavailable, insertingRangeContext, addAgentMessage]);
 
   const handleKeyDown = (e) => {
     // IME 조합 중 Enter는 변환 확정 — 전송하지 않는다.
@@ -530,6 +834,28 @@ function ChatSidePanel({ openclawState }) {
               새 대화
             </Button>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs"
+            onClick={handleInsertExcelRangeContext}
+            disabled={isUnavailable || loading || insertingRangeContext}
+            title="현재 선택한 엑셀 범위를 입력창에 참조로 삽입"
+          >
+            <Copy className="h-3 w-3" />
+            {insertingRangeContext ? "범위 읽는 중..." : "범위 참조 삽입"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs"
+            onClick={handleSaveWorkbook}
+            disabled={isUnavailable || loading || excelSaving}
+            title="현재 열려 있는 엑셀 파일 저장"
+          >
+            <Save className="h-3 w-3" />
+            {excelSaving ? "저장 중..." : "엑셀 저장"}
+          </Button>
         </div>
       </div>
 
@@ -627,6 +953,19 @@ function ChatSidePanel({ openclawState }) {
         onConfirm={handleDeleteSession}
         onCancel={() => setConfirmDelete(null)}
       />
+      <AlertDialog
+        open={!!pendingExcelApproval}
+        title={pendingExcelApproval?.tool_display_name || "엑셀 작업 승인"}
+        description={
+          pendingExcelApproval
+            ? `${pendingExcelApproval.summary}\n\n정말 실행하시겠습니까?`
+            : ""
+        }
+        confirmLabel={excelApprovalBusy ? "처리 중..." : "승인 후 실행"}
+        confirmVariant="default"
+        onConfirm={handleExcelApprovalConfirm}
+        onCancel={handleExcelApprovalCancel}
+      />
 
       {/* 메시지 영역 */}
       <div className="flex-1 overflow-y-auto rounded-lg border border-border bg-muted/20 p-3">
@@ -634,7 +973,20 @@ function ChatSidePanel({ openclawState }) {
           <div className="flex h-full items-center justify-center text-center text-xs text-muted-foreground">
             <div>
               <Bot className="mx-auto mb-2 h-8 w-8 opacity-30" />
-              <p>예: "config.json 요약해줘"</p>
+              <p>검증된 명령 예시</p>
+              <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
+                {VERIFIED_EXCEL_EXAMPLES.map((ex) => (
+                  <button
+                    key={ex}
+                    type="button"
+                    onClick={() => setInput(ex)}
+                    className="rounded border border-border bg-background px-2 py-1 text-[11px] hover:bg-muted"
+                    title="클릭하면 입력창에 채워집니다"
+                  >
+                    {ex}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         ) : (
@@ -697,8 +1049,14 @@ function ChatSidePanel({ openclawState }) {
             })}
             {loading && (
               <div className="text-left text-sm text-muted-foreground">
-                <span className="inline-block animate-pulse rounded-lg border border-border bg-background px-3 py-1.5 text-xs">
-                  ...
+                <span className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs shadow-sm">
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />
+                  <span className="flex flex-col gap-0.5">
+                    <span className="font-medium text-foreground">작업 처리 중</span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {pendingTaskLabel || "요청을 처리하고 있습니다..."}
+                    </span>
+                  </span>
                 </span>
               </div>
             )}
@@ -738,12 +1096,14 @@ function ChatSidePanel({ openclawState }) {
 
 export default function WorkspacePage() {
   const ocStatus = useAppStore((s) => s.openclawStatus);
+  const workspacePath = useAppStore((s) => s.workspacePath);
   const [currentPath, setCurrentPath] = useState("");
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [previewFile, setPreviewFile] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [creatingExcel, setCreatingExcel] = useState(false);
   const [uploadMessage, setUploadMessage] = useState("");
   const [botUsername, setBotUsername] = useState(null);
 
@@ -797,19 +1157,15 @@ export default function WorkspacePage() {
     };
   }, []);
 
-  // 사용자가 수동으로 토글했는지 추적 — 자동 닫힘이 사용자 의사를 덮어쓰지 않도록.
-  // 자동 닫힘 후 viewport가 다시 ≥1280px가 되거나 미리보기를 닫으면 마지막 사용자 의사로 복원.
-  const userPreferOpenRef = useRef(chatOpen);
-  const autoClosedRef = useRef(false);
-
   const loadFiles = useCallback(async (path = "") => {
     setLoading(true);
     setError("");
     try {
       const data = await workspaceListFiles(path);
-      setFiles(data.files || []);
+      const rows = Array.isArray(data.files) ? data.files : [];
+      setFiles(rows.filter((entry) => !isOfficeLockTempFile(entry?.name)));
     } catch (err) {
-      setError(String(err));
+      setError(toUserMessage(err, "파일 목록을 불러오지 못했습니다."));
     } finally {
       setLoading(false);
     }
@@ -818,27 +1174,6 @@ export default function WorkspacePage() {
   useEffect(() => {
     loadFiles(currentPath);
   }, [currentPath, loadFiles]);
-
-  // N-2: viewport < 1280px 이고 파일 미리보기가 활성이면 채팅 자동 닫힘.
-  // viewport가 다시 넓어지거나 미리보기를 닫으면 사용자가 마지막에 원했던 상태로 복원.
-  useEffect(() => {
-    const evaluate = () => {
-      const tooNarrow = window.innerWidth < 1280;
-      const hasPreview = !!previewFile;
-      if (tooNarrow && hasPreview && chatOpen) {
-        autoClosedRef.current = true;
-        setChatOpen(false);
-      } else if (autoClosedRef.current && (!tooNarrow || !hasPreview)) {
-        // 자동 닫혔던 게 조건 해제됐으면 복원 (단 사용자가 원했던 상태일 때만)
-        autoClosedRef.current = false;
-        if (userPreferOpenRef.current) setChatOpen(true);
-      }
-    };
-    evaluate();
-    window.addEventListener("resize", evaluate);
-    return () => window.removeEventListener("resize", evaluate);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewFile]);
 
   // bot_username 1회 로드
   useEffect(() => {
@@ -852,7 +1187,16 @@ export default function WorkspacePage() {
     setPreviewFile(null);
   }, []);
 
-  const handlePreview = useCallback((file) => {
+  const handleOpenFile = useCallback(async (file) => {
+    const ext = getExt(file?.name || "");
+    if (EXCEL_EXT.has(ext)) {
+      try {
+        await openWorkspaceFile(file.path);
+      } catch (err) {
+        setError(`파일 열기 실패: ${toUserMessage(err)}`);
+      }
+      return;
+    }
     setPreviewFile(file);
   }, []);
 
@@ -860,9 +1204,42 @@ export default function WorkspacePage() {
     try {
       await openWorkspaceFolder();
     } catch (err) {
-      setError(`폴더 열기 실패: ${err}`);
+      setError(`폴더 열기 실패: ${toUserMessage(err)}`);
     }
   }, []);
+
+  const handleCreateExcelFile = useCallback(async () => {
+    if (loading || uploading || creatingExcel) return;
+
+    const now = new Date();
+    const pad2 = (n) => String(n).padStart(2, "0");
+    const defaultName = `새_엑셀_${now.getFullYear()}${pad2(now.getMonth() + 1)}${pad2(now.getDate())}_${pad2(now.getHours())}${pad2(now.getMinutes())}${pad2(now.getSeconds())}.xlsx`;
+    const inputName = window.prompt("새 엑셀 파일 이름을 입력하세요 (.xlsx)", defaultName);
+    if (inputName === null) return;
+
+    let fileName = String(inputName).trim();
+    if (!fileName) {
+      setError("파일 이름을 입력해 주세요.");
+      return;
+    }
+    if (!fileName.toLowerCase().endsWith(".xlsx")) {
+      fileName = `${fileName}.xlsx`;
+    }
+
+    const targetPath = currentPath ? `${currentPath}/${fileName}` : fileName;
+    setCreatingExcel(true);
+    setError("");
+    try {
+      await workspaceCreateExcelFile(targetPath, "Sheet1");
+      setUploadMessage(`새 엑셀 파일 생성 완료: ${fileName}`);
+      await loadFiles(currentPath);
+      await openWorkspaceFile(targetPath);
+    } catch (err) {
+      setError(`엑셀 파일 생성 실패: ${toUserMessage(err)}`);
+    } finally {
+      setCreatingExcel(false);
+    }
+  }, [loading, uploading, creatingExcel, currentPath, loadFiles]);
 
   const fileInputRef = useRef(null);
   const [uploadProgress, setUploadProgress] = useState(null); // {current, total, name} | null
@@ -891,12 +1268,13 @@ export default function WorkspacePage() {
     try {
       await workspaceWriteFileBinary(targetPath, b64);
     } catch (err) {
-      const msg = String(err?.message ?? err);
+      const rawMsg = String(err?.message ?? err);
+      const msg = toUserMessage(err);
       const looksLikeMissingCommand =
-        msg.includes("workspace_write_file_binary") ||
-        msg.toLowerCase().includes("not found") ||
-        msg.toLowerCase().includes("unknown") ||
-        msg.toLowerCase().includes("not allowed");
+        rawMsg.includes("workspace_write_file_binary") ||
+        rawMsg.toLowerCase().includes("not found") ||
+        rawMsg.toLowerCase().includes("unknown") ||
+        rawMsg.toLowerCase().includes("not allowed");
       if (looksLikeMissingCommand) {
         // 비개발자 친화적 카피: "Tauri" 같은 개발자 용어 노출 회피.
         // 개발 모드에서는 dev.sh 재실행, 프로덕션에서는 앱 종료 후 재실행으로 안내.
@@ -905,9 +1283,7 @@ export default function WorkspacePage() {
         const restartHint = isDev
           ? "개발 모드에서는 ./dev.sh를 다시 실행해 주세요"
           : "앱을 완전히 종료한 뒤 다시 실행해 주세요";
-        throw new Error(
-          `${file.name} — 이 형식의 파일을 처리하려면 앱을 다시 시작해 주세요. (${restartHint}. 임시 우회: "폴더 열기"로 직접 복사)`
-        );
+        throw new Error(`${file.name} — 이 형식의 파일을 처리하려면 앱을 다시 시작해 주세요. (${restartHint}. 임시 우회: "폴더 열기"로 직접 복사)`);
       }
       throw new Error(`${file.name} — 업로드 실패: ${msg}`);
     }
@@ -929,7 +1305,7 @@ export default function WorkspacePage() {
       try {
         await uploadOneFile(file, targetPath);
       } catch (err) {
-        failures.push(String(err?.message ?? err));
+        failures.push(toUserMessage(err));
       }
     }
 
@@ -955,6 +1331,9 @@ export default function WorkspacePage() {
           <div>
             <h1 className="text-lg font-semibold">워크스페이스</h1>
             <Breadcrumb currentPath={currentPath} onNavigate={handleNavigate} />
+            <p className="mt-1 text-xs text-muted-foreground">
+              업로드 위치: `{workspacePath}`{currentPath ? `/${currentPath}` : ""}
+            </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <Button variant="outline" size="sm" onClick={handleOpenFolder}>
@@ -965,10 +1344,20 @@ export default function WorkspacePage() {
               variant="outline"
               size="sm"
               onClick={handleUpload}
-              disabled={uploading}
+              disabled={uploading || creatingExcel}
             >
               <Upload className="mr-1.5 h-3.5 w-3.5" />
               {uploading ? "업로드 중..." : "파일 업로드"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCreateExcelFile}
+              disabled={loading || uploading || creatingExcel}
+              title="현재 폴더에 새 엑셀 파일 생성"
+            >
+              <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" />
+              {creatingExcel ? "생성 중..." : "새 엑셀 파일"}
             </Button>
             <input
               ref={fileInputRef}
@@ -993,13 +1382,7 @@ export default function WorkspacePage() {
               size="icon"
               className="h-8 w-8"
               onClick={() => {
-                setChatOpen((v) => {
-                  const next = !v;
-                  userPreferOpenRef.current = next;
-                  // 사용자가 직접 닫았다면 자동 복원이 다시 강제로 열지 않도록 플래그 reset
-                  autoClosedRef.current = false;
-                  return next;
-                });
+                setChatOpen((v) => !v);
               }}
               title={chatOpen ? "에이전트 채팅 닫기" : "에이전트 채팅 열기"}
             >
@@ -1078,7 +1461,7 @@ export default function WorkspacePage() {
                   files={files}
                   botUsername={botUsername}
                   onNavigate={handleNavigate}
-                  onPreview={handlePreview}
+                  onOpenFile={handleOpenFile}
                 />
               )}
             </CardContent>

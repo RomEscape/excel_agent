@@ -730,7 +730,7 @@ function OllamaGuide() {
             </Step>
             <Step number={5} title="모델 다운로드">
               <p>터미널을 열고 아래 명령어를 입력합니다.</p>
-              <CopyableCommand command="ollama pull llama3.2" />
+              <CopyableCommand command="ollama pull qwen3:4b" />
               <p className="mt-1">다운로드가 완료되면 앱에서 Ollama를 바로 사용할 수 있습니다.</p>
               <Note>다른 모델을 사용하려면 <CodeBlock>ollama pull 모델명</CodeBlock> 형식으로 입력하고, 설정에서 모델명을 변경하세요.</Note>
             </Step>
@@ -756,7 +756,7 @@ function OllamaGuide() {
             </Step>
             <Step number={5} title="모델 다운로드">
               <p>명령 프롬프트(cmd) 또는 PowerShell을 열고 아래 명령어를 입력합니다.</p>
-              <CopyableCommand command="ollama pull llama3.2" />
+              <CopyableCommand command="ollama pull qwen3:4b" />
               <p className="mt-1">다운로드가 완료되면 앱에서 Ollama를 바로 사용할 수 있습니다.</p>
               <Note>다른 모델을 사용하려면 <CodeBlock>ollama pull 모델명</CodeBlock> 형식으로 입력하고, 설정에서 모델명을 변경하세요.</Note>
             </Step>

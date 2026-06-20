@@ -1,0 +1,81 @@
+Excel Live 테스트 입력 명령어 세트 (67개)
+원본: docs/excel-live-command-list.txt
+검증 기준: python-sidecar 룰 파서 + 복합 분해 로직 기준 (2026-06-20)
+
+01. [low] 열린 통합문서 목록 보여줘 -> excel_live.list_workbooks
+02. [low] workbook list please -> excel_live.list_workbooks
+03. [low] 지금 열려 있는 엑셀 파일 확인 -> excel_live.list_workbooks
+04. [low] 워크북 sales.xlsx 선택 -> excel_live.select_workbook
+05. [low] 통합문서 inventory.xlsx로 전환 -> excel_live.select_workbook
+06. [low] 파일 report.xlsx 열기 -> excel_live.select_workbook
+07. [low] B9 값만 읽어줘 -> excel_live.read_range
+08. [low] A1:C10 조회해줘 -> excel_live.read_range
+09. [low] B열 보여줘 -> excel_live.read_range
+10. [low] D:D 값 확인 -> excel_live.read_range
+11. [low] C5 read -> excel_live.read_range
+12. [low] F2:F20 display -> excel_live.read_range
+13. [low] H1:H5 범위 확인 -> excel_live.read_range
+14. [low] Z열 데이터 보여줘 -> excel_live.read_range
+15. [mid] AA1:AC3 읽어줘 -> excel_live.read_range
+16. [low] C3에 120 입력해줘 -> excel_live.write_range
+17. [low] D4에 완료 써줘 -> excel_live.write_range
+18. [low] E5에 3.14 입력 -> excel_live.write_range
+19. [low] F6에 true 입력 -> excel_live.write_range
+20. [low] G7에 보류 작성 -> excel_live.write_range
+21. [low] H8에 999 set -> excel_live.write_range
+22. [mid] B2:D2에 이름,수량,금액 입력 -> excel_live.write_range
+23. [mid] A10:C10에 사과,10,3000 입력 -> excel_live.write_range
+24. [mid] E3:G3에 Y,N,Y set -> excel_live.write_range
+25. [mid] H4:J4에 1,2,3 작성 -> excel_live.write_range
+26. [mid] K5:M5에 alpha,beta,gamma write -> excel_live.write_range
+27. [mid] B1:D1에 헤더 써줘 -> excel_live.write_range
+28. [mid] write header in E1:G1 -> excel_live.write_range
+29. [mid] A2:C2 header fill -> excel_live.write_range
+30. [mid] A열에서 50 이상인 셀만 노란색 배경 적용 -> excel_live.highlight_by_condition
+31. [mid] B열은 20 초과 조건에 맞는 항목만 빨강으로 채워줘 -> excel_live.highlight_by_condition
+32. [mid] C1:C20 범위에서 100 이상 값만 highlight -> excel_live.highlight_by_condition
+33. [mid] D:D 컬럼에서 0 이하 숫자는 파란색 표시 -> excel_live.highlight_by_condition
+34. [mid] E열은 10보다 작은 값 발견 시 초록 배경으로 바꿔줘 -> excel_live.highlight_by_condition
+35. [mid] F:F 5 초과 칠해줘 -> excel_live.highlight_by_condition
+36. [high] G열 3 같지 않음 노란색으로 표시 -> excel_live.highlight_by_condition
+37. [high] H:H >= 0 highlight -> excel_live.highlight_by_condition
+38. [mid] C1에 B2:B20 합계 수식 넣어줘 -> excel_live.set_formula
+39. [mid] D1에 B1:B10 평균 수식 적용 -> excel_live.set_formula
+40. [mid] E1에 C1:C10 최대 수식 적용 -> excel_live.set_formula
+41. [mid] F1에 D1:D10 최소 수식 적용 -> excel_live.set_formula
+42. [mid] G1에 E1:E10 개수 수식 적용 -> excel_live.set_formula
+43. [high] H1에 F1:F10 sum formula set -> excel_live.set_formula
+44. [high] I1:I10에 수식 =A1*2 적용해줘 -> excel_live.set_formula
+45. [high] J1에 수식 =SUM(A1:A10) 적용 -> excel_live.set_formula
+46. [high] K2:K20에 formula =IF(A2>0,"Y","N") set -> excel_live.set_formula
+47. [high] L3에 수식 =AVERAGE(B1:B10) 적용 -> excel_live.set_formula
+48. [high] M1:M10에 formula =COUNTIF(A1:A10,">=5") set -> excel_live.set_formula
+49. [high] N2:N20에 formula =IFERROR(VLOOKUP(A2,$P$2:$Q$20,2,FALSE),"") set -> excel_live.set_formula
+50. [high] O2:O20에 formula =IF(AND(B2>0,C2>0),B2*C2,0) set -> excel_live.set_formula
+
+복합 자연어(연속 작업) 예시
+51. [mid] C3에 777 입력해줘 그리고 C3 값 읽어줘 -> write + read
+52. [high] C3 셀의 모든 내용을 지워줘 그리고 B2:D3에 이름,수량,금액 입력 -> clear + write
+53. [high] A열에서 50 이상인 셀은 노란색 표시 그리고 D열 0 이하는 파란색 표시 -> highlight + highlight
+54. [high] J1에 수식 =SUM(A1:A10) 적용 다음으로 엑셀 저장해줘 -> formula + save
+
+범위 생략(선택 셀/선택 범위 기반) 예시
+55. [low] 지금 선택한 범위 읽어줘 -> excel_live.read_range
+56. [mid] 777 입력해줘 -> excel_live.write_range
+57. [mid] 수식 =SUM(A1:A10) 적용해줘 -> excel_live.set_formula
+58. [mid] 50 이상 값 노란색으로 강조해줘 -> excel_live.highlight_by_condition
+
+경계선(테두리) 작업 예시
+기본값: 검정 medium 보더 (눈에 보이도록 가시성 우선)
+59. [mid] B2:D5 범위에 경계선 적용해줘 -> excel_live.apply_border
+60. [mid] C3:E10 테두리 넣어줘 -> excel_live.apply_border
+61. [high] F2:H8 범위 굵게 경계선 적용 -> excel_live.apply_border
+62. [high] A1:C3 border 적용해줘 -> excel_live.apply_border
+63. [mid] 선택한 범위에 경계선 적용해줘 -> excel_live.apply_border
+64. [mid] 이 범위 테두리 넣어줘 -> excel_live.apply_border
+65. [high] [[EXCEL_RANGE:B2:D12]] 이 범위에 경계선 적용해줘 -> excel_live.apply_border
+66. [high] [[EXCEL_RANGE:C4:F9]] 복사한 범위에 굵게 경계선 적용해줘 -> excel_live.apply_border
+67. [mid] B10에 테두리 넣어줘 -> excel_live.apply_border
+
+해석 실패 정책
+- 모호/실패 명령은 `excel_live.list_workbooks`로 자동 폴백하지 않고 HTTP 400을 반환한다.

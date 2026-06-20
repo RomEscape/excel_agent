@@ -119,6 +119,55 @@ TOOL_REGISTRY: list[ToolDef] = [
         permission=PermissionLevel.SAFE,
         example_triggers=["엑셀 보고서", "데이터 보고서"],
     ),
+    # Excel Live(COM) 도구 — 로컬 데스크톱 실시간 편집
+    ToolDef(
+        name="excel_live.list_workbooks",
+        description="실행 중인 Excel의 열린 통합문서 목록 조회",
+        permission=PermissionLevel.SAFE,
+        example_triggers=["열린 엑셀 목록", "워크북 목록", "현재 엑셀 파일 보여줘"],
+    ),
+    ToolDef(
+        name="excel_live.select_workbook",
+        description="작업 대상 통합문서 선택 (읽기/수정 대상 지정)",
+        permission=PermissionLevel.SAFE,
+        example_triggers=["이 파일 선택", "워크북 선택", "작업 파일 지정"],
+    ),
+    ToolDef(
+        name="excel_live.read_range",
+        description="지정 시트/범위의 셀 값을 읽기",
+        permission=PermissionLevel.SAFE,
+        example_triggers=["범위 읽기", "셀 값 보여줘", "A1:C10 읽어줘"],
+    ),
+    ToolDef(
+        name="excel_live.write_range",
+        description="지정 범위에 셀 값 쓰기(수정)",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["셀 값 수정", "값 입력", "범위 덮어쓰기"],
+    ),
+    ToolDef(
+        name="excel_live.highlight_by_condition",
+        description="조건에 맞는 셀 서식(배경색) 변경",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["조건부 색칠", "노란색으로 칠해줘", "50 이상 강조"],
+    ),
+    ToolDef(
+        name="excel_live.apply_border",
+        description="지정 범위에 경계선(테두리) 적용",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["경계선 적용", "테두리 넣어줘", "border 적용"],
+    ),
+    ToolDef(
+        name="excel_live.set_formula",
+        description="지정 범위에 수식 적용",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["수식 넣어줘", "합계 수식", "formula 적용"],
+    ),
+    ToolDef(
+        name="excel_live.save_workbook",
+        description="현재 엑셀 통합문서를 디스크에 저장",
+        permission=PermissionLevel.SAFE,
+        example_triggers=["엑셀 저장", "통합문서 저장", "지금 파일 저장"],
+    ),
     # ── 명시적 거부 목록 — 어떤 경우에도 실행 불가 ──────────────────────────
     ToolDef(
         name="DENIED.file_delete",
@@ -153,6 +202,11 @@ SAFE_TOOL_NAMES: set[str] = {
 TOOL_DISPLAY_NAMES: dict[str, str] = {
     "gog.gmail.send": "Gmail 이메일 전송",
     "gog.sheets.write": "Google Sheets 수정",
+    "excel_live.write_range": "Excel 셀 값 수정",
+    "excel_live.highlight_by_condition": "Excel 조건부 서식 변경",
+    "excel_live.apply_border": "Excel 경계선 적용",
+    "excel_live.set_formula": "Excel 수식 적용",
+    "excel_live.save_workbook": "Excel 통합문서 저장",
 }
 
 # ── 화이트리스트 오버라이드 (런타임에 사용자가 변경 가능) ─────────────────────

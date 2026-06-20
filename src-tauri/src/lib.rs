@@ -74,6 +74,10 @@ pub fn run() {
             ipc::excel_formulas,
             ipc::excel_chart_data,
             ipc::excel_export,
+            ipc::excel_live_status,
+            ipc::excel_live_command,
+            ipc::excel_live_submit_approval,
+            ipc::excel_live_save_workbook,
             ipc::document_generate,
             ipc::document_export_docx,
             ipc::document_export_pdf,
@@ -144,9 +148,11 @@ pub fn run() {
             ipc::permissions_whitelist_remove,
             // Phase 1: Private-Claw — Workspace + Telegram setup
             ipc::open_workspace_folder,
+            ipc::open_workspace_file,
             ipc::workspace_list_files,
             ipc::workspace_read_file,
             ipc::workspace_write_file,
+            ipc::workspace_create_excel_file,
             ipc::workspace_write_file_binary, // Sprint 3: 바이너리 업로드 (S-2 해소)
             ipc::telegram_setup,
             // Sprint 5: 채팅 세션 영속화

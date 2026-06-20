@@ -1,4 +1,6 @@
 use std::net::TcpListener;
+use std::path::{Path, PathBuf};
+use std::process::Command as ProcessCommand;
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::AppHandle;
@@ -34,7 +36,7 @@ fn generate_auth_token() -> String {
 /// Spawn the Python sidecar and wait for it to become ready.
 pub async fn spawn_sidecar(app: &AppHandle) -> Result<(), String> {
     // In dev mode, dev.sh already runs the sidecar on a fixed port.
-    // Skip launching the binary and connect to the existing process.
+    // 기존 프로세스가 없으면 로컬 venv로 1회 자동 기동을 시도한다.
     if cfg!(debug_assertions) {
         let port: u16 = 19532;
         let auth_token = "dev-token".to_string();
@@ -46,7 +48,13 @@ pub async fn spawn_sidecar(app: &AppHandle) -> Result<(), String> {
             port,
             auth_token: auth_token.clone(),
         }));
-        wait_for_ready(port, &auth_token).await?;
+
+        if wait_for_ready(port, &auth_token).await.is_err() {
+            println!("[office-claw] Dev mode: sidecar not ready. Attempting auto-launch...");
+            spawn_dev_sidecar_process(port, &auth_token)?;
+            wait_for_ready(port, &auth_token).await?;
+        }
+
         println!("[office-claw] Sidecar ready on port {}", port);
         return Ok(());
     }
@@ -135,4 +143,75 @@ async fn wait_for_ready(port: u16, auth_token: &str) -> Result<(), String> {
     }
 
     Err("Sidecar failed to start within 15 seconds".to_string())
+}
+
+fn spawn_dev_sidecar_process(port: u16, auth_token: &str) -> Result<(), String> {
+    let python_sidecar_dir = PathBuf::from("python-sidecar");
+    if !python_sidecar_dir.exists() {
+        return Err(
+            "Dev sidecar 자동 기동 실패: python-sidecar 디렉토리를 찾을 수 없습니다.".to_string(),
+        );
+    }
+
+    let python_candidates: [&Path; 3] = [
+        Path::new("python-sidecar/.venv/Scripts/python.exe"), // Windows
+        Path::new("python-sidecar/.venv/bin/python"), // macOS/Linux
+        Path::new("python"),
+    ];
+    let python_cmd = python_candidates
+        .iter()
+        .find(|p| p.exists() || p.as_os_str() == "python")
+        .ok_or_else(|| "Dev sidecar 자동 기동 실패: Python 실행 파일을 찾을 수 없습니다.".to_string())?;
+
+    let mut cmd = ProcessCommand::new(python_cmd);
+    cmd.current_dir(&python_sidecar_dir)
+        .args([
+            "-m",
+            "office_claw_sidecar",
+            "--port",
+            &port.to_string(),
+            "--auth-token",
+            auth_token,
+        ])
+        .env("PYTHONUTF8", "1")
+        .env("PYTHONIOENCODING", "utf-8");
+
+    if let Some(token) = load_gateway_token_from_openclaw_config() {
+        if !token.is_empty() {
+            cmd.env("OPENCLAW_GATEWAY_TOKEN", token);
+        }
+    }
+
+    cmd.spawn()
+        .map_err(|e| format!("Dev sidecar 자동 기동 실패: {}", e))?;
+    Ok(())
+}
+
+fn load_gateway_token_from_openclaw_config() -> Option<String> {
+    if let Ok(token) = std::env::var("OPENCLAW_GATEWAY_TOKEN") {
+        let t = token.trim().to_string();
+        if !t.is_empty() {
+            return Some(t);
+        }
+    }
+
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)?;
+    let cfg_path = home.join(".openclaw").join("openclaw.json");
+    if !cfg_path.exists() {
+        return None;
+    }
+
+    let raw = std::fs::read_to_string(cfg_path).ok()?;
+    let json: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let token = json
+        .get("gateway")
+        .and_then(|v| v.get("auth"))
+        .and_then(|v| v.get("token"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if token.is_empty() { None } else { Some(token) }
 }
