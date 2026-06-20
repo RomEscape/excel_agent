@@ -224,7 +224,7 @@ function FilePreview({ file, onClose }) {
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(String(err));
+          setError(toUserMessage(err, "파일 미리보기를 불러오지 못했습니다."));
           setLoading(false);
         }
       });
@@ -471,7 +471,7 @@ function ChatSidePanel({ openclawState }) {
     } catch (err) {
       addAgentMessage({
         role: "system",
-        text: `세션을 불러올 수 없습니다 — ${err?.message || err}`,
+        text: `세션을 불러올 수 없습니다 — ${toUserMessage(err)}`,
       });
     }
   }, [setAgentMessages, setActiveSessionId, addAgentMessage]);
@@ -491,7 +491,7 @@ function ChatSidePanel({ openclawState }) {
     } catch (err) {
       addAgentMessage({
         role: "system",
-        text: `세션 삭제에 실패했습니다 — ${err?.message || err}`,
+        text: `세션 삭제에 실패했습니다 — ${toUserMessage(err)}`,
       });
     }
   }, [confirmDelete, activeSessionId, setActiveSessionId, setAgentMessages, refreshSessions, addAgentMessage]);
@@ -517,7 +517,7 @@ function ChatSidePanel({ openclawState }) {
           setPendingExcelApproval(excelResult.pending_approval);
           addAgentMessage({
             role: "agent",
-            text: excelResult.reason || "엑셀 변경 작업은 승인 후 실행됩니다.",
+            text: "엑셀 변경 작업은 승인 후 실행됩니다.",
           });
         } else {
           const answer = formatExcelLiveResult(excelResult?.action, excelResult?.result);
@@ -967,7 +967,7 @@ export default function WorkspacePage() {
       const rows = Array.isArray(data.files) ? data.files : [];
       setFiles(rows.filter((entry) => !isOfficeLockTempFile(entry?.name)));
     } catch (err) {
-      setError(String(err));
+      setError(toUserMessage(err, "파일 목록을 불러오지 못했습니다."));
     } finally {
       setLoading(false);
     }
@@ -995,7 +995,7 @@ export default function WorkspacePage() {
       try {
         await openWorkspaceFile(file.path);
       } catch (err) {
-        setError(`파일 열기 실패: ${err?.message || err}`);
+        setError(`파일 열기 실패: ${toUserMessage(err)}`);
       }
       return;
     }
@@ -1006,7 +1006,7 @@ export default function WorkspacePage() {
     try {
       await openWorkspaceFolder();
     } catch (err) {
-      setError(`폴더 열기 실패: ${err}`);
+      setError(`폴더 열기 실패: ${toUserMessage(err)}`);
     }
   }, []);
 
@@ -1037,12 +1037,13 @@ export default function WorkspacePage() {
     try {
       await workspaceWriteFileBinary(targetPath, b64);
     } catch (err) {
-      const msg = String(err?.message ?? err);
+      const rawMsg = String(err?.message ?? err);
+      const msg = toUserMessage(err);
       const looksLikeMissingCommand =
-        msg.includes("workspace_write_file_binary") ||
-        msg.toLowerCase().includes("not found") ||
-        msg.toLowerCase().includes("unknown") ||
-        msg.toLowerCase().includes("not allowed");
+        rawMsg.includes("workspace_write_file_binary") ||
+        rawMsg.toLowerCase().includes("not found") ||
+        rawMsg.toLowerCase().includes("unknown") ||
+        rawMsg.toLowerCase().includes("not allowed");
       if (looksLikeMissingCommand) {
         // 비개발자 친화적 카피: "Tauri" 같은 개발자 용어 노출 회피.
         // 개발 모드에서는 dev.sh 재실행, 프로덕션에서는 앱 종료 후 재실행으로 안내.
@@ -1051,9 +1052,7 @@ export default function WorkspacePage() {
         const restartHint = isDev
           ? "개발 모드에서는 ./dev.sh를 다시 실행해 주세요"
           : "앱을 완전히 종료한 뒤 다시 실행해 주세요";
-        throw new Error(
-          `${file.name} — 이 형식의 파일을 처리하려면 앱을 다시 시작해 주세요. (${restartHint}. 임시 우회: "폴더 열기"로 직접 복사)`
-        );
+        throw new Error(`${file.name} — 이 형식의 파일을 처리하려면 앱을 다시 시작해 주세요. (${restartHint}. 임시 우회: "폴더 열기"로 직접 복사)`);
       }
       throw new Error(`${file.name} — 업로드 실패: ${msg}`);
     }
@@ -1075,7 +1074,7 @@ export default function WorkspacePage() {
       try {
         await uploadOneFile(file, targetPath);
       } catch (err) {
-        failures.push(String(err?.message ?? err));
+        failures.push(toUserMessage(err));
       }
     }
 
