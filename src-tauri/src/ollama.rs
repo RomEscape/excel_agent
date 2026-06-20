@@ -107,6 +107,11 @@ pub async fn configure_openclaw_ollama(model: &str) -> Result<serde_json::Value,
             "models.providers.ollama.baseUrl",
             format!("http://127.0.0.1:{}", OLLAMA_PORT),
         ),
+        (
+            "models.providers.ollama.apiKey",
+            "ollama-local".to_string(),
+        ),
+        ("models.providers.ollama.api", "ollama".to_string()),
         ("agents.defaults.model", format!("ollama/{}", model)),
     ];
 
@@ -139,14 +144,24 @@ async fn run_openclaw_config_set(path: &str, value: &str) -> Result<String, Stri
             // 실패면 stderr 포함해서 다음 시도
             let _ = String::from_utf8_lossy(&out.stderr);
         }
-        // 2차: 로그인 셸
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        // 2차: npx 폴백 (PATH에 openclaw가 없더라도 Node만 있으면 실행 가능)
+        let via_npx = Command::new("npx")
+            .args(["--yes", "openclaw", "config", "set", &path, &value])
+            .output();
+        if let Ok(out) = via_npx {
+            if out.status.success() {
+                return Ok(String::from_utf8_lossy(&out.stdout).to_string());
+            }
+            let _ = String::from_utf8_lossy(&out.stderr);
+        }
+
+        // 3차: 로그인 셸 (OS별 분기)
         let cmd = format!(
             "openclaw config set {} {}",
             shell_quote(&path),
             shell_quote(&value)
         );
-        let via_shell = Command::new(&shell).args(["-lc", &cmd]).output();
+        let via_shell = run_login_shell_command(&cmd);
         match via_shell {
             Ok(out) if out.status.success() => Ok(String::from_utf8_lossy(&out.stdout).to_string()),
             Ok(out) => Err(format!(
@@ -165,6 +180,20 @@ async fn run_openclaw_config_set(path: &str, value: &str) -> Result<String, Stri
 /// shell single-quote escaping — 사용자 입력은 위에서 이미 sanitize했지만 path에 dot이 있어 따옴표 필요.
 fn shell_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+fn run_login_shell_command(cmd: &str) -> std::io::Result<std::process::Output> {
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("powershell")
+            .args(["-NoProfile", "-Command", cmd])
+            .output()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        Command::new(shell).args(["-lc", cmd]).output()
+    }
 }
 
 /// 모델명에 셸 메타문자가 들어있지 않은지 검증.
@@ -197,6 +226,7 @@ mod tests {
             "llama3.2:3b-instruct-q4_0",
             "qwen2.5:7b",
             "gemma2:2b",
+            "gemma4:e4b",
         ] {
             assert!(
                 validate_model_name(ok).is_ok(),

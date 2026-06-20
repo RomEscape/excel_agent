@@ -65,7 +65,7 @@ export default function Settings() {
       if (cfg?.provider) {
         const resolvedModel =
           cfg.model ??
-          (cfg.provider === "claude" ? "claude-sonnet-4-20250514" : "llama3.2");
+          (cfg.provider === "claude" ? "claude-sonnet-4-20250514" : "qwen3:4b");
 
         setProvider(cfg.provider);
         setModel(resolvedModel);
@@ -239,7 +239,7 @@ export default function Settings() {
 
   // Auto-set default model when provider changes.
   // Ollama: 실제 설치된 모델 목록(중앙 statusStore)에서 첫 번째를 기본값으로.
-  // 없으면 sentinel "llama3.2"로 두고 picker가 "현재 설치 안 됨" 경고 표시.
+  // 없으면 sentinel "qwen3:4b"로 두고 picker가 "현재 설치 안 됨" 경고 표시.
   const handleProviderChange = (val) => {
     setProvider(val);
     if (val === "claude") {
@@ -249,7 +249,7 @@ export default function Settings() {
       if (Array.isArray(installed) && installed.length > 0) {
         setModel(installed[0].name);
       } else {
-        setModel("llama3.2");
+        setModel("qwen3:4b");
       }
     }
   };

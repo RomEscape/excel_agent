@@ -75,6 +75,8 @@ openclaw onboard --non-interactive --accept-risk \
 
 ### 2.6 OpenClaw + Ollama 로컬 모델 자동 설정 (현재 기본 경로)
 
+> **기본 로컬 스택 (2026-06)**: Gemma 4 E4B `gemma4:e4b` — 상세는 [`docs/local-stack/GEMMA4_OPENCLAW.md`](local-stack/GEMMA4_OPENCLAW.md).
+
 ajou-ai는 **OpenClaw 게이트웨이가 Ollama의 로컬 모델을 호출하는 구조**를 기본 경로로 채택했다. `LocalAISetupWizard.jsx`가 모든 사전 작업을 자동화한다.
 
 **자동화 단계** (모두 멱등 — 이미 충족된 항목은 즉시 skip)

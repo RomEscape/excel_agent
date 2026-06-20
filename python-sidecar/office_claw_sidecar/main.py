@@ -16,6 +16,7 @@ from office_claw_sidecar.routers import (
     chat,
     credentials,
     discord,
+    excel_live,
     health,
     legacy,
     llm,
@@ -176,6 +177,7 @@ app.include_router(permissions.router, prefix="/permissions", dependencies=[Depe
 # ── Sprint 5: 채팅 세션 영속화 + 백업/복원 ─────────────────────────────────────
 app.include_router(chat.router, prefix="/chat", dependencies=[Depends(verify_auth)])
 app.include_router(backup.router, prefix="/backup", dependencies=[Depends(verify_auth)])
+app.include_router(excel_live.router, prefix="/excel-live", dependencies=[Depends(verify_auth)])
 
 # ── Legacy 라우터 (410 Gone — Graceful Deprecation) ──────────────────────────
 # gmail / excel / document 직접 API는 Private-Claw 피봇(v3.0) 이후 deprecated.

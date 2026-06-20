@@ -1,13 +1,13 @@
 """
 OpenClaw 게이트웨이 WebSocket 클라이언트.
 
-OpenClaw 프로토콜 흐름:
+OpenClaw 프로토콜 흐름 (v4 req/res/event):
   1. ws://127.0.0.1:18789 에 연결
-  2. {"type":"connect","role":"operator","scopes":["read","write"]} 전송
-  3. 서버로부터 {"type":"connected","deviceToken":"..."} 수신 → 토큰 캐싱
-  4. 세션 생성: {"type":"sessions.create","model":"..."}
-  5. 메시지 전송: {"type":"sessions.send","sessionId":"...","message":"..."}
-  6. 응답 스트리밍: 여러 {"type":"sessions.message",...} 프레임 수신
+  2. 서버의 {"type":"event","event":"connect.challenge"} 수신
+  3. {"type":"req","method":"connect","params":...} 전송
+  4. {"type":"res","ok":true,"payload":{"type":"hello-ok",...}} 수신
+  5. sessions.* / skills.* / tools.* 메서드를 req/res 형태로 호출
+  6. chat / session.* 이벤트를 라우터 호환 프레임으로 변환
 
 주의사항:
   - OpenClaw 실제 API는 이 구현 시점(2026-04-09) 기준 추정 스펙이다.
@@ -22,6 +22,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -56,6 +57,7 @@ class OpenClawClient:
         self._lock = asyncio.Lock()
         self._pending: dict[str, asyncio.Future] = {}
         self._session_queues: dict[str, asyncio.Queue] = {}
+        self._session_key_by_id: dict[str, str] = {}
         self._listener_task: asyncio.Task | None = None
         self._token_path = _token_cache_path()
 
@@ -82,17 +84,35 @@ class OpenClawClient:
 
         if session_id is None:
             session_info = await self.create_session()
-            session_id = session_info["sessionId"]
+            session_key = str(session_info.get("key", "")).strip()
+            session_id = str(session_info.get("sessionId", "")).strip() or session_key
+        else:
+            session_key = await self._resolve_session_key(session_id)
+
+        if not session_key:
+            raise OpenClawError("유효한 세션 키를 확인할 수 없습니다")
+
+        # 이벤트 스트리밍 수신을 위해 세션 메시지 구독
+        await self._request(
+            method="sessions.messages.subscribe",
+            params={"key": session_key},
+            timeout=10.0,
+        )
 
         queue: asyncio.Queue = asyncio.Queue()
-        self._session_queues[session_id] = queue
+        self._session_queues[session_key] = queue
 
         try:
-            await self._send_frame({
-                "type": "sessions.send",
-                "sessionId": session_id,
-                "message": message,
-            })
+            send_result = await self._request(
+                method="sessions.send",
+                params={
+                    "key": session_key,
+                    "message": message,
+                    "idempotencyKey": str(uuid.uuid4()),
+                },
+                timeout=30.0,
+            )
+            run_id = str(send_result.get("runId", "")).strip() or None
 
             # 응답 프레임 수신 (done 프레임이 오거나 타임아웃될 때까지)
             while True:
@@ -101,6 +121,10 @@ class OpenClawClient:
                 except asyncio.TimeoutError:
                     break
 
+                # 다른 runId 이벤트가 섞여 들어오는 경우 필터링
+                if run_id and frame.get("_runId") and frame.get("_runId") != run_id:
+                    continue
+
                 if frame.get("type") == "sessions.done":
                     break
                 if frame.get("type") == "error":
@@ -108,113 +132,102 @@ class OpenClawClient:
 
                 yield frame
         finally:
-            self._session_queues.pop(session_id, None)
+            self._session_queues.pop(session_key, None)
+            try:
+                await self._request(
+                    method="sessions.messages.unsubscribe",
+                    params={"key": session_key},
+                    timeout=5.0,
+                )
+            except Exception:
+                pass
 
     async def create_session(self, model: str | None = None) -> dict:
         """새 OpenClaw 세션을 생성하고 세션 정보를 반환한다."""
         await self.ensure_connected()
-
-        req_id = str(uuid.uuid4())
-        future: asyncio.Future = asyncio.get_event_loop().create_future()
-        self._pending[req_id] = future
-
-        await self._send_frame({
-            "type": "sessions.create",
-            "requestId": req_id,
-            **({"model": model} if model else {}),
-        })
-
-        try:
-            result = await asyncio.wait_for(future, timeout=30.0)
-        except asyncio.TimeoutError:
-            self._pending.pop(req_id, None)
-            raise OpenClawError("세션 생성 타임아웃")
-
+        result = await self._request(
+            method="sessions.create",
+            params={**({"model": model} if model else {})},
+            timeout=30.0,
+        )
+        session_id = str(result.get("sessionId", "")).strip()
+        session_key = str(result.get("key", "")).strip()
+        if session_id and session_key:
+            self._session_key_by_id[session_id] = session_key
         return result
 
     async def list_sessions(self) -> list[dict]:
         """활성 세션 목록을 반환한다."""
         await self.ensure_connected()
-
-        req_id = str(uuid.uuid4())
-        future: asyncio.Future = asyncio.get_event_loop().create_future()
-        self._pending[req_id] = future
-
-        await self._send_frame({
-            "type": "sessions.list",
-            "requestId": req_id,
-        })
-
-        try:
-            result = await asyncio.wait_for(future, timeout=10.0)
-        except asyncio.TimeoutError:
-            self._pending.pop(req_id, None)
-            return []
-
-        return result if isinstance(result, list) else result.get("sessions", [])
+        result = await self._request(
+            method="sessions.list",
+            params={},
+            timeout=10.0,
+        )
+        sessions = result if isinstance(result, list) else result.get("sessions", [])
+        for row in sessions:
+            sid = str(row.get("sessionId", "")).strip()
+            key = str(row.get("key", "")).strip()
+            if sid and key:
+                self._session_key_by_id[sid] = key
+        return sessions
 
     async def install_skill(self, skill_name: str) -> dict:
         """ClawHub에서 스킬을 설치한다."""
         await self.ensure_connected()
-
-        req_id = str(uuid.uuid4())
-        future: asyncio.Future = asyncio.get_event_loop().create_future()
-        self._pending[req_id] = future
-
-        await self._send_frame({
-            "type": "skills.install",
-            "requestId": req_id,
-            "skillName": skill_name,
-        })
-
-        try:
-            return await asyncio.wait_for(future, timeout=120.0)
-        except asyncio.TimeoutError:
-            self._pending.pop(req_id, None)
-            raise OpenClawError(f"스킬 설치 타임아웃: {skill_name}")
+        return await self._request(
+            method="skills.install",
+            params={
+                "source": "clawhub",
+                "slug": skill_name,
+            },
+            timeout=120.0,
+        )
 
     async def list_tools(self, session_id: str) -> list[dict]:
         """세션에서 사용 가능한 도구 목록을 반환한다."""
         await self.ensure_connected()
-
-        req_id = str(uuid.uuid4())
-        future: asyncio.Future = asyncio.get_event_loop().create_future()
-        self._pending[req_id] = future
-
-        await self._send_frame({
-            "type": "tools.list",
-            "requestId": req_id,
-            "sessionId": session_id,
-        })
-
-        try:
-            result = await asyncio.wait_for(future, timeout=10.0)
-        except asyncio.TimeoutError:
-            self._pending.pop(req_id, None)
+        session_key = await self._resolve_session_key(session_id)
+        if not session_key:
             return []
 
-        return result if isinstance(result, list) else result.get("tools", [])
+        # v4에서 tools.list 대신 tools.catalog/tools.effective를 사용
+        catalog = await self._request(
+            method="tools.catalog",
+            params={},
+            timeout=10.0,
+        )
+        groups = catalog.get("groups", []) if isinstance(catalog, dict) else []
+        tools: list[dict] = []
+        for group in groups:
+            group_tools = group.get("tools", [])
+            if isinstance(group_tools, list):
+                tools.extend(group_tools)
+        return tools
 
     async def get_catalog(self) -> list[dict]:
         """ClawHub 스킬 카탈로그를 반환한다 (추천 스킬 목록)."""
         await self.ensure_connected()
-
-        req_id = str(uuid.uuid4())
-        future: asyncio.Future = asyncio.get_event_loop().create_future()
-        self._pending[req_id] = future
-
-        await self._send_frame({
-            "type": "skills.catalog",
-            "requestId": req_id,
-        })
-
-        try:
-            result = await asyncio.wait_for(future, timeout=30.0)
-        except asyncio.TimeoutError:
-            self._pending.pop(req_id, None)
-            return _default_catalog()
-
-        return result if isinstance(result, list) else result.get("skills", _default_catalog())
+        result = await self._request(
+            method="skills.search",
+            params={"query": "gog", "limit": 20},
+            timeout=30.0,
+        )
+        rows = result.get("results", []) if isinstance(result, dict) else []
+        catalog = []
+        for row in rows:
+            slug = str(row.get("slug", "")).strip()
+            if not slug:
+                continue
+            catalog.append(
+                {
+                    "name": slug,
+                    "displayName": row.get("displayName", slug),
+                    "description": row.get("summary", ""),
+                    "recommended": True,
+                }
+            )
+        return catalog or _default_catalog()
 
     def is_connected(self) -> bool:
         """게이트웨이와 연결 중인지 여부를 반환한다."""
@@ -278,43 +291,90 @@ class OpenClawClient:
                 f"OpenClaw 게이트웨이에 연결할 수 없습니다 ({uri}): {exc}"
             ) from exc
 
-        self._ws = ws
+        # 1) server-initiated connect.challenge 대기
+        challenge_nonce: str | None = None
+        challenge_deadline = asyncio.get_event_loop().time() + 5.0
+        while asyncio.get_event_loop().time() < challenge_deadline:
+            timeout = max(0.1, challenge_deadline - asyncio.get_event_loop().time())
+            raw_frame = await asyncio.wait_for(ws.recv(), timeout=timeout)
+            frame = json.loads(raw_frame)
+            if frame.get("type") == "event" and frame.get("event") == "connect.challenge":
+                payload = frame.get("payload") or {}
+                nonce = payload.get("nonce")
+                if isinstance(nonce, str) and nonce.strip():
+                    challenge_nonce = nonce.strip()
+                    break
 
-        # 핸드셰이크: operator 역할로 연결
-        device_token = self._load_token()
-        handshake: dict = {
-            "type": "connect",
+        if not challenge_nonce:
+            await ws.close()
+            raise OpenClawUnavailableError("핸드셰이크 실패: connect.challenge nonce 수신 불가")
+
+        # 2) connect req 전송 (gateway protocol v4)
+        auth_token = (os.environ.get("OPENCLAW_GATEWAY_TOKEN") or "").strip()
+        cached_token = self._load_token()
+        connect_params: dict = {
+            "minProtocol": 4,
+            "maxProtocol": 4,
+            "client": {
+                "id": "gateway-client",
+                "version": "office-claw-sidecar/0.1.0",
+                "platform": sys.platform,
+                "mode": "backend",
+            },
             "role": "operator",
-            "scopes": ["read", "write"],
+            "scopes": ["operator.admin"],
         }
-        if device_token:
-            handshake["deviceToken"] = device_token
+        if auth_token or cached_token:
+            connect_params["auth"] = {"token": auth_token or cached_token}
 
-        await ws.send(json.dumps(handshake))
-
-        # connected 응답 대기 (5초 타임아웃)
-        try:
-            raw_resp = await asyncio.wait_for(ws.recv(), timeout=5.0)
-        except asyncio.TimeoutError as exc:
-            await ws.close()
-            raise OpenClawUnavailableError("핸드셰이크 타임아웃") from exc
-
-        resp = json.loads(raw_resp)
-        if resp.get("type") != "connected":
-            await ws.close()
-            raise OpenClawUnavailableError(
-                f"핸드셰이크 실패: {resp}"
+        connect_id = str(uuid.uuid4())
+        await ws.send(
+            json.dumps(
+                {
+                    "type": "req",
+                    "id": connect_id,
+                    "method": "connect",
+                    "params": connect_params,
+                }
             )
+        )
 
-        # 새 토큰 캐싱
-        new_token = resp.get("deviceToken")
-        if new_token:
-            self._device_token = new_token
-            self._save_token(new_token)
+        # 3) connect 응답 대기
+        hello_payload: dict | None = None
+        handshake_deadline = asyncio.get_event_loop().time() + 10.0
+        while asyncio.get_event_loop().time() < handshake_deadline:
+            timeout = max(0.1, handshake_deadline - asyncio.get_event_loop().time())
+            raw_frame = await asyncio.wait_for(ws.recv(), timeout=timeout)
+            frame = json.loads(raw_frame)
 
+            if frame.get("type") != "res" or frame.get("id") != connect_id:
+                continue
+
+            if not frame.get("ok"):
+                await ws.close()
+                error_msg = self._normalize_error_message(frame.get("error"))
+                raise OpenClawUnavailableError(f"핸드셰이크 실패: {error_msg}")
+
+            payload = frame.get("payload")
+            hello_payload = payload if isinstance(payload, dict) else {}
+            break
+
+        if hello_payload is None:
+            await ws.close()
+            raise OpenClawUnavailableError("핸드셰이크 실패: connect 응답 타임아웃")
+
+        # 새 디바이스 토큰 캐싱
+        new_token = (
+            hello_payload.get("auth", {}).get("deviceToken")
+            if isinstance(hello_payload.get("auth"), dict)
+            else None
+        )
+        if isinstance(new_token, str) and new_token.strip():
+            self._device_token = new_token.strip()
+            self._save_token(self._device_token)
+
+        self._ws = ws
         self._connected = True
-
-        # 백그라운드 메시지 수신 루프 시작
         self._listener_task = asyncio.create_task(self._listener_loop())
         logger.info("[openclaw] Gateway connected (port %d)", self._port)
 
@@ -341,31 +401,252 @@ class OpenClawClient:
             self._pending.clear()
 
     async def _dispatch_frame(self, frame: dict) -> None:
-        """수신된 프레임을 requestId 또는 sessionId 기준으로 라우팅한다."""
+        """수신된 v4 req/res/event 프레임을 내부 큐/대기 future로 라우팅한다."""
         frame_type = frame.get("type", "")
-        req_id = frame.get("requestId")
-        session_id = frame.get("sessionId")
 
-        # requestId 기반 응답 (create_session, install_skill 등)
-        if req_id and req_id in self._pending:
-            fut = self._pending.pop(req_id)
-            if not fut.done():
-                fut.set_result(frame)
+        # req/res 응답 처리
+        if frame_type == "res":
+            req_id = frame.get("id")
+            if req_id and req_id in self._pending:
+                fut = self._pending.pop(req_id)
+                if not fut.done():
+                    if frame.get("ok"):
+                        fut.set_result(frame.get("payload"))
+                    else:
+                        fut.set_exception(OpenClawError(self._normalize_error_message(frame.get("error"))))
             return
 
-        # sessionId 기반 스트리밍 응답
-        if session_id and session_id in self._session_queues:
-            await self._session_queues[session_id].put(frame)
+        if frame_type != "event":
+            logger.debug("[openclaw] Unrouted non-event frame type=%s", frame_type)
             return
 
-        # 알 수 없는 프레임
-        logger.debug("[openclaw] Unrouted frame type=%s", frame_type)
+        event_name = frame.get("event", "")
+        payload = frame.get("payload") if isinstance(frame.get("payload"), dict) else {}
+
+        # chat 이벤트를 기존 agent router가 기대하는 sessions.* 프레임으로 변환
+        if event_name == "chat":
+            session_key = str(payload.get("sessionKey", "")).strip()
+            if not session_key:
+                return
+
+            queue = self._session_queues.get(session_key)
+            if queue is None:
+                return
+
+            normalized = self._normalize_chat_event(session_key, payload)
+            if normalized:
+                await queue.put(normalized)
+                state = normalized.get("_state")
+                if state in {"final", "aborted", "error"}:
+                    await queue.put(
+                        {
+                            "type": "sessions.done",
+                            "sessionId": normalized.get("sessionId", ""),
+                            "sessionKey": session_key,
+                            "_runId": normalized.get("_runId"),
+                            "_state": state,
+                        }
+                    )
+            return
+
+        # tool 실행 결과 이벤트 매핑
+        if event_name == "session.tool":
+            session_key = str(payload.get("sessionKey", "")).strip()
+            queue = self._session_queues.get(session_key)
+            if queue is not None:
+                await queue.put(
+                    {
+                        "type": "tool.result",
+                        "sessionId": self._session_id_for_key(session_key),
+                        "sessionKey": session_key,
+                        **payload,
+                    }
+                )
+            return
+
+        # 승인 요청 이벤트 매핑
+        if event_name == "exec.approval.requested":
+            session_key = str(payload.get("sessionKey", "")).strip()
+            queue = self._session_queues.get(session_key)
+            if queue is not None:
+                await queue.put(
+                    {
+                        "type": "exec.approval",
+                        "sessionId": self._session_id_for_key(session_key),
+                        "sessionKey": session_key,
+                        "approvalId": payload.get("id"),
+                        "toolName": payload.get("toolName", "unknown"),
+                        "args": payload.get("args", {}) if isinstance(payload.get("args"), dict) else {},
+                    }
+                )
+            return
+
+        logger.debug("[openclaw] Unrouted event=%s", event_name)
 
     async def _send_frame(self, frame: dict) -> None:
-        """WebSocket으로 JSON 프레임을 전송한다."""
+        """
+        하위 호환용 전송 함수.
+
+        현재는 agent.py의 승인 응답(`exec.approval.response`) 경로만 사용한다.
+        """
+        frame_type = frame.get("type")
+        if frame_type == "exec.approval.response":
+            approval_id = str(frame.get("approvalId", "")).strip()
+            approved = bool(frame.get("approved", False))
+            if not approval_id:
+                raise OpenClawError("approvalId가 비어 있어 승인 응답을 전송할 수 없습니다")
+            await self._request(
+                method="exec.approval.resolve",
+                params={
+                    "id": approval_id,
+                    "decision": "approve" if approved else "reject",
+                },
+                timeout=15.0,
+            )
+            return
+
+        raise OpenClawError(f"지원하지 않는 프레임 타입: {frame_type}")
+
+    async def _request(self, method: str, params: dict, timeout: float = 30.0) -> dict:
+        """게이트웨이 req/res 호출을 수행하고 payload(dict)를 반환한다."""
         if self._ws is None or not self._connected:
             raise OpenClawUnavailableError("게이트웨이에 연결되지 않았습니다")
-        await self._ws.send(json.dumps(frame))
+
+        req_id = str(uuid.uuid4())
+        future: asyncio.Future = asyncio.get_event_loop().create_future()
+        self._pending[req_id] = future
+        await self._ws.send(
+            json.dumps(
+                {
+                    "type": "req",
+                    "id": req_id,
+                    "method": method,
+                    "params": params,
+                }
+            )
+        )
+
+        try:
+            payload = await asyncio.wait_for(future, timeout=timeout)
+        except asyncio.TimeoutError as exc:
+            self._pending.pop(req_id, None)
+            raise OpenClawError(f"요청 타임아웃: {method}") from exc
+
+        return payload if isinstance(payload, dict) else {}
+
+    async def _resolve_session_key(self, session_id: str) -> str:
+        """외부로 노출된 session_id(키 또는 UUID)를 session key로 정규화한다."""
+        raw = (session_id or "").strip()
+        if not raw:
+            return ""
+        if raw.startswith("agent:") or raw.startswith("global") or raw.startswith("unknown"):
+            return raw
+
+        cached = self._session_key_by_id.get(raw)
+        if cached:
+            return cached
+
+        try:
+            resolved = await self._request(
+                method="sessions.resolve",
+                params={"sessionId": raw},
+                timeout=10.0,
+            )
+            key = str(resolved.get("key", "")).strip()
+            sid = str(resolved.get("sessionId", "")).strip()
+            if sid and key:
+                self._session_key_by_id[sid] = key
+            if key:
+                return key
+        except Exception:
+            pass
+
+        sessions = await self.list_sessions()
+        for row in sessions:
+            sid = str(row.get("sessionId", "")).strip()
+            key = str(row.get("key", "")).strip()
+            if sid and key:
+                self._session_key_by_id[sid] = key
+            if sid == raw and key:
+                return key
+
+        return ""
+
+    def _session_id_for_key(self, session_key: str) -> str:
+        for sid, key in self._session_key_by_id.items():
+            if key == session_key:
+                return sid
+        return session_key
+
+    def _normalize_chat_event(self, session_key: str, payload: dict) -> dict | None:
+        """chat 이벤트 payload를 기존 router 호환 frame으로 변환한다."""
+        state = str(payload.get("state", "")).strip()
+        run_id = payload.get("runId")
+        session_id = self._session_id_for_key(session_key)
+        text = ""
+
+        if state == "delta":
+            text = str(payload.get("deltaText", "")).strip()
+        else:
+            text = self._extract_text_from_message(payload.get("message"))
+
+        frame: dict = {
+            "sessionId": session_id,
+            "sessionKey": session_key,
+            "_runId": run_id,
+            "_state": state,
+        }
+
+        if state == "error":
+            frame["type"] = "sessions.message"
+            frame["content"] = (
+                str(payload.get("errorMessage", "")).strip()
+                or text
+                or "OpenClaw chat 오류"
+            )
+            return frame
+
+        frame["type"] = "sessions.message"
+        if text:
+            frame["content"] = text
+        return frame
+
+    def _extract_text_from_message(self, message: object) -> str:
+        """OpenClaw message 객체에서 텍스트를 추출한다."""
+        if isinstance(message, str):
+            return message.strip()
+
+        if not isinstance(message, dict):
+            return ""
+
+        if isinstance(message.get("text"), str):
+            return str(message.get("text")).strip()
+
+        parts: list[str] = []
+        content = message.get("content")
+        if isinstance(content, list):
+            for item in content:
+                if isinstance(item, str):
+                    text = item.strip()
+                    if text:
+                        parts.append(text)
+                elif isinstance(item, dict):
+                    if item.get("type") == "text" and isinstance(item.get("text"), str):
+                        text = item["text"].strip()
+                        if text:
+                            parts.append(text)
+
+        return "\n".join(parts).strip()
+
+    def _normalize_error_message(self, error: object) -> str:
+        if isinstance(error, dict):
+            msg = error.get("message")
+            if isinstance(msg, str) and msg.strip():
+                return msg.strip()
+            code = error.get("code")
+            if isinstance(code, str) and code.strip():
+                return code.strip()
+        return "Unknown error"
 
     def _load_token(self) -> str | None:
         """캐시 파일에서 디바이스 토큰을 로드한다."""

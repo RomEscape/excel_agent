@@ -24,6 +24,7 @@ import {
   MessageCircle,
   Copy,
   Sparkles,
+  RefreshCw,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -235,7 +236,7 @@ function RecentActivity({ logs, loading }) {
 
 function FirstCommandGuide({ botUsername, onGoToConversations, onGoToMessenger }) {
   const [copied, setCopied] = useState(false);
-  const example = "안녕";
+  const example = "A1:C3 범위 읽어줘";
 
   const handleCopy = async () => {
     try {
@@ -297,9 +298,9 @@ function FirstCommandGuide({ botUsername, onGoToConversations, onGoToMessenger }
           <div className="mt-3 rounded-md border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
             <p className="font-medium text-foreground">다음 명령도 시도해 보세요</p>
             <ul className="mt-1.5 space-y-0.5">
-              <li>• "받은 메일 요약해줘"</li>
-              <li>• "워크스페이스의 report 파일 요약해줘"</li>
-              <li>• "오늘 일정 알려줘"</li>
+              <li>• "A1:C3 범위 읽어줘"</li>
+              <li>• "B2:D2에 이름,수량,금액 입력"</li>
+              <li>• "A열 20보다 큰 값 빨간색으로 칠해줘"</li>
             </ul>
           </div>
         </div>
@@ -385,11 +386,23 @@ export default function Dashboard() {
   return (
     <div className="mx-auto max-w-[1280px] space-y-6">
       {/* 헤더 */}
-      <div>
-        <h1 className="text-2xl font-bold">대시보드</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          작업 요약 및 시스템 핵심 상태
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">대시보드</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            작업 요약 및 시스템 핵심 상태
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={loadData}
+          disabled={loading}
+          title="대시보드 새로고침"
+        >
+          <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", loading && "animate-spin")} />
+          새로고침
+        </Button>
       </div>
 
       {/* OpenClaw 상태 — 비개발자가 가장 먼저 봐야 할 영역.

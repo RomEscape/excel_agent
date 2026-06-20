@@ -58,42 +58,42 @@ const fixtures = {
 // ── DEFAULT_MODEL / RECOMMENDED_MODELS ────────────────────────────────────
 
 describe("default model", () => {
-  it("Office 친화적 경량 모델인 phi3.5를 기본값으로 한다", () => {
-    assert.equal(DEFAULT_MODEL, "phi3.5");
+  it("Qwen 3 로컬 스택(qwen3:4b)을 기본값으로 한다", () => {
+    assert.equal(DEFAULT_MODEL, "qwen3:4b");
   });
 
   it("RECOMMENDED_MODELS 첫 항목이 DEFAULT_MODEL과 일치한다 (사용자에게 첫 노출 = 권장)", () => {
     assert.equal(RECOMMENDED_MODELS[0].id, DEFAULT_MODEL);
   });
 
-  it("phi3.5 설명에 Office 문서 강점이 명시되어야 한다", () => {
-    const phi = RECOMMENDED_MODELS.find((m) => m.id === "phi3.5");
-    assert.ok(phi, "phi3.5가 추천 목록에 있어야 함");
-    assert.match(phi.note, /Excel|Office|PowerPoint|문서|표/);
+  it("qwen3:4b 설명에 한국어/최신 계열 취지가 명시되어야 한다", () => {
+    const qwen = RECOMMENDED_MODELS.find((m) => m.id === "qwen3:4b");
+    assert.ok(qwen, "qwen3:4b가 추천 목록에 있어야 함");
+    assert.match(qwen.note, /Qwen|한국어|최신/);
   });
 });
 
 // ── hasModelInstalled ─────────────────────────────────────────────────────
 
 describe("hasModelInstalled", () => {
-  it("Ollama 태그(`phi3.5:latest`)가 startsWith 매칭으로 인식된다", () => {
+  it("Ollama 태그(`qwen3:8b:latest`)가 startsWith 매칭으로 인식된다", () => {
     assert.equal(
-      hasModelInstalled([{ name: "phi3.5:latest" }], "phi3.5"),
+      hasModelInstalled([{ name: "qwen3:8b:latest" }], "qwen3:8b"),
       true
     );
   });
 
   it("다른 모델만 있을 때는 false", () => {
     assert.equal(
-      hasModelInstalled([{ name: "llama3.2:latest" }], "phi3.5"),
+      hasModelInstalled([{ name: "qwen3:4b:latest" }], "qwen3:8b"),
       false
     );
   });
 
   it("빈 목록 / null / undefined를 안전하게 처리한다", () => {
-    assert.equal(hasModelInstalled([], "phi3.5"), false);
-    assert.equal(hasModelInstalled(null, "phi3.5"), false);
-    assert.equal(hasModelInstalled(undefined, "phi3.5"), false);
+    assert.equal(hasModelInstalled([], "qwen3:8b"), false);
+    assert.equal(hasModelInstalled(null, "qwen3:8b"), false);
+    assert.equal(hasModelInstalled(undefined, "qwen3:8b"), false);
   });
 });
 
@@ -114,7 +114,7 @@ describe("isAllReady", () => {
 
   it("원하는 모델이 없으면 false", () => {
     assert.equal(
-      isAllReady(fixtures.ollamaWrongModel("llama3.2"), "phi3.5"),
+      isAllReady(fixtures.ollamaWrongModel("qwen3:4b"), "qwen3:8b"),
       false
     );
   });
@@ -171,7 +171,7 @@ describe("buildPlan (idempotency)", () => {
       fixtures.fresh(),
       fixtures.ocInstalledOnly(),
       fixtures.ready(DEFAULT_MODEL),
-      fixtures.ollamaWrongModel("llama3.2"),
+      fixtures.ollamaWrongModel("qwen3:8b"),
     ];
     for (const diag of cases) {
       const { todo } = buildPlan(diag, DEFAULT_MODEL);
@@ -200,8 +200,8 @@ describe("buildPlan (idempotency)", () => {
 
   it("원하는 모델이 다른 태그면 PULL_MODEL이 todo에 추가됨", () => {
     const { todo } = buildPlan(
-      fixtures.ollamaWrongModel("llama3.2"),
-      "phi3.5"
+      fixtures.ollamaWrongModel("qwen3:4b"),
+      "qwen3:8b"
     );
     assert.ok(todo.includes(STEP.PULL_MODEL));
   });

@@ -37,6 +37,7 @@ import {
   openclawUseOllama,
   agentChat,
   installerCancel,
+  saveLLMSettings,
 } from "@/lib/api";
 import {
   STEP,
@@ -47,6 +48,10 @@ import {
   isAllReady,
   hasModelInstalled,
 } from "@/lib/localAISetup";
+import {
+  QWEN3_OPENCLAW_PRESET,
+  applyLocalStackPreset,
+} from "@/lib/localStack";
 
 /** 진단/검증 후 잠깐 기다림 (ms) */
 const DETECTION_DELAY_MS = 1000;
@@ -61,14 +66,15 @@ function isMac() {
 // ── 단계 정의 (순수 로직은 @/lib/localAISetup.js로 분리, 여기는 wizard 전용 상수만) ──
 
 /** 프롬프트 검증 시 보낼 핑 메시지 — 응답 형식·언어는 모델마다 다르므로 *비어있지 않은 응답*만 검사 */
-const PING_MESSAGE = "안녕! 한 단어로 'OK'라고만 답해줘.";
-const PROMPT_TEST_TIMEOUT_MS = 60_000;
+const PING_MESSAGE = QWEN3_OPENCLAW_PRESET.pingMessage;
+const PROMPT_TEST_TIMEOUT_MS = 120_000;
 
 // ── 메인 컴포넌트 ───────────────────────────────────────────────────────────
 
 export default function LocalAISetupWizard() {
   const onboardingComplete = useAppStore((s) => s.onboardingComplete);
   const llmConfig = useAppStore((s) => s.llmConfig);
+  const setLLMConfig = useAppStore((s) => s.setLLMConfig);
   const setCurrentPage = useAppStore((s) => s.setCurrentPage);
 
   // 새 중앙 상태 store에서 모듈 데이터 구독 — App 루트의 useStatusPoller가 자동 갱신.
@@ -294,8 +300,38 @@ export default function LocalAISetupWizard() {
           }
           case STEP.CONFIG_OC: {
             pushLog(stepId, "info", `AI 모델(${model})을 OpenClaw에 연결하고 있어요...`);
-            await openclawUseOllama(model);
-            pushLog(stepId, "info", "✓ 연결 완료");
+            try {
+              await openclawUseOllama(model);
+              pushLog(stepId, "info", "✓ 연결 완료");
+            } catch (err) {
+              const msg = String(err?.message ?? err);
+              // Windows GUI 환경에서 openclaw CLI 경로 해석 실패(os error 3) 케이스가 있다.
+              // 이때도 실제 agent 경로가 정상 동작하면 불필요하게 setup 전체를 실패 처리하지 않는다.
+              const pathLikeError =
+                msg.includes("os error 3") || msg.includes("지정된 경로를 찾을 수 없습니다");
+              if (!pathLikeError) {
+                throw err;
+              }
+              pushLog(
+                stepId,
+                "info",
+                "OpenClaw CLI 경로 확인에 실패했지만, 실제 AI 대화 경로로 연결 상태를 재검증합니다..."
+              );
+              const probe = await Promise.race([
+                agentChat(PING_MESSAGE, null),
+                new Promise((_, rej) =>
+                  setTimeout(
+                    () => rej(new Error("OpenClaw 연결 재검증이 시간 초과되었습니다.")),
+                    20_000
+                  )
+                ),
+              ]);
+              const probeText = String(probe?.response ?? "").trim();
+              if (!probeText) {
+                throw err;
+              }
+              pushLog(stepId, "info", "✓ 대화 경로가 정상이라 연결 단계를 통과 처리합니다.");
+            }
             break;
           }
           case STEP.PROMPT_TEST: {
@@ -344,6 +380,39 @@ export default function LocalAISetupWizard() {
     [model, pushLog, handleInstallResult, setStepStatus]
   );
 
+  /** 설정 완료 시 sidecar·앱 store에 Ollama 모델 동기화 */
+  const persistLlmForModel = useCallback(
+    async (ollamaModel) => {
+      const match = RECOMMENDED_MODELS.find((m) => m.id === ollamaModel);
+      if (match?.presetId) {
+        await applyLocalStackPreset(match.presetId, {
+          saveLLMSettings,
+          setLLMConfig,
+        });
+        return;
+      }
+      const config = { provider: "ollama", model: ollamaModel };
+      await saveLLMSettings(config);
+      setLLMConfig(config);
+    },
+    [setLLMConfig]
+  );
+
+  const finalizeSetupIfReady = useCallback(
+    async (freshDiag) => {
+      if (!isAllReady(freshDiag, model)) return false;
+      try {
+        await persistLlmForModel(model);
+      } catch (err) {
+        setErrorMsg(String(err?.message ?? err));
+        setPhase("error");
+        return false;
+      }
+      return true;
+    },
+    [model, persistLlmForModel]
+  );
+
   // 전체 자동 실행 — todo 단계만 순차 실행. skipped는 UI에서 "이미 완료"로만 표시.
   const runAll = useCallback(async () => {
     cancelRef.current = false;
@@ -364,10 +433,13 @@ export default function LocalAISetupWizard() {
       }
     }
     setActiveStep(null);
-    // 마지막 검증 진단
     const fresh = await runDiagnosis();
-    setPhase(isAllReady(fresh, model) ? "done" : "idle");
-  }, [plan.todo, runDiagnosis, runStep, model]);
+    if (await finalizeSetupIfReady(fresh)) {
+      setPhase("done");
+    } else {
+      setPhase("idle");
+    }
+  }, [plan.todo, runDiagnosis, runStep, model, finalizeSetupIfReady]);
 
   // 단일 단계 실행 — 사용자가 PlanList의 각 [실행] 버튼을 눌렀을 때 호출.
   //
@@ -397,9 +469,13 @@ export default function LocalAISetupWizard() {
       }
 
       const fresh = await runDiagnosis();
-      setPhase(isAllReady(fresh, model) ? "done" : "idle");
+      if (await finalizeSetupIfReady(fresh)) {
+        setPhase("done");
+      } else {
+        setPhase("idle");
+      }
     },
-    [runStep, runDiagnosis, model]
+    [runStep, runDiagnosis, model, finalizeSetupIfReady]
   );
 
   // 취소 — 진행 중인 Rust 측 자식 프로세스에 SIGTERM 전송.
@@ -503,6 +579,7 @@ export default function LocalAISetupWizard() {
                 activeStep={activeStep}
                 phase={phase}
                 onRunStep={runSingleStep}
+                onRunAll={runAll}
                 onCancel={cancelAll}
               />
             )}
@@ -574,12 +651,6 @@ export default function LocalAISetupWizard() {
                     <>
                       <Button variant="outline" size="sm" onClick={handleLater}>
                         나중에
-                      </Button>
-                      {/* 단계별 [실행]을 일일이 누르는 대신 남은 단계를 모두 한 번에 실행.
-                          이전 단계가 실패하면 거기서 멈춤. */}
-                      <Button size="sm" onClick={runAll} disabled={plan.todo.length === 0}>
-                        <Zap className="mr-1.5 h-3.5 w-3.5" />
-                        남은 단계 한 번에 실행
                       </Button>
                     </>
                   )}
@@ -713,7 +784,7 @@ function ModelPicker({ model, onChange }) {
             disabled={!custom}
             value={custom ? model : ""}
             onChange={(e) => onChange(e.target.value)}
-            placeholder="qwen2.5:14b"
+            placeholder="qwen3:8b"
             className="flex-1 rounded border border-input bg-background px-2 py-0.5 font-mono text-[11px] disabled:opacity-50"
           />
         </label>
@@ -732,7 +803,7 @@ function ModelPicker({ model, onChange }) {
  *   - 실패한 단계는 인라인 로그 + [재시도] 버튼
  *   - 다른 단계가 실행 중이면 모든 버튼 비활성화 (동시 실행 방지)
  */
-function PlanList({ plan, stepStates, activeStep, phase, onRunStep, onCancel }) {
+function PlanList({ plan, stepStates, activeStep, phase, onRunStep, onRunAll, onCancel }) {
   const isAnyRunning = phase === "running";
 
   return (
@@ -762,18 +833,31 @@ function PlanList({ plan, stepStates, activeStep, phase, onRunStep, onCancel }) 
         해야 할 작업 ({plan.todo.length}) — 단계별로 [실행]을 눌러주세요
       </p>
       <ul className="space-y-1.5">
-        {plan.todo.map((id) => (
-          <PlanStepRow
-            key={id}
-            stepId={id}
-            state={stepStates[id]}
-            isActive={activeStep === id}
-            isAnyRunning={isAnyRunning}
-            onRun={() => onRunStep(id)}
-            onCancel={onCancel}
-          />
-        ))}
+        {plan.todo.map((id, idx) => {
+          const prevIds = plan.todo.slice(0, idx);
+          const prevDone = prevIds.every((pid) => stepStates[pid]?.status === "done");
+          return (
+            <PlanStepRow
+              key={id}
+              stepId={id}
+              state={stepStates[id]}
+              isActive={activeStep === id}
+              isAnyRunning={isAnyRunning}
+              canRun={prevDone}
+              onRun={() => onRunStep(id)}
+              onCancel={onCancel}
+            />
+          );
+        })}
       </ul>
+      {plan.todo.length > 0 && (
+        <div className="mt-2 flex justify-end">
+          <Button size="sm" onClick={onRunAll} disabled={isAnyRunning}>
+            <Zap className="mr-1 h-3 w-3" />
+            전체 실행 테스트
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -783,7 +867,7 @@ function PlanList({ plan, stepStates, activeStep, phase, onRunStep, onCancel }) 
  *
  * 로그/세부 정보는 기본적으로 숨김(토글). 일반 사용자가 압도되지 않도록.
  */
-function PlanStepRow({ stepId, state, isActive, isAnyRunning, onRun, onCancel }) {
+function PlanStepRow({ stepId, state, isActive, isAnyRunning, canRun, onRun, onCancel }) {
   const status = state?.status ?? "pending";
   const logs = state?.logs ?? [];
   const logBoxRef = useRef(null);
@@ -816,7 +900,8 @@ function PlanStepRow({ stepId, state, isActive, isAnyRunning, onRun, onCancel })
         size="sm"
         variant={isError ? "outline" : "default"}
         onClick={onRun}
-        disabled={isAnyRunning}
+        disabled={isAnyRunning || !canRun}
+        title={!canRun ? "이전 단계를 먼저 완료해 주세요." : undefined}
       >
         <Zap className="mr-1 h-3 w-3" />
         {isError ? "재시도" : "실행"}

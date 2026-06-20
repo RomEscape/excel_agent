@@ -7,8 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "tauri:dev": "vite & cargo tauri dev",
-    "test:unit": "node --test src/lib/*.test.js"
+    "tauri:dev": "tauri dev",
+    "test:unit": "node --test src/lib/*.test.js src/lib/localStack/*.test.js"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.4",
@@ -37,6 +37,7 @@
     "zustand": "^5.0.2"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.10.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",

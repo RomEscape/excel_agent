@@ -1,17 +1,22 @@
 # Development script for Windows: run Python sidecar + Tauri dev
 $ErrorActionPreference = "Stop"
 
-$ProjectDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$ProjectDir = Split-Path -Parent $PSScriptRoot
 
 Write-Host "=== Starting Office Claw Development ==="
 
 # Start Python sidecar in background
 Write-Host "Starting Python sidecar..."
+$envScript = Join-Path $ProjectDir "scripts\local-env.ps1"
+if (Test-Path $envScript) { . $envScript }
+
 $sidecarJob = Start-Job -ScriptBlock {
-    param($dir)
+    param($dir, $gwToken)
     Set-Location "$dir/python-sidecar"
-    python -m office_claw_sidecar --port 19532
-} -ArgumentList $ProjectDir
+    if ($gwToken) { $env:OPENCLAW_GATEWAY_TOKEN = $gwToken }
+    $env:OLLAMA_API_KEY = "ollama-local"
+    uv run python -m office_claw_sidecar --port 19532
+} -ArgumentList $ProjectDir, $env:OPENCLAW_GATEWAY_TOKEN
 
 Write-Host "Sidecar Job ID: $($sidecarJob.Id)"
 

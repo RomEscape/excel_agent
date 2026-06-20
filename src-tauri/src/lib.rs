@@ -74,6 +74,9 @@ pub fn run() {
             ipc::excel_formulas,
             ipc::excel_chart_data,
             ipc::excel_export,
+            ipc::excel_live_status,
+            ipc::excel_live_command,
+            ipc::excel_live_submit_approval,
             ipc::document_generate,
             ipc::document_export_docx,
             ipc::document_export_pdf,
@@ -144,6 +147,7 @@ pub fn run() {
             ipc::permissions_whitelist_remove,
             // Phase 1: Private-Claw — Workspace + Telegram setup
             ipc::open_workspace_folder,
+            ipc::open_workspace_file,
             ipc::workspace_list_files,
             ipc::workspace_read_file,
             ipc::workspace_write_file,

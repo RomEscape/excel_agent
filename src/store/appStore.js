@@ -48,7 +48,7 @@ const useAppStore = create(
       /** @type {LLMConfig} */
       llmConfig: {
         provider: "ollama",
-        model: "llama3.2",
+        model: "qwen3:4b",
       },
 
       /** @type {SidecarStatus} */

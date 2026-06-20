@@ -111,19 +111,51 @@ fn spawn_gateway_process(port: u16) -> Result<Child, String> {
         return Ok(child);
     }
 
-    // 2차: 사용자 로그인 셸 — Tauri GUI는 nvm PATH가 안 잡히는 경우가 많음
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-    let shell_cmd = format!("openclaw gateway --port {}", port_str);
-    let via_shell = Command::new(&shell)
-        .args(["-lc", &shell_cmd])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn();
-    if let Ok(child) = via_shell {
-        return Ok(child);
+    #[cfg(target_os = "windows")]
+    {
+        // 2차(Windows): npm global bin(AppData\\npm\\openclaw.cmd) 직접 실행
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            let openclaw_cmd = std::path::Path::new(&appdata).join("npm").join("openclaw.cmd");
+            if openclaw_cmd.exists() {
+                if let Ok(child) = Command::new(&openclaw_cmd)
+                    .args(["gateway", "--port", &port_str])
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                {
+                    return Ok(child);
+                }
+            }
+        }
+
+        // 3차(Windows): PowerShell에서 실행 (GUI PATH 불일치 우회)
+        let ps_cmd = format!("openclaw gateway --port {}", port_str);
+        if let Ok(child) = Command::new("powershell")
+            .args(["-NoProfile", "-Command", &ps_cmd])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            return Ok(child);
+        }
     }
 
-    // 3차: npx
+    #[cfg(not(target_os = "windows"))]
+    {
+        // 2차(Unix): 사용자 로그인 셸 — Tauri GUI는 nvm PATH가 안 잡히는 경우가 많음
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        let shell_cmd = format!("openclaw gateway --port {}", port_str);
+        let via_shell = Command::new(&shell)
+            .args(["-lc", &shell_cmd])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+        if let Ok(child) = via_shell {
+            return Ok(child);
+        }
+    }
+
+    // 마지막 폴백: npx
     let npx = Command::new("npx")
         .args(["--yes", "openclaw", "gateway", "--port", &port_str])
         .stdout(std::process::Stdio::null())
@@ -183,19 +215,57 @@ pub async fn is_openclaw_installed() -> serde_json::Value {
         }
     }
 
-    // GUI 앱은 nvm 등이 초기화된 PATH를 못 받는 경우가 많아 로그인 셸을 한 번 더 시도한다.
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-    if let Ok(output) = Command::new(&shell)
-        .args(["-lc", "openclaw --version"])
-        .output()
+    #[cfg(target_os = "windows")]
     {
-        if output.status.success() {
-            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            return serde_json::json!({
-                "installed": true,
-                "version": version,
-                "source": "login-shell"
-            });
+        // 2차(Windows): npm global bin(AppData\\npm\\openclaw.cmd) 직접 확인
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            let openclaw_cmd = std::path::Path::new(&appdata).join("npm").join("openclaw.cmd");
+            if openclaw_cmd.exists() {
+                if let Ok(output) = Command::new(&openclaw_cmd).arg("--version").output() {
+                    if output.status.success() {
+                        let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                        return serde_json::json!({
+                            "installed": true,
+                            "version": version,
+                            "source": "appdata-npm"
+                        });
+                    }
+                }
+            }
+        }
+
+        // 3차(Windows): PowerShell 경유 확인
+        if let Ok(output) = Command::new("powershell")
+            .args(["-NoProfile", "-Command", "openclaw --version"])
+            .output()
+        {
+            if output.status.success() {
+                let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                return serde_json::json!({
+                    "installed": true,
+                    "version": version,
+                    "source": "powershell"
+                });
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        // GUI 앱은 nvm 등이 초기화된 PATH를 못 받는 경우가 많아 로그인 셸을 한 번 더 시도한다.
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        if let Ok(output) = Command::new(&shell)
+            .args(["-lc", "openclaw --version"])
+            .output()
+        {
+            if output.status.success() {
+                let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                return serde_json::json!({
+                    "installed": true,
+                    "version": version,
+                    "source": "login-shell"
+                });
+            }
         }
     }
 

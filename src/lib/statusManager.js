@@ -58,7 +58,9 @@ export const STATUS_MODULES = {
           openclawInstalled().catch(() => ({ installed: false })),
         ]);
 
-        const installed = !!installedRes?.installed;
+        // Windows에서 GUI 런타임 PATH 이슈로 `openclaw --version` 감지가
+        // 실패하는 경우가 있다. 게이트웨이가 실제 running이면 설치된 것으로 본다.
+        const installed = !!installedRes?.installed || statusRes?.state === "running";
         const running = statusRes?.state === "running";
 
         store.updateModule("openclaw", {
