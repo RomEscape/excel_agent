@@ -147,7 +147,14 @@ class ExcelLiveService:
         wb = self._find_workbook(target_id)
         sheet = self._find_sheet(wb, sheet_name)
         rng = sheet.range(range_ref)
-        values = self._normalize_values(rng.value)
+        raw = rng.options(ndim=2).value
+        values = self._normalize_values(raw)
+        if values == []:
+            rows_obj = getattr(rng, "rows", None)
+            cols_obj = getattr(rng, "columns", None)
+            row_count = int(getattr(rows_obj, "count", 1) or 1)
+            col_count = int(getattr(cols_obj, "count", 1) or 1)
+            values = [[None for _ in range(col_count)] for _ in range(row_count)]
 
         row_count = len(values)
         col_count = len(values[0]) if values else 0
@@ -217,6 +224,9 @@ class ExcelLiveService:
                     cell_ref = f"{self._idx_to_col(absolute_col)}{absolute_row}"
                     cell = sheet.range(cell_ref)
                     cell.color = rgb
+                    # 흰색/옅은색 채우기는 Excel 기본 격자선이 시각적으로 사라져 보일 수 있다.
+                    # 변경 셀에 얇은 경계선을 유지해 "하얀 블록"처럼 보이지 않게 보정한다.
+                    self._ensure_visual_gridline(cell, rgb)
                     changed += 1
 
         return {
@@ -249,6 +259,67 @@ class ExcelLiveService:
             "formula_applied_cells": row_count * col_count,
             "address": str(rng.address),
         }
+
+    def save_workbook(self, workbook_id: str | None) -> dict[str, Any]:
+        """현재 통합문서를 디스크에 저장한다."""
+        target_id = workbook_id or self._selected_workbook_id
+        if not target_id:
+            raise WorkbookNotFoundError(
+                "저장할 통합문서를 찾지 못했습니다. workbook_id를 지정하거나 select_workbook을 먼저 호출해 주세요."
+            )
+
+        wb = self._find_workbook(target_id)
+        full_path = str(getattr(wb, "fullname", "") or "").strip()
+        if not full_path:
+            raise ExcelLiveError(
+                "아직 파일 경로가 없는 통합문서입니다. Excel에서 먼저 다른 이름으로 저장해 주세요."
+            )
+        try:
+            wb.save()
+        except Exception as exc:  # pragma: no cover - COM 환경 의존
+            raise ExcelLiveError(f"통합문서 저장에 실패했습니다: {exc}") from exc
+
+        return {
+            "saved": True,
+            "workbook_id": self._workbook_id(wb),
+            "name": str(getattr(wb, "name", "") or ""),
+            "full_path": full_path,
+        }
+
+    def get_active_selection_ref(
+        self,
+        workbook_id: str | None,
+        sheet_name: str | None,
+    ) -> str:
+        """
+        현재 Excel 선택 범위를 A1 표기 문자열로 반환한다.
+
+        - 사용자가 범위를 말하지 않은 자연어 명령의 기본 타깃으로 사용.
+        - 선택 정보를 얻지 못하면 A1로 폴백.
+        """
+        target_id = workbook_id or self._selected_workbook_id
+        if not target_id:
+            return "A1"
+
+        wb = self._find_workbook(target_id)
+        sheet = self._find_sheet(wb, sheet_name) if sheet_name else wb.sheets.active
+        try:
+            app = self._app()
+            selection = getattr(app, "selection", None)
+            if selection is None:
+                return "A1"
+            address = str(getattr(selection, "address", "") or "")
+            cleaned = self._normalize_address_ref(address)
+            if cleaned:
+                return cleaned
+        except Exception:
+            pass
+
+        try:
+            active = sheet.range("A1")
+            return self._normalize_address_ref(str(getattr(active, "address", "") or "")) or "A1"
+        except Exception:
+            return "A1"
 
     def _find_workbook(self, workbook_id_or_name: str):
         candidate = (workbook_id_or_name or "").strip().lower()
@@ -298,6 +369,24 @@ class ExcelLiveService:
         return [[raw]]
 
     @staticmethod
+    def _normalize_address_ref(address: str) -> str:
+        """
+        Excel 주소 문자열을 A1/A1:C3 형태로 정규화한다.
+        예: "$C$3" -> "C3", "'Sheet1'!$B$2:$D$3" -> "B2:D3"
+        """
+        text = str(address or "").strip()
+        if not text:
+            return ""
+        text = text.lstrip("=")
+        if "!" in text:
+            text = text.split("!")[-1]
+        text = text.replace("$", "").strip()
+        # 다중 선택(콤마 구분)인 경우 첫 영역만 사용
+        if "," in text:
+            text = text.split(",")[0].strip()
+        return text or ""
+
+    @staticmethod
     def _matches_condition(value: Any, operator: str, threshold: float) -> bool:
         try:
             numeric = float(value)
@@ -329,6 +418,34 @@ class ExcelLiveService:
             int(value[2:4], 16),
             int(value[4:6], 16),
         )
+
+    @staticmethod
+    def _ensure_visual_gridline(cell: Any, rgb: tuple[int, int, int]) -> None:
+        """밝은 배경색 채우기 후에도 셀 경계를 보이게 얇은 보더를 적용한다."""
+        try:
+            # 매우 밝은 계열(특히 흰색)일 때만 보더 보정
+            if not all(channel >= 240 for channel in rgb):
+                return
+            borders = getattr(cell, "api", None)
+            if borders is None:
+                return
+            # Excel COM 상수 (late binding 용 숫자 상수 사용)
+            xl_edge_left = 7
+            xl_edge_top = 8
+            xl_edge_bottom = 9
+            xl_edge_right = 10
+            xl_continuous = 1
+            xl_thin = 2
+            border_color = (217, 217, 217)  # 기본 격자선에 가까운 회색
+
+            for edge in (xl_edge_left, xl_edge_top, xl_edge_bottom, xl_edge_right):
+                border = borders.Borders(edge)
+                border.LineStyle = xl_continuous
+                border.Weight = xl_thin
+                border.Color = border_color
+        except Exception:
+            # COM/테마 환경에 따라 보더 설정 실패 가능 — 비치명적
+            return
 
     @classmethod
     def _idx_to_col(cls, idx: int) -> str:

@@ -156,6 +156,12 @@ TOOL_REGISTRY: list[ToolDef] = [
         permission=PermissionLevel.CONFIRM,
         example_triggers=["수식 넣어줘", "합계 수식", "formula 적용"],
     ),
+    ToolDef(
+        name="excel_live.save_workbook",
+        description="현재 엑셀 통합문서를 디스크에 저장",
+        permission=PermissionLevel.SAFE,
+        example_triggers=["엑셀 저장", "통합문서 저장", "지금 파일 저장"],
+    ),
     # ── 명시적 거부 목록 — 어떤 경우에도 실행 불가 ──────────────────────────
     ToolDef(
         name="DENIED.file_delete",
@@ -193,6 +199,7 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "excel_live.write_range": "Excel 셀 값 수정",
     "excel_live.highlight_by_condition": "Excel 조건부 서식 변경",
     "excel_live.set_formula": "Excel 수식 적용",
+    "excel_live.save_workbook": "Excel 통합문서 저장",
 }
 
 # ── 화이트리스트 오버라이드 (런타임에 사용자가 변경 가능) ─────────────────────

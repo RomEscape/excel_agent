@@ -6,7 +6,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException, Query
+from openpyxl import Workbook
 from pydantic import BaseModel
 
 from office_claw_sidecar import sandbox
@@ -18,6 +21,12 @@ class WriteFileRequest(BaseModel):
     """파일 쓰기 요청 모델."""
     path: str
     content: str
+
+
+class CreateExcelFileRequest(BaseModel):
+    """새 엑셀 파일 생성 요청 모델."""
+    path: str
+    sheet_name: str | None = "Sheet1"
 
 
 @router.get("/files")
@@ -121,3 +130,56 @@ async def write_file(req: WriteFileRequest):
         raise HTTPException(status_code=500, detail=f"파일 쓰기 실패: {e}")
 
     return {"ok": True, "path": req.path}
+
+
+@router.post("/excel-file")
+async def create_excel_file(req: CreateExcelFileRequest):
+    """
+    워크스페이스 내 새 .xlsx 파일을 생성한다.
+
+    Request body:
+        path: 워크스페이스 기준 상대 경로 (예: reports/새파일.xlsx)
+        sheet_name: 첫 시트명 (선택, 기본값: Sheet1)
+
+    Returns
+    -------
+    {"ok": true, "path": str, "sheet_name": str}
+
+    Raises
+    ------
+    400: 잘못된 파일명/경로
+    403: 워크스페이스 외부 경로
+    409: 같은 이름 파일이 이미 존재
+    """
+    raw_path = str(req.path or "").strip()
+    if not raw_path:
+        raise HTTPException(status_code=400, detail="파일 경로가 비어 있습니다.")
+
+    if not raw_path.lower().endswith(".xlsx"):
+        raw_path = f"{raw_path}.xlsx"
+
+    try:
+        if not sandbox.is_path_safe(raw_path):
+            raise PermissionError(f"접근 거부: 워크스페이스 외부 경로입니다. ({raw_path})")
+
+        resolved = (sandbox.WORKSPACE_ROOT / Path(raw_path)).resolve()
+        if resolved.exists():
+            raise FileExistsError(f"같은 이름 파일이 이미 존재합니다: {raw_path}")
+
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        wb = Workbook()
+        ws = wb.active
+        safe_sheet_name = str(req.sheet_name or "Sheet1").strip()[:31] or "Sheet1"
+        ws.title = safe_sheet_name
+        wb.save(resolved)
+
+        rel = resolved.relative_to(sandbox.WORKSPACE_ROOT.resolve())
+        return {"ok": True, "path": str(rel), "sheet_name": safe_sheet_name}
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except FileExistsError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"엑셀 파일 생성 실패: {e}")

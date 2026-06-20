@@ -185,6 +185,10 @@ class _FakeWorkbook:
         self.name = name
         self.fullname = fullname
         self.sheets = _FakeSheets(sheets)
+        self.saved = False
+
+    def save(self):
+        self.saved = True
 
 
 class _FakeApp:
@@ -256,6 +260,14 @@ def test_read_range_normalizes_single_cell_to_2d_array():
     result = service.read_range(workbook_id=wb1.fullname, sheet_name="Sheet1", range_ref="A1")
 
     assert result["values"] == [["헤더"]]
+    assert result["row_count"] == 1
+    assert result["col_count"] == 1
+
+
+def test_read_range_empty_cell_returns_1x1_none():
+    service, wb1, _ = _build_service()
+    result = service.read_range(workbook_id=wb1.fullname, sheet_name="Sheet1", range_ref="B9")
+    assert result["values"] == [[None]]
     assert result["row_count"] == 1
     assert result["col_count"] == 1
 
@@ -358,4 +370,12 @@ def test_set_formula_applies_to_entire_range():
         formula_a1="=SUM(A1:B1)",
     )
     assert result["formula_applied_cells"] == 3
+
+
+def test_save_workbook_marks_saved_and_returns_metadata():
+    service, wb1, _ = _build_service()
+    result = service.save_workbook(wb1.fullname)
+    assert result["saved"] is True
+    assert result["name"] == wb1.name
+    assert wb1.saved is True
 

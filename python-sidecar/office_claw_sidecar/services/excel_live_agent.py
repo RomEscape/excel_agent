@@ -132,9 +132,33 @@ def _build_formula_from_function(func_word: str, source_range: str) -> str:
     return f"={fn}({source_range})"
 
 
+def _range_to_empty_payload(range_ref: str) -> tuple[str, list[list[Any]]]:
+    """
+    A1 또는 A1:C3 범위를 write_range 입력 형태(start_cell + values_2d)로 변환.
+    지우기 명령은 None 매트릭스를 써서 기존 값을 clear한다.
+    """
+    normalized = range_ref.strip().upper()
+    if ":" not in normalized:
+        return normalized, [[None]]
+
+    left, right = normalized.split(":")
+    left_col_m = re.match(r"([A-Z]+)(\d+)", left)
+    right_col_m = re.match(r"([A-Z]+)(\d+)", right)
+    if not left_col_m or not right_col_m:
+        return left, [[None]]
+
+    start_col, start_row = left_col_m.group(1), int(left_col_m.group(2))
+    end_col, end_row = right_col_m.group(1), int(right_col_m.group(2))
+    row_count = max(1, end_row - start_row + 1)
+    col_count = _column_span(start_col, end_col)
+    values_2d = [[None for _ in range(col_count)] for _ in range(row_count)]
+    return left, values_2d
+
+
 def parse_command_rule_based(message: str) -> dict[str, Any] | None:
     text = message.strip()
     lowered = text.lower()
+    write_verbs = r"(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|write|set|input|fill)"
 
     if any(
         token in lowered
@@ -167,16 +191,32 @@ def parse_command_rule_based(message: str) -> dict[str, Any] | None:
             "reason": "대상 워크북 선택 요청",
         }
 
+    # 예: "C3 셀 내용 지워줘", "B2:D3 비워줘", "clear A1"
+    clear_match = re.search(
+        r"\b([a-z]+\d+:[a-z]+\d+|[a-z]+\d+)\b[^\n]*(지워|지우|삭제|비워|clear|erase|reset)",
+        text,
+        re.IGNORECASE,
+    )
+    if clear_match:
+        target_range = clear_match.group(1).upper()
+        start_cell, values_2d = _range_to_empty_payload(target_range)
+        return {
+            "action": "excel_live.write_range",
+            "params": {"start_cell": start_cell, "values_2d": values_2d},
+            "reason": "셀 값 삭제 요청",
+        }
+
     # 예: "A1:C10 읽어줘", "B열 보여줘"
     read_verbs = r"(읽어|읽기|보여|조회|확인|read|show|display)"
-    if re.search(read_verbs, lowered):
+    if re.search(read_verbs, lowered) and not re.search(write_verbs, lowered):
         range_ref = _extract_target_range_from_text(lowered)
-        if range_ref:
-            return {
-                "action": "excel_live.read_range",
-                "params": {"range_ref": range_ref},
-                "reason": "범위 읽기 요청",
-            }
+        if not range_ref:
+            range_ref = "__ACTIVE_SELECTION__"
+        return {
+            "action": "excel_live.read_range",
+            "params": {"range_ref": range_ref},
+            "reason": "범위 읽기 요청",
+        }
 
     # 예: "C1에 A1:A10 합계 수식 넣어줘", "set sum formula in C1 from A1:A10"
     formula_template = re.search(
@@ -199,7 +239,9 @@ def parse_command_rule_based(message: str) -> dict[str, Any] | None:
     # 예: "A열 50보다 큰 값 노란색으로 칠해줘", "A1:A20 >= 100 highlight"
     if re.search(r"(칠해|강조|표시|highlight|색)", lowered):
         op_threshold = _parse_operator_threshold(lowered)
-        target_range = _extract_target_range_from_text(lowered) or "A:A"
+        # 범위를 특정하지 않은 강조 명령은 A:A로 좁게 잡으면 체감상 "안 된다"가 되기 쉽다.
+        # 기본값을 A:Z로 넓혀 일반 표(좌측 영역)에서 자연어 명령이 더 잘 동작하게 한다.
+        target_range = _extract_target_range_from_text(lowered) or "A:Z"
         color_match = re.search(
             r"(노란색|노랑|yellow|빨간색|빨강|red|초록색|초록|green|파란색|파랑|blue)",
             lowered,
@@ -226,7 +268,7 @@ def parse_command_rule_based(message: str) -> dict[str, Any] | None:
     if not header_match:
         range_match = re.search(r"([a-z]+\d+:[a-z]+\d+)", lowered)
         has_header = bool(re.search(r"(헤더|header)", lowered))
-        has_write_verb = bool(re.search(r"(써|작성|입력|write|set|fill)", lowered))
+        has_write_verb = bool(re.search(write_verbs, lowered))
         if range_match and has_header and has_write_verb:
             range_ref = range_match.group(1).upper()
             left, right = range_ref.split(":")
@@ -302,21 +344,44 @@ def parse_command_rule_based(message: str) -> dict[str, Any] | None:
                         "reason": "행 범위 값 입력 요청",
                     }
 
-    # 예: "A1에 120 입력", "C3에 '완료' 써줘"
-    single_write = re.search(
-        r"([a-z]+\d+)\s*에\s*['\"]?([^'\"]+?)['\"]?\s*(?:값\s*)?(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|write|set)",
+    # 예: "A1에 120 입력", "C3 셀에 777 입력해줘", "C3 값을 777로 입력", "C3 777 입력"
+    single_write_patterns = [
+        r"([a-z]+\d+)\s*(?:셀)?\s*에\s*(?:값\s*)?['\"]?([^'\"]+?)['\"]?\s*(?:을|를)?\s*(?:로)?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|write|set|input)",
+        r"([a-z]+\d+)\s*(?:셀)?\s*값(?:을|를)?\s*['\"]?([^'\"]+?)['\"]?\s*(?:로)?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|write|set|input)",
+        r"\b([a-z]+\d+)\s+['\"]?([^'\"]+?)['\"]?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|write|set|input)\b",
+    ]
+    for pattern in single_write_patterns:
+        single_write = re.search(pattern, text, re.IGNORECASE)
+        if not single_write:
+            continue
+        cell = single_write.group(1).upper()
+        raw_value = re.sub(r"\s*(?:값|value)\s*$", "", single_write.group(2).strip(), flags=re.IGNORECASE)
+        if "수식" in raw_value or "formula" in raw_value.lower() or "=" in raw_value:
+            continue
+        value = _parse_literal_value(raw_value)
+        return {
+            "action": "excel_live.write_range",
+            "params": {"start_cell": cell, "values_2d": [[value]]},
+            "reason": "단일 셀 값 입력 요청",
+        }
+
+    # 예: "777 입력해줘" (셀 미지정) -> 현재 선택 셀에 기록
+    implicit_single_write = re.search(
+        r"^\s*['\"]?([^'\"]+?)['\"]?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|write|set|input)\s*$",
         text,
         re.IGNORECASE,
     )
-    if single_write:
-        cell = single_write.group(1).upper()
-        raw_value = single_write.group(2).strip()
+    if (
+        implicit_single_write
+        and not re.search(r"(수식|formula|헤더|header|색|highlight|강조|표시|열|column|row)", lowered)
+    ):
+        raw_value = implicit_single_write.group(1).strip()
         if "수식" not in raw_value and "formula" not in raw_value.lower() and "=" not in raw_value:
             value = _parse_literal_value(raw_value)
             return {
                 "action": "excel_live.write_range",
-                "params": {"start_cell": cell, "values_2d": [[value]]},
-                "reason": "단일 셀 값 입력 요청",
+                "params": {"start_cell": "__ACTIVE_CELL__", "values_2d": [[value]]},
+                "reason": "선택 셀 값 입력 요청",
             }
 
     # 예: "C7 777 set", "B2 done write"
@@ -356,6 +421,25 @@ def parse_command_rule_based(message: str) -> dict[str, Any] | None:
                 "formula_a1": formula_a1,
             },
             "reason": "범위 수식 적용 요청",
+        }
+
+    # 예: "수식 =SUM(A1:A10) 적용" (범위 미지정) -> 현재 선택 범위에 적용
+    implicit_formula = re.search(
+        r"(수식|formula).*(=[^\n]+?)\s*(?:적용(?:해줘)?|넣(?:어줘)?|써(?:줘)?|set|$)",
+        text,
+        re.IGNORECASE,
+    )
+    if implicit_formula:
+        formula_a1 = re.sub(
+            r"\s*(?:적용(?:해줘)?|넣(?:어줘)?|써(?:줘)?|set)\s*$",
+            "",
+            implicit_formula.group(2).strip(),
+            flags=re.IGNORECASE,
+        )
+        return {
+            "action": "excel_live.set_formula",
+            "params": {"range_ref": "__ACTIVE_SELECTION__", "formula_a1": formula_a1},
+            "reason": "선택 범위 수식 적용 요청",
         }
 
     return None

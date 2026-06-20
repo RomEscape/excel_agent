@@ -5,8 +5,8 @@
  * 단계:
  *   1. OpenClaw 설치 (`npm install -g openclaw@latest`) — 미설치 시
  *   2. OpenClaw 게이트웨이 시작 (`openclaw gateway --port 18789`) — 미실행 시
- *   3. Ollama 설치 (`brew install ollama` macOS / 외부 다운로드 링크) — 미설치 시
- *   4. Ollama 데몬 실행 (`brew services start ollama` 또는 안내) — 미실행 시
+ *   3. Ollama 설치 (macOS: brew / Windows: winget) — 미설치 시
+ *   4. Ollama 데몬 실행 (macOS: brew services / Windows: Ollama 앱 시작) — 미실행 시
  *   5. Ollama 모델 다운로드 (`ollama pull <model>`) — 미다운로드 시
  *   6. OpenClaw → Ollama 연결 (`openclaw config set ...` 비인터랙티브) — 항상
  *
@@ -52,22 +52,24 @@ import {
   QWEN3_OPENCLAW_PRESET,
   applyLocalStackPreset,
 } from "@/lib/localStack";
+import { toUserMessage } from "@/lib/errorMessages";
 
 /** 진단/검증 후 잠깐 기다림 (ms) */
 const DETECTION_DELAY_MS = 1000;
-
-/** macOS 여부 — Ollama 자동 설치는 brew 기반이라 OS 분기 필요 */
-function isMac() {
-  if (typeof navigator === "undefined") return false;
-  return /Mac|iPhone|iPad/.test(navigator.platform || "") ||
-    /Mac OS X/.test(navigator.userAgent || "");
-}
 
 // ── 단계 정의 (순수 로직은 @/lib/localAISetup.js로 분리, 여기는 wizard 전용 상수만) ──
 
 /** 프롬프트 검증 시 보낼 핑 메시지 — 응답 형식·언어는 모델마다 다르므로 *비어있지 않은 응답*만 검사 */
 const PING_MESSAGE = QWEN3_OPENCLAW_PRESET.pingMessage;
 const PROMPT_TEST_TIMEOUT_MS = 120_000;
+
+function isGatewayUnavailableError(err) {
+  const msg = String(err?.message ?? err ?? "");
+  return (
+    msg.includes("HTTP 503") ||
+    msg.includes("OpenClaw 게이트웨이가 실행되지 않았습니다")
+  );
+}
 
 // ── 메인 컴포넌트 ───────────────────────────────────────────────────────────
 
@@ -270,24 +272,11 @@ export default function LocalAISetupWizard() {
             break;
           }
           case STEP.INSTALL_OLLAMA: {
-            if (!isMac()) {
-              pushLog(stepId, "err", "자동 설치는 현재 macOS에서만 가능해요.");
-              pushLog(
-                stepId,
-                "info",
-                "ollama.com/download 에서 직접 설치한 뒤 [재진단]을 눌러주세요."
-              );
-              throw new Error("Mac이 아니면 직접 설치해야 해요");
-            }
             const result = await STATUS_MODULES.ollama.install();
             handleInstallResult(stepId, result);
             break;
           }
           case STEP.START_OLLAMA: {
-            if (!isMac()) {
-              pushLog(stepId, "info", "Ollama 앱을 실행한 뒤 [재진단]을 눌러주세요.");
-              throw new Error("Mac이 아니면 Ollama 앱을 직접 실행해야 해요");
-            }
             const result = await STATUS_MODULES.ollama.start();
             handleInstallResult(stepId, result);
             // start()는 내부에서 ready polling + check를 이미 수행. 추가 확인 불필요.
@@ -336,15 +325,42 @@ export default function LocalAISetupWizard() {
           }
           case STEP.PROMPT_TEST: {
             pushLog(stepId, "info", "AI에게 간단한 인사를 보내볼게요...");
-            const reply = await Promise.race([
-              agentChat(PING_MESSAGE, null),
-              new Promise((_, rej) =>
-                setTimeout(
-                  () => rej(new Error("AI 응답이 너무 오래 걸려요. 처음 모델을 띄우면 1-2분 걸릴 수 있어요.")),
-                  PROMPT_TEST_TIMEOUT_MS
-                )
-              ),
-            ]);
+            pushLog(stepId, "info", "테스트 전에 OpenClaw 게이트웨이 상태를 다시 확인합니다...");
+            const ensureGateway = await STATUS_MODULES.openclaw.start();
+            if (ensureGateway?.state !== "running") {
+              throw new Error(
+                ensureGateway?.message || "OpenClaw 게이트웨이를 준비하지 못해 AI 대화 테스트를 진행할 수 없어요."
+              );
+            }
+
+            const askAgentWithTimeout = () =>
+              Promise.race([
+                agentChat(PING_MESSAGE, null),
+                new Promise((_, rej) =>
+                  setTimeout(
+                    () => rej(new Error("AI 응답이 너무 오래 걸려요. 처음 모델을 띄우면 1-2분 걸릴 수 있어요.")),
+                    PROMPT_TEST_TIMEOUT_MS
+                  )
+                ),
+              ]);
+
+            let reply;
+            try {
+              reply = await askAgentWithTimeout();
+            } catch (err) {
+              if (!isGatewayUnavailableError(err)) {
+                throw err;
+              }
+              pushLog(stepId, "info", "OpenClaw 게이트웨이가 꺼져 있어 자동으로 다시 시작합니다...");
+              const startResult = await STATUS_MODULES.openclaw.start();
+              if (startResult?.state !== "running") {
+                throw new Error(startResult?.message || "OpenClaw 게이트웨이를 자동으로 다시 시작하지 못했어요.");
+              }
+              // 게이트웨이 재기동 직후 초기화 시간을 짧게 준다.
+              await new Promise((r) => setTimeout(r, 1200));
+              pushLog(stepId, "info", "게이트웨이 재시작 완료. AI 대화 테스트를 다시 시도합니다.");
+              reply = await askAgentWithTimeout();
+            }
             const text = String(reply?.response ?? "").trim();
             if (!text) {
               throw new Error("AI가 응답하지 않았어요");
@@ -361,7 +377,8 @@ export default function LocalAISetupWizard() {
         return true;
       } catch (err) {
         const msg = String(err?.message ?? err);
-        pushLog(stepId, "err", `✗ ${msg}`);
+        const userMsg = toUserMessage(msg);
+        pushLog(stepId, "err", `✗ ${userMsg}`);
         // err.installResult가 있으면 stepStates에 함께 저장 — PlanStepRow가
         // EACCES 안내 / stderr_tail / manual_command 복사 UI를 렌더.
         const installResult = err?.installResult;
@@ -373,7 +390,7 @@ export default function LocalAISetupWizard() {
             installResult,
           },
         }));
-        setErrorMsg(msg);
+        setErrorMsg(userMsg);
         return false;
       }
     },
@@ -592,7 +609,7 @@ export default function LocalAISetupWizard() {
               {(stepStates[STEP.INSTALL_OLLAMA]?.status === "error" ||
                 stepStates[STEP.START_OLLAMA]?.status === "error") && (
                 <p className="mt-2">
-                  Ollama를 직접 설치하거나 실행한 뒤 [재진단]을 눌러주세요.{" "}
+                  자동 설치/실행이 실패하면 Ollama를 직접 설치/실행한 뒤 [재진단]을 눌러주세요.{" "}
                   <a
                     href="https://ollama.com/download"
                     target="_blank"
@@ -602,11 +619,6 @@ export default function LocalAISetupWizard() {
                     Ollama 다운로드
                     <ExternalLink className="h-3 w-3" />
                   </a>
-                  {isMac() && (
-                    <span className="block mt-1 opacity-80">
-                      Mac에서 자동 설치를 쓰려면 Homebrew가 먼저 설치되어 있어야 해요.
-                    </span>
-                  )}
                 </p>
               )}
             </div>

@@ -819,6 +819,40 @@ pub async fn excel_live_submit_approval(
     read_response(resp).await
 }
 
+#[tauri::command]
+pub async fn excel_live_save_workbook(
+    state: State<'_, Mutex<SidecarState>>,
+    workbook_id: Option<String>,
+) -> Result<String, String> {
+    let (url, client, token) = {
+        let s = state.lock().map_err(|e| e.to_string())?;
+        (
+            sidecar_url(&s, "/excel-live/action"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
+    };
+
+    let body = serde_json::json!({
+        "action": "excel_live.save_workbook",
+        "params": {},
+        "workbook_id": workbook_id,
+        "sheet_name": serde_json::Value::Null,
+        "approve": true,
+    });
+
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(30))
+        .send()
+        .await
+        .map_err(|e| format!("Excel 저장 요청 실패: {}", e))?;
+
+    read_response(resp).await
+}
+
 // ── Document AI commands ────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -2105,6 +2139,39 @@ pub async fn workspace_write_file(
         .send()
         .await
         .map_err(|e| format!("파일 쓰기 실패: {}", e))?;
+
+    read_response(resp).await
+}
+
+/// 워크스페이스에 새 엑셀(.xlsx) 파일을 생성한다.
+#[tauri::command]
+pub async fn workspace_create_excel_file(
+    state: State<'_, Mutex<SidecarState>>,
+    path: String,
+    sheet_name: Option<String>,
+) -> Result<String, String> {
+    let (url, client, token) = {
+        let s = state.lock().map_err(|e| e.to_string())?;
+        (
+            sidecar_url(&s, "/workspace/excel-file"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
+    };
+
+    let body = serde_json::json!({
+        "path": path,
+        "sheet_name": sheet_name,
+    });
+
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(|e| format!("엑셀 파일 생성 실패: {}", e))?;
 
     read_response(resp).await
 }

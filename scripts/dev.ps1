@@ -3,6 +3,14 @@ $ErrorActionPreference = "Stop"
 
 $ProjectDir = Split-Path -Parent $PSScriptRoot
 
+# 콘솔 UTF-8 강제 (한글 경로/로그 깨짐 방지)
+[Console]::InputEncoding  = [System.Text.UTF8Encoding]::new()
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+$OutputEncoding = [Console]::OutputEncoding
+chcp 65001 | Out-Null
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
+
 Write-Host "=== Starting Office Claw Development ==="
 
 # Start Python sidecar in background

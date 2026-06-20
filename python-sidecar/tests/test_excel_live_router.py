@@ -49,6 +49,14 @@ class _FakeExcelService:
     def set_formula(self, workbook_id, sheet_name, range_ref, formula_a1):
         return {"formula_applied_cells": 5, "address": range_ref}
 
+    def save_workbook(self, workbook_id):
+        return {
+            "saved": True,
+            "workbook_id": workbook_id,
+            "name": "sales.xlsx",
+            "full_path": workbook_id,
+        }
+
 
 def test_excel_live_status(monkeypatch):
     monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
@@ -131,4 +139,23 @@ def test_command_rule_based_highlight(monkeypatch):
     body = resp.json()
     assert body["action"] == "excel_live.highlight_by_condition"
     assert body["approval_required"] is True
+
+
+def test_action_save_workbook_without_id_uses_selected(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+
+    resp = client.post(
+        "/excel-live/action",
+        json={
+            "action": "excel_live.save_workbook",
+            "params": {},
+            "approve": True,
+        },
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["action"] == "excel_live.save_workbook"
+    assert body["result"]["saved"] is True
 

@@ -6,6 +6,14 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $ProjectRoot "scripts\local-env.ps1")
 
+# 콘솔 UTF-8 강제 (한글 경로/로그 깨짐 방지)
+[Console]::InputEncoding  = [System.Text.UTF8Encoding]::new()
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+$OutputEncoding = [Console]::OutputEncoding
+chcp 65001 | Out-Null
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
+
 Write-Host "=== Office-Claw 로컬 스택 시작 ==="
 
 # 1) OpenClaw 게이트웨이 (Windows 예약 작업 — ollama launch openclaw 가 등록함)

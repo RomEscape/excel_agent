@@ -86,8 +86,8 @@ fn emit_log(app: &AppHandle, step: &str, kind: &str, text: String) {
     );
 }
 
-/// 코어 실행기 — $SHELL -lc "<cmd>"를 spawn해서 stdout/stderr를 라인 단위로
-/// 이벤트 발행하고, stderr는 꼬리 N줄을 캡처한다.
+/// 코어 실행기 — 플랫폼별 로그인 셸을 사용해 명령을 실행하고 stdout/stderr를
+/// 라인 단위 이벤트로 발행한다.
 ///
 /// async지만 내부는 blocking IO — Tauri command 자체가 별도 tokio task에서
 /// 실행되므로 한 install 동안 한 worker thread를 점유한다. desktop 앱에서
@@ -99,18 +99,34 @@ fn run_shell_streaming(
     shell_cmd: &str,
     manual_command: &str,
 ) -> Result<InstallResult, String> {
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-
-    // 사용자가 보기 부담스러운 shell 명령 echo($ /bin/zsh -lc '...')는 띄우지 않는다.
+    // 사용자가 보기 부담스러운 내부 셸 명령 echo는 띄우지 않는다.
     // 친화적 안내 한 줄로 시작 — 이후 실제 stdout/stderr 라인이 따라옴.
     emit_log(&app, step_id, "info", "작업을 시작합니다...".to_string());
 
-    let mut child = Command::new(&shell)
-        .args(["-lc", shell_cmd])
+    #[cfg(target_os = "windows")]
+    let mut child = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            shell_cmd,
+        ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|_e| "작업을 시작하지 못했어요. 잠시 후 다시 시도해주세요.".to_string())?;
+
+    #[cfg(not(target_os = "windows"))]
+    let mut child = {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        Command::new(&shell)
+            .args(["-lc", shell_cmd])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|_e| "작업을 시작하지 못했어요. 잠시 후 다시 시도해주세요.".to_string())?
+    };
 
     // PID 등록 — cancel_install이 이 PID에 kill 시그널을 보낼 수 있도록.
     let pid = child.id();
@@ -211,18 +227,14 @@ pub async fn install_openclaw(
     serde_json::to_value(result).map_err(|e| e.to_string())
 }
 
-/// Tauri command: Ollama 설치 — `brew install ollama` (macOS만)
+/// Tauri command: Ollama 설치.
+/// - macOS: `brew install ollama`
+/// - Windows: `winget install -e --id Ollama.Ollama ...`
 #[tauri::command]
 pub async fn install_ollama(
     app: AppHandle,
     state: State<'_, Mutex<InstallerState>>,
 ) -> Result<serde_json::Value, String> {
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = (app, state);
-        Err("자동 설치는 macOS(Homebrew)에서만 지원됩니다. https://ollama.com/download 에서 직접 설치해 주세요.".to_string())
-    }
-
     #[cfg(target_os = "macos")]
     {
         let result = run_shell_streaming(
@@ -234,22 +246,66 @@ pub async fn install_ollama(
         )?;
         serde_json::to_value(result).map_err(|e| e.to_string())
     }
+
+    #[cfg(target_os = "windows")]
+    {
+        let result = run_shell_streaming(
+            app,
+            &state,
+            "install-ollama",
+            "winget install -e --id Ollama.Ollama --accept-package-agreements --accept-source-agreements",
+            "winget install -e --id Ollama.Ollama --accept-package-agreements --accept-source-agreements",
+        )?;
+        serde_json::to_value(result).map_err(|e| e.to_string())
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = (app, state);
+        Err("자동 설치는 현재 macOS/Windows만 지원됩니다. https://ollama.com/download 에서 직접 설치해 주세요.".to_string())
+    }
 }
 
-/// Tauri command: Ollama 데몬 시작 — `brew services start ollama`
+/// Tauri command: Ollama 데몬 시작.
+/// - macOS: `brew services start ollama`
+/// - Windows: Ollama 앱 프로세스 시작
 #[tauri::command]
 pub async fn start_ollama(
     app: AppHandle,
     state: State<'_, Mutex<InstallerState>>,
 ) -> Result<serde_json::Value, String> {
-    let result = run_shell_streaming(
-        app,
-        &state,
-        "start-ollama",
-        "brew services start ollama",
-        "brew services start ollama",
-    )?;
-    serde_json::to_value(result).map_err(|e| e.to_string())
+    #[cfg(target_os = "macos")]
+    {
+        let result = run_shell_streaming(
+            app,
+            &state,
+            "start-ollama",
+            "brew services start ollama",
+            "brew services start ollama",
+        )?;
+        serde_json::to_value(result).map_err(|e| e.to_string())
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let start_cmd = "$paths = @(\"$env:LOCALAPPDATA\\Programs\\Ollama\\Ollama.exe\", \"$env:ProgramFiles\\Ollama\\Ollama.exe\"); \
+$exe = $paths | Where-Object { Test-Path $_ } | Select-Object -First 1; \
+if ($exe) { Start-Process -FilePath $exe } else { Start-Process -FilePath \"ollama\" -ArgumentList \"serve\" }";
+        let result = run_shell_streaming(
+            app,
+            &state,
+            "start-ollama",
+            start_cmd,
+            "Start-Process \"$env:LOCALAPPDATA\\Programs\\Ollama\\Ollama.exe\"",
+        )?;
+        serde_json::to_value(result).map_err(|e| e.to_string())
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = (app, state);
+        Err("자동 시작은 현재 macOS/Windows만 지원됩니다.".to_string())
+    }
 }
 
 /// Tauri command: Ollama 모델 다운로드 — `ollama pull <model>`

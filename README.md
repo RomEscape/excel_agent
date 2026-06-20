@@ -40,7 +40,7 @@ src/
 │   ├── statusTokens.js         # 상태 표시 토큰·라벨
 │   ├── localAISetupCore.js     # LocalAISetupWizard 단계·플랜 로직
 │   ├── localAISetup.js         # localAISetupCore re-export (호환 레이어)
-│   ├── localStack/             # 로컬 AI 스택 프리셋 (Gemma4+OpenClaw)
+│   ├── localStack/             # 로컬 AI 스택 프리셋 (Qwen3+OpenClaw)
 │   ├── updater.js              # Tauri 자동 업데이트 연동
 │   ├── errorMessages.js        # 에러 메시지 매핑
 │   └── utils.js                # cn() 등 공용 유틸
@@ -98,7 +98,7 @@ src-tauri/src/
 ```
 python-sidecar/
 ├── pyproject.toml / uv.lock        # 의존성 (uv 권장)
-├── requirements.txt                # pip 호환용
+├── requirements.txt                # pip 단일 진입점(루트 통합)
 ├── build_sidecar.py                # PyInstaller 빌드 스크립트
 ├── office_claw_sidecar.spec        # PyInstaller spec
 │
@@ -218,6 +218,9 @@ python-sidecar/
 npm ci
 cd python-sidecar && uv sync --extra dev && cd ..
 
+# (대안) pip 환경이면 루트에서 단일 파일 설치
+pip install -r requirements.txt
+
 # 2. 사이드카 빌드 (최초 1회, 코드 변경 시 재실행)
 cd python-sidecar && uv run --extra dev python build_sidecar.py && cd ..
 
@@ -226,6 +229,56 @@ npm run tauri:dev
 ```
 
 > **UI만 빠르게 보려면:** `npm run dev` (Tauri 없이 Vite 단독 실행, invoke() 호출 실패함)
+
+### 지금 바로 테스트해볼 질문 10개
+
+> **빠른 스모크 테스트용**  
+> 아래 문장을 앱 내 에이전트 채팅에 그대로 넣어 동작을 확인하세요.
+>
+> 1) [하] `열린 통합문서 목록 보여줘`  
+>    예상: 열린 파일 개수와 파일명이 채팅에 표시됨
+> 2) [하] `A1:C10 조회해줘`  
+>    예상: 읽은 범위 주소와 행/열 개수가 표시됨
+> 3) [하] `C3에 120 입력해줘`  
+>    예상: 승인 후 `C3` 셀이 `120`으로 변경됨
+> 4) [하] `B9 값만 읽어줘`  
+>    예상: `B9` 단일 셀 값이 읽혀 채팅에 표시됨
+> 5) [중] `B2:D2에 이름,수량,금액 입력`  
+>    예상: 승인 후 `B2:D2`에 3개 값이 한 번에 입력됨
+> 6) [중] `H8 999 set`  
+>    예상: 영어 compact 명령이 파싱되어 `H8=999`로 반영됨
+> 7) [중] `A열에서 50 이상인 셀만 노란색 배경 적용`  
+>    예상: 조건에 맞는 셀만 노란색으로 강조되고 변경 개수가 표시됨
+> 8) [중] `D:D 컬럼에서 0 이하 숫자는 파란색 표시`  
+>    예상: 0 이하 값만 파란색으로 강조됨
+> 9) [상] `J1에 수식 =SUM(A1:A10) 적용`  
+>    예상: 승인 후 `J1`에 SUM 수식이 설정됨
+> 10) [상] `K2:K20에 formula =IF(A2>0,"Y","N") set`  
+>    예상: 범위 전체에 IF 수식이 적용됨
+
+### LocalAISetupWizard (Windows 자동 설치 흐름)
+
+- Ollama가 없으면 Wizard가 `winget`으로 자동 설치를 시도
+- 설치 후 Ollama 프로세스를 자동 실행
+- 선택 모델(`qwen3:4b`, `qwen3:8b`)을 자동 pull
+- AI 대화 테스트에서 OpenClaw 게이트웨이 503 발생 시 자동 재기동 후 재시도
+
+---
+
+## Excel Live 질문 예시
+
+아래 예시는 실제 파서/테스트에 반영된 문장들이다.
+
+- `A1:C10 조회해줘`
+- `C3에 120 입력해줘`
+- `B2:D2에 이름,수량,금액 입력`
+- `A열에서 50 이상인 셀만 노란색 배경 적용`
+- `J1에 수식 =SUM(A1:A10) 적용`
+- `H8 999 set`
+
+전체 50개 입력 세트는 루트 파일에서 바로 확인 가능:
+
+- `TEST_INPUT_COMMANDS_EXCEL_LIVE.txt`
 
 ### CI 사전 체크 (PR 전 필수)
 

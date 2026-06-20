@@ -197,7 +197,9 @@ export const STATUS_MODULES = {
     },
 
     /**
-     * `brew install ollama` (macOS만). Rust installer가 $SHELL -lc 경유.
+     * Ollama 설치.
+     * - macOS: brew install ollama
+     * - Windows: winget install Ollama.Ollama
      */
     async install() {
       const store = useStatusStore.getState();
@@ -225,7 +227,9 @@ export const STATUS_MODULES = {
     },
 
     /**
-     * `brew services start ollama`.
+     * Ollama 실행.
+     * - macOS: brew services start ollama
+     * - Windows: Ollama 앱 프로세스 시작
      */
     async start() {
       const store = useStatusStore.getState();

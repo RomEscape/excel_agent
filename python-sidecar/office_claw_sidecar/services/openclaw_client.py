@@ -311,6 +311,8 @@ class OpenClawClient:
 
         # 2) connect req 전송 (gateway protocol v4)
         auth_token = (os.environ.get("OPENCLAW_GATEWAY_TOKEN") or "").strip()
+        if not auth_token:
+            auth_token = self._load_gateway_token_from_openclaw_config() or ""
         cached_token = self._load_token()
         connect_params: dict = {
             "minProtocol": 4,
@@ -667,6 +669,27 @@ class OpenClawClient:
             )
         except Exception as exc:
             logger.warning("[openclaw] 토큰 저장 실패: %s", exc)
+
+    def _load_gateway_token_from_openclaw_config(self) -> str | None:
+        """
+        ~/.openclaw/openclaw.json에서 gateway.auth.token을 읽는다.
+        local-env.ps1과 동일한 우선순위 토큰 소스로 사용해 토큰 mismatch를 줄인다.
+        """
+        try:
+            cfg_path = Path.home() / ".openclaw" / "openclaw.json"
+            if not cfg_path.exists():
+                return None
+            cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+            token = (
+                ((cfg or {}).get("gateway") or {}).get("auth") or {}
+            ).get("token")
+            if isinstance(token, str):
+                token = token.strip()
+                if token:
+                    return token
+        except Exception as exc:
+            logger.debug("[openclaw] openclaw.json 토큰 로드 실패: %s", exc)
+        return None
 
 
 # ── 싱글톤 ──────────────────────────────────────────────────────────────────

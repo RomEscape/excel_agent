@@ -21,6 +21,7 @@ import {
   Eye,
   X,
   FolderOpen,
+  FileSpreadsheet,
   Bot,
   AlertCircle,
   Zap,
@@ -32,6 +33,7 @@ import {
   MessageCircle,
   History,
   Trash2,
+  Save,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,17 +41,20 @@ import EmptyState from "@/components/ui/empty-state";
 import AlertDialog from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { toUserMessage } from "@/lib/errorMessages";
+import { splitExcelCompositeCommand } from "@/lib/excelCommandUtils";
 import useAppStore from "@/store/appStore";
 import {
   workspaceListFiles,
   workspaceReadFile,
   workspaceWriteFile,
+  workspaceCreateExcelFile,
   workspaceWriteFileBinary,
   openWorkspaceFolder,
   openWorkspaceFile,
   agentChat,
   excelLiveCommand,
   excelLiveSubmitApproval,
+  excelLiveSaveWorkbook,
   telegramStatus,
   chatSaveMessage,
   chatListSessions,
@@ -135,6 +140,9 @@ function formatExcelLiveResult(action, result = {}) {
   }
   if (action === "excel_live.set_formula") {
     return `${result.address || ""} 범위에 수식을 적용했습니다 (${result.formula_applied_cells || 0}개 셀).`;
+  }
+  if (action === "excel_live.save_workbook") {
+    return `엑셀 파일을 저장했습니다 (${result.name || result.full_path || "현재 통합문서"}).`;
   }
   return "엑셀 작업이 완료되었습니다.";
 }
@@ -413,6 +421,9 @@ function ChatSidePanel({ openclawState }) {
   const [confirmDelete, setConfirmDelete] = useState(null); // {session_id, preview} | null
   const [pendingExcelApproval, setPendingExcelApproval] = useState(null);
   const [excelApprovalBusy, setExcelApprovalBusy] = useState(false);
+  const [excelSaving, setExcelSaving] = useState(false);
+  const [pendingTaskLabel, setPendingTaskLabel] = useState("");
+  const [pendingExcelComposite, setPendingExcelComposite] = useState(null);
   const pendingUserMsgRef = useRef(null); // session 발급 전 첫 user msg 임시 보관
 
   // textarea auto-grow: 1행 ~ 5행 (최대 ~120px)
@@ -512,23 +523,39 @@ function ChatSidePanel({ openclawState }) {
     setLoading(true);
     try {
       if (shouldRouteToExcelLive(trimmed)) {
-        const excelResult = await excelLiveCommand(trimmed, null, null, false);
-        if (excelResult?.approval_required && excelResult?.pending_approval) {
-          setPendingExcelApproval(excelResult.pending_approval);
-          addAgentMessage({
-            role: "agent",
-            text: "엑셀 변경 작업은 승인 후 실행됩니다.",
-          });
-        } else {
+        const commands = splitExcelCompositeCommand(trimmed);
+        for (let i = 0; i < commands.length; i += 1) {
+          const cmd = commands[i];
+          setPendingTaskLabel(`엑셀 명령 ${i + 1}/${commands.length} 실행 중...`);
+          const excelResult = await excelLiveCommand(cmd, null, null, false);
+          if (excelResult?.approval_required && excelResult?.pending_approval) {
+            setPendingExcelApproval(excelResult.pending_approval);
+            setPendingExcelComposite({
+              commands,
+              currentIndex: i,
+            });
+            addAgentMessage({
+              role: "agent",
+              text:
+                commands.length > 1
+                  ? `복합 작업 ${i + 1}/${commands.length} 단계는 승인 후 실행됩니다.`
+                  : "엑셀 변경 작업은 승인 후 실행됩니다.",
+            });
+            break;
+          }
+
           const answer = formatExcelLiveResult(excelResult?.action, excelResult?.result);
-          addAgentMessage({ role: "agent", text: answer });
-          if (activeSessionId) persistMessageSilent(activeSessionId, "agent", answer);
+          const text = commands.length > 1 ? `[${i + 1}/${commands.length}] ${answer}` : answer;
+          addAgentMessage({ role: "agent", text });
+          if (activeSessionId) persistMessageSilent(activeSessionId, "agent", text);
         }
+
         if (activeSessionId && pendingUserMsgRef.current) {
           persistMessageSilent(activeSessionId, "user", pendingUserMsgRef.current);
           pendingUserMsgRef.current = null;
         }
       } else {
+        setPendingTaskLabel("AI가 답변을 생성하는 중...");
         const result = await agentChat(trimmed, activeSessionId);
         const newSessionId = result.session_id;
         addAgentMessage({
@@ -567,20 +594,57 @@ function ChatSidePanel({ openclawState }) {
       }
     } finally {
       setLoading(false);
+      setPendingTaskLabel("");
     }
   };
 
   const handleExcelApprovalConfirm = useCallback(async () => {
     if (!pendingExcelApproval) return;
     setExcelApprovalBusy(true);
+    let hasNextPendingApproval = false;
     try {
       const out = await excelLiveSubmitApproval(pendingExcelApproval.approval_id, true, null);
+      const approvalStepText = formatExcelLiveResult(out?.action, out?.result);
+      const isComposite = !!pendingExcelComposite?.commands?.length;
+      const approvalStepLabel = isComposite
+        ? `[${pendingExcelComposite.currentIndex + 1}/${pendingExcelComposite.commands.length}] ${approvalStepText}`
+        : approvalStepText;
       addAgentMessage({
         role: "agent",
-        text: formatExcelLiveResult(out?.action, out?.result),
+        text: approvalStepLabel,
       });
       if (activeSessionId) {
-        persistMessageSilent(activeSessionId, "agent", formatExcelLiveResult(out?.action, out?.result));
+        persistMessageSilent(activeSessionId, "agent", approvalStepLabel);
+      }
+
+      // 복합 명령의 승인 단계였다면 남은 단계를 이어서 실행한다.
+      if (
+        pendingExcelComposite?.commands?.length &&
+        pendingExcelComposite.currentIndex + 1 < pendingExcelComposite.commands.length
+      ) {
+        const { commands } = pendingExcelComposite;
+        for (let i = pendingExcelComposite.currentIndex + 1; i < commands.length; i += 1) {
+          setPendingTaskLabel(`엑셀 명령 ${i + 1}/${commands.length} 실행 중...`);
+          const excelResult = await excelLiveCommand(commands[i], null, null, false);
+          if (excelResult?.approval_required && excelResult?.pending_approval) {
+            setPendingExcelApproval(excelResult.pending_approval);
+            setPendingExcelComposite({ commands, currentIndex: i });
+            addAgentMessage({
+              role: "agent",
+              text: `복합 작업 ${i + 1}/${commands.length} 단계는 승인 후 실행됩니다.`,
+            });
+            hasNextPendingApproval = true;
+            return;
+          }
+          const text = `[${i + 1}/${commands.length}] ${formatExcelLiveResult(
+            excelResult?.action,
+            excelResult?.result,
+          )}`;
+          addAgentMessage({ role: "agent", text });
+          if (activeSessionId) {
+            persistMessageSilent(activeSessionId, "agent", text);
+          }
+        }
       }
     } catch (err) {
       addAgentMessage({
@@ -589,9 +653,13 @@ function ChatSidePanel({ openclawState }) {
       });
     } finally {
       setExcelApprovalBusy(false);
-      setPendingExcelApproval(null);
+      if (!hasNextPendingApproval) {
+        setPendingExcelApproval(null);
+        setPendingExcelComposite(null);
+      }
+      setPendingTaskLabel("");
     }
-  }, [pendingExcelApproval, addAgentMessage, activeSessionId]);
+  }, [pendingExcelApproval, pendingExcelComposite, addAgentMessage, activeSessionId]);
 
   const handleExcelApprovalCancel = useCallback(async () => {
     if (!pendingExcelApproval) return;
@@ -607,8 +675,30 @@ function ChatSidePanel({ openclawState }) {
     } finally {
       setExcelApprovalBusy(false);
       setPendingExcelApproval(null);
+      setPendingExcelComposite(null);
+      setPendingTaskLabel("");
     }
   }, [pendingExcelApproval, addAgentMessage]);
+
+  const handleSaveWorkbook = useCallback(async () => {
+    if (loading || excelSaving || isUnavailable) return;
+    setExcelSaving(true);
+    try {
+      const out = await excelLiveSaveWorkbook(null);
+      const text = formatExcelLiveResult(out?.action, out?.result);
+      addAgentMessage({ role: "system", text });
+      if (activeSessionId) {
+        persistMessageSilent(activeSessionId, "system", text);
+      }
+    } catch (err) {
+      addAgentMessage({
+        role: "agent",
+        error: toUserMessage(err, "엑셀 저장 중 오류가 발생했습니다. 다시 시도해 주세요."),
+      });
+    } finally {
+      setExcelSaving(false);
+    }
+  }, [loading, excelSaving, isUnavailable, addAgentMessage, activeSessionId]);
 
   const handleKeyDown = (e) => {
     // IME 조합 중 Enter는 변환 확정 — 전송하지 않는다.
@@ -665,6 +755,17 @@ function ChatSidePanel({ openclawState }) {
               새 대화
             </Button>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs"
+            onClick={handleSaveWorkbook}
+            disabled={isUnavailable || loading || excelSaving}
+            title="현재 열려 있는 엑셀 파일 저장"
+          >
+            <Save className="h-3 w-3" />
+            {excelSaving ? "저장 중..." : "엑셀 저장"}
+          </Button>
         </div>
       </div>
 
@@ -858,8 +959,14 @@ function ChatSidePanel({ openclawState }) {
             })}
             {loading && (
               <div className="text-left text-sm text-muted-foreground">
-                <span className="inline-block animate-pulse rounded-lg border border-border bg-background px-3 py-1.5 text-xs">
-                  ...
+                <span className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs shadow-sm">
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />
+                  <span className="flex flex-col gap-0.5">
+                    <span className="font-medium text-foreground">작업 처리 중</span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {pendingTaskLabel || "요청을 처리하고 있습니다..."}
+                    </span>
+                  </span>
                 </span>
               </div>
             )}
@@ -906,6 +1013,7 @@ export default function WorkspacePage() {
   const [error, setError] = useState("");
   const [previewFile, setPreviewFile] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [creatingExcel, setCreatingExcel] = useState(false);
   const [uploadMessage, setUploadMessage] = useState("");
   const [botUsername, setBotUsername] = useState(null);
 
@@ -1010,6 +1118,39 @@ export default function WorkspacePage() {
     }
   }, []);
 
+  const handleCreateExcelFile = useCallback(async () => {
+    if (loading || uploading || creatingExcel) return;
+
+    const now = new Date();
+    const pad2 = (n) => String(n).padStart(2, "0");
+    const defaultName = `새_엑셀_${now.getFullYear()}${pad2(now.getMonth() + 1)}${pad2(now.getDate())}_${pad2(now.getHours())}${pad2(now.getMinutes())}${pad2(now.getSeconds())}.xlsx`;
+    const inputName = window.prompt("새 엑셀 파일 이름을 입력하세요 (.xlsx)", defaultName);
+    if (inputName === null) return;
+
+    let fileName = String(inputName).trim();
+    if (!fileName) {
+      setError("파일 이름을 입력해 주세요.");
+      return;
+    }
+    if (!fileName.toLowerCase().endsWith(".xlsx")) {
+      fileName = `${fileName}.xlsx`;
+    }
+
+    const targetPath = currentPath ? `${currentPath}/${fileName}` : fileName;
+    setCreatingExcel(true);
+    setError("");
+    try {
+      await workspaceCreateExcelFile(targetPath, "Sheet1");
+      setUploadMessage(`새 엑셀 파일 생성 완료: ${fileName}`);
+      await loadFiles(currentPath);
+      await openWorkspaceFile(targetPath);
+    } catch (err) {
+      setError(`엑셀 파일 생성 실패: ${toUserMessage(err)}`);
+    } finally {
+      setCreatingExcel(false);
+    }
+  }, [loading, uploading, creatingExcel, currentPath, loadFiles]);
+
   const fileInputRef = useRef(null);
   const [uploadProgress, setUploadProgress] = useState(null); // {current, total, name} | null
 
@@ -1113,10 +1254,20 @@ export default function WorkspacePage() {
               variant="outline"
               size="sm"
               onClick={handleUpload}
-              disabled={uploading}
+              disabled={uploading || creatingExcel}
             >
               <Upload className="mr-1.5 h-3.5 w-3.5" />
               {uploading ? "업로드 중..." : "파일 업로드"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCreateExcelFile}
+              disabled={loading || uploading || creatingExcel}
+              title="현재 폴더에 새 엑셀 파일 생성"
+            >
+              <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" />
+              {creatingExcel ? "생성 중..." : "새 엑셀 파일"}
             </Button>
             <input
               ref={fileInputRef}

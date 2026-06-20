@@ -345,6 +345,16 @@ export async function excelLiveSubmitApproval(approvalId, approved, reason = nul
   return parseResponse(raw);
 }
 
+/**
+ * 현재 Excel Live 대상 통합문서를 즉시 저장한다.
+ *
+ * @param {string | null} workbookId
+ */
+export async function excelLiveSaveWorkbook(workbookId = null) {
+  const raw = await call("excel_live_save_workbook", { workbookId });
+  return parseResponse(raw);
+}
+
 // ── Document AI ───────────────────────────────────────────────────────────
 
 /**
@@ -579,6 +589,21 @@ export async function workspaceReadFile(path) {
  */
 export async function workspaceWriteFile(path, content) {
   const raw = await call("workspace_write_file", { path, content });
+  return parseResponse(raw);
+}
+
+/**
+ * 워크스페이스에 새 엑셀(.xlsx) 파일을 생성한다.
+ *
+ * @param {string} path - 파일 경로 (확장자 .xlsx는 생략 가능)
+ * @param {string} [sheetName] - 첫 시트명 (기본: Sheet1)
+ * @returns {Promise<{ ok: boolean, path: string, sheet_name: string }>}
+ */
+export async function workspaceCreateExcelFile(path, sheetName = "Sheet1") {
+  const raw = await call("workspace_create_excel_file", {
+    path,
+    sheet_name: sheetName,
+  });
   return parseResponse(raw);
 }
 

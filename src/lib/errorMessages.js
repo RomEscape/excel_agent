@@ -134,6 +134,11 @@ const ERROR_MAPPINGS = [
 
   // OpenClaw gateway
   {
+    pattern: /gateway token mismatch|token mismatch|provide gateway auth token/i,
+    message:
+      "OpenClaw 인증 토큰이 일치하지 않습니다. LocalAISetupWizard에서 OpenClaw 재시작을 다시 실행해 주세요.",
+  },
+  {
     pattern: /openclaw|gateway.*18789|18789.*gateway/i,
     message: "OpenClaw 게이트웨이에 연결할 수 없습니다. OpenClaw가 설치되고 실행 중인지 확인해 주세요.",
   },

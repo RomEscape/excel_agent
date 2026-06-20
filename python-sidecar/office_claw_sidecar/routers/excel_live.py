@@ -102,6 +102,13 @@ def _resolve_workbook_id(service, workbook_id: str | None) -> str:
     return rows[0]["workbook_id"]
 
 
+def _top_left_cell(range_ref: str) -> str:
+    text = str(range_ref or "").strip().upper()
+    if not text:
+        return "A1"
+    return text.split(":")[0]
+
+
 def _execute_action(
     *,
     action: str,
@@ -123,13 +130,18 @@ def _execute_action(
     if action == "excel_live.read_range":
         resolved_wb = _resolve_workbook_id(service, workbook_id)
         resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
-        range_ref = str(params.get("range_ref", "A1")).strip().upper()
+        range_ref = str(params.get("range_ref", "")).strip().upper()
+        if not range_ref or range_ref == "__ACTIVE_SELECTION__":
+            range_ref = service.get_active_selection_ref(resolved_wb, resolved_sheet)
         return service.read_range(resolved_wb, resolved_sheet, range_ref)
 
     if action == "excel_live.write_range":
         resolved_wb = _resolve_workbook_id(service, workbook_id)
         resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
-        start_cell = str(params.get("start_cell", "A1")).strip().upper()
+        start_cell = str(params.get("start_cell", "")).strip().upper()
+        if not start_cell or start_cell in {"__ACTIVE_CELL__", "__ACTIVE_SELECTION__"}:
+            selected = service.get_active_selection_ref(resolved_wb, resolved_sheet)
+            start_cell = _top_left_cell(selected)
         values_2d = params.get("values_2d")
         if not isinstance(values_2d, list):
             raise ExcelLiveError("write_range에는 values_2d(2차원 배열)가 필요합니다.")
@@ -160,11 +172,17 @@ def _execute_action(
     if action == "excel_live.set_formula":
         resolved_wb = _resolve_workbook_id(service, workbook_id)
         resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
-        range_ref = str(params.get("range_ref", "A1")).strip().upper()
+        range_ref = str(params.get("range_ref", "")).strip().upper()
+        if not range_ref or range_ref == "__ACTIVE_SELECTION__":
+            range_ref = service.get_active_selection_ref(resolved_wb, resolved_sheet)
         formula_a1 = str(params.get("formula_a1", "")).strip()
         if not formula_a1.startswith("="):
             raise ExcelLiveError("formula_a1은 '='로 시작해야 합니다.")
         return service.set_formula(resolved_wb, resolved_sheet, range_ref, formula_a1)
+
+    if action == "excel_live.save_workbook":
+        resolved_wb = _resolve_workbook_id(service, workbook_id)
+        return service.save_workbook(resolved_wb)
 
     raise ExcelLiveError(f"지원하지 않는 action: {action}")
 

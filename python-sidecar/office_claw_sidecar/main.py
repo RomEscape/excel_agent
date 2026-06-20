@@ -188,6 +188,20 @@ app.include_router(legacy.router, prefix="/document", dependencies=[Depends(veri
 
 
 def main() -> None:
+    # Windows 콘솔에서 한글 경로/로그 깨짐 방지
+    import os
+    import sys
+
+    os.environ.setdefault("PYTHONUTF8", "1")
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        if stream and hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
     parser = argparse.ArgumentParser(description="Office Claw Sidecar")
     parser.add_argument("--port", type=int, default=19532)
     parser.add_argument("--auth-token", type=str, default=None)
@@ -196,6 +210,10 @@ def main() -> None:
 
     global _auth_token
     _auth_token = args.auth_token
+    # dev 모드(tauri에서 auth-token=dev-token)에서는 gateway 토큰도 dev-token으로 고정해
+    # OpenClaw gateway 인증 토큰 mismatch를 방지한다.
+    if args.auth_token == "dev-token" and not os.environ.get("OPENCLAW_GATEWAY_TOKEN"):
+        os.environ["OPENCLAW_GATEWAY_TOKEN"] = "dev-token"
 
     uvicorn.run(
         "office_claw_sidecar.main:app",
