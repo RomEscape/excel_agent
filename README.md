@@ -2,6 +2,7 @@
 
 개인정보 보호 중심의 로컬 AI 업무 에이전트. 모든 처리가 사용자 머신 안에서 끝나며, 외부 중계 서버가 없다.  
 **Tauri 데스크탑 앱 + Python FastAPI 사이드카 + 로컬 LLM(Ollama/OpenClaw)** 3계층 구성.
+앱 표시명은 **Team 503 AI**(구 ajou-ai)로 사용한다.
 
 ---
 
@@ -262,6 +263,7 @@ npm run tauri:dev
 - 설치 후 Ollama 프로세스를 자동 실행
 - 선택 모델(`qwen3:4b`, `qwen3:8b`)을 자동 pull
 - AI 대화 테스트에서 OpenClaw 게이트웨이 503 발생 시 자동 재기동 후 재시도
+- `npm run tauri:dev` 환경에서 sidecar가 꺼져 있으면 dev 포트(`19532`)에 자동 기동 후 재시도
 
 ---
 

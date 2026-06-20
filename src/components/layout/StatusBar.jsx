@@ -345,7 +345,7 @@ export default function StatusBar() {
     window.dispatchEvent(new CustomEvent("private-claw:open-cmdk"));
   };
 
-  const pageLabel = PAGE_LABELS[currentPage] ?? "ajou-ai";
+  const pageLabel = PAGE_LABELS[currentPage] ?? "Team 503 AI";
 
   return (
     <header className="flex h-10 items-center justify-between gap-3 border-b bg-background px-4 text-xs">

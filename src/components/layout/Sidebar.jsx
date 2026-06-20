@@ -124,9 +124,9 @@ export default function Sidebar() {
           collapsed ? "justify-center px-2 py-4" : "gap-2 px-4 py-5"
         )}
       >
-        <img src={appIcon} alt="ajou-ai" className="h-7 w-7 shrink-0 rounded-md" />
+        <img src={appIcon} alt="Team 503 AI" className="h-7 w-7 shrink-0 rounded-md" />
         {!collapsed && (
-          <span className="font-bold text-base tracking-tight">ajou-ai</span>
+          <span className="font-bold text-base tracking-tight">Team 503 AI</span>
         )}
       </div>
 

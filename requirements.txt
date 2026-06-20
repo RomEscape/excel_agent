@@ -1,4 +1,4 @@
-# officeclaw — Python sidecar 의존성 단일 진입점 (루트 통합)
+# Team 503 AI (officeclaw) — Python sidecar 의존성 단일 진입점 (루트 통합)
 #
 # conda/venv에서 설치:
 #   pip install -r requirements.txt
