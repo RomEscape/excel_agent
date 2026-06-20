@@ -110,16 +110,50 @@ function shouldRouteToExcelLive(message) {
   const text = message.trim();
   const lower = text.toLowerCase();
   if (!text) return false;
+  if (/\[\[excel_range:[a-z0-9:]+\]\]/i.test(text)) return true;
 
   const keywordHit = [
     "엑셀", "excel", "워크북", "workbook", "시트", "sheet",
-    "셀", "cell", "수식", "formula", "조건부", "강조",
+    "셀", "cell", "수식", "formula", "조건부", "강조", "경계선", "테두리", "border",
   ].some((kw) => lower.includes(kw));
   if (keywordHit) return true;
 
   const rangePattern = /\b[A-Z]{1,3}\d{1,7}(?::[A-Z]{1,3}\d{1,7})?\b/i;
   const columnPattern = /[a-zA-Z]\s*열/;
   return rangePattern.test(text) || columnPattern.test(text);
+}
+
+function extractExcelRangeTag(text) {
+  const m = String(text || "").match(/\[\[EXCEL_RANGE:([A-Z0-9:]+)\]\]/i);
+  return m ? m[1].toUpperCase() : null;
+}
+
+function stripExcelContextBlock(text) {
+  return String(text || "")
+    .replace(/\[\[EXCEL_RANGE:[A-Z0-9:]+\]\]/gi, "")
+    .replace(/\[\[EXCEL_VALUES_TSV\]\][\s\S]*?\[\[\/EXCEL_VALUES_TSV\]\]/gi, "")
+    .trim();
+}
+
+function hasExplicitRangeInCommand(cmd) {
+  return /\b([A-Z]{1,3}\d{1,7}:[A-Z]{1,3}\d{1,7}|[A-Z]{1,3}:[A-Z]{1,3}|[A-Z]{1,3}\d{1,7})\b/i.test(cmd);
+}
+
+function applyRangeContextToCommand(cmd, rangeRef) {
+  const text = String(cmd || "").trim();
+  if (!rangeRef || !text || hasExplicitRangeInCommand(text)) return text;
+  if (!/(이\s*범위|해당\s*범위|복사한\s*범위|선택한\s*범위|여기)/i.test(text)) return text;
+  return `${rangeRef} ${text}`;
+}
+
+function stringifyTsv(values, maxRows = 12, maxCols = 8) {
+  if (!Array.isArray(values) || values.length === 0) return "";
+  const sliced = values.slice(0, maxRows).map((row) => (
+    Array.isArray(row) ? row.slice(0, maxCols) : [row]
+  ));
+  return sliced
+    .map((row) => row.map((cell) => (cell == null ? "" : String(cell))).join("\t"))
+    .join("\n");
 }
 
 function formatExcelLiveResult(action, result = {}) {
@@ -137,6 +171,9 @@ function formatExcelLiveResult(action, result = {}) {
   }
   if (action === "excel_live.highlight_by_condition") {
     return `${result.address || ""} 범위에서 ${result.changed_cells || 0}개 셀을 강조했습니다.`;
+  }
+  if (action === "excel_live.apply_border") {
+    return `${result.address || ""} 범위에 경계선을 적용했습니다 (${result.changed_cells || 0}개 셀).`;
   }
   if (action === "excel_live.set_formula") {
     return `${result.address || ""} 범위에 수식을 적용했습니다 (${result.formula_applied_cells || 0}개 셀).`;
@@ -422,6 +459,7 @@ function ChatSidePanel({ openclawState }) {
   const [pendingExcelApproval, setPendingExcelApproval] = useState(null);
   const [excelApprovalBusy, setExcelApprovalBusy] = useState(false);
   const [excelSaving, setExcelSaving] = useState(false);
+  const [insertingRangeContext, setInsertingRangeContext] = useState(false);
   const [pendingTaskLabel, setPendingTaskLabel] = useState("");
   const [pendingExcelComposite, setPendingExcelComposite] = useState(null);
   const pendingUserMsgRef = useRef(null); // session 발급 전 첫 user msg 임시 보관
@@ -523,7 +561,10 @@ function ChatSidePanel({ openclawState }) {
     setLoading(true);
     try {
       if (shouldRouteToExcelLive(trimmed)) {
-        const commands = splitExcelCompositeCommand(trimmed);
+        const rangeRef = extractExcelRangeTag(trimmed);
+        const cleanedInput = stripExcelContextBlock(trimmed);
+        const commands = splitExcelCompositeCommand(cleanedInput)
+          .map((cmd) => applyRangeContextToCommand(cmd, rangeRef));
         for (let i = 0; i < commands.length; i += 1) {
           const cmd = commands[i];
           setPendingTaskLabel(`엑셀 명령 ${i + 1}/${commands.length} 실행 중...`);
@@ -700,6 +741,44 @@ function ChatSidePanel({ openclawState }) {
     }
   }, [loading, excelSaving, isUnavailable, addAgentMessage, activeSessionId]);
 
+  const handleInsertExcelRangeContext = useCallback(async () => {
+    if (loading || isUnavailable || insertingRangeContext) return;
+    setInsertingRangeContext(true);
+    try {
+      const out = await excelLiveCommand("지금 선택한 범위 읽어줘", null, null, false);
+      const result = out?.result || {};
+      const address = String(result.address || "").toUpperCase();
+      if (!address) {
+        throw new Error("선택 범위 주소를 가져오지 못했습니다.");
+      }
+      const rows = Number(result.row_count || 0);
+      const cols = Number(result.col_count || 0);
+      const tsv = stringifyTsv(result.values, 12, 8);
+      const hasMore = rows > 12 || cols > 8;
+      const block = [
+        `[[EXCEL_RANGE:${address}]]`,
+        "[[EXCEL_VALUES_TSV]]",
+        tsv || "(빈 범위)",
+        hasMore ? `... (미리보기 제한: 최대 12행 x 8열, 실제 범위 ${rows}행 x ${cols}열)` : "",
+        "[[/EXCEL_VALUES_TSV]]",
+      ]
+        .filter(Boolean)
+        .join("\n");
+      setInput((prev) => (prev ? `${prev}\n\n${block}\n` : `${block}\n`));
+      addAgentMessage({
+        role: "system",
+        text: `선택 범위 ${address} (${rows}행 × ${cols}열) 참조가 입력창에 삽입되었습니다.`,
+      });
+    } catch (err) {
+      addAgentMessage({
+        role: "agent",
+        error: toUserMessage(err, "엑셀 선택 범위를 가져오지 못했습니다. 먼저 Excel에서 범위를 선택해 주세요."),
+      });
+    } finally {
+      setInsertingRangeContext(false);
+    }
+  }, [loading, isUnavailable, insertingRangeContext, addAgentMessage]);
+
   const handleKeyDown = (e) => {
     // IME 조합 중 Enter는 변환 확정 — 전송하지 않는다.
     // 한글/일본어/중국어 사용자 필수 가드.
@@ -755,6 +834,17 @@ function ChatSidePanel({ openclawState }) {
               새 대화
             </Button>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs"
+            onClick={handleInsertExcelRangeContext}
+            disabled={isUnavailable || loading || insertingRangeContext}
+            title="현재 선택한 엑셀 범위를 입력창에 참조로 삽입"
+          >
+            <Copy className="h-3 w-3" />
+            {insertingRangeContext ? "범위 읽는 중..." : "범위 참조 삽입"}
+          </Button>
           <Button
             variant="outline"
             size="sm"

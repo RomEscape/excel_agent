@@ -1,5 +1,6 @@
-Excel Live 테스트 입력 명령어 세트 (50개)
+Excel Live 테스트 입력 명령어 세트 (67개)
 원본: docs/excel-live-command-list.txt
+검증 기준: python-sidecar 룰 파서 + 복합 분해 로직 기준 (2026-06-20)
 
 01. [low] 열린 통합문서 목록 보여줘 -> excel_live.list_workbooks
 02. [low] workbook list please -> excel_live.list_workbooks
@@ -59,7 +60,22 @@ Excel Live 테스트 입력 명령어 세트 (50개)
 54. [high] J1에 수식 =SUM(A1:A10) 적용 다음으로 엑셀 저장해줘 -> formula + save
 
 범위 생략(선택 셀/선택 범위 기반) 예시
-55. [low] 지금 선택한 범위 읽어줘 -> read(active selection)
-56. [mid] 777 입력해줘 -> write(active cell)
-57. [mid] 수식 =SUM(A1:A10) 적용해줘 -> formula(active selection)
-58. [mid] 50 이상 값 노란색으로 강조해줘 -> highlight(default A:Z)
+55. [low] 지금 선택한 범위 읽어줘 -> excel_live.read_range
+56. [mid] 777 입력해줘 -> excel_live.write_range
+57. [mid] 수식 =SUM(A1:A10) 적용해줘 -> excel_live.set_formula
+58. [mid] 50 이상 값 노란색으로 강조해줘 -> excel_live.highlight_by_condition
+
+경계선(테두리) 작업 예시
+기본값: 검정 medium 보더 (눈에 보이도록 가시성 우선)
+59. [mid] B2:D5 범위에 경계선 적용해줘 -> excel_live.apply_border
+60. [mid] C3:E10 테두리 넣어줘 -> excel_live.apply_border
+61. [high] F2:H8 범위 굵게 경계선 적용 -> excel_live.apply_border
+62. [high] A1:C3 border 적용해줘 -> excel_live.apply_border
+63. [mid] 선택한 범위에 경계선 적용해줘 -> excel_live.apply_border
+64. [mid] 이 범위 테두리 넣어줘 -> excel_live.apply_border
+65. [high] [[EXCEL_RANGE:B2:D12]] 이 범위에 경계선 적용해줘 -> excel_live.apply_border
+66. [high] [[EXCEL_RANGE:C4:F9]] 복사한 범위에 굵게 경계선 적용해줘 -> excel_live.apply_border
+67. [mid] B10에 테두리 넣어줘 -> excel_live.apply_border
+
+해석 실패 정책
+- 모호/실패 명령은 `excel_live.list_workbooks`로 자동 폴백하지 않고 HTTP 400을 반환한다.

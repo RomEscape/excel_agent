@@ -151,6 +151,12 @@ TOOL_REGISTRY: list[ToolDef] = [
         example_triggers=["조건부 색칠", "노란색으로 칠해줘", "50 이상 강조"],
     ),
     ToolDef(
+        name="excel_live.apply_border",
+        description="지정 범위에 경계선(테두리) 적용",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["경계선 적용", "테두리 넣어줘", "border 적용"],
+    ),
+    ToolDef(
         name="excel_live.set_formula",
         description="지정 범위에 수식 적용",
         permission=PermissionLevel.CONFIRM,
@@ -198,6 +204,7 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "gog.sheets.write": "Google Sheets 수정",
     "excel_live.write_range": "Excel 셀 값 수정",
     "excel_live.highlight_by_condition": "Excel 조건부 서식 변경",
+    "excel_live.apply_border": "Excel 경계선 적용",
     "excel_live.set_formula": "Excel 수식 적용",
     "excel_live.save_workbook": "Excel 통합문서 저장",
 }

@@ -37,6 +37,9 @@ class _FakeExcelService:
     def get_selected_workbook_id(self):
         return self._selected
 
+    def get_active_selection_ref(self, workbook_id, sheet_name):
+        return "B2:C3"
+
     def read_range(self, workbook_id, sheet_name, range_ref):
         return {"values": [[1, 2]], "address": range_ref, "row_count": 1, "col_count": 2}
 
@@ -45,6 +48,9 @@ class _FakeExcelService:
 
     def highlight_by_condition(self, workbook_id, sheet_name, target_range, operator, threshold, fill_color):
         return {"matched_cells": 3, "changed_cells": 3, "address": target_range}
+
+    def apply_border(self, workbook_id, sheet_name, target_range, line_style, weight, color):
+        return {"changed_cells": 4, "address": target_range}
 
     def set_formula(self, workbook_id, sheet_name, range_ref, formula_a1):
         return {"formula_applied_cells": 5, "address": range_ref}
@@ -158,4 +164,39 @@ def test_action_save_workbook_without_id_uses_selected(monkeypatch):
     assert body["ok"] is True
     assert body["action"] == "excel_live.save_workbook"
     assert body["result"]["saved"] is True
+
+
+def test_action_apply_border_uses_active_selection_when_range_missing(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+
+    resp = client.post(
+        "/excel-live/action",
+        json={
+            "action": "excel_live.apply_border",
+            "params": {"target_range": "__ACTIVE_SELECTION__"},
+            "approve": True,
+        },
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["action"] == "excel_live.apply_border"
+
+
+def test_command_parse_failure_returns_400_instead_of_list_fallback(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+
+    async def _raise_parse(_message, llm_service):
+        raise ValueError("엑셀 명령을 해석하지 못했습니다.")
+
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _raise_parse)
+
+    resp = client.post(
+        "/excel-live/command",
+        json={"message": "뭔가 이상한 명령", "approve": False},
+        headers=HEADERS,
+    )
+    assert resp.status_code == 400
+    assert "해석하지 못했습니다" in resp.json().get("detail", "")
 

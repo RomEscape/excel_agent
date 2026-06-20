@@ -169,6 +169,24 @@ def _execute_action(
             fill_color=fill_color,
         )
 
+    if action == "excel_live.apply_border":
+        resolved_wb = _resolve_workbook_id(service, workbook_id)
+        resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
+        target_range = str(params.get("target_range", "")).strip().upper()
+        if not target_range or target_range == "__ACTIVE_SELECTION__":
+            target_range = service.get_active_selection_ref(resolved_wb, resolved_sheet)
+        line_style = str(params.get("line_style", "continuous")).strip().lower()
+        weight = str(params.get("weight", "medium")).strip().lower()
+        color = str(params.get("color", "#000000")).strip()
+        return service.apply_border(
+            workbook_id=resolved_wb,
+            sheet_name=resolved_sheet,
+            target_range=target_range,
+            line_style=line_style,
+            weight=weight,
+            color=color,
+        )
+
     if action == "excel_live.set_formula":
         resolved_wb = _resolve_workbook_id(service, workbook_id)
         resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
@@ -192,6 +210,7 @@ def _build_approval(action: str, params: dict[str, Any]) -> ApprovalRequest:
     summary = {
         "excel_live.write_range": "엑셀 셀 값을 수정합니다.",
         "excel_live.highlight_by_condition": "조건에 맞는 셀 서식을 변경합니다.",
+        "excel_live.apply_border": "선택 범위에 경계선을 적용합니다.",
         "excel_live.set_formula": "지정 범위에 수식을 적용합니다.",
     }.get(action, "엑셀 변경 작업을 실행합니다.")
     return ApprovalRequest(
@@ -263,7 +282,10 @@ async def post_command(
     req: ExcelLiveCommandRequest,
     llm: LLMService = Depends(get_llm_service),
 ):
-    parsed = await parse_excel_live_command(req.message, llm_service=llm)
+    try:
+        parsed = await parse_excel_live_command(req.message, llm_service=llm)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     action = parsed["action"]
     params = dict(parsed.get("params", {}))
     action_req = ExcelLiveActionRequest(

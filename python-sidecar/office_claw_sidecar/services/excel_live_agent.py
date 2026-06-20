@@ -19,12 +19,21 @@ SUPPORTED_ACTIONS = {
     "excel_live.read_range",
     "excel_live.write_range",
     "excel_live.highlight_by_condition",
+    "excel_live.apply_border",
     "excel_live.set_formula",
+    "excel_live.save_workbook",
 }
 
 
 def _extract_range_ref(text: str) -> str | None:
     match = re.search(r"\b([a-z]+\d+:[a-z]+\d+|[a-z]:[a-z]|[a-z]+\d+)\b", text, re.IGNORECASE)
+    if not match:
+        # 한국어 조사(에/을/를/은/는/으로/에서)가 붙은 경우도 범위를 인식한다.
+        match = re.search(
+            r"([a-z]+\d+:[a-z]+\d+|[a-z]:[a-z]|[a-z]+\d+)\s*(?:에|을|를|은|는|으로|에서)",
+            text,
+            re.IGNORECASE,
+        )
     if not match:
         return None
     return match.group(1).upper()
@@ -159,6 +168,8 @@ def parse_command_rule_based(message: str) -> dict[str, Any] | None:
     text = message.strip()
     lowered = text.lower()
     write_verbs = r"(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|write|set|input|fill)"
+    border_words = r"(경계선|테두리|border|보더)"
+    border_apply_words = r"(적용|넣|추가|만들|그려|draw|apply|set)"
 
     if any(
         token in lowered
@@ -167,6 +178,7 @@ def parse_command_rule_based(message: str) -> dict[str, Any] | None:
             "워크북 목록",
             "열린 파일 목록",
             "열린 통합문서",
+            "열려 있는 엑셀 파일",
             "workbook list",
             "list workbooks",
         ]
@@ -206,6 +218,31 @@ def parse_command_rule_based(message: str) -> dict[str, Any] | None:
             "reason": "셀 값 삭제 요청",
         }
 
+    # "테두리 넣어줘"가 값 쓰기(write_range)로 잘못 분류되지 않도록
+    # 경계선 의도를 읽기/쓰기보다 우선 판별한다.
+    if re.search(border_words, lowered) and re.search(border_apply_words, lowered):
+        target_range = _extract_target_range_from_text(lowered) or "__ACTIVE_SELECTION__"
+        # 사용자 체감상 "적용이 안 됨"을 줄이기 위해 기본을 눈에 띄는 medium으로 둔다.
+        weight = "medium"
+        if re.search(r"(얇게|얇은|thin)", lowered):
+            weight = "thin"
+        elif re.search(r"(굵게|두껍|thick|굵은)", lowered):
+            weight = "medium"
+        # 기본 색상은 검정으로 사용해 Excel 기본 격자선보다 확실히 보이게 한다.
+        color = "#000000"
+        if re.search(r"(검정|검은|black)", lowered):
+            color = "#000000"
+        return {
+            "action": "excel_live.apply_border",
+            "params": {
+                "target_range": target_range,
+                "line_style": "continuous",
+                "weight": weight,
+                "color": color,
+            },
+            "reason": "선택 범위 경계선 적용 요청",
+        }
+
     # 예: "A1:C10 읽어줘", "B열 보여줘"
     read_verbs = r"(읽어|읽기|보여|조회|확인|read|show|display)"
     if re.search(read_verbs, lowered) and not re.search(write_verbs, lowered):
@@ -237,7 +274,7 @@ def parse_command_rule_based(message: str) -> dict[str, Any] | None:
         }
 
     # 예: "A열 50보다 큰 값 노란색으로 칠해줘", "A1:A20 >= 100 highlight"
-    if re.search(r"(칠해|강조|표시|highlight|색)", lowered):
+    if re.search(r"(칠해|강조|표시|highlight|색|채워|배경|바꿔)", lowered):
         op_threshold = _parse_operator_threshold(lowered)
         # 범위를 특정하지 않은 강조 명령은 A:A로 좁게 잡으면 체감상 "안 된다"가 되기 쉽다.
         # 기본값을 A:Z로 넓혀 일반 표(좌측 영역)에서 자연어 명령이 더 잘 동작하게 한다.
@@ -442,6 +479,14 @@ def parse_command_rule_based(message: str) -> dict[str, Any] | None:
             "reason": "선택 범위 수식 적용 요청",
         }
 
+    # 예: "엑셀 저장해줘", "save workbook"
+    if re.search(r"(저장(?:해(?:줘)?)?|save)", lowered):
+        return {
+            "action": "excel_live.save_workbook",
+            "params": {},
+            "reason": "통합문서 저장 요청",
+        }
+
     return None
 
 
@@ -454,6 +499,8 @@ async def parse_command_with_llm(message: str, llm_service) -> dict[str, Any]:
         "- excel_live.read_range\n"
         "- excel_live.write_range\n"
         "- excel_live.highlight_by_condition\n"
+        "- excel_live.save_workbook\n\n"
+        "- excel_live.apply_border\n"
         "- excel_live.set_formula\n\n"
         "규칙:\n"
         "1) JSON 외 텍스트 금지\n"
@@ -483,13 +530,30 @@ async def parse_excel_live_command(message: str, llm_service) -> dict[str, Any]:
     if rule is not None:
         return rule
     try:
-        return await parse_command_with_llm(message, llm_service)
-    except Exception:
-        return {
-            "action": "excel_live.list_workbooks",
-            "params": {},
-            "reason": "명령이 모호하여 열린 통합문서 목록 조회로 폴백",
-        }
+        parsed = await parse_command_with_llm(message, llm_service)
+        lowered = str(message or "").lower()
+        likely_edit_intent = any(
+            token in lowered
+            for token in [
+                "경계선",
+                "테두리",
+                "border",
+                "입력",
+                "작성",
+                "수식",
+                "강조",
+                "칠해",
+                "저장",
+            ]
+        )
+        # 사용자의 편집 의도가 강한데 list_workbooks가 나오면 오분류로 간주한다.
+        if likely_edit_intent and parsed.get("action") == "excel_live.list_workbooks":
+            raise ValueError("편집 의도 명령을 목록 조회로 해석했습니다.")
+        return parsed
+    except Exception as exc:
+        raise ValueError(
+            "엑셀 명령을 해석하지 못했습니다. 범위/동작을 함께 적어주세요. 예: 'B2:D5 범위에 경계선 적용해줘'"
+        ) from exc
 
 
 def _column_span(start_col: str, end_col: str) -> int:

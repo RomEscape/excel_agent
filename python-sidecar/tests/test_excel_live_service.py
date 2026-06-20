@@ -135,6 +135,32 @@ class _FakeRange:
     def offset(self, row_offset: int, col_offset: int):
         return _FakeRange(self._sheet, self._sr + row_offset, self._sc + col_offset, 1, 1)
 
+    @property
+    def api(self):
+        return _FakeRangeApi(self._sheet, self._sr, self._sc, self._rows, self._cols)
+
+
+class _FakeBorder:
+    def __init__(self):
+        self.LineStyle = -4142
+        self.Weight = None
+        self.Color = None
+
+
+class _FakeRangeApi:
+    def __init__(self, sheet, start_row: int, start_col: int, row_count: int, col_count: int):
+        self._sheet = sheet
+        self._sr = start_row
+        self._sc = start_col
+        self._rows = row_count
+        self._cols = col_count
+
+    def Borders(self, edge: int):
+        key = (self._sr, self._sc, edge)
+        if key not in self._sheet._borders:
+            self._sheet._borders[key] = _FakeBorder()
+        return self._sheet._borders[key]
+
 
 class _FakeSheet:
     def __init__(self, name: str):
@@ -142,6 +168,7 @@ class _FakeSheet:
         self._values: dict[tuple[int, int], object] = {}
         self._colors: dict[tuple[int, int], tuple[int, int, int]] = {}
         self._formulas: dict[tuple[int, int], str] = {}
+        self._borders: dict[tuple[int, int, int], _FakeBorder] = {}
 
     def seed(self, ref: str, values):
         rng = self.range(ref)
@@ -338,6 +365,31 @@ def test_highlight_by_condition_changes_only_matching_cells():
     )
     assert result["matched_cells"] == 2
     assert result["changed_cells"] == 2
+    # 테두리도 함께 적용되는지 확인
+    # edge: 7(left),8(top),9(bottom),10(right)
+    for edge in (7, 8, 9, 10):
+        assert service._find_sheet(wb1, "Sheet1")._borders[(6, 1, edge)].LineStyle == 1  # A6
+        assert service._find_sheet(wb1, "Sheet1")._borders[(7, 1, edge)].LineStyle == 1  # A7
+
+
+def test_ensure_visual_gridline_keeps_existing_border():
+    service, wb1, _ = _build_service()
+    sheet = service._find_sheet(wb1, "Sheet1")
+    cell = sheet.range("B5")
+    # 기존 테두리가 있는 상태를 가정
+    for edge in (7, 8, 9, 10):
+        border = cell.api.Borders(edge)
+        border.LineStyle = 1
+        border.Weight = 3
+        border.Color = 255
+
+    service._ensure_visual_gridline(cell, (255, 255, 255))
+
+    for edge in (7, 8, 9, 10):
+        border = cell.api.Borders(edge)
+        assert border.LineStyle == 1
+        assert border.Weight == 3
+        assert border.Color == 255
 
 
 def test_highlight_full_column_uses_used_range_rows():
@@ -359,6 +411,33 @@ def test_highlight_full_column_uses_used_range_rows():
     assert result["matched_cells"] == 2
     assert result["changed_cells"] == 2
     assert result["address"] == "A1:A8"
+
+
+def test_apply_border_sets_all_edges_and_inside_lines():
+    service, wb1, _ = _build_service()
+    service.write_range(
+        workbook_id=wb1.fullname,
+        sheet_name="Sheet1",
+        start_cell="B2",
+        values_2d=[[1, 2], [3, 4]],
+    )
+    result = service.apply_border(
+        workbook_id=wb1.fullname,
+        sheet_name="Sheet1",
+        target_range="B2:C3",
+        line_style="continuous",
+        weight="thin",
+        color="#D9D9D9",
+    )
+    assert result["changed_cells"] == 4
+    assert result["address"] == "B2:C3"
+
+    border_map = service._find_sheet(wb1, "Sheet1")._borders
+    for edge in (7, 8, 9, 10, 11, 12):
+        border = border_map[(2, 2, edge)]
+        assert border.LineStyle == 1
+        assert border.Weight == 2
+        assert border.Color is not None
 
 
 def test_set_formula_applies_to_entire_range():

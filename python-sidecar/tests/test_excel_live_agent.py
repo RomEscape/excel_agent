@@ -181,3 +181,40 @@ def test_parse_select_workbook_korean():
     assert parsed["action"] == "excel_live.select_workbook"
     assert parsed["params"]["workbook_id"] == "text_1.xlsx"
 
+
+def test_parse_save_workbook_korean():
+    parsed = parse_command_rule_based("엑셀 저장해줘")
+    assert parsed is not None
+    assert parsed["action"] == "excel_live.save_workbook"
+    assert parsed["params"] == {}
+
+
+def test_parse_save_workbook_english():
+    parsed = parse_command_rule_based("save workbook")
+    assert parsed is not None
+    assert parsed["action"] == "excel_live.save_workbook"
+    assert parsed["params"] == {}
+
+
+def test_parse_apply_border_with_explicit_range():
+    parsed = parse_command_rule_based("B2:D5 범위에 경계선 적용해줘")
+    assert parsed is not None
+    assert parsed["action"] == "excel_live.apply_border"
+    assert parsed["params"]["target_range"] == "B2:D5"
+    assert parsed["params"]["weight"] == "medium"
+    assert parsed["params"]["color"] == "#000000"
+
+
+def test_parse_apply_border_without_range_uses_active_selection():
+    parsed = parse_command_rule_based("선택한 범위 테두리 넣어줘")
+    assert parsed is not None
+    assert parsed["action"] == "excel_live.apply_border"
+    assert parsed["params"]["target_range"] == "__ACTIVE_SELECTION__"
+
+
+def test_parse_apply_border_cell_range_not_misclassified_as_write():
+    parsed = parse_command_rule_based("B10에 테두리 넣어줘")
+    assert parsed is not None
+    assert parsed["action"] == "excel_live.apply_border"
+    assert parsed["params"]["target_range"] == "B10"
+

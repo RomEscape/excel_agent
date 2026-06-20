@@ -235,6 +235,50 @@ class ExcelLiveService:
             "address": str(rng.address),
         }
 
+    def apply_border(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        target_range: str,
+        line_style: str = "continuous",
+        weight: str = "medium",
+        color: str = "#000000",
+    ) -> dict[str, Any]:
+        """지정 범위에 경계선을 적용한다."""
+        target_id = workbook_id or self._selected_workbook_id
+        if not target_id:
+            raise WorkbookNotFoundError("workbook_id가 필요합니다.")
+
+        wb = self._find_workbook(target_id)
+        sheet = self._find_sheet(wb, sheet_name)
+        rng = self._resolve_target_range(sheet, target_range)
+        api_range = getattr(rng, "api", None)
+        if api_range is None:
+            raise ExcelLiveError("경계선을 적용할 수 없습니다. Excel API 객체를 찾지 못했습니다.")
+
+        # Excel COM 상수 (late binding)
+        style_map = {"continuous": 1}
+        weight_map = {"thin": 2, "medium": -4138, "thick": 4}
+        line_style_value = style_map.get((line_style or "").strip().lower(), 1)
+        weight_value = weight_map.get((weight or "").strip().lower(), 2)
+        border_color = self._rgb_to_excel_color(self._hex_to_rgb(color))
+        edges = (7, 8, 9, 10, 11, 12)  # left, top, bottom, right, inside_v, inside_h
+
+        for edge in edges:
+            border = api_range.Borders(edge)
+            border.LineStyle = line_style_value
+            border.Weight = weight_value
+            border.Color = border_color
+
+        rows_obj = getattr(rng, "rows", None)
+        cols_obj = getattr(rng, "columns", None)
+        row_count = int(getattr(rows_obj, "count", 1) or 1)
+        col_count = int(getattr(cols_obj, "count", 1) or 1)
+        return {
+            "changed_cells": row_count * col_count,
+            "address": str(rng.address),
+        }
+
     def set_formula(
         self,
         workbook_id: str | None,
@@ -421,13 +465,10 @@ class ExcelLiveService:
 
     @staticmethod
     def _ensure_visual_gridline(cell: Any, rgb: tuple[int, int, int]) -> None:
-        """밝은 배경색 채우기 후에도 셀 경계를 보이게 얇은 보더를 적용한다."""
+        """셀 경계선이 비어 있으면 얇은 보더를 적용해 시인성을 높인다."""
         try:
-            # 매우 밝은 계열(특히 흰색)일 때만 보더 보정
-            if not all(channel >= 240 for channel in rgb):
-                return
-            borders = getattr(cell, "api", None)
-            if borders is None:
+            api_range = getattr(cell, "api", None)
+            if api_range is None:
                 return
             # Excel COM 상수 (late binding 용 숫자 상수 사용)
             xl_edge_left = 7
@@ -436,16 +477,27 @@ class ExcelLiveService:
             xl_edge_right = 10
             xl_continuous = 1
             xl_thin = 2
-            border_color = (217, 217, 217)  # 기본 격자선에 가까운 회색
+            xl_line_style_none = -4142
+            border_color = ExcelLiveService._rgb_to_excel_color((217, 217, 217))
 
             for edge in (xl_edge_left, xl_edge_top, xl_edge_bottom, xl_edge_right):
-                border = borders.Borders(edge)
+                border = api_range.Borders(edge)
+                # 기존 보더가 이미 있으면 유지한다.
+                line_style = getattr(border, "LineStyle", xl_line_style_none)
+                if line_style not in (None, 0, xl_line_style_none):
+                    continue
                 border.LineStyle = xl_continuous
                 border.Weight = xl_thin
                 border.Color = border_color
         except Exception:
             # COM/테마 환경에 따라 보더 설정 실패 가능 — 비치명적
             return
+
+    @staticmethod
+    def _rgb_to_excel_color(rgb: tuple[int, int, int]) -> int:
+        """(R,G,B) 튜플을 Excel COM Color 정수로 변환한다."""
+        r, g, b = rgb
+        return int(r) + (int(g) << 8) + (int(b) << 16)
 
     @classmethod
     def _idx_to_col(cls, idx: int) -> str:

@@ -1,4 +1,5 @@
 # Python sidecar pip 설치는 루트 requirements를 단일 소스로 사용.
+# 2026-06-20 업데이트: Excel Live 경계선/범위참조 + 경계선 가시성 + 파싱 실패 폴백 제거 반영 (의존성 추가 없음)
 # 프로젝트 루트에서:
 #   pip install -r requirements.txt
 #
