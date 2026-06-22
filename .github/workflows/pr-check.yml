@@ -2,7 +2,8 @@ name: PR-Check
 
 on:
   pull_request:
-    branches: [main]
+    # dev가 통합 트렁크. main은 향후 릴리스 PR용으로 함께 둔다.
+    branches: [dev, main]
     paths-ignore:
       - '**.md'
       - 'docs/**'
