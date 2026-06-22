@@ -130,7 +130,9 @@ fn spawn_gateway_process(port: u16) -> Result<Child, String> {
     {
         // 2차(Windows): npm global bin(AppData\\npm\\openclaw.cmd) 직접 실행
         if let Ok(appdata) = std::env::var("APPDATA") {
-            let openclaw_cmd = std::path::Path::new(&appdata).join("npm").join("openclaw.cmd");
+            let openclaw_cmd = std::path::Path::new(&appdata)
+                .join("npm")
+                .join("openclaw.cmd");
             if openclaw_cmd.exists() {
                 let mut cmd = Command::new(&openclaw_cmd);
                 if !gateway_token.is_empty() {
@@ -250,7 +252,9 @@ pub async fn is_openclaw_installed() -> serde_json::Value {
     {
         // 2차(Windows): npm global bin(AppData\\npm\\openclaw.cmd) 직접 확인
         if let Ok(appdata) = std::env::var("APPDATA") {
-            let openclaw_cmd = std::path::Path::new(&appdata).join("npm").join("openclaw.cmd");
+            let openclaw_cmd = std::path::Path::new(&appdata)
+                .join("npm")
+                .join("openclaw.cmd");
             if openclaw_cmd.exists() {
                 if let Ok(output) = Command::new(&openclaw_cmd).arg("--version").output() {
                     if output.status.success() {

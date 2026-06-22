@@ -107,10 +107,7 @@ pub async fn configure_openclaw_ollama(model: &str) -> Result<serde_json::Value,
             "models.providers.ollama.baseUrl",
             format!("http://127.0.0.1:{}", OLLAMA_PORT),
         ),
-        (
-            "models.providers.ollama.apiKey",
-            "ollama-local".to_string(),
-        ),
+        ("models.providers.ollama.apiKey", "ollama-local".to_string()),
         ("models.providers.ollama.api", "ollama".to_string()),
         ("agents.defaults.model", format!("ollama/{}", model)),
     ];

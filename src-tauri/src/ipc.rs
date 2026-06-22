@@ -2036,7 +2036,13 @@ pub async fn open_workspace_file(path: String) -> Result<String, String> {
     let result = std::process::Command::new("open").arg(&target_str).status();
     #[cfg(target_os = "windows")]
     let result = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-Command", "Start-Process", "-FilePath", &target_str])
+        .args([
+            "-NoProfile",
+            "-Command",
+            "Start-Process",
+            "-FilePath",
+            &target_str,
+        ])
         .status();
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let result = std::process::Command::new("xdg-open")
