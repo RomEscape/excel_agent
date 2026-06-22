@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "tauri:dev": "tauri dev",
-    "test:unit": "node --test src/lib/*.test.js src/lib/localStack/*.test.js"
+    "test:unit": "node --test src/lib/*.test.js src/lib/localStack/*.test.js",
+    "prepare": "lefthook install"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.4",
@@ -42,6 +43,7 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
     "autoprefixer": "^10.4.20",
+    "lefthook": "^1.7.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.16",
     "vite": "^6.0.3"

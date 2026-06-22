@@ -1,0 +1,37 @@
+# lefthook.yml
+# CI(.github/workflows/pr-check.yml)와 동일한 검증을 로컬에서 자동 실행하는 "CI 미러" 훅.
+#   - pre-commit : 빠른 정적검사. staged 파일과 관련된 것만 실행 → 빨간 코드를 커밋 단계에서 차단
+#   - pre-push   : CI 전체 미러(테스트 포함) → push 전 마지막 게이트
+#
+# 설치   : npm install  (package.json의 prepare 스크립트가 `lefthook install`을 자동 실행)
+# 긴급 우회: git commit --no-verify  /  git push --no-verify
+#
+# private+free에서는 GitHub가 "빨간 PR merge 차단"을 강제할 수 없으므로,
+# 이 로컬 훅이 1차 방어선이고 pr-check.yml(CI)이 2차 표시선이다.
+
+pre-commit:
+  parallel: true
+  commands:
+    rust-fmt:
+      glob: "src-tauri/**/*.rs"
+      root: "src-tauri/"
+      run: cargo fmt --check
+    python-lint:
+      glob: "python-sidecar/**/*.py"
+      root: "python-sidecar/"
+      run: uvx ruff check .
+    frontend-lint:
+      glob: "src/**/*.{ts,tsx,js,jsx}"
+      run: npm run lint --if-present
+
+pre-push:
+  parallel: true
+  commands:
+    rust-clippy:
+      root: "src-tauri/"
+      run: cargo clippy --all-targets -- -D warnings
+    python-test:
+      root: "python-sidecar/"
+      run: uv run pytest -q
+    frontend-test:
+      run: npm run test:unit --if-present
