@@ -1,5 +1,5 @@
 use std::net::TcpListener;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -146,22 +146,26 @@ async fn wait_for_ready(port: u16, auth_token: &str) -> Result<(), String> {
 }
 
 fn spawn_dev_sidecar_process(port: u16, auth_token: &str) -> Result<(), String> {
-    // tauri dev는 cargo run을 src-tauri/에서 실행하므로 상위 경로(../python-sidecar)도 함께 탐색한다.
-    let dir_candidates = [
+    let python_sidecar_dir_candidates = [
         PathBuf::from("python-sidecar"),
         PathBuf::from("../python-sidecar"),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap_or(Path::new(env!("CARGO_MANIFEST_DIR")))
+            .join("python-sidecar"),
     ];
-    let python_sidecar_dir = dir_candidates
-        .into_iter()
+    let python_sidecar_dir = python_sidecar_dir_candidates
+        .iter()
         .find(|p| p.exists())
+        .cloned()
         .ok_or_else(|| {
             "Dev sidecar 자동 기동 실패: python-sidecar 디렉토리를 찾을 수 없습니다.".to_string()
         })?;
 
     // venv 실행 파일도 위에서 찾은 디렉토리 기준으로 해석한다(cwd 의존 상대경로 제거).
     let venv_candidates = [
-        python_sidecar_dir.join(".venv/Scripts/python.exe"), // Windows
-        python_sidecar_dir.join(".venv/bin/python"),         // macOS/Linux
+        python_sidecar_dir.join(".venv").join("Scripts").join("python.exe"), // Windows
+        python_sidecar_dir.join(".venv").join("bin").join("python"), // macOS/Linux
     ];
     let python_cmd = venv_candidates
         .into_iter()
