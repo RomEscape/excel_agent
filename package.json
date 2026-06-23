@@ -9,6 +9,8 @@
     "preview": "vite preview",
     "tauri:dev": "tauri dev",
     "test:unit": "node --test src/lib/*.test.js src/lib/localStack/*.test.js",
+    "setup:win": "powershell -ExecutionPolicy Bypass -File ./scripts/setup.ps1",
+    "setup:unix": "bash ./scripts/setup.sh",
     "prepare": "lefthook install"
   },
   "dependencies": {
