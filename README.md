@@ -264,6 +264,15 @@ npm run tauri:dev
 > `requirements.txt`는 pip 전용 파일이라 npm/cargo를 담을 수 없다.  
 > 전체 준비는 위 통합 스크립트를 사용하면 된다.  
 > `setup` 스크립트는 `node`/`cargo`/`python3`(플랫폼별) 미설치 시 OS 패키지 매니저(Windows: winget, macOS: brew/rustup, Linux: apt 가능 시)로 자동 설치를 시도한다.
+> 또한 `OPENCLAW_HOME`, `CARGO_HOME`, `NPM_CONFIG_PREFIX`를 사용자 홈 기준으로 자동 고정/생성해 디렉토리 경로 이슈를 줄인다.
+> Windows에서는 `link.exe`가 없으면 `Microsoft.VisualStudio.2022.BuildTools`(C++ workload + SDK) 자동 설치를 시도한다.
+
+### 자주 나는 오류 자동 완화
+
+- `Port 1420 is already in use`
+  - `npm run dev` 전에 `scripts/ensure-dev-port.mjs`가 1420 점유 프로세스를 자동 정리한다.
+- `link.exe not found`
+  - `.\scripts\setup.ps1`가 MSVC Build Tools를 자동 설치 시도하고, `link.exe` 경로를 PATH에 주입한다.
 
 > **UI만 빠르게 보려면:** `npm run dev` (Tauri 없이 Vite 단독 실행, invoke() 호출 실패함)
 

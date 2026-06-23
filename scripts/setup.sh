@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Team 503 AI 통합 설치 스크립트 (macOS/Linux)
-set -euo pipefail
+set -euo pipefail 2>/dev/null || set -eu
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 SIDECAR_DIR="$PROJECT_DIR/python-sidecar"
 TAURI_DIR="$PROJECT_DIR/src-tauri"
@@ -10,6 +11,10 @@ DRY_RUN="${DRY_RUN:-0}"
 BUILD_SIDECAR="${BUILD_SIDECAR:-1}"
 AUTO_INSTALL_TOOLS="${AUTO_INSTALL_TOOLS:-1}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
+OPENCLAW_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
+CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
+RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"
+NPM_CONFIG_PREFIX="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
 
 detect_os() {
   local uname_out
@@ -54,6 +59,11 @@ run_step() {
   (cd "$cwd" && eval "$cmd")
 }
 
+ensure_dir() {
+  local p="$1"
+  mkdir -p "$p"
+}
+
 ensure_cmd() {
   local cmd="$1"
   local hint="$2"
@@ -64,7 +74,7 @@ ensure_cmd() {
 }
 
 hydrate_path() {
-  export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+  export PATH="$CARGO_HOME/bin:$NPM_CONFIG_PREFIX/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
   if [[ -f "$HOME/.cargo/env" ]]; then
     # shellcheck source=/dev/null
@@ -140,6 +150,16 @@ auto_install_python_if_missing() {
 
 echo "=== Team 503 AI 통합 설치 시작 ==="
 echo "프로젝트 경로: $PROJECT_DIR"
+ensure_dir "$OPENCLAW_HOME"
+ensure_dir "$CARGO_HOME"
+ensure_dir "$RUSTUP_HOME"
+ensure_dir "$NPM_CONFIG_PREFIX"
+
+export OPENCLAW_HOME
+export CARGO_HOME
+export RUSTUP_HOME
+export NPM_CONFIG_PREFIX
+
 hydrate_path
 auto_install_node_if_missing
 auto_install_rust_if_missing
@@ -147,6 +167,8 @@ auto_install_python_if_missing
 
 ensure_cmd node "Node.js LTS 설치 후 재시도해 주세요. https://nodejs.org"
 ensure_cmd npm "Node.js 설치에 npm이 포함됩니다."
+run_step "npm 전역 prefix 고정 (사용자 홈)" "npm config set prefix \"$NPM_CONFIG_PREFIX\"" "$PROJECT_DIR"
+hydrate_path
 run_step "Node 의존성 설치 (npm ci)" "npm ci" "$PROJECT_DIR"
 
 if command -v uv >/dev/null 2>&1; then
@@ -175,4 +197,7 @@ fi
 
 echo ""
 echo "=== 통합 설치 완료 ==="
+echo "OPENCLAW_HOME=$OPENCLAW_HOME"
+echo "CARGO_HOME=$CARGO_HOME"
+echo "NPM_CONFIG_PREFIX=$NPM_CONFIG_PREFIX"
 echo "다음 실행 명령: npm run tauri:dev"
