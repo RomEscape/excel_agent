@@ -9,6 +9,7 @@
 //! dev 모드에서는 이미 외부에서 실행 중인 게이트웨이를 그대로 사용한다.
 
 use std::process::{Child, Command};
+use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -128,9 +129,8 @@ fn spawn_gateway_process(port: u16) -> Result<Child, String> {
 
     #[cfg(target_os = "windows")]
     {
-        // 2차(Windows): npm global bin(AppData\\npm\\openclaw.cmd) 직접 실행
-        if let Ok(appdata) = std::env::var("APPDATA") {
-            let openclaw_cmd = std::path::Path::new(&appdata).join("npm").join("openclaw.cmd");
+        // 2차(Windows): npm global/openclaw 커스텀 prefix 경로 직접 실행
+        for openclaw_cmd in windows_openclaw_cmd_candidates() {
             if openclaw_cmd.exists() {
                 let mut cmd = Command::new(&openclaw_cmd);
                 if !gateway_token.is_empty() {
@@ -248,9 +248,8 @@ pub async fn is_openclaw_installed() -> serde_json::Value {
 
     #[cfg(target_os = "windows")]
     {
-        // 2차(Windows): npm global bin(AppData\\npm\\openclaw.cmd) 직접 확인
-        if let Ok(appdata) = std::env::var("APPDATA") {
-            let openclaw_cmd = std::path::Path::new(&appdata).join("npm").join("openclaw.cmd");
+        // 2차(Windows): npm global/openclaw 커스텀 prefix 경로 직접 확인
+        for openclaw_cmd in windows_openclaw_cmd_candidates() {
             if openclaw_cmd.exists() {
                 if let Ok(output) = Command::new(&openclaw_cmd).arg("--version").output() {
                     if output.status.success() {
@@ -258,7 +257,7 @@ pub async fn is_openclaw_installed() -> serde_json::Value {
                         return serde_json::json!({
                             "installed": true,
                             "version": version,
-                            "source": "appdata-npm"
+                            "source": format!("cmd-path:{}", openclaw_cmd.to_string_lossy())
                         });
                     }
                 }
@@ -305,6 +304,37 @@ pub async fn is_openclaw_installed() -> serde_json::Value {
         "version": null,
         "source": null
     })
+}
+
+#[cfg(target_os = "windows")]
+fn windows_openclaw_cmd_candidates() -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+
+    if let Ok(prefix) = std::env::var("NPM_CONFIG_PREFIX") {
+        if !prefix.trim().is_empty() {
+            out.push(PathBuf::from(&prefix).join("openclaw.cmd"));
+            out.push(PathBuf::from(&prefix).join("bin").join("openclaw.cmd"));
+        }
+    }
+
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        out.push(PathBuf::from(appdata).join("npm").join("openclaw.cmd"));
+    }
+
+    if let Ok(userprofile) = std::env::var("USERPROFILE") {
+        let user_home = PathBuf::from(userprofile);
+        out.push(user_home.join(".npm-global").join("openclaw.cmd"));
+        out.push(user_home.join(".npm-global").join("bin").join("openclaw.cmd"));
+    }
+
+    // 순서 유지 + 중복 제거
+    let mut uniq: Vec<PathBuf> = Vec::new();
+    for p in out {
+        if !uniq.iter().any(|u| u == &p) {
+            uniq.push(p);
+        }
+    }
+    uniq
 }
 
 /// 현재 OpenClaw 게이트웨이 상태를 반환한다.

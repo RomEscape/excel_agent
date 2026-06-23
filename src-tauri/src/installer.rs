@@ -217,12 +217,22 @@ pub async fn install_openclaw(
     app: AppHandle,
     state: State<'_, Mutex<InstallerState>>,
 ) -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "windows")]
+    let install_cmd = "$prefix = Join-Path $env:USERPROFILE '.npm-global'; \
+if (-not (Test-Path $prefix)) { New-Item -ItemType Directory -Force -Path $prefix | Out-Null }; \
+npm config set prefix \"$prefix\"; \
+npm install -g openclaw@latest";
+
+    #[cfg(not(target_os = "windows"))]
+    let install_cmd =
+        "mkdir -p \"$HOME/.npm-global\" && npm config set prefix \"$HOME/.npm-global\" && npm install -g openclaw@latest";
+
     let result = run_shell_streaming(
         app,
         &state,
         "install-oc",
-        "npm install -g openclaw@latest",
-        "npm install -g openclaw@latest",
+        install_cmd,
+        install_cmd,
     )?;
     serde_json::to_value(result).map_err(|e| e.to_string())
 }
