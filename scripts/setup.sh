@@ -7,7 +7,21 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 SIDECAR_DIR="$PROJECT_DIR/python-sidecar"
 TAURI_DIR="$PROJECT_DIR/src-tauri"
 DRY_RUN="${DRY_RUN:-0}"
-BUILD_SIDECAR="${BUILD_SIDECAR:-0}"
+BUILD_SIDECAR="${BUILD_SIDECAR:-1}"
+AUTO_INSTALL_TOOLS="${AUTO_INSTALL_TOOLS:-1}"
+SKIP_BUILD="${SKIP_BUILD:-0}"
+
+detect_os() {
+  local uname_out
+  uname_out="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  if [[ "$uname_out" == "darwin" ]]; then
+    echo "macos"
+    return
+  fi
+  echo "linux"
+}
+
+OS_KIND="$(detect_os)"
 
 for arg in "$@"; do
   if [[ "$arg" == "--dry-run" ]]; then
@@ -15,6 +29,15 @@ for arg in "$@"; do
   fi
   if [[ "$arg" == "--build-sidecar" ]]; then
     BUILD_SIDECAR=1
+  fi
+  if [[ "$arg" == "--no-build-sidecar" ]]; then
+    BUILD_SIDECAR=0
+  fi
+  if [[ "$arg" == "--no-auto-install-tools" ]]; then
+    AUTO_INSTALL_TOOLS=0
+  fi
+  if [[ "$arg" == "--skip-build" ]]; then
+    SKIP_BUILD=1
   fi
 done
 
@@ -40,8 +63,87 @@ ensure_cmd() {
   fi
 }
 
+hydrate_path() {
+  export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+  if [[ -f "$HOME/.cargo/env" ]]; then
+    # shellcheck source=/dev/null
+    source "$HOME/.cargo/env"
+  fi
+
+  # 사용자 로컬 셸 설정에서 nvm/homebrew PATH가 들어오도록 시도.
+  for f in "$HOME/.zprofile" "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.bashrc"; do
+    if [[ -f "$f" ]]; then
+      # shellcheck source=/dev/null
+      source "$f" >/dev/null 2>&1 || true
+    fi
+  done
+}
+
+try_install_with_brew() {
+  local pkg="$1"
+  if ! command -v brew >/dev/null 2>&1; then
+    return 1
+  fi
+  run_step "$pkg 설치 (brew install $pkg)" "brew install $pkg" "$PROJECT_DIR"
+}
+
+auto_install_node_if_missing() {
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    return
+  fi
+  if [[ "$AUTO_INSTALL_TOOLS" != "1" ]]; then
+    return
+  fi
+  if [[ "$OS_KIND" == "macos" ]]; then
+    try_install_with_brew "node" || true
+  else
+    if command -v apt-get >/dev/null 2>&1; then
+      run_step "Node 설치 (apt-get)" "sudo apt-get update && sudo apt-get install -y nodejs npm" "$PROJECT_DIR" || true
+    fi
+  fi
+  hydrate_path
+}
+
+auto_install_rust_if_missing() {
+  if command -v cargo >/dev/null 2>&1; then
+    return
+  fi
+  if [[ "$AUTO_INSTALL_TOOLS" != "1" ]]; then
+    return
+  fi
+
+  if command -v rustup >/dev/null 2>&1; then
+    run_step "Rust toolchain 설치 (rustup default stable)" "rustup default stable" "$PROJECT_DIR" || true
+  else
+    run_step "Rustup 설치" "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y" "$PROJECT_DIR" || true
+  fi
+  hydrate_path
+}
+
+auto_install_python_if_missing() {
+  if command -v python3 >/dev/null 2>&1; then
+    return
+  fi
+  if [[ "$AUTO_INSTALL_TOOLS" != "1" ]]; then
+    return
+  fi
+  if [[ "$OS_KIND" == "macos" ]]; then
+    try_install_with_brew "python" || true
+  else
+    if command -v apt-get >/dev/null 2>&1; then
+      run_step "Python 설치 (apt-get)" "sudo apt-get update && sudo apt-get install -y python3 python3-pip" "$PROJECT_DIR" || true
+    fi
+  fi
+  hydrate_path
+}
+
 echo "=== Team 503 AI 통합 설치 시작 ==="
 echo "프로젝트 경로: $PROJECT_DIR"
+hydrate_path
+auto_install_node_if_missing
+auto_install_rust_if_missing
+auto_install_python_if_missing
 
 ensure_cmd node "Node.js LTS 설치 후 재시도해 주세요. https://nodejs.org"
 ensure_cmd npm "Node.js 설치에 npm이 포함됩니다."
@@ -57,6 +159,11 @@ fi
 ensure_cmd cargo "Rust 설치 후 재시도해 주세요. https://rustup.rs"
 run_step "Rust 툴체인 확인 (cargo --version)" "cargo --version" "$PROJECT_DIR"
 run_step "Tauri 크레이트 의존성 프리페치 (cargo fetch)" "cargo fetch" "$TAURI_DIR"
+
+if [[ "$SKIP_BUILD" != "1" ]]; then
+  run_step "프론트엔드 빌드 (npm run build)" "npm run build" "$PROJECT_DIR"
+  run_step "Rust 체크 빌드 (cargo check)" "cargo check" "$TAURI_DIR"
+fi
 
 if [[ "$BUILD_SIDECAR" == "1" ]]; then
   if command -v uv >/dev/null 2>&1; then
