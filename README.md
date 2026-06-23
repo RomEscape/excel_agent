@@ -229,19 +229,31 @@ python-sidecar/
 ### 개발 환경 (Windows)
 
 ```powershell
-# 1. 의존성 설치
-npm ci
-cd python-sidecar && uv sync --extra dev && cd ..
+# 1. 통합 설치 (Node + Python + Rust 의존성)
+.\scripts\setup.ps1
 
-# (대안) pip 환경이면 루트에서 단일 파일 설치
-pip install -r requirements.txt
+# (선택) sidecar 바이너리까지 같이 만들기
+.\scripts\setup.ps1 -BuildSidecar
 
-# 2. 사이드카 빌드 (최초 1회, 코드 변경 시 재실행)
-cd python-sidecar && uv run --extra dev python build_sidecar.py && cd ..
-
-# 3. 앱 실행 (Rust + Vite + Tauri Webview)
+# 2. 앱 실행 (Rust + Vite + Tauri Webview)
 npm run tauri:dev
 ```
+
+### 개발 환경 (macOS / Linux)
+
+```bash
+# 1. 통합 설치 (Node + Python + Rust 의존성)
+bash ./scripts/setup.sh
+
+# (선택) sidecar 바이너리까지 같이 만들기
+bash ./scripts/setup.sh --build-sidecar
+
+# 2. 앱 실행
+npm run tauri:dev
+```
+
+> `requirements.txt`는 pip 전용 파일이라 npm/cargo를 담을 수 없다.  
+> 전체 준비는 위 통합 스크립트를 사용하면 된다.
 
 > **UI만 빠르게 보려면:** `npm run dev` (Tauri 없이 Vite 단독 실행, invoke() 호출 실패함)
 

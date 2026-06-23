@@ -1,4 +1,6 @@
 # Team 503 AI (officeclaw) — Python sidecar 의존성 단일 진입점 (루트 통합)
+# 주의: npm(Node) / cargo(Rust) 의존성은 pip 포맷이 달라 requirements.txt에 포함할 수 없음.
+#       전체 설치는 scripts/setup.ps1(Windows) 또는 scripts/setup.sh(macOS/Linux) 사용.
 # 2026-06-20 업데이트: Excel Live 경계선/범위참조 + 경계선 가시성 + 파싱 실패 폴백 제거 반영 (런타임 deps 변경 없음)
 #
 # conda/venv에서 설치:
