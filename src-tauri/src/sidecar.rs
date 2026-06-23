@@ -146,22 +146,31 @@ async fn wait_for_ready(port: u16, auth_token: &str) -> Result<(), String> {
 }
 
 fn spawn_dev_sidecar_process(port: u16, auth_token: &str) -> Result<(), String> {
-    let python_sidecar_dir = PathBuf::from("python-sidecar");
-    if !python_sidecar_dir.exists() {
-        return Err(
-            "Dev sidecar 자동 기동 실패: python-sidecar 디렉토리를 찾을 수 없습니다.".to_string(),
-        );
-    }
-
-    let python_candidates: [&Path; 3] = [
-        Path::new("python-sidecar/.venv/Scripts/python.exe"), // Windows
-        Path::new("python-sidecar/.venv/bin/python"), // macOS/Linux
-        Path::new("python"),
+    let python_sidecar_dir_candidates = [
+        PathBuf::from("python-sidecar"),
+        PathBuf::from("../python-sidecar"),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap_or(Path::new(env!("CARGO_MANIFEST_DIR")))
+            .join("python-sidecar"),
     ];
-    let python_cmd = python_candidates
+    let python_sidecar_dir = python_sidecar_dir_candidates
         .iter()
-        .find(|p| p.exists() || p.as_os_str() == "python")
-        .ok_or_else(|| "Dev sidecar 자동 기동 실패: Python 실행 파일을 찾을 수 없습니다.".to_string())?;
+        .find(|p| p.exists())
+        .cloned()
+        .ok_or_else(|| {
+            "Dev sidecar 자동 기동 실패: python-sidecar 디렉토리를 찾을 수 없습니다.".to_string()
+        })?;
+
+    let python_venv_win = python_sidecar_dir.join(".venv").join("Scripts").join("python.exe");
+    let python_venv_unix = python_sidecar_dir.join(".venv").join("bin").join("python");
+    let python_cmd = if python_venv_win.exists() {
+        python_venv_win
+    } else if python_venv_unix.exists() {
+        python_venv_unix
+    } else {
+        PathBuf::from("python")
+    };
 
     let mut cmd = ProcessCommand::new(python_cmd);
     cmd.current_dir(&python_sidecar_dir)
