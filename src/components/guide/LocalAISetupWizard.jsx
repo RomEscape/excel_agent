@@ -71,6 +71,15 @@ function isGatewayUnavailableError(err) {
   );
 }
 
+function isSidecarUnavailableError(err) {
+  const msg = String(err?.message ?? err ?? "");
+  return (
+    msg.includes("Connection refused") ||
+    msg.includes("19532") ||
+    msg.includes("백그라운드 서비스에 연결할 수 없습니다")
+  );
+}
+
 // ── 메인 컴포넌트 ───────────────────────────────────────────────────────────
 
 export default function LocalAISetupWizard() {
@@ -348,18 +357,24 @@ export default function LocalAISetupWizard() {
             try {
               reply = await askAgentWithTimeout();
             } catch (err) {
-              if (!isGatewayUnavailableError(err)) {
-                throw err;
+              if (isSidecarUnavailableError(err)) {
+                pushLog(stepId, "info", "백그라운드 서비스가 아직 준비 중이라 잠시 후 다시 시도합니다...");
+                await new Promise((r) => setTimeout(r, 1800));
+                reply = await askAgentWithTimeout();
+              } else {
+                if (!isGatewayUnavailableError(err)) {
+                  throw err;
+                }
+                pushLog(stepId, "info", "OpenClaw 게이트웨이가 꺼져 있어 자동으로 다시 시작합니다...");
+                const startResult = await STATUS_MODULES.openclaw.start();
+                if (startResult?.state !== "running") {
+                  throw new Error(startResult?.message || "OpenClaw 게이트웨이를 자동으로 다시 시작하지 못했어요.");
+                }
+                // 게이트웨이 재기동 직후 초기화 시간을 짧게 준다.
+                await new Promise((r) => setTimeout(r, 1200));
+                pushLog(stepId, "info", "게이트웨이 재시작 완료. AI 대화 테스트를 다시 시도합니다.");
+                reply = await askAgentWithTimeout();
               }
-              pushLog(stepId, "info", "OpenClaw 게이트웨이가 꺼져 있어 자동으로 다시 시작합니다...");
-              const startResult = await STATUS_MODULES.openclaw.start();
-              if (startResult?.state !== "running") {
-                throw new Error(startResult?.message || "OpenClaw 게이트웨이를 자동으로 다시 시작하지 못했어요.");
-              }
-              // 게이트웨이 재기동 직후 초기화 시간을 짧게 준다.
-              await new Promise((r) => setTimeout(r, 1200));
-              pushLog(stepId, "info", "게이트웨이 재시작 완료. AI 대화 테스트를 다시 시도합니다.");
-              reply = await askAgentWithTimeout();
             }
             const text = String(reply?.response ?? "").trim();
             if (!text) {

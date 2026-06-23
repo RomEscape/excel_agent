@@ -310,6 +310,14 @@ pub async fn is_openclaw_installed() -> serde_json::Value {
 fn windows_openclaw_cmd_candidates() -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = Vec::new();
 
+    // 0) npm runtime prefix 조회 (사용자별 커스텀 prefix 대응)
+    for prefix in windows_npm_prefix_candidates() {
+        if !prefix.trim().is_empty() {
+            out.push(PathBuf::from(&prefix).join("openclaw.cmd"));
+            out.push(PathBuf::from(&prefix).join("bin").join("openclaw.cmd"));
+        }
+    }
+
     if let Ok(prefix) = std::env::var("NPM_CONFIG_PREFIX") {
         if !prefix.trim().is_empty() {
             out.push(PathBuf::from(&prefix).join("openclaw.cmd"));
@@ -329,6 +337,46 @@ fn windows_openclaw_cmd_candidates() -> Vec<PathBuf> {
 
     // 순서 유지 + 중복 제거
     let mut uniq: Vec<PathBuf> = Vec::new();
+    for p in out {
+        if !uniq.iter().any(|u| u == &p) {
+            uniq.push(p);
+        }
+    }
+    uniq
+}
+
+#[cfg(target_os = "windows")]
+fn windows_npm_prefix_candidates() -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+
+    // npm이 PATH에 있으면 가장 신뢰도 높은 실제 prefix를 얻는다.
+    if let Ok(output) = Command::new("npm")
+        .args(["config", "get", "prefix"])
+        .output()
+    {
+        if output.status.success() {
+            let prefix = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !prefix.is_empty() && prefix != "undefined" && prefix != "null" {
+                out.push(prefix);
+            }
+        }
+    }
+
+    // GUI PATH에서 npm 탐색이 실패하는 경우를 위해 PowerShell 경유도 한 번 더 시도.
+    if let Ok(output) = Command::new("powershell")
+        .args(["-NoProfile", "-Command", "npm config get prefix"])
+        .output()
+    {
+        if output.status.success() {
+            let prefix = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !prefix.is_empty() && prefix != "undefined" && prefix != "null" {
+                out.push(prefix);
+            }
+        }
+    }
+
+    // 중복 제거
+    let mut uniq: Vec<String> = Vec::new();
     for p in out {
         if !uniq.iter().any(|u| u == &p) {
             uniq.push(p);
