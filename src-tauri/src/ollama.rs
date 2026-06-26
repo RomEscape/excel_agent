@@ -24,18 +24,19 @@ pub async fn is_ollama_installed() -> serde_json::Value {
             });
         }
     }
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-    if let Ok(output) = Command::new(&shell)
-        .args(["-lc", "ollama --version"])
-        .output()
+    // GUI 앱은 nvm/asdf 등이 주입한 PATH를 못 받는 경우가 많아 로그인 셸로 한 번 더 시도.
+    // Windows에서는 위 직접 실행으로 충분하므로 Unix 전용 폴백으로 둔다 (기존 동작 유지).
+    #[cfg(not(target_os = "windows"))]
     {
-        if output.status.success() {
-            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            return serde_json::json!({
-                "installed": true,
-                "version": version,
-                "source": "login-shell"
-            });
+        if let Ok(output) = crate::shell::run_login_shell("ollama --version") {
+            if output.status.success() {
+                let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                return serde_json::json!({
+                    "installed": true,
+                    "version": version,
+                    "source": "login-shell"
+                });
+            }
         }
     }
     serde_json::json!({ "installed": false, "version": null, "source": null })
@@ -158,7 +159,7 @@ async fn run_openclaw_config_set(path: &str, value: &str) -> Result<String, Stri
             shell_quote(&path),
             shell_quote(&value)
         );
-        let via_shell = run_login_shell_command(&cmd);
+        let via_shell = crate::shell::run_login_shell(&cmd);
         match via_shell {
             Ok(out) if out.status.success() => Ok(String::from_utf8_lossy(&out.stdout).to_string()),
             Ok(out) => Err(format!(
@@ -177,20 +178,6 @@ async fn run_openclaw_config_set(path: &str, value: &str) -> Result<String, Stri
 /// shell single-quote escaping — 사용자 입력은 위에서 이미 sanitize했지만 path에 dot이 있어 따옴표 필요.
 fn shell_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
-}
-
-fn run_login_shell_command(cmd: &str) -> std::io::Result<std::process::Output> {
-    #[cfg(target_os = "windows")]
-    {
-        Command::new("powershell")
-            .args(["-NoProfile", "-Command", cmd])
-            .output()
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-        Command::new(shell).args(["-lc", cmd]).output()
-    }
 }
 
 /// 모델명에 셸 메타문자가 들어있지 않은지 검증.

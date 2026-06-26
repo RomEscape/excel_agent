@@ -168,14 +168,12 @@ fn spawn_gateway_process(port: u16) -> Result<Child, String> {
     #[cfg(not(target_os = "windows"))]
     {
         // 2차(Unix): 사용자 로그인 셸 — Tauri GUI는 nvm PATH가 안 잡히는 경우가 많음
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
         let shell_cmd = format!("openclaw gateway --port {}", port_str);
-        let mut via_shell_cmd = Command::new(&shell);
+        let mut via_shell_cmd = crate::shell::login_shell_command(&shell_cmd);
         if !gateway_token.is_empty() {
             via_shell_cmd.env("OPENCLAW_GATEWAY_TOKEN", &gateway_token);
         }
         let via_shell = via_shell_cmd
-            .args(["-lc", &shell_cmd])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn();
@@ -288,11 +286,7 @@ pub async fn is_openclaw_installed() -> serde_json::Value {
     #[cfg(not(target_os = "windows"))]
     {
         // GUI 앱은 nvm 등이 초기화된 PATH를 못 받는 경우가 많아 로그인 셸을 한 번 더 시도한다.
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-        if let Ok(output) = Command::new(&shell)
-            .args(["-lc", "openclaw --version"])
-            .output()
-        {
+        if let Ok(output) = crate::shell::run_login_shell("openclaw --version") {
             if output.status.success() {
                 let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 return serde_json::json!({
