@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { AlertDialog } from "@/components/ui/dialog";
 import { Toast } from "@/components/ui/toast";
+import useToast from "@/hooks/useToast";
 import { listCredentials, storeCredential, deleteCredential } from "@/lib/api";
 import { toUserMessage } from "@/lib/errorMessages";
 
@@ -154,7 +155,8 @@ function CredentialField({ fieldDef, saved, onSave, onDelete }) {
 
 export default function CredentialsManager() {
   const [savedKeys, setSavedKeys] = useState(new Set());
-  const [toast, setToast] = useState(null);
+  // 토스트 상태 + 자동 dismiss는 useToast 훅이 소유 (Toast primitive 기본 4000ms)
+  const { toast, showToast, dismissToast } = useToast();
   const [pendingDelete, setPendingDelete] = useState(null);
 
   const loadCredentials = useCallback(async () => {
@@ -175,9 +177,9 @@ export default function CredentialsManager() {
     try {
       await storeCredential(key, value);
       setSavedKeys((prev) => new Set([...prev, key]));
-      setToast({ message: `'${key}' 저장 완료`, variant: "success" });
+      showToast({ message: `'${key}' 저장 완료`, variant: "success" });
     } catch (err) {
-      setToast({ message: toUserMessage(err, "저장에 실패했습니다."), variant: "error" });
+      showToast({ message: toUserMessage(err, "저장에 실패했습니다."), variant: "error" });
       throw err;
     }
   };
@@ -192,9 +194,9 @@ export default function CredentialsManager() {
     try {
       await deleteCredential(key);
       setSavedKeys((prev) => { const next = new Set(prev); next.delete(key); return next; });
-      setToast({ message: `'${key}' 삭제됨`, variant: "default" });
+      showToast({ message: `'${key}' 삭제됨`, variant: "default" });
     } catch (err) {
-      setToast({ message: toUserMessage(err, "삭제에 실패했습니다."), variant: "error" });
+      showToast({ message: toUserMessage(err, "삭제에 실패했습니다."), variant: "error" });
     }
   };
 
@@ -260,7 +262,7 @@ export default function CredentialsManager() {
         onCancel={() => setPendingDelete(null)}
       />
 
-      <Toast toast={toast} onDismiss={() => setToast(null)} />
+      <Toast toast={toast} onDismiss={dismissToast} />
     </div>
   );
 }

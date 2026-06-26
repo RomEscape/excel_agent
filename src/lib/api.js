@@ -82,11 +82,6 @@ export async function storeCredential(service, value) {
   return parseResponse(raw);
 }
 
-export async function getCredential(service) {
-  const raw = await call("get_credential", { service });
-  return parseResponse(raw);
-}
-
 export async function deleteCredential(service) {
   const raw = await call("delete_credential", { service });
   return parseResponse(raw);
@@ -133,79 +128,6 @@ export async function getAuditLogs(limit) {
   return parseResponse(raw);
 }
 
-// ── Gmail ─────────────────────────────────────────────────────────────────
-
-export async function gmailStatus() {
-  const raw = await call("gmail_status");
-  return parseResponse(raw);
-}
-
-export async function gmailConnect() {
-  const raw = await call("gmail_connect");
-  return parseResponse(raw);
-}
-
-export async function gmailDisconnect() {
-  const raw = await call("gmail_disconnect");
-  return parseResponse(raw);
-}
-
-export async function gmailFetchEmails(maxResults) {
-  const raw = await call("gmail_fetch_emails", {
-    max_results: maxResults ?? null,
-  });
-  return parseResponse(raw);
-}
-
-export async function gmailGetEmailBody(messageId) {
-  const raw = await call("gmail_get_email_body", { message_id: messageId });
-  return parseResponse(raw);
-}
-
-export async function gmailSummarizeEmail(messageId) {
-  const raw = await call("gmail_summarize_email", { message_id: messageId });
-  return parseResponse(raw);
-}
-
-export async function gmailSummarizeBatch(maxResults) {
-  const raw = await call("gmail_summarize_batch", {
-    max_results: maxResults ?? null,
-  });
-  return parseResponse(raw);
-}
-
-/**
- * Generate a professional Korean reply draft for an email.
- *
- * @param {string} emailId
- * @returns {Promise<{ draft: string }>}
- */
-export async function gmailDraftReply(emailId) {
-  const raw = await call("gmail_draft_reply", { email_id: emailId });
-  return parseResponse(raw);
-}
-
-/**
- * Classify emails by urgency using AI.
- *
- * @param {string[]} emailIds
- * @returns {Promise<{ priorities: Array<{ id: string, tag: string, reason: string }> }>}
- */
-export async function gmailPrioritize(emailIds) {
-  const raw = await call("gmail_prioritize", { email_ids: emailIds });
-  return parseResponse(raw);
-}
-
-export async function getFilterRules() {
-  const raw = await call("get_filter_rules");
-  return parseResponse(raw);
-}
-
-export async function updateFilterRules(rules) {
-  const raw = await call("update_filter_rules", { rules });
-  return parseResponse(raw);
-}
-
 // ── Telegram ──────────────────────────────────────────────────────────────
 
 export async function telegramStatus() {
@@ -223,93 +145,7 @@ export async function telegramStop() {
   return parseResponse(raw);
 }
 
-// ── Excel AI ──────────────────────────────────────────────────────────────
-
-/**
- * Upload an xlsx/csv file by local path.
- * Returns { file_id, filename, sheet_names, row_count, col_count, columns, ... }
- *
- * @param {string} filePath - Absolute local file path
- */
-export async function excelUpload(filePath) {
-  const raw = await call("excel_upload", { file_path: filePath });
-  return parseResponse(raw);
-}
-
-/**
- * Ask a natural-language question about an uploaded spreadsheet.
- *
- * @param {string} fileId
- * @param {string} question
- * @returns {Promise<{ answer: string }>}
- */
-export async function excelAnalyze(fileId, question) {
-  const raw = await call("excel_analyze", { file_id: fileId, question });
-  return parseResponse(raw);
-}
-
-/**
- * Auto-generate a comprehensive Korean data analysis report.
- *
- * @param {string} fileId
- * @returns {Promise<{ report: string }>}
- */
-export async function excelReport(fileId) {
-  const raw = await call("excel_report", { file_id: fileId });
-  return parseResponse(raw);
-}
-
-/**
- * Get Excel formula suggestions based on the file's column structure.
- *
- * @param {string} fileId
- * @returns {Promise<{ suggestions: string }>}
- */
-export async function excelFormulas(fileId) {
-  const raw = await call("excel_formulas", { file_id: fileId });
-  return parseResponse(raw);
-}
-
-/**
- * Extract numeric columns as Chart.js-ready data.
- *
- * @param {string} fileId
- * @param {string} sheetName
- * @returns {Promise<{ labels: Array, datasets: Array }>}
- */
-export async function excelChartData(fileId, sheetName) {
-  const raw = await call("excel_chart_data", {
-    file_id: fileId,
-    sheet_name: sheetName,
-  });
-  return parseResponse(raw);
-}
-
-/**
- * Export the analysis report appended as a new sheet to the original workbook.
- * Saves to Downloads folder and returns the saved file path.
- *
- * @param {string} fileId
- * @param {string} reportMarkdown
- * @returns {Promise<string>} Saved file path
- */
-export async function excelExport(fileId, reportMarkdown) {
-  const raw = await call("excel_export", {
-    file_id: fileId,
-    report_markdown: reportMarkdown,
-  });
-  return parseResponse(raw);
-}
-
 // ── Excel Live(COM) ────────────────────────────────────────────────────────
-
-/**
- * Excel Live 연결 상태와 열린 워크북 목록을 조회한다.
- */
-export async function excelLiveStatus() {
-  const raw = await call("excel_live_status");
-  return parseResponse(raw);
-}
 
 /**
  * 자연어 엑셀 명령을 실행한다.
@@ -355,51 +191,6 @@ export async function excelLiveSaveWorkbook(workbookId = null) {
   return parseResponse(raw);
 }
 
-// ── Document AI ───────────────────────────────────────────────────────────
-
-/**
- * Generate a Korean document draft.
- *
- * @param {string} docType  - 보고서 | 기획안 | 회의록 | 계약서초안 | 이메일 | 제안서
- * @param {string} content  - Core content / key points
- * @param {string} tone     - 공식적 | 친근한 | 전문적
- * @param {string} length   - 짧게 | 보통 | 길게
- * @returns {Promise<{ draft: string }>}
- */
-export async function documentGenerate(docType, content, tone, length) {
-  const raw = await call("document_generate", {
-    doc_type: docType,
-    content,
-    tone,
-    length,
-  });
-  return parseResponse(raw);
-}
-
-/**
- * Export document as Word (.docx). Saves to Downloads, returns saved path.
- *
- * @param {string} title
- * @param {string} content - Markdown content
- * @returns {Promise<string>} Saved file path
- */
-export async function documentExportDocx(title, content) {
-  const raw = await call("document_export_docx", { title, content });
-  return parseResponse(raw);
-}
-
-/**
- * Export document as PDF. Saves to Downloads, returns saved path.
- *
- * @param {string} title
- * @param {string} content - Markdown content
- * @returns {Promise<string>} Saved file path
- */
-export async function documentExportPdf(title, content) {
-  const raw = await call("document_export_pdf", { title, content });
-  return parseResponse(raw);
-}
-
 // ── Phase 5: Agent Approval ───────────────────────────────────────────────────
 
 /**
@@ -417,16 +208,6 @@ export async function agentSubmitApproval(approvalId, approved, reason) {
     args.rejection_reason = reason;
   }
   const raw = await call("agent_submit_approval", args);
-  return parseResponse(raw);
-}
-
-/**
- * 대기 중인 승인 요청 목록을 조회한다 (폴링용).
- *
- * @returns {Promise<{ pending: Array }>}
- */
-export async function agentPendingApprovals() {
-  const raw = await call("agent_pending_approvals");
   return parseResponse(raw);
 }
 
@@ -756,6 +537,54 @@ export async function telegramSetup(token, chatId) {
   return parseResponse(raw);
 }
 
+// ── Phase 3: Permissions (에이전트 허용 범위) ──────────────────────────────────
+
+/**
+ * 현재 권한 설정(허용 폴더/앱, 셸·Python 화이트리스트)을 반환한다.
+ *
+ * @returns {Promise<{ allowed_folders: string[], allowed_apps: string[], shell_command_whitelist: string[], python_module_whitelist: string[] }>}
+ */
+export async function permissionsGet() {
+  const raw = await call("permissions_get");
+  return parseResponse(raw);
+}
+
+/**
+ * 권한 설정을 일괄 저장한다.
+ *
+ * @param {{ allowed_folders: string[], allowed_apps: string[], shell_command_whitelist: string[], python_module_whitelist: string[] }} data
+ */
+export async function permissionsUpdate(data) {
+  const raw = await call("permissions_update", data);
+  return parseResponse(raw);
+}
+
+/**
+ * 셸/Python 명령을 SAFE 화이트리스트에 추가한다.
+ *
+ * @param {string} command
+ * @param {'shell'|'python'} commandType
+ * @param {string} [reason]
+ */
+export async function permissionsWhitelistAdd(command, commandType, reason) {
+  const raw = await call("permissions_whitelist_add", {
+    command,
+    command_type: commandType,
+    reason: reason || "",
+  });
+  return parseResponse(raw);
+}
+
+/**
+ * 화이트리스트에서 명령을 제거한다.
+ *
+ * @param {string} command
+ */
+export async function permissionsWhitelistRemove(command) {
+  const raw = await call("permissions_whitelist_remove", { command });
+  return parseResponse(raw);
+}
+
 // ── Sprint 5: 채팅 세션 영속화 ────────────────────────────────────────────────
 
 export async function chatSaveMessage(sessionId, role, text, toolCalls, maskedCount, maskedTypes, errorText) {
@@ -938,16 +767,6 @@ export async function agentChat(message, sessionId) {
     message,
     session_id: sessionId ?? null,
   });
-  return parseResponse(raw);
-}
-
-/**
- * 활성 OpenClaw 세션 목록을 반환한다.
- *
- * @returns {Promise<{ sessions: Array }>}
- */
-export async function agentSessions() {
-  const raw = await call("agent_sessions");
   return parseResponse(raw);
 }
 

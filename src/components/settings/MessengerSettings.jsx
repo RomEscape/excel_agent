@@ -24,15 +24,21 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status";
 import { getMessengerStatus } from "@/lib/statusTokens";
-import { invoke } from "@tauri-apps/api/core";
-import { parseResponse } from "@/lib/api";
-
-// ── API helpers ───────────────────────────────────────────────────────────────
-
-async function call(cmd, args = {}) {
-  const raw = await invoke(cmd, args);
-  return parseResponse(raw);
-}
+import {
+  telegramStatus,
+  telegramSetup,
+  telegramStart,
+  telegramStop,
+  slackStatus,
+  slackSetup,
+  slackStart,
+  slackStop,
+  discordStatus,
+  discordSetup,
+  discordStart,
+  discordStop,
+} from "@/lib/api";
+import { toUserMessage } from "@/lib/errorMessages";
 
 /**
  * 메신저 상태 배지 — 통일된 톤 시스템 사용.
@@ -82,7 +88,7 @@ function TelegramCard() {
 
   const loadStatus = useCallback(async () => {
     try {
-      const s = await call("telegram_status");
+      const s = await telegramStatus();
       setStatus(s);
     } catch {}
   }, []);
@@ -101,10 +107,7 @@ function TelegramCard() {
     setLoading(true);
     setMsg(null);
     try {
-      const result = await call("telegram_setup", {
-        token: token.trim(),
-        chat_id: chatId.trim() || null,
-      });
+      const result = await telegramSetup(token.trim(), chatId.trim() || null);
       if (result.ok) {
         setMsg({ type: "success", text: `연결 성공: ${result.bot_username}` });
         await loadStatus();
@@ -112,7 +115,7 @@ function TelegramCard() {
         setMsg({ type: "error", text: result.error || "연결 실패" });
       }
     } catch (e) {
-      setMsg({ type: "error", text: `오류: ${e}` });
+      setMsg({ type: "error", text: toUserMessage(e, "오류가 발생했습니다.") });
     } finally {
       setLoading(false);
     }
@@ -122,13 +125,13 @@ function TelegramCard() {
     setLoading(true);
     try {
       if (status.running) {
-        await call("telegram_stop");
+        await telegramStop();
       } else {
-        await call("telegram_start");
+        await telegramStart();
       }
       await loadStatus();
     } catch (e) {
-      setMsg({ type: "error", text: `오류: ${e}` });
+      setMsg({ type: "error", text: toUserMessage(e, "오류가 발생했습니다.") });
     } finally {
       setLoading(false);
     }
@@ -203,7 +206,7 @@ function SlackCard() {
 
   const loadStatus = useCallback(async () => {
     try {
-      const s = await call("slack_status");
+      const s = await slackStatus();
       setStatus(s);
     } catch {}
   }, []);
@@ -222,10 +225,7 @@ function SlackCard() {
     setLoading(true);
     setMsg(null);
     try {
-      const result = await call("slack_setup", {
-        bot_token: botToken.trim(),
-        app_token: appToken.trim(),
-      });
+      const result = await slackSetup(botToken.trim(), appToken.trim());
       if (result.ok) {
         setMsg({ type: "success", text: `연결 성공: ${result.team}` });
         await loadStatus();
@@ -233,7 +233,7 @@ function SlackCard() {
         setMsg({ type: "error", text: result.error || "연결 실패" });
       }
     } catch (e) {
-      setMsg({ type: "error", text: `오류: ${e}` });
+      setMsg({ type: "error", text: toUserMessage(e, "오류가 발생했습니다.") });
     } finally {
       setLoading(false);
     }
@@ -243,13 +243,13 @@ function SlackCard() {
     setLoading(true);
     try {
       if (status.running) {
-        await call("slack_stop");
+        await slackStop();
       } else {
-        await call("slack_start");
+        await slackStart();
       }
       await loadStatus();
     } catch (e) {
-      setMsg({ type: "error", text: `오류: ${e}` });
+      setMsg({ type: "error", text: toUserMessage(e, "오류가 발생했습니다.") });
     } finally {
       setLoading(false);
     }
@@ -323,7 +323,7 @@ function DiscordCard() {
 
   const loadStatus = useCallback(async () => {
     try {
-      const s = await call("discord_status");
+      const s = await discordStatus();
       setStatus(s);
     } catch {}
   }, []);
@@ -342,10 +342,7 @@ function DiscordCard() {
     setLoading(true);
     setMsg(null);
     try {
-      const result = await call("discord_setup", {
-        token: token.trim(),
-        allowed_guild_id: guildId.trim() || null,
-      });
+      const result = await discordSetup(token.trim(), guildId.trim() || null);
       if (result.ok) {
         setMsg({ type: "success", text: `연결 성공: ${result.bot_username}` });
         await loadStatus();
@@ -353,7 +350,7 @@ function DiscordCard() {
         setMsg({ type: "error", text: result.error || "연결 실패" });
       }
     } catch (e) {
-      setMsg({ type: "error", text: `오류: ${e}` });
+      setMsg({ type: "error", text: toUserMessage(e, "오류가 발생했습니다.") });
     } finally {
       setLoading(false);
     }
@@ -363,13 +360,13 @@ function DiscordCard() {
     setLoading(true);
     try {
       if (status.running) {
-        await call("discord_stop");
+        await discordStop();
       } else {
-        await call("discord_start");
+        await discordStart();
       }
       await loadStatus();
     } catch (e) {
-      setMsg({ type: "error", text: `오류: ${e}` });
+      setMsg({ type: "error", text: toUserMessage(e, "오류가 발생했습니다.") });
     } finally {
       setLoading(false);
     }

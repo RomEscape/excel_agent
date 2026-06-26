@@ -22,7 +22,7 @@ import AlertDialog from "@/components/ui/dialog";
 import OllamaModelPicker from "@/components/settings/OllamaModelPicker";
 import useAppStore from "@/store/appStore";
 import useStatusStore from "@/store/statusStore";
-import { getLLMSettings, saveLLMSettings, getFilterRules, updateFilterRules, maintenanceCleanup, backupExport, backupImport } from "@/lib/api";
+import { getLLMSettings, saveLLMSettings, maintenanceCleanup, backupExport, backupImport } from "@/lib/api";
 import { toUserMessage } from "@/lib/errorMessages";
 import packageJson from "../../../package.json";
 
@@ -36,13 +36,6 @@ export default function Settings() {
   const [savingLLM, setSavingLLM] = useState(false);
   const [llmMsg, setLLMMsg] = useState("");
   const [llmMsgError, setLLMMsgError] = useState(false);
-
-  // Filter rule state
-  const [filterHigh, setFilterHigh] = useState("");
-  const [filterLow, setFilterLow] = useState("");
-  const [savingFilter, setSavingFilter] = useState(false);
-  const [filterMsg, setFilterMsg] = useState("");
-  const [filterMsgError, setFilterMsgError] = useState(false);
 
   // App info / maintenance state
   const [cleaning, setCleaning] = useState(false);
@@ -78,22 +71,9 @@ export default function Settings() {
     }
   }, [setLLMConfig]);
 
-  const loadFilter = useCallback(async () => {
-    try {
-      const rules = await getFilterRules();
-      if (rules) {
-        setFilterHigh((rules.high ?? []).join(", "));
-        setFilterLow((rules.low ?? []).join(", "));
-      }
-    } catch {
-      // Silently ignore — filter rules are optional
-    }
-  }, []);
-
   useEffect(() => {
     loadLLM();
-    loadFilter();
-  }, [loadLLM, loadFilter]);
+  }, [loadLLM]);
 
   const handleSaveLLM = async () => {
     setSavingLLM(true);
@@ -109,25 +89,6 @@ export default function Settings() {
       setLLMMsgError(true);
     } finally {
       setSavingLLM(false);
-    }
-  };
-
-  const handleSaveFilter = async () => {
-    setSavingFilter(true);
-    setFilterMsg("");
-    setFilterMsgError(false);
-    try {
-      const rules = {
-        high: filterHigh.split(",").map((s) => s.trim()).filter(Boolean),
-        low: filterLow.split(",").map((s) => s.trim()).filter(Boolean),
-      };
-      await updateFilterRules(rules);
-      setFilterMsg("필터 저장 완료!");
-    } catch (e) {
-      setFilterMsg(toUserMessage(e, "필터 저장에 실패했습니다."));
-      setFilterMsgError(true);
-    } finally {
-      setSavingFilter(false);
     }
   };
 
@@ -342,60 +303,6 @@ export default function Settings() {
         </CardContent>
       </Card>
 
-      <Separator />
-
-      {/* Mail filter rules */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">메일 중요도 필터 키워드</CardTitle>
-          <CardDescription>
-            이메일 제목, 미리보기, 발신자에 포함된 키워드로 중요도를 자동 분류합니다.
-            쉼표(,)로 구분하세요.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="filter-high">높음 (긴급)</Label>
-            <Input
-              id="filter-high"
-              value={filterHigh}
-              onChange={(e) => setFilterHigh(e.target.value)}
-              placeholder="긴급, urgent, 마감, ASAP..."
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="filter-low">낮음 (낮은 우선순위)</Label>
-            <Input
-              id="filter-low"
-              value={filterLow}
-              onChange={(e) => setFilterLow(e.target.value)}
-              placeholder="newsletter, 광고, noreply, 구독..."
-            />
-          </div>
-          <div className="flex items-center gap-3">
-            <Button size="sm" onClick={handleSaveFilter} disabled={savingFilter}>
-              {savingFilter ? (
-                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-              ) : (
-                <Save className="mr-1 h-3 w-3" />
-              )}
-              필터 저장
-            </Button>
-            {filterMsg && (
-              <span
-                className={`flex items-center gap-1 text-xs ${
-                  filterMsgError ? "text-destructive" : "text-muted-foreground"
-                }`}
-              >
-                {!filterMsgError && filterMsg.includes("완료") && (
-                  <CheckCircle2 className="h-3 w-3 text-green-500" />
-                )}
-                {filterMsg}
-              </span>
-            )}
-          </div>
-        </CardContent>
-      </Card>
       <Separator />
 
       {/* App info */}

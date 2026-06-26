@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import useAppStore from "@/store/appStore";
+import useToast from "@/hooks/useToast";
 import {
   openWorkspaceFolder,
   telegramStop,
@@ -263,7 +264,8 @@ export default function CommandPalette({ open, onClose }) {
   const [debounced, setDebounced] = useState("");
   const [activeIdx, setActiveIdx] = useState(0);
   const [confirmState, setConfirmState] = useState(null); // { title, description, confirmLabel, resolve }
-  const [toast, setToast] = useState(null);
+  // 토스트 상태 + 자동 dismiss(2500ms)는 useToast 훅이 소유
+  const { toast, showToast, dismissToast } = useToast(2500);
 
   const inputRef = useRef(null);
   const listRef = useRef(null);
@@ -288,7 +290,7 @@ export default function CommandPalette({ open, onClose }) {
       setDebounced("");
       setActiveIdx(0);
       setConfirmState(null);
-      setToast(null);
+      dismissToast();
       // 다음 tick에 input focus
       setTimeout(() => inputRef.current?.focus(), 0);
 
@@ -304,13 +306,6 @@ export default function CommandPalette({ open, onClose }) {
       );
     }
   }, [open]);
-
-  // toast 자동 dismiss
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 2500);
-    return () => clearTimeout(t);
-  }, [toast]);
 
   const commands = useMemo(() => buildCommands(botStatuses), [botStatuses]);
 
@@ -350,7 +345,7 @@ export default function CommandPalette({ open, onClose }) {
       setConfirmState({ ...opts, resolve });
     });
 
-  const notify = (message) => setToast({ message });
+  const notify = (message) => showToast({ message });
 
   const runItem = (item) => {
     if (!item) return;

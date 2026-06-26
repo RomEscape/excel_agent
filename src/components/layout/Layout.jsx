@@ -10,7 +10,9 @@ import ShortcutHelp from "@/components/cmdk/ShortcutHelp";
 import UpdateNotice from "@/components/updater/UpdateNotice";
 import { Toast } from "@/components/ui/toast";
 import useAppStore from "@/store/appStore";
+import useToast from "@/hooks/useToast";
 import { agentSubmitApproval } from "@/lib/api";
+import { toUserMessage } from "@/lib/errorMessages";
 
 /**
  * 단일키(`?`, `Y`, `N` 등) 단축키는 input/textarea/contentEditable에 포커스가
@@ -43,12 +45,8 @@ function isImeComposing(e) {
 
 // Lazy-loaded page components — each module is its own code-split chunk.
 // This keeps the initial bundle small and defers loading of heavy modules
-// (e.g. ExcelModule with Chart.js, DocumentModule with docx previewer)
 // until the user first navigates to them.
 const Dashboard = lazy(() => import("@/components/dashboard/Dashboard"));
-const EmailModule = lazy(() => import("@/components/email/EmailModule"));
-const ExcelModule = lazy(() => import("@/components/excel/ExcelModule"));
-const DocumentModule = lazy(() => import("@/components/document/DocumentModule"));
 const WorkspacePage = lazy(() => import("@/components/workspace/WorkspacePage"));
 const ConversationsPage = lazy(() => import("@/components/conversations/ConversationsPage"));
 const SettingsHub = lazy(() => import("@/components/settings/SettingsHub"));
@@ -59,8 +57,6 @@ const SettingsHub = lazy(() => import("@/components/settings/SettingsHub"));
  * 4개 핵심 페이지(dashboard/workspace/conversations/settings) 외에는
  * Settings 허브 안의 탭으로 흡수되었지만, 호환성을 위해 일부 키는
  * Settings 허브로 라우팅(설정 내부에서 자동으로 해당 탭이 열림).
- *
- * deprecated 모듈(email/excel/document)은 라우팅만 유지 — 사이드바에는 노출되지 않음.
  */
 const PAGE_MAP = {
   dashboard: Dashboard,
@@ -75,11 +71,6 @@ const PAGE_MAP = {
   permissions: SettingsHub,
   messenger_settings: SettingsHub,
   guide: SettingsHub,
-
-  // ── Legacy AI 모듈 (사이드바에서 숨김, 라우팅은 유지) ──
-  email: EmailModule,
-  excel: ExcelModule,
-  document: DocumentModule,
 };
 
 /** Full-page loading fallback shown while a lazy chunk is being fetched. */
@@ -98,8 +89,8 @@ export default function Layout() {
   const setSidebarCollapsed = useAppStore((s) => s.setSidebarCollapsed);
   const PageComponent = PAGE_MAP[currentPage] ?? Dashboard;
 
-  // 로컬 토스트 상태 (승인/거부 결과 안내)
-  const [notifyToast, setNotifyToast] = useState(null);
+  // 로컬 토스트 상태 (승인/거부 결과 안내) — useToast 훅이 상태·자동 dismiss 소유
+  const { toast: notifyToast, showToast: showNotify, dismissToast: dismissNotify } = useToast();
 
   // ── 글로벌 모달 상태 ────────────────────────────────────────────────────
   const [cmdkOpen, setCmdkOpen] = useState(false);
@@ -168,9 +159,9 @@ export default function Layout() {
     setPendingApproval(null);
     try {
       await agentSubmitApproval(approvalId, true);
-      setNotifyToast({ message: "승인되었습니다. 작업이 실행됩니다." });
+      showNotify({ message: "승인되었습니다. 작업이 실행됩니다." });
     } catch (err) {
-      setNotifyToast({ message: `승인 전달 실패: ${err}` });
+      showNotify({ message: toUserMessage(err, "승인 전달에 실패했습니다.") });
     }
   }, [pendingApproval, setPendingApproval]);
 
@@ -184,7 +175,7 @@ export default function Layout() {
     } catch {
       // 거부 전달 실패는 조용히 처리
     }
-    setNotifyToast({
+    showNotify({
       message: reason
         ? `거부되었습니다. 사유: ${reason}`
         : "거부되었습니다. 작업이 취소되었습니다.",
@@ -226,7 +217,7 @@ export default function Layout() {
       {/* 승인/거부 결과 토스트 */}
       <Toast
         toast={notifyToast}
-        onDismiss={() => setNotifyToast(null)}
+        onDismiss={dismissNotify}
       />
 
       {/* 글로벌 명령 팔레트 — Cmd/Ctrl+K로 토글 */}
