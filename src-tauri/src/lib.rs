@@ -5,6 +5,7 @@ mod keyring_svc;
 mod ollama;
 mod openclaw;
 mod openclaw_cli;
+mod shell;
 mod sidecar;
 mod tray;
 
@@ -54,35 +55,15 @@ pub fn run() {
             ipc::list_credentials,
             ipc::chat,
             ipc::get_audit_logs,
-            ipc::gmail_status,
-            ipc::gmail_connect,
-            ipc::gmail_disconnect,
-            ipc::gmail_fetch_emails,
-            ipc::gmail_get_email_body,
-            ipc::gmail_summarize_email,
-            ipc::gmail_summarize_batch,
-            ipc::get_filter_rules,
-            ipc::update_filter_rules,
             ipc::telegram_status,
             ipc::telegram_start,
             ipc::telegram_stop,
             ipc::get_llm_settings,
             ipc::save_llm_settings,
-            ipc::excel_upload,
-            ipc::excel_analyze,
-            ipc::excel_report,
-            ipc::excel_formulas,
-            ipc::excel_chart_data,
-            ipc::excel_export,
             ipc::excel_live_status,
             ipc::excel_live_command,
             ipc::excel_live_submit_approval,
             ipc::excel_live_save_workbook,
-            ipc::document_generate,
-            ipc::document_export_docx,
-            ipc::document_export_pdf,
-            ipc::gmail_draft_reply,
-            ipc::gmail_prioritize,
             ipc::maintenance_cleanup,
             // Phase 4: OpenClaw / Agent commands
             ipc::agent_chat,

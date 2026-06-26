@@ -55,12 +55,6 @@ def has_code_block(text: str) -> bool:
 _PATTERN_LIST = re.compile(
     r"(?:파일\s*목록|목록\s*보여|list\s*files?|ls\b)", re.IGNORECASE
 )
-_PATTERN_READ = re.compile(
-    r"(?:읽어|읽기|내용\s*보여|read\b|cat\b)\s*[줘줄]?[:]?\s*(.+)?", re.IGNORECASE
-)
-_PATTERN_WRITE = re.compile(
-    r"(?:써줘|쓰기|저장|write\b|save\b)\s*[:]?\s*(.+)?", re.IGNORECASE
-)
 _PATTERN_FILENAME = re.compile(
     r"['\"]([^'\"]+)['\"]"
     r"|(\S+\.\w+)"

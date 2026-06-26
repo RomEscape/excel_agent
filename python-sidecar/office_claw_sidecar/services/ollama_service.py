@@ -42,12 +42,3 @@ class OllamaService:
             data = resp.json()
 
         return data.get("message", {}).get("content", "")
-
-    async def list_models(self) -> list[str]:
-        """List available Ollama models."""
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
-            resp.raise_for_status()
-            data = resp.json()
-
-        return [m["name"] for m in data.get("models", [])]

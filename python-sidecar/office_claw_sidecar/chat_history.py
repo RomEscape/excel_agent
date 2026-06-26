@@ -22,12 +22,14 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-from pathlib import Path
 from typing import Optional
+
+from office_claw_sidecar.config import get_app_db_path
 
 logger = logging.getLogger(__name__)
 
-_DB_PATH = Path.home() / "PrivateClaw" / "audit.db"
+# command_log 테이블과 같은 DB를 공유 — config.get_app_db_path()가 단일 출처
+_DB_PATH = get_app_db_path()
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS chat_messages (

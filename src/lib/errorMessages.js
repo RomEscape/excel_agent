@@ -283,14 +283,3 @@ export function toUserMessage(error, fallback) {
 
   return fallback ?? "오류가 발생했습니다. 다시 시도해 주세요.";
 }
-
-/**
- * Format an error for display with an operation-specific prefix.
- *
- * @param {string} operation - Korean operation name (e.g., "연결", "저장")
- * @param {unknown} error
- * @returns {string}
- */
-export function formatError(operation, error) {
-  return `${operation} 실패: ${toUserMessage(error)}`;
-}

@@ -10,7 +10,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-/** @typedef {'dashboard'|'email'|'excel'|'document'|'telegram'|'workspace'|'credentials'|'audit'|'settings'|'security'|'permissions'|'messenger_settings'} Page */
+/** @typedef {'dashboard'|'telegram'|'workspace'|'conversations'|'credentials'|'audit'|'settings'|'security'|'permissions'|'messenger_settings'|'guide'} Page */
 
 /**
  * @typedef {Object} ChatMessage
@@ -93,12 +93,6 @@ const useAppStore = create(
       workspacePath: "~/PrivateClaw/Workspace",
 
       /**
-       * 선택된 LLM 엔진 (표시용 별칭).
-       * @type {'ollama'|'claude'}
-       */
-      llmEngine: "ollama",
-
-      /**
        * 온보딩에서 선택된 메신저.
        * @type {'telegram'|'slack'|'discord'}
        */
@@ -151,10 +145,6 @@ const useAppStore = create(
       /** Update telegram connection status */
       setTelegramConnected: (/** @type {boolean} */ connected) =>
         set({ telegramConnected: connected }),
-
-      /** Update LLM engine alias */
-      setLLMEngine: (/** @type {'ollama'|'claude'} */ engine) =>
-        set({ llmEngine: engine }),
 
       /** Update selected messenger */
       setSelectedMessenger: (/** @type {'telegram'|'slack'|'discord'} */ messenger) =>
@@ -214,7 +204,6 @@ const useAppStore = create(
       partialize: (state) => ({
         onboardingComplete: state.onboardingComplete,
         llmConfig: state.llmConfig,
-        llmEngine: state.llmEngine,
         telegramConnected: state.telegramConnected,
         selectedMessenger: state.selectedMessenger,
         sidebarCollapsed: state.sidebarCollapsed,

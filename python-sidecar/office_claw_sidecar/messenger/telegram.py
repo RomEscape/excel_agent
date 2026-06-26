@@ -7,13 +7,13 @@ messenger/telegram.py — Phase 1 (Private-Claw).
 services/telegram_service.py (TelegramService)에 위치한다.
 이 모듈은 아래 두 가지만 담당한다:
 
-1. 자연어 패턴 정규식 (_PATTERN_LIST, _PATTERN_READ, _PATTERN_WRITE)
+1. 자연어 패턴 정규식 (_PATTERN_LIST)
    - telegram_service.py의 handle_text에서 import하여 사용
 2. 파일명 추출 유틸 (_extract_filename, _parse_write_command)
    - 확장자 없는 파일명(readme, Makefile, .gitignore 등)도 지원
 
-TelegramAdapter 클래스는 TelegramService를 wrapping하는 thin proxy로만 동작.
-직접 인스턴스화하지 말고 routers/telegram.py의 telegram_svc를 사용할 것.
+봇 폴링·명령 처리는 services/telegram_service.py의 TelegramService가 단독 담당한다.
+routers/telegram.py의 telegram_svc 인스턴스를 사용할 것.
 """
 
 from __future__ import annotations
@@ -24,12 +24,6 @@ import re
 
 _PATTERN_LIST = re.compile(
     r"(?:파일\s*목록|목록\s*보여|list\s*files?|ls\b)", re.IGNORECASE
-)
-_PATTERN_READ = re.compile(
-    r"(?:읽어|읽기|내용\s*보여|read\b|cat\b)\s*[줘줄]?[:]?\s*(.+)?", re.IGNORECASE
-)
-_PATTERN_WRITE = re.compile(
-    r"(?:써줘|쓰기|저장|write\b|save\b)\s*[:]?\s*(.+)?", re.IGNORECASE
 )
 
 # ── 파일명 추출 패턴 (개선) ────────────────────────────────────────────────
@@ -129,71 +123,3 @@ def _parse_write_command(text: str) -> tuple[str | None, str | None]:
             return candidate, m4.group(2).strip()
 
     return None, None
-
-
-# ── TelegramAdapter (thin proxy) ──────────────────────────────────────────────
-
-from office_claw_sidecar.messenger.base import MessengerAdapter  # noqa: E402
-
-
-class TelegramAdapter(MessengerAdapter):
-    """
-    TelegramService의 thin proxy adapter.
-
-    MessengerAdapter ABC를 구현하여 멀티 어댑터 동시 운영 구조와 호환된다.
-    직접 봇 로직을 구현하지 않는다.
-    실제 구현은 services/telegram_service.py의 TelegramService에 있다.
-    외부에서 어댑터 인터페이스가 필요한 경우에만 이 클래스를 사용한다.
-    일반적인 경우 routers/telegram.py의 telegram_svc 인스턴스를 직접 사용할 것.
-    """
-
-    def __init__(self, token: str, authorized_chat_id: str | None = None) -> None:
-        from office_claw_sidecar.services.telegram_service import TelegramService
-        from office_claw_sidecar.services.keyring_service import KeyringService
-
-        self._svc = TelegramService()
-        self._running = False
-        # 어댑터 생성 시 토큰/chat_id를 keyring에 저장 (setup 없이 직접 주입할 때)
-        _ks = KeyringService()
-        _ks.store("telegram_bot_token", token)
-        if authorized_chat_id:
-            _ks.store("telegram_chat_id", authorized_chat_id)
-        self._authorized_chat_id = authorized_chat_id or ""
-
-    async def start(self) -> dict:
-        result = await self._svc.start()
-        self._running = True
-        return result
-
-    async def stop(self) -> dict:
-        result = await self._svc.stop()
-        self._running = False
-        return result
-
-    async def start_polling(self) -> None:
-        await self.start()
-
-    async def send_message(self, channel_id: str, text: str) -> None:
-        if self._svc._app:
-            await self._svc._app.bot.send_message(chat_id=channel_id, text=text)
-
-    async def send_file(self, channel_id: str, file_path: str) -> None:
-        if self._svc._app:
-            with open(file_path, "rb") as f:
-                await self._svc._app.bot.send_document(chat_id=channel_id, document=f)
-
-    async def request_approval(
-        self,
-        channel_id: str,
-        command: str,
-        reason: str,
-    ) -> bool:
-        return await self._svc._request_hitl_approval(
-            chat_id=channel_id,
-            command=command,
-            reason=reason,
-            audit_id=-1,  # 직접 호출 시 감사 로그 미연동
-        )
-
-    def is_running(self) -> bool:
-        return self._svc.is_running()

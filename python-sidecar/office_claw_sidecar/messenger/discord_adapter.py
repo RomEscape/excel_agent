@@ -2,7 +2,7 @@
 messenger/discord_adapter.py — Phase 3 (Private-Claw) Discord 어댑터.
 
 discord.py 기반 어댑터. (파일명: discord_adapter.py — discord 패키지명 충돌 방지)
-TelegramAdapter, SlackAdapter와 동일한 MessengerAdapter 인터페이스를 구현한다.
+공통 MessengerAdapter(base.py) 인터페이스를 SlackAdapter와 함께 구현한다.
 보안 가드레일(analyze_and_guard) 패턴은 TelegramService를 그대로 따른다.
 
 의존성: discord.py>=2.3.0

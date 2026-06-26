@@ -311,13 +311,6 @@ export async function refreshAllModules() {
   );
 }
 
-/** 단일 모듈의 check만 실행 (특정 모듈 변경 후 빠른 갱신용) */
-export async function refreshModule(id) {
-  const mod = STATUS_MODULES[id];
-  if (!mod) return null;
-  return mod.check();
-}
-
 /**
  * statusStore의 모듈 상태를 기존 `localAISetup.js`의 `buildPlan`/`isAllReady`가
  * 받는 diag 형태로 변환.

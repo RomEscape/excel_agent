@@ -4,12 +4,10 @@ import logging
 
 from fastapi import APIRouter
 
-from office_claw_sidecar.config import get_data_dir
+from office_claw_sidecar.config import cleanup_temp
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-_TEMP_SUBDIRS = ("excel_uploads", "document_exports")
 
 
 @router.post("/cleanup")
@@ -24,23 +22,6 @@ async def cleanup_temp_files():
     Returns:
         { deleted_count: int, freed_bytes: int }
     """
-    deleted_count = 0
-    freed_bytes = 0
-
-    for subdir in _TEMP_SUBDIRS:
-        temp_dir = get_data_dir() / subdir
-        if not temp_dir.exists():
-            continue
-        for candidate in list(temp_dir.iterdir()):
-            if not candidate.is_file():
-                continue
-            try:
-                file_size = candidate.stat().st_size
-                candidate.unlink()
-                deleted_count += 1
-                freed_bytes += file_size
-                logger.info("임시 파일 정리 (수동): %s (%d bytes)", candidate, file_size)
-            except OSError as exc:
-                logger.warning("임시 파일 삭제 실패 (%s): %s", candidate, exc)
-
+    # max_age 미지정 → 나이와 무관하게 모든 임시 파일 삭제 (수동 정리)
+    deleted_count, freed_bytes = cleanup_temp()
     return {"deleted_count": deleted_count, "freed_bytes": freed_bytes}

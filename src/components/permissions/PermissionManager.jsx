@@ -22,34 +22,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { invoke } from "@tauri-apps/api/core";
-import { parseResponse } from "@/lib/api";
-
-// ── API helpers ───────────────────────────────────────────────────────────────
-
-async function permissionsGet() {
-  const raw = await invoke("permissions_get");
-  return parseResponse(raw);
-}
-
-async function permissionsUpdate(data) {
-  const raw = await invoke("permissions_update", data);
-  return parseResponse(raw);
-}
-
-async function permissionsWhitelistAdd(command, commandType, reason) {
-  const raw = await invoke("permissions_whitelist_add", {
-    command,
-    command_type: commandType,
-    reason: reason || "",
-  });
-  return parseResponse(raw);
-}
-
-async function permissionsWhitelistRemove(command) {
-  const raw = await invoke("permissions_whitelist_remove", { command });
-  return parseResponse(raw);
-}
+import {
+  permissionsGet,
+  permissionsUpdate,
+  permissionsWhitelistAdd,
+  permissionsWhitelistRemove,
+} from "@/lib/api";
+import { toUserMessage } from "@/lib/errorMessages";
 
 // ── 상수 ─────────────────────────────────────────────────────────────────────
 
@@ -90,7 +69,7 @@ export default function PermissionManager() {
       setShellWhitelist(data.shell_command_whitelist || []);
       setPythonWhitelist(data.python_module_whitelist || []);
     } catch (e) {
-      setError(`권한 설정 로드 실패: ${e}`);
+      setError(toUserMessage(e, "권한 설정을 불러오지 못했습니다."));
     } finally {
       setLoading(false);
     }
@@ -114,7 +93,7 @@ export default function PermissionManager() {
       setSuccessMsg("권한 설정이 저장되었습니다.");
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (e) {
-      setError(`저장 실패: ${e}`);
+      setError(toUserMessage(e, "저장에 실패했습니다."));
     } finally {
       setSaving(false);
     }
@@ -148,7 +127,7 @@ export default function PermissionManager() {
       setShellWhitelist((prev) => [...prev, cmd]);
       setNewShellCmd("");
     } catch (e) {
-      setError(`화이트리스트 추가 실패: ${e}`);
+      setError(toUserMessage(e, "화이트리스트 추가에 실패했습니다."));
     }
   };
 
@@ -157,7 +136,7 @@ export default function PermissionManager() {
       await permissionsWhitelistRemove(cmd);
       setShellWhitelist((prev) => prev.filter((c) => c !== cmd));
     } catch (e) {
-      setError(`화이트리스트 제거 실패: ${e}`);
+      setError(toUserMessage(e, "화이트리스트 제거에 실패했습니다."));
     }
   };
 
@@ -170,7 +149,7 @@ export default function PermissionManager() {
       setPythonWhitelist((prev) => [...prev, mod]);
       setNewPythonMod("");
     } catch (e) {
-      setError(`화이트리스트 추가 실패: ${e}`);
+      setError(toUserMessage(e, "화이트리스트 추가에 실패했습니다."));
     }
   };
 
@@ -179,7 +158,7 @@ export default function PermissionManager() {
       await permissionsWhitelistRemove(mod);
       setPythonWhitelist((prev) => prev.filter((m) => m !== mod));
     } catch (e) {
-      setError(`화이트리스트 제거 실패: ${e}`);
+      setError(toUserMessage(e, "화이트리스트 제거에 실패했습니다."));
     }
   };
 

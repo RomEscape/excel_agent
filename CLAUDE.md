@@ -44,7 +44,7 @@
 
 새 기능을 추가할 때 이 표에 한 줄이 더 늘어나야 한다.
 
-> **2026-05 Rust 보안 계층 노트**: Keyring · Audit 두 도메인은 Python sidecar의 동명 서비스와 *같은* OS Keychain·파일(`audit.jsonl`, `credentials_registry.json`)을 공유한다. 신규 코드는 Rust 경로(`rustCredential*`, `rustAudit*`)를 우선 사용하되, Python 측은 자체 라우터 안에서 자기 서비스를 계속 쓴다. OpenClaw 통합(메신저 봇 → 게이트웨이)은 별도 트랙에서 진행 중 — `docs/RUST_MIGRATION_PLAN.md` 참조.
+> **2026-05 Rust 보안 계층 노트**: Keyring · Audit 두 도메인은 Python sidecar의 동명 서비스와 *같은* OS Keychain·파일(`audit.jsonl`, `credentials_registry.json`)을 공유한다. 신규 코드는 Rust 경로(`rustCredential*`, `rustAudit*`)를 우선 사용하되, Python 측은 자체 라우터 안에서 자기 서비스를 계속 쓴다. OpenClaw 통합(메신저 봇 → 게이트웨이)은 별도 트랙에서 진행 중이다.
 
 ## 빌드/실행
 

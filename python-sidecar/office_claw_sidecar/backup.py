@@ -26,12 +26,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from office_claw_sidecar.config import (
+    get_app_db_path,
     get_data_dir,
 )
 
 logger = logging.getLogger(__name__)
 
-_DB_PATH = Path.home() / "PrivateClaw" / "audit.db"
+# command_audit / chat_history와 같은 DB 파일 — config.get_app_db_path()가 단일 출처
+_DB_PATH = get_app_db_path()
 _MANIFEST_VERSION = "1"
 
 # export에 포함할 data_dir 내 파일 목록 (없어도 건너뜀)

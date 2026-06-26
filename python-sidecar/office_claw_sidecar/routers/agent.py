@@ -390,22 +390,3 @@ def _build_approval_summary(tool_name: str, args: dict) -> str:
     from office_claw_sidecar.services.tool_registry import TOOL_DISPLAY_NAMES
     display = TOOL_DISPLAY_NAMES.get(tool_name, tool_name)
     return f"'{display}' 작업을 실행합니다"
-
-
-@router.get("/status")
-async def agent_status() -> dict:
-    """OpenClaw 연결 상태를 반환한다."""
-    client = get_client()
-    if client.is_connected():
-        return {"state": "connected", "message": "OpenClaw 게이트웨이와 연결되어 있습니다"}
-
-    # 연결 시도
-    try:
-        await client.ensure_connected()
-        return {"state": "connected", "message": "OpenClaw 게이트웨이와 연결되었습니다"}
-    except OpenClawUnavailableError as exc:
-        return {
-            "state": "unavailable",
-            "message": str(exc),
-            "hint": "npm install -g openclaw@latest 를 실행해 주세요",
-        }

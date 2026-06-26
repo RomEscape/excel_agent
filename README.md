@@ -14,7 +14,7 @@ officeclaw/
 ├── src-tauri/              # Rust/Tauri 네이티브 레이어
 ├── python-sidecar/         # Python FastAPI 사이드카
 ├── scripts/                # 개발 보조 스크립트 (PowerShell)
-├── docs/                   # 설계·설치 문서
+├── docs/                   # Excel Live 명령 리스트 등 참고 자료
 └── .github/workflows/      # CI (PR 검사 + 릴리스 빌드)
 ```
 
@@ -34,7 +34,7 @@ src/
 │   └── statusStore.js          # 시스템 상태 (OpenClaw·Ollama·sidecar)
 ├── hooks/
 │   ├── useStatusPoller.js      # 주기적 상태 갱신
-│   └── useAsync.js
+│   └── useToast.js             # 토스트 상태·자동 닫힘 공용 훅
 ├── lib/
 │   ├── api.js                  # 모든 Tauri invoke() 래퍼 (단일 진입점)
 │   ├── statusManager.js        # 시스템 모듈 check/install/start 액션
@@ -42,11 +42,10 @@ src/
 │   ├── localAISetupCore.js     # LocalAISetupWizard 단계·플랜 로직
 │   ├── localAISetup.js         # localAISetupCore re-export (호환 레이어)
 │   ├── localStack/             # 로컬 AI 스택 프리셋 (Qwen3+OpenClaw)
-│   ├── updater.js              # Tauri 자동 업데이트 연동
 │   ├── errorMessages.js        # 에러 메시지 매핑
 │   └── utils.js                # cn() 등 공용 유틸
 └── components/
-    ├── ui/                     # 공용 primitive (Button, Dialog, StatusDot 등 15개)
+    ├── ui/                     # 공용 primitive (Button, Dialog, StatusDot 등)
     ├── layout/                 # Layout, Sidebar, StatusBar
     ├── dashboard/              # Dashboard
     ├── workspace/              # WorkspacePage (일반 채팅 + Excel Live 라우팅)
@@ -59,8 +58,7 @@ src/
     ├── onboarding/             # OnboardingWizard
     ├── guide/                  # LocalAISetupWizard, SetupGuide
     ├── updater/                # UpdateNotice
-    ├── cmdk/                   # CommandPalette, ShortcutHelp
-    └── email/ excel/ document/ telegram/  # 도메인 모듈 (UI only)
+    └── cmdk/                   # CommandPalette, ShortcutHelp
 ```
 
 **패턴:**
@@ -77,12 +75,13 @@ src/
 src-tauri/src/
 ├── main.rs             # 진입점
 ├── lib.rs              # Tauri Builder + 상태 등록 + invoke 등록
-├── ipc.rs              # 모든 #[tauri::command] — sidecar HTTP 프록시
+├── ipc.rs              # 모든 #[tauri::command] — sidecar_request 헬퍼 기반 얇은 프록시
 ├── sidecar.rs          # Python 사이드카 spawn / health 폴링 / Bearer 토큰
 ├── openclaw.rs         # OpenClaw 게이트웨이 spawn
 ├── openclaw_cli.rs     # OpenClaw CLI 래퍼
 ├── ollama.rs           # Ollama 상태·모델 목록·config set
 ├── installer.rs        # 설치 명령 실시간 로그 스트리밍
+├── shell.rs            # 로그인 셸 러너 (openclaw·ollama 공유, GUI PATH 우회)
 ├── tray.rs             # 시스템 트레이
 ├── keyring_svc.rs      # OS Keychain (Python keyring_service와 동일 저장소 공유)
 └── audit.rs            # 감사 로그 (Python audit_service와 동일 파일 공유)
@@ -124,8 +123,7 @@ python-sidecar/
 │   │   ├── chat.py                 # 채팅 세션 영속화
 │   │   ├── skills.py               # OpenClaw 스킬
 │   │   ├── backup.py               # 백업
-│   │   ├── settings.py / maintenance.py
-│   │   └── legacy.py               # /gmail·/excel·/document → 410 Gone 안내
+│   │   └── settings.py / maintenance.py
 │   │
 │   ├── services/                   # 비즈니스 로직
 │   │   ├── llm_service.py / ollama_service.py / claude_service.py
@@ -135,14 +133,13 @@ python-sidecar/
 │   │   ├── excel_live_agent.py     # 자연어 → Excel 명령 파싱
 │   │   ├── telegram_service.py     # 텔레그램 봇
 │   │   ├── gmail_service.py        # Gmail OAuth (텔레그램 봇에서 사용)
-│   │   ├── excel_service.py        # openpyxl 파일 분석 (텔레그램 봇에서 사용)
 │   │   ├── document_service.py     # 문서 생성 (텔레그램 봇에서 사용)
 │   │   ├── keyring_service.py / audit_service.py
 │   │   ├── filter_service.py / masking_service.py
 │   │   └── intent_router.py
 │   │
 │   ├── models/                     # Pydantic 스키마
-│   │   └── credential.py / audit.py / approval.py / llm.py / masking.py
+│   │   └── credential.py / approval.py / llm.py / masking.py
 │   │
 │   ├── messenger/                  # 메신저 어댑터
 │   │   ├── base.py
@@ -178,7 +175,6 @@ python-sidecar/
 | `/skills` | skills.py | OpenClaw 스킬 |
 | `/backup` | backup.py | 백업 |
 | `/settings` `/maintenance` | 설정·유지보수 |
-| `/gmail` `/excel` `/document` | legacy.py | 410 Gone (이전 API) |
 
 ---
 
@@ -194,19 +190,17 @@ python-sidecar/
 
 ---
 
-### 5. 문서 — `docs/`
+### 5. 문서
+
+프로젝트 문서는 다음 3개로 통합 관리한다. (이전의 `docs/` 세부 설계·설치·OpenClaw 사용법 문서는 본 README로 흡수)
 
 | 파일 | 내용 |
 |------|------|
-| `ARCHITECTURE.md` | 계층·IPC·보안 상세 설계 |
-| `DEPENDENCIES.md` | 전체 의존성 설치 표 |
-| `WINDOWS_DESKTOP_SETUP.md` | Windows 설치·실행 가이드 |
-| `OPENCLAW_USAGE.md` | OpenClaw 사용법 |
-| `OPENCLAW_CLI_WRAPPER.md` | CLI 래퍼 문서 |
-| `PYINSTALLER_BUILD_GUIDE.md` | 사이드카 빌드 가이드 |
-| `RUST_MIGRATION_PLAN.md` | Keyring/Audit Rust 이전 계획 |
-| `EXCEL_LIVE_AGENT_MVP.md` | Excel Live 에이전트 MVP 명세 |
-| `local-stack/GEMMA4_OPENCLAW.md` | Gemma4 로컬 스택 상세 |
+| `README.md` | 프로젝트 개요·구조·빠른 시작 (본 문서) |
+| `CLAUDE.md` | 개발 규칙·CI 사전 체크·코드 컨벤션 |
+| `개발일지.md` | 개발 로그 (append-only) |
+
+`docs/`에는 Excel Live 명령 참고용 `excel-live-command-list.txt`만 남아 있다.
 
 ---
 

@@ -53,7 +53,10 @@ class IntentRouter:
             {"tool": str, "params": dict, "reason": str}
         """
         # 1) 빠른 거부 키워드 체크 (LLM 호출 없이)
-        if is_denied_intent(message):
+        # is_denied_intent는 (denied, matched_keyword) 튜플을 반환하므로 반드시 언패킹한다.
+        # (튜플 자체는 항상 truthy → 언패킹하지 않으면 LLM 분류 경로가 죽는다.)
+        denied, _ = is_denied_intent(message)
+        if denied:
             return {
                 "tool": "DENIED",
                 "params": {},

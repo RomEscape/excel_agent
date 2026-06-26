@@ -4,7 +4,6 @@
 GET  /skills/installed      - 설치된 스킬 목록
 POST /skills/install        - ClawHub에서 스킬 설치
 GET  /skills/catalog        - 추천 스킬 카탈로그 (캐시 포함)
-PUT  /skills/{name}/config  - 스킬별 설정 저장 (화이트리스트)
 
 OpenClaw 게이트웨이가 실행 중이 아닐 경우 503 응답.
 """
@@ -38,11 +37,6 @@ _CATALOG_TTL = 300.0  # 초
 
 class InstallRequest(BaseModel):
     skill_name: str = Field(..., description="ClawHub 스킬 이름 (예: gog-gmail)")
-
-
-class SkillConfigRequest(BaseModel):
-    config: dict = Field(default_factory=dict, description="스킬별 설정 값")
-    whitelisted: bool = Field(True, description="스킬 화이트리스트 포함 여부")
 
 
 # ── 엔드포인트 ────────────────────────────────────────────────────────────────
@@ -153,26 +147,3 @@ async def get_skill_catalog() -> dict:
             "cached": False,
             "warning": "OpenClaw 게이트웨이 미연결 — 기본 카탈로그 표시 중",
         }
-
-
-@router.put("/{skill_name}/config")
-async def update_skill_config(skill_name: str, req: SkillConfigRequest) -> dict:
-    """
-    스킬별 설정을 저장한다.
-
-    현재는 감사 로그에 기록하는 것이 주목적이며,
-    Phase 5에서 실제 화이트리스트 저장소와 연동된다.
-    """
-    _audit.log(
-        action="skills.config.update",
-        target=skill_name,
-        detail=f"whitelisted={req.whitelisted} config_keys={list(req.config.keys())}",
-    )
-
-    # TODO(Phase 5): 실제 화이트리스트 저장소에 저장
-    return {
-        "success": True,
-        "skill_name": skill_name,
-        "whitelisted": req.whitelisted,
-        "config": req.config,
-    }
