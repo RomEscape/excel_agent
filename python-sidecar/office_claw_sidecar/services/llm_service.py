@@ -123,15 +123,11 @@ class LLMService:
     """
     Holds the currently active LLM provider and delegates calls.
 
-    Swap providers at runtime by calling set_provider().
+    Provider 교체는 config 저장 후 reload_llm_service()로 싱글톤을 재생성한다.
     """
 
     def __init__(self, provider: LLMProvider) -> None:
         self._provider = provider
-
-    def set_provider(self, provider: LLMProvider) -> None:
-        self._provider = provider
-        logger.info("LLM provider switched to: %s", provider.provider_name)
 
     @property
     def current_provider(self) -> str:

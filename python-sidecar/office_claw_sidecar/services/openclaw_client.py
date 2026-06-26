@@ -127,8 +127,6 @@ class OpenClawClient:
 
                 if frame.get("type") == "sessions.done":
                     break
-                if frame.get("type") == "error":
-                    raise OpenClawError(frame.get("message", "Unknown error"))
 
                 yield frame
         finally:
@@ -233,18 +231,6 @@ class OpenClawClient:
         """게이트웨이와 연결 중인지 여부를 반환한다."""
         return self._connected
 
-    async def close(self) -> None:
-        """연결을 닫는다."""
-        self._connected = False
-        if self._listener_task:
-            self._listener_task.cancel()
-        if self._ws:
-            try:
-                await self._ws.close()
-            except Exception:
-                pass
-            self._ws = None
-
     # ── 내부 구현 ────────────────────────────────────────────────────────────
 
     async def _connect_with_backoff(self) -> None:
@@ -286,7 +272,7 @@ class OpenClawClient:
                 ping_interval=20,
                 ping_timeout=10,
             )
-        except (OSError, ConnectionRefusedError, Exception) as exc:
+        except Exception as exc:
             raise OpenClawUnavailableError(
                 f"OpenClaw 게이트웨이에 연결할 수 없습니다 ({uri}): {exc}"
             ) from exc

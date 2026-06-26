@@ -2,13 +2,12 @@
 
 import argparse
 import logging
-import time
 from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import Depends, FastAPI, Request, HTTPException
 
-from office_claw_sidecar.config import get_data_dir
+from office_claw_sidecar.config import TEMP_SUBDIRS, cleanup_temp, get_data_dir
 from office_claw_sidecar.routers import (
     agent,
     audit,
@@ -18,7 +17,6 @@ from office_claw_sidecar.routers import (
     discord,
     excel_live,
     health,
-    legacy,
     llm,
     maintenance,
     permissions,
@@ -32,31 +30,8 @@ from office_claw_sidecar.routers import (
 
 logger = logging.getLogger(__name__)
 
-# ── Temp file cleanup ────────────────────────────────────────────────────────
-
-_TEMP_SUBDIRS = ("excel_uploads", "document_exports")
+# 시작 시 임시 파일 정리 기준: 24시간보다 오래된 파일만 삭제
 _MAX_AGE_SECONDS = 24 * 60 * 60  # 24 hours
-
-
-def _cleanup_temp_files() -> None:
-    """
-    Delete temporary files older than 24 hours from excel_uploads/ and
-    document_exports/ directories.  Called once at startup.
-    """
-    cutoff = time.time() - _MAX_AGE_SECONDS
-    for subdir in _TEMP_SUBDIRS:
-        temp_dir = get_data_dir() / subdir
-        if not temp_dir.exists():
-            continue
-        for candidate in temp_dir.iterdir():
-            if not candidate.is_file():
-                continue
-            try:
-                if candidate.stat().st_mtime < cutoff:
-                    candidate.unlink()
-                    logger.info("임시 파일 정리: %s", candidate)
-            except OSError as exc:
-                logger.warning("임시 파일 삭제 실패 (%s): %s", candidate, exc)
 
 
 @asynccontextmanager
@@ -65,10 +40,10 @@ async def lifespan(app: FastAPI):
     # Ensure the app data directory and all required temp subdirectories exist
     # before any router tries to write to them.
     data_dir = get_data_dir()
-    for subdir in _TEMP_SUBDIRS:
+    for subdir in TEMP_SUBDIRS:
         (data_dir / subdir).mkdir(parents=True, exist_ok=True)
 
-    _cleanup_temp_files()
+    cleanup_temp(max_age=_MAX_AGE_SECONDS)
 
     # Phase 5: 스킬 화이트리스트 로드 (사용자 커스텀 권한 적용)
     from office_claw_sidecar.services.tool_registry import load_whitelist
@@ -178,13 +153,6 @@ app.include_router(permissions.router, prefix="/permissions", dependencies=[Depe
 app.include_router(chat.router, prefix="/chat", dependencies=[Depends(verify_auth)])
 app.include_router(backup.router, prefix="/backup", dependencies=[Depends(verify_auth)])
 app.include_router(excel_live.router, prefix="/excel-live", dependencies=[Depends(verify_auth)])
-
-# ── Legacy 라우터 (410 Gone — Graceful Deprecation) ──────────────────────────
-# gmail / excel / document 직접 API는 Private-Claw 피봇(v3.0) 이후 deprecated.
-# 모든 요청에 410 Gone + OpenClaw 에이전트(/agent/chat) 안내 메시지를 반환.
-app.include_router(legacy.router, prefix="/gmail", dependencies=[Depends(verify_auth)])
-app.include_router(legacy.router, prefix="/excel", dependencies=[Depends(verify_auth)])
-app.include_router(legacy.router, prefix="/document", dependencies=[Depends(verify_auth)])
 
 
 def main() -> None:

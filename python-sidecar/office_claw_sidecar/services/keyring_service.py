@@ -10,7 +10,6 @@ The `keyring` library auto-detects the correct backend for the current OS.
 
 import json
 import logging
-import platform
 
 import keyring
 import keyring.errors
@@ -107,13 +106,3 @@ class KeyringService:
     def list_keys(self) -> list[str]:
         """List all stored credential key names (never values)."""
         return self._load_registry()
-
-    @staticmethod
-    def get_backend_info() -> dict:
-        """Return info about the current keyring backend for diagnostics."""
-        backend = keyring.get_keyring()
-        return {
-            "backend": type(backend).__name__,
-            "platform": platform.system(),
-            "secure": "Plaintext" not in type(backend).__name__,
-        }

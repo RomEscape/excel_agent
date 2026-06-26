@@ -2,7 +2,7 @@
 messenger/slack.py — Phase 3 (Private-Claw) Slack 어댑터.
 
 Slack Bolt 기반 어댑터.
-TelegramAdapter와 동일한 MessengerAdapter 인터페이스를 구현한다.
+공통 MessengerAdapter(base.py) 인터페이스를 구현한다.
 보안 가드레일(analyze_and_guard)은 TelegramService와 동일한 패턴을 따른다.
 
 의존성: slack-bolt>=1.18.0

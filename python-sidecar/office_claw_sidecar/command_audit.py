@@ -26,13 +26,14 @@ from __future__ import annotations
 import sqlite3
 import logging
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Optional
+
+from office_claw_sidecar.config import get_app_db_path
 
 logger = logging.getLogger(__name__)
 
-# DB 경로 — ~/PrivateClaw/ 디렉토리 사용
-_DB_PATH = Path.home() / "PrivateClaw" / "audit.db"
+# DB 경로 — config.get_app_db_path()가 단일 출처 (~/PrivateClaw/audit.db)
+_DB_PATH = get_app_db_path()
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS command_log (
