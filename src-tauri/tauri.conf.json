@@ -38,7 +38,13 @@
     ],
     "externalBin": [
       "binaries/office-claw-sidecar"
-    ]
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      }
+    }
   },
   "plugins": {
     "shell": {
