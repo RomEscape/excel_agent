@@ -77,6 +77,7 @@ const useStatusStore = create((set, get) => ({
    * 새 모듈을 추가하려면 여기 초기값 + statusManager.js에 정의 추가.
    */
   modules: {
+    node: emptyModule(),
     openclaw: emptyModule(),
     ollama: emptyModule(),
   },

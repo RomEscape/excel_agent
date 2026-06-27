@@ -1,5 +1,5 @@
 /**
- * WorkspacePage — Phase 1 (Private-Claw) + R2 변경.
+ * WorkspacePage — Phase 1 (officeclaw) + R2 변경.
  *
  * R2 변경:
  *   - 우측 사이드 패널: "앱 내 에이전트 채팅" 흡수 (ConversationsPage에서 이전)

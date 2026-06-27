@@ -3,6 +3,7 @@
  *
  * 진단 → 계획 → 자동 실행 → 검증 단일 모달.
  * 단계:
+ *   0. Node.js 설치 (Windows: winget / macOS: brew) — 미설치 시 (OpenClaw 선행 조건)
  *   1. OpenClaw 설치 (`npm install -g openclaw@latest`) — 미설치 시
  *   2. OpenClaw 게이트웨이 시작 (`openclaw gateway --port 18789`) — 미실행 시
  *   3. Ollama 설치 (macOS: brew / Windows: winget) — 미설치 시
@@ -81,6 +82,7 @@ export default function LocalAISetupWizard() {
 
   // 새 중앙 상태 store에서 모듈 데이터 구독 — App 루트의 useStatusPoller가 자동 갱신.
   // 이 wizard는 더 이상 자체 fetch를 하지 않고 store의 데이터를 읽기만 한다.
+  const nodeModule = useStatusStore((s) => s.modules.node);
   const ocModule = useStatusStore((s) => s.modules.openclaw);
   const ollamaModule = useStatusStore((s) => s.modules.ollama);
 
@@ -103,6 +105,7 @@ export default function LocalAISetupWizard() {
       return null;
     }
     return {
+      node: { installed: nodeModule.installed, version: nodeModule.version },
       oc: {
         state: ocModule.running ? "running" : "stopped",
         message: ocModule.message,
@@ -116,7 +119,7 @@ export default function LocalAISetupWizard() {
         version: ollamaModule.version,
       },
     };
-  }, [ocModule, ollamaModule]);
+  }, [nodeModule, ocModule, ollamaModule]);
 
   // 진단 트리거 — 실제 fetch는 statusManager가 담당, 결과는 store로 자동 반영.
   // 단계별 실행 후 readiness 판정에 사용하기 위해 fresh diag도 반환한다.
@@ -162,12 +165,12 @@ export default function LocalAISetupWizard() {
       setErrorMsg("");
       runDiagnosis();
     };
-    window.addEventListener("private-claw:open-local-ai-setup", handler);
+    window.addEventListener("officeclaw:open-local-ai-setup", handler);
     // 기존 이벤트 호환
-    window.addEventListener("private-claw:open-openclaw-install", handler);
+    window.addEventListener("officeclaw:open-openclaw-install", handler);
     return () => {
-      window.removeEventListener("private-claw:open-local-ai-setup", handler);
-      window.removeEventListener("private-claw:open-openclaw-install", handler);
+      window.removeEventListener("officeclaw:open-local-ai-setup", handler);
+      window.removeEventListener("officeclaw:open-openclaw-install", handler);
     };
   }, [runDiagnosis]);
 
@@ -257,6 +260,11 @@ export default function LocalAISetupWizard() {
       // 결과는 InstallResult — handleInstallResult가 실패 시 throw + 컨텍스트 첨부.
       try {
         switch (stepId) {
+          case STEP.INSTALL_NODE: {
+            const result = await STATUS_MODULES.node.install();
+            handleInstallResult(stepId, result);
+            break;
+          }
           case STEP.INSTALL_OC: {
             const result = await STATUS_MODULES.openclaw.install();
             handleInstallResult(stepId, result);
@@ -706,6 +714,7 @@ export default function LocalAISetupWizard() {
 // 여기서는 진단 목적이므로 설치/실행/모델을 모두 분리해서 보여준다.
 // 통일된 톤 시스템(STATUS_TONE) 사용 — "준비됨"(ok) / "문제 있음"(warning).
 function DiagnosisCard({ diag, model }) {
+  const nodeInst = !!diag.node?.installed;
   const ocInst = !!diag.ocInstalled?.installed;
   const ocRun = diag.oc?.state === "running";
   const ollInst = !!diag.oll?.installed;
@@ -715,6 +724,7 @@ function DiagnosisCard({ diag, model }) {
   // 사용자 친화적 표현 — 포트/데몬/게이트웨이 같은 용어는 표시하지 않음.
   // 버전은 hint(우측 메타)로만 작게 표시.
   const items = [
+    { label: "Node.js 설치", ok: nodeInst, hint: diag.node?.version },
     { label: "OpenClaw 설치", ok: ocInst, hint: diag.ocInstalled?.version },
     { label: "OpenClaw 실행", ok: ocRun },
     { label: "Ollama 설치", ok: ollInst, hint: diag.oll?.version },

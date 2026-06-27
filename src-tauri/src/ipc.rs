@@ -350,6 +350,14 @@ pub async fn ollama_status() -> Result<String, String> {
     Ok(info.to_string())
 }
 
+/// Node.js 설치 여부 — OpenClaw(npm 글로벌 패키지) 설치의 선행 조건.
+/// 자동 설치 단계를 띄울지(미설치) 건너뛸지(설치됨) 결정하는 용도.
+#[tauri::command]
+pub async fn node_installed() -> Result<String, String> {
+    let info = crate::node::is_node_installed().await;
+    Ok(info.to_string())
+}
+
 // ── Phase 3 (2026-05): Rust keyring + audit ─────────────────────────────────
 //
 // Python의 KeyringService/AuditService와 *동일한* 저장소(OS keychain +

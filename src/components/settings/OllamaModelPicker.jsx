@@ -49,7 +49,7 @@ export default function OllamaModelPicker({ id, value, onChange, className }) {
 
   const handleOpenWizard = () => {
     // 로컬 AI 설정 위저드 — 설치/시작/모델 다운로드를 한 번에
-    window.dispatchEvent(new CustomEvent("private-claw:open-local-ai-setup"));
+    window.dispatchEvent(new CustomEvent("officeclaw:open-local-ai-setup"));
   };
 
   const models = Array.isArray(ollamaModule.models) ? ollamaModule.models : [];

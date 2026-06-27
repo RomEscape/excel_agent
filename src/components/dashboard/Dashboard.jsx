@@ -379,7 +379,7 @@ export default function Dashboard() {
 
   // 승인 대기 카드 클릭 시 — 실행 기록 페이지로 이동하면서 confirm_pending 필터 적용
   const goToPending = () => {
-    if (typeof window !== "undefined") window.__privateClaw_auditFilter = "confirm_pending";
+    if (typeof window !== "undefined") window.__officeclaw_auditFilter = "confirm_pending";
     setCurrentPage("audit");
   };
 
@@ -412,7 +412,7 @@ export default function Dashboard() {
         port={ocStatus.port}
         message={ocStatus.message}
         onConfigure={() =>
-          window.dispatchEvent(new CustomEvent("private-claw:open-openclaw-install"))
+          window.dispatchEvent(new CustomEvent("officeclaw:open-openclaw-install"))
         }
       />
 

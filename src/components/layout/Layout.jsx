@@ -132,12 +132,12 @@ export default function Layout() {
     const handleOpenCmdk = () => setCmdkOpen(true);
     const handleOpenHelp = () => setShortcutOpen(true);
     window.addEventListener("keydown", handleKey);
-    window.addEventListener("private-claw:open-cmdk", handleOpenCmdk);
-    window.addEventListener("private-claw:open-shortcut-help", handleOpenHelp);
+    window.addEventListener("officeclaw:open-cmdk", handleOpenCmdk);
+    window.addEventListener("officeclaw:open-shortcut-help", handleOpenHelp);
     return () => {
       window.removeEventListener("keydown", handleKey);
-      window.removeEventListener("private-claw:open-cmdk", handleOpenCmdk);
-      window.removeEventListener("private-claw:open-shortcut-help", handleOpenHelp);
+      window.removeEventListener("officeclaw:open-cmdk", handleOpenCmdk);
+      window.removeEventListener("officeclaw:open-shortcut-help", handleOpenHelp);
     };
   }, [setSidebarCollapsed]);
 

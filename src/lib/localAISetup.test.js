@@ -21,14 +21,16 @@ import {
 // ── 픽스처 ────────────────────────────────────────────────────────────────
 
 const fixtures = {
-  /** 아무것도 설치 안 된 새 시스템 */
+  /** 아무것도 설치 안 된 새 시스템 (Node도 없음) */
   fresh: () => ({
+    node: { installed: false },
     oc: { state: "stopped" },
     ocInstalled: { installed: false },
     oll: { installed: false, running: false, models: [] },
   }),
-  /** 모든 게 준비된 시스템 (모델까지) */
+  /** 모든 게 준비된 시스템 (Node·모델까지) */
   ready: (model) => ({
+    node: { installed: true, version: "v20.11.0" },
     oc: { state: "running", port: 18789 },
     ocInstalled: { installed: true, version: "2026.5.6" },
     oll: {
@@ -37,14 +39,16 @@ const fixtures = {
       models: [{ name: `${model}:latest` }],
     },
   }),
-  /** OpenClaw만 설치되고 게이트웨이는 꺼진 상태 */
+  /** OpenClaw만 설치되고 게이트웨이는 꺼진 상태 (Node는 OpenClaw 선행 조건이므로 설치됨) */
   ocInstalledOnly: () => ({
+    node: { installed: true },
     oc: { state: "stopped" },
     ocInstalled: { installed: true, version: "2026.5.6" },
     oll: { installed: false, running: false, models: [] },
   }),
   /** Ollama 실행 중이지만 원하는 모델이 없는 상태 */
   ollamaWrongModel: (otherModel) => ({
+    node: { installed: true },
     oc: { state: "running" },
     ocInstalled: { installed: true },
     oll: {
@@ -132,6 +136,7 @@ describe("buildPlan (idempotency)", () => {
     const { todo, skipped } = buildPlan(fixtures.fresh(), DEFAULT_MODEL);
     assert.deepEqual(skipped, []);
     assert.deepEqual(todo, [
+      STEP.INSTALL_NODE,
       STEP.INSTALL_OC,
       STEP.START_OC,
       STEP.INSTALL_OLLAMA,
@@ -158,6 +163,7 @@ describe("buildPlan (idempotency)", () => {
     const { todo, skipped } = buildPlan(fixtures.ready(DEFAULT_MODEL), DEFAULT_MODEL);
     assert.deepEqual(todo, [STEP.CONFIG_OC, STEP.PROMPT_TEST]);
     assert.deepEqual(skipped, [
+      STEP.INSTALL_NODE,
       STEP.INSTALL_OC,
       STEP.START_OC,
       STEP.INSTALL_OLLAMA,
@@ -204,5 +210,16 @@ describe("buildPlan (idempotency)", () => {
       "qwen3:8b"
     );
     assert.ok(todo.includes(STEP.PULL_MODEL));
+  });
+
+  it("Node 미설치 시 INSTALL_NODE가 todo 맨 앞에 온다 (OpenClaw 선행 조건)", () => {
+    const { todo } = buildPlan(fixtures.fresh(), DEFAULT_MODEL);
+    assert.equal(todo[0], STEP.INSTALL_NODE);
+  });
+
+  it("Node 설치됨이면 INSTALL_NODE는 skip된다 (중복 설치 방지)", () => {
+    const { todo, skipped } = buildPlan(fixtures.ocInstalledOnly(), DEFAULT_MODEL);
+    assert.ok(!todo.includes(STEP.INSTALL_NODE), "INSTALL_NODE가 todo에 다시 들어가면 안 됨");
+    assert.ok(skipped.includes(STEP.INSTALL_NODE), "skipped로 이동해야 함");
   });
 });

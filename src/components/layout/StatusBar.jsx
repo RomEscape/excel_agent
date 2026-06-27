@@ -342,10 +342,10 @@ export default function StatusBar() {
 
   // ⌘K 트리거 — Layout이 들으므로 window event 발행
   const triggerCmdK = () => {
-    window.dispatchEvent(new CustomEvent("private-claw:open-cmdk"));
+    window.dispatchEvent(new CustomEvent("officeclaw:open-cmdk"));
   };
 
-  const pageLabel = PAGE_LABELS[currentPage] ?? "Team 503 AI";
+  const pageLabel = PAGE_LABELS[currentPage] ?? "officeclaw";
 
   return (
     <header className="flex h-10 items-center justify-between gap-3 border-b bg-background px-4 text-xs">
@@ -420,7 +420,7 @@ export default function StatusBar() {
         <button
           type="button"
           onClick={() =>
-            window.dispatchEvent(new CustomEvent("private-claw:open-shortcut-help"))
+            window.dispatchEvent(new CustomEvent("officeclaw:open-shortcut-help"))
           }
           className="flex items-center gap-1 rounded px-1.5 py-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
           title="단축키 도움말 (?)"

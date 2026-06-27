@@ -78,7 +78,7 @@ const useAppStore = create(
        */
       sidebarCollapsed: false,
 
-      // ── Phase 1: Private-Claw state ────────────────────────────────────────
+      // ── Phase 1: officeclaw state ────────────────────────────────────────
 
       /**
        * 텔레그램 봇 연결 상태.

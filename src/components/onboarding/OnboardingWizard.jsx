@@ -1,5 +1,5 @@
 /**
- * OnboardingWizard — 첫 실행 시 표시되는 온보딩 마법사 (Phase 3 Private-Claw).
+ * OnboardingWizard — 첫 실행 시 표시되는 온보딩 마법사 (Phase 3 officeclaw).
  *
  * Step 0: OpenClaw 설치 확인
  * Step 1: LLM 엔진 선택 (Ollama 설치 가이드 강화)
@@ -138,7 +138,7 @@ function StepOpenClaw({ onNext, onPrev, stepIndex }) {
         </div>
         <h2 className="text-xl font-bold">OpenClaw 설치 확인</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          ajou-ai는 OpenClaw를 통해 AI 기능을 실행해요.
+          officeclaw는 OpenClaw를 통해 AI 기능을 실행해요.
         </p>
       </div>
 
@@ -308,7 +308,7 @@ function StepLLM({ onNext, onPrev }) {
         </div>
         <h2 className="text-xl font-bold">AI 엔진 선택</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          ajou-ai에서 사용할 AI 언어 모델을 선택하세요.
+          officeclaw에서 사용할 AI 언어 모델을 선택하세요.
         </p>
       </div>
 
@@ -532,7 +532,7 @@ function StepMessengerChoice({ onNext, onPrev }) {
         </div>
         <h2 className="text-xl font-bold">메신저 선택</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          어떤 메신저로 ajou-ai를 제어하시겠어요?
+          어떤 메신저로 officeclaw를 제어하시겠어요?
         </p>
       </div>
 
@@ -731,7 +731,7 @@ function StepSlack({ onNext, onPrev }) {
         </div>
         <h2 className="text-xl font-bold">슬랙 봇 설정</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          슬랙 채널에서 ajou-ai를 사용합니다.
+          슬랙 채널에서 officeclaw를 사용합니다.
         </p>
       </div>
 
@@ -847,7 +847,7 @@ function StepDiscord({ onNext, onPrev }) {
         </div>
         <h2 className="text-xl font-bold">디스코드 봇 설정</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Discord 서버에서 ajou-ai를 사용합니다.
+          Discord 서버에서 officeclaw를 사용합니다.
         </p>
       </div>
 
@@ -1056,7 +1056,7 @@ function StepComplete({ onFinish, onPrev }) {
         </div>
         <h2 className="text-xl font-bold">준비 완료!</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          ajou-ai를 사용할 준비가 되었습니다.
+          officeclaw를 사용할 준비가 되었습니다.
         </p>
       </div>
 
@@ -1118,7 +1118,7 @@ function StepComplete({ onFinish, onPrev }) {
 
 /**
  * Main onboarding wizard — shown only when onboardingComplete is false.
- * Phase 3 (Private-Claw): 6단계 흐름
+ * Phase 3 (officeclaw): 6단계 흐름
  *   0: OpenClaw 확인
  *   1: LLM 선택 (Ollama 설치 가이드 강화)
  *   2: 메신저 선택 (Telegram / Slack / Discord)
@@ -1157,7 +1157,7 @@ export default function OnboardingWizard() {
           <div className="mb-2 text-center">
             <span className="text-3xl select-none">🦞</span>
             <p className="mt-1 text-xs text-muted-foreground uppercase tracking-widest">
-              ajou-ai 시작하기
+              officeclaw 시작하기
             </p>
           </div>
 

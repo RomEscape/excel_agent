@@ -22,6 +22,8 @@ import {
   openclawInstalled,
   openclawEnsureRunning,
   ollamaStatus,
+  nodeInstalled,
+  installerInstallNode,
   installerInstallOpenClaw,
   installerInstallOllama,
   installerStartOllama,
@@ -36,6 +38,74 @@ import { hasModelInstalled } from "@/lib/localAISetup";
  * 외부에서는 `manager.<id>.<action>()` 호출만 하면 store가 자동 갱신됨.
  */
 export const STATUS_MODULES = {
+  // ── Node.js (OpenClaw 선행 조건) ───────────────────────────────────────────
+  node: {
+    id: "node",
+    label: "Node.js",
+
+    /**
+     * `node --version` 가능 여부 확인 (Rust is_node_installed가 Windows 표준 경로 +
+     * $SHELL -lc 폴백 포함). Node는 데몬이 아니므로 설치=준비로 간주한다.
+     */
+    async check() {
+      const store = useStatusStore.getState();
+      store.setOperation("node", "checking");
+      try {
+        const res = await nodeInstalled();
+        const installed = !!res?.installed;
+        store.updateModule("node", {
+          installed,
+          version: res?.version ?? null,
+          // Node는 실행 상태 개념이 없음 — 설치돼 있으면 ready로 본다.
+          running: installed,
+          message: "",
+          state: deriveState({ installed, running: installed }),
+          lastChecked: Date.now(),
+          lastError: null,
+          operation: null,
+        });
+        return store.getModule("node");
+      } catch (e) {
+        store.updateModule("node", {
+          state: "error",
+          lastError: String(e),
+          lastChecked: Date.now(),
+          operation: null,
+        });
+        return store.getModule("node");
+      }
+    },
+
+    /**
+     * Node.js 설치 (Windows: winget OpenJS.NodeJS.LTS / macOS: brew install node).
+     * 흐름: install → check (설치 위치 확인) → store 자동 갱신.
+     */
+    async install() {
+      const store = useStatusStore.getState();
+      store.setOperation("node", "installing");
+      let result = null;
+      try {
+        result = await installerInstallNode();
+        store.updateModule("node", { lastInstallResult: result });
+        if (result?.ok) {
+          await STATUS_MODULES.node.check();
+        } else {
+          store.updateModule("node", {
+            lastError: result?.message || "설치 실패",
+            operation: null,
+          });
+        }
+        return result;
+      } catch (e) {
+        store.updateModule("node", {
+          lastError: String(e),
+          operation: null,
+        });
+        throw e;
+      }
+    },
+  },
+
   // ── OpenClaw 게이트웨이 ────────────────────────────────────────────────────
   openclaw: {
     id: "openclaw",
@@ -318,9 +388,11 @@ export async function refreshAllModules() {
  * 마이그레이션 호환성용 — 새 코드는 store에서 직접 읽는 것을 권장.
  */
 export function getDerivedDiag() {
+  const node = useStatusStore.getState().modules.node;
   const oc = useStatusStore.getState().modules.openclaw;
   const oll = useStatusStore.getState().modules.ollama;
   return {
+    node: { installed: node.installed, version: node.version },
     oc: {
       state: oc.running ? "running" : "stopped",
       message: oc.message,

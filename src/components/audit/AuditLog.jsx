@@ -27,12 +27,12 @@ export default function AuditLog() {
   const [loading, setLoading] = useState(false);
   // window 전역 필터 — Dashboard에서 setCurrentPage("audit") 호출 직전 설정
   const initialFilter =
-    (typeof window !== "undefined" && window.__privateClaw_auditFilter) || null;
+    (typeof window !== "undefined" && window.__officeclaw_auditFilter) || null;
   const [filter, setFilter] = useState(initialFilter);
 
   // 필터 사용 후 1회성 정리
   useEffect(() => {
-    if (typeof window !== "undefined") window.__privateClaw_auditFilter = null;
+    if (typeof window !== "undefined") window.__officeclaw_auditFilter = null;
   }, []);
 
   const loadLogs = useCallback(async () => {
