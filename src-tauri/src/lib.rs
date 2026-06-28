@@ -130,7 +130,7 @@ pub fn run() {
             ipc::permissions_update,
             ipc::permissions_whitelist_add,
             ipc::permissions_whitelist_remove,
-            // Phase 1: Private-Claw — Workspace + Telegram setup
+            // Phase 1: officeclaw — Workspace + Telegram setup
             ipc::open_workspace_folder,
             ipc::open_workspace_file,
             ipc::workspace_list_files,

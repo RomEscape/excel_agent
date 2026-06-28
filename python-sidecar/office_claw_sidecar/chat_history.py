@@ -1,7 +1,7 @@
 """
 chat_history.py — Sprint 5 채팅 세션 영속화.
 
-채팅 메시지를 ~/PrivateClaw/audit.db 에 저장한다.
+채팅 메시지를 ~/officeclaw/audit.db 에 저장한다.
 기존 command_log 테이블과 같은 DB를 공유하되, 별도 테이블(chat_messages)을 사용.
 
 테이블 스키마:

@@ -1,7 +1,7 @@
 """
-워크스페이스 파일 접근 엔드포인트 — Phase 1 (Private-Claw).
+워크스페이스 파일 접근 엔드포인트 — Phase 1 (officeclaw).
 
-모든 경로는 sandbox.py를 통해 ~/PrivateClaw/Workspace 내부로 제한된다.
+모든 경로는 sandbox.py를 통해 ~/officeclaw/Workspace 내부로 제한된다.
 """
 
 from __future__ import annotations

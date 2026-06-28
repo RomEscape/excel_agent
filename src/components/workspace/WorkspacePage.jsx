@@ -42,6 +42,7 @@ import AlertDialog from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { toUserMessage } from "@/lib/errorMessages";
 import { splitExcelCompositeCommand } from "@/lib/excelCommandUtils";
+import { migrateLsKey } from "@/lib/localStorageMigration";
 import useAppStore from "@/store/appStore";
 import {
   workspaceListFiles,
@@ -186,8 +187,12 @@ function formatExcelLiveResult(action, result = {}) {
 
 // ── localStorage 키 ──────────────────────────────────────────────────────────
 
-const LS_CHAT_OPEN = "private-claw:workspace:chat-open";
-const LS_CHAT_WIDTH = "private-claw:workspace:chat-width";
+const LS_CHAT_OPEN = "officeclaw:workspace:chat-open";
+const LS_CHAT_WIDTH = "officeclaw:workspace:chat-width";
+
+// 브랜드 변경에 따른 레거시 키(private-claw:*) → 새 키 1회 이전
+migrateLsKey("private-claw:workspace:chat-open", LS_CHAT_OPEN);
+migrateLsKey("private-claw:workspace:chat-width", LS_CHAT_WIDTH);
 
 // ── 유틸 ─────────────────────────────────────────────────────────────────────
 

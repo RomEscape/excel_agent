@@ -1,5 +1,5 @@
 """
-권한 설정 라우터 — Phase 3 (Private-Claw).
+권한 설정 라우터 — Phase 3 (officeclaw).
 
 Permission Manager UI를 지원하는 엔드포인트.
 
@@ -32,7 +32,7 @@ _PERMISSIONS_FILE = Path(get_data_dir()) / "permissions.json"
 
 # 기본 권한 설정
 _DEFAULT_PERMISSIONS: dict[str, Any] = {
-    "allowed_folders": ["~/PrivateClaw/Workspace"],
+    "allowed_folders": ["~/officeclaw/Workspace"],
     "allowed_apps": ["excel", "email", "document"],
     "shell_command_whitelist": [],
     "python_module_whitelist": [],

@@ -1,5 +1,5 @@
 """
-Slack 어댑터 라우터 — Phase 3 (Private-Claw).
+Slack 어댑터 라우터 — Phase 3 (officeclaw).
 
 엔드포인트:
   POST /slack/setup   — bot_token, app_token 저장

@@ -1,4 +1,4 @@
-"""Telegram bot control endpoints — Phase 1 (Private-Claw)."""
+"""Telegram bot control endpoints — Phase 1 (officeclaw)."""
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel

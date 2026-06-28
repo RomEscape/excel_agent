@@ -1,10 +1,10 @@
 """
-command_audit.py — Phase 2 (Private-Claw) 명령 감사 로그.
+command_audit.py — Phase 2 (officeclaw) 명령 감사 로그.
 
 모든 명령 실행/차단 이력을 SQLite DB에 기록한다.
 기존 AuditService(audit_service.py)의 JSONL 로그와는 별도로 동작한다.
 
-DB 위치: ~/PrivateClaw/audit.db
+DB 위치: ~/officeclaw/audit.db
 테이블: command_log
   id               INTEGER PRIMARY KEY AUTOINCREMENT
   timestamp        TEXT    NOT NULL  (ISO-8601 UTC)
@@ -32,7 +32,7 @@ from office_claw_sidecar.config import get_app_db_path
 
 logger = logging.getLogger(__name__)
 
-# DB 경로 — config.get_app_db_path()가 단일 출처 (~/PrivateClaw/audit.db)
+# DB 경로 — config.get_app_db_path()가 단일 출처 (~/officeclaw/audit.db)
 _DB_PATH = get_app_db_path()
 
 _CREATE_TABLE = """

@@ -1,5 +1,5 @@
 """
-messenger/slack.py — Phase 3 (Private-Claw) Slack 어댑터.
+messenger/slack.py — Phase 3 (officeclaw) Slack 어댑터.
 
 Slack Bolt 기반 어댑터.
 공통 MessengerAdapter(base.py) 인터페이스를 구현한다.

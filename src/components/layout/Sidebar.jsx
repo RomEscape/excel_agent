@@ -25,7 +25,7 @@ import useStatusStore from "@/store/statusStore";
  *
  * collapsed 모드: 64px (icon-only). expanded: 240px.
  *   - hover 200ms 후 라벨 tooltip
- *   - localStorage 키 `private-claw:sidebar-collapsed`로 persist
+ *   - appStore의 zustand persist(`office-claw-store`)로 sidebarCollapsed 유지
  *   - 토글: Cmd+B (Layout이 처리)
  */
 const PRIMARY_ITEMS = [

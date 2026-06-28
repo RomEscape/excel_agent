@@ -1,5 +1,5 @@
 """
-Discord 어댑터 라우터 — Phase 3 (Private-Claw).
+Discord 어댑터 라우터 — Phase 3 (officeclaw).
 
 엔드포인트:
   POST /discord/setup   — bot_token 저장
