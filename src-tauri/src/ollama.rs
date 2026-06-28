@@ -73,9 +73,12 @@ pub async fn is_ollama_installed() -> serde_json::Value {
 pub fn windows_ollama_exe() -> Option<std::path::PathBuf> {
     use std::path::PathBuf;
     [
-        std::env::var("LOCALAPPDATA")
-            .ok()
-            .map(|p| PathBuf::from(p).join("Programs").join("Ollama").join("ollama.exe")),
+        std::env::var("LOCALAPPDATA").ok().map(|p| {
+            PathBuf::from(p)
+                .join("Programs")
+                .join("Ollama")
+                .join("ollama.exe")
+        }),
         std::env::var("ProgramFiles")
             .ok()
             .map(|p| PathBuf::from(p).join("Ollama").join("ollama.exe")),
