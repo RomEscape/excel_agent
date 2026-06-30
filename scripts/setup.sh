@@ -171,6 +171,10 @@ run_step "npm 전역 prefix 고정 (사용자 홈)" "npm config set prefix \"$NP
 hydrate_path
 run_step "Node 의존성 설치 (npm ci)" "npm ci" "$PROJECT_DIR"
 
+if ! command -v openclaw >/dev/null 2>&1; then
+  echo "[SETUP_OPENCLAW_MISSING_OR_PATH] openclaw 명령을 찾지 못했습니다. 설치 후 새 터미널에서 npm prefix/PATH를 다시 확인해 주세요." >&2
+fi
+
 if command -v uv >/dev/null 2>&1; then
   run_step "Python 의존성 동기화 (uv sync --extra dev)" "uv sync --extra dev" "$SIDECAR_DIR"
 else
@@ -200,4 +204,9 @@ echo "=== 통합 설치 완료 ==="
 echo "OPENCLAW_HOME=$OPENCLAW_HOME"
 echo "CARGO_HOME=$CARGO_HOME"
 echo "NPM_CONFIG_PREFIX=$NPM_CONFIG_PREFIX"
+if command -v openclaw >/dev/null 2>&1; then
+  echo "OPENCLAW_CLI=detected"
+else
+  echo "OPENCLAW_CLI=missing (reason_code=SETUP_OPENCLAW_MISSING_OR_PATH)"
+fi
 echo "다음 실행 명령: npm run tauri:dev"

@@ -18,7 +18,11 @@
  */
 import useStatusStore, { deriveState } from "@/store/statusStore";
 import {
+  openclawStatus,
+  openclawInstalled,
+  openclawEnsureRunning,
   ollamaStatus,
+  installerInstallOpenClaw,
   installerInstallOllama,
   installerStartOllama,
   installerPullModel,
@@ -30,11 +34,128 @@ import { hasModelInstalled } from "@/lib/localAISetup";
  *
  * 각 모듈은 자기 슬롯(`modules[id]`)을 자기가 관리한다.
  * 외부에서는 `manager.<id>.<action>()` 호출만 하면 store가 자동 갱신됨.
- *
- * LLM 스택은 Ollama 단독이다 — 자연어 → 엑셀 실행은 Ollama의 OpenAI 호환
- * tool-calling으로 사이드카에서 처리되며, 별도 게이트웨이 프로세스가 없다.
  */
 export const STATUS_MODULES = {
+  // ── OpenClaw 게이트웨이 ────────────────────────────────────────────────────
+  openclaw: {
+    id: "openclaw",
+    label: "OpenClaw 게이트웨이",
+
+    /**
+     * 설치/실행 상태 확인.
+     *
+     *   1) `openclaw --version` 가능 여부 (Rust is_openclaw_installed가 $SHELL -lc 폴백 포함)
+     *   2) 18789 TCP 응답 여부
+     *
+     * 두 정보를 합쳐 state 결정.
+     */
+    async check() {
+      const store = useStatusStore.getState();
+      store.setOperation("openclaw", "checking");
+      try {
+        const [statusRes, installedRes] = await Promise.all([
+          openclawStatus().catch(() => ({ state: "error", message: "조회 실패" })),
+          openclawInstalled().catch(() => ({ installed: false })),
+        ]);
+
+        // Windows에서 GUI 런타임 PATH 이슈로 `openclaw --version` 감지가
+        // 실패하는 경우가 있다. 게이트웨이가 실제 running이면 설치된 것으로 본다.
+        const installed = !!installedRes?.installed || statusRes?.state === "running";
+        const running = statusRes?.state === "running";
+
+        store.updateModule("openclaw", {
+          installed,
+          version: installedRes?.version ?? null,
+          running,
+          port: statusRes?.port ?? 18789,
+          message: statusRes?.message ?? "",
+          reasonCode: statusRes?.reason_code ?? null,
+          state: deriveState({ installed, running }),
+          lastChecked: Date.now(),
+          lastError: null,
+          operation: null,
+        });
+        return store.getModule("openclaw");
+      } catch (e) {
+        store.updateModule("openclaw", {
+          state: "error",
+          lastError: String(e),
+          lastChecked: Date.now(),
+          operation: null,
+        });
+        return store.getModule("openclaw");
+      }
+    },
+
+    /**
+     * `npm install -g openclaw@latest` (Rust $SHELL -lc 경유).
+     *
+     * 흐름: install → check (설치 위치 확인) → store 자동 갱신.
+     * 실패 시 lastInstallResult에 stderr 꼬리/eacces 플래그/manual_command 저장.
+     */
+    async install() {
+      const store = useStatusStore.getState();
+      store.setOperation("openclaw", "installing");
+      let result = null;
+      try {
+        result = await installerInstallOpenClaw();
+        store.updateModule("openclaw", { lastInstallResult: result });
+
+        if (result?.ok) {
+          // 설치 직후 즉시 check로 설치 위치 확인 (사용자가 묘사한 패턴)
+          await STATUS_MODULES.openclaw.check();
+        } else {
+          store.updateModule("openclaw", {
+            lastError: result?.message || "설치 실패",
+            operation: null,
+          });
+        }
+        return result;
+      } catch (e) {
+        store.updateModule("openclaw", {
+          lastError: String(e),
+          operation: null,
+        });
+        throw e;
+      }
+    },
+
+    /**
+     * 게이트웨이 시작 (`openclaw gateway --port 18789` Rust 자식 spawn).
+     * spawn_openclaw가 이미 $SHELL -lc 폴백 + ready 30s polling 포함.
+     */
+    async start() {
+      const store = useStatusStore.getState();
+      store.setOperation("openclaw", "starting");
+      try {
+        const result = await openclawEnsureRunning();
+        const running = result?.state === "running";
+        store.updateModule("openclaw", {
+          running,
+          port: result?.port ?? 18789,
+          message: result?.message ?? "",
+          reasonCode: result?.reason_code ?? null,
+          state: running ? "running_healthy" : "error",
+          lastChecked: Date.now(),
+          operation: null,
+        });
+        if (!running) {
+          store.updateModule("openclaw", {
+            lastError: result?.message || "게이트웨이 ready 실패",
+          });
+        }
+        return result;
+      } catch (e) {
+        store.updateModule("openclaw", {
+          state: "error",
+          lastError: String(e),
+          operation: null,
+        });
+        throw e;
+      }
+    },
+  },
+
   // ── Ollama (로컬 LLM 데몬) ─────────────────────────────────────────────────
   ollama: {
     id: "ollama",
@@ -192,13 +313,30 @@ export async function refreshAllModules() {
   );
 }
 
+/** 단일 모듈의 check만 실행 (특정 모듈 변경 후 빠른 갱신용) */
+export async function refreshModule(id) {
+  const mod = STATUS_MODULES[id];
+  if (!mod) return null;
+  return mod.check();
+}
+
 /**
- * statusStore의 Ollama 모듈 상태를 `localAISetupCore.js`의 `buildPlan`/`isAllReady`가
- * 받는 diag 형태로 변환한다.
+ * statusStore의 모듈 상태를 기존 `localAISetup.js`의 `buildPlan`/`isAllReady`가
+ * 받는 diag 형태로 변환.
+ *
+ * 마이그레이션 호환성용 — 새 코드는 store에서 직접 읽는 것을 권장.
  */
 export function getDerivedDiag() {
+  const oc = useStatusStore.getState().modules.openclaw;
   const oll = useStatusStore.getState().modules.ollama;
   return {
+    oc: {
+      state: oc.running ? "running" : "stopped",
+      message: oc.message,
+      port: oc.port,
+      reason_code: oc.reasonCode,
+    },
+    ocInstalled: { installed: oc.installed, version: oc.version },
     oll: {
       installed: oll.installed,
       running: oll.running,

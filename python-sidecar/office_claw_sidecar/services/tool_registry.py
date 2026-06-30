@@ -145,10 +145,22 @@ TOOL_REGISTRY: list[ToolDef] = [
         example_triggers=["셀 값 수정", "값 입력", "범위 덮어쓰기"],
     ),
     ToolDef(
+        name="excel_live.create_table",
+        description="지정 시작 셀 기준으로 표(행/열) 생성 및 기본 경계선 적용",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["5x5 표 만들어줘", "표 생성", "테이블 만들기"],
+    ),
+    ToolDef(
         name="excel_live.highlight_by_condition",
         description="조건에 맞는 셀 서식(배경색) 변경",
         permission=PermissionLevel.CONFIRM,
         example_triggers=["조건부 색칠", "노란색으로 칠해줘", "50 이상 강조"],
+    ),
+    ToolDef(
+        name="excel_live.fill_range",
+        description="지정 범위 전체를 단일 배경색으로 채우기",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["전체 노란색", "표 색을 전반적으로 바꿔줘", "배경색 채우기"],
     ),
     ToolDef(
         name="excel_live.apply_border",
@@ -251,7 +263,9 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "gog.gmail.send": "Gmail 이메일 전송",
     "gog.sheets.write": "Google Sheets 수정",
     "excel_live.write_range": "Excel 셀 값 수정",
+    "excel_live.create_table": "Excel 표 생성",
     "excel_live.highlight_by_condition": "Excel 조건부 서식 변경",
+    "excel_live.fill_range": "Excel 범위 배경색 채우기",
     "excel_live.apply_border": "Excel 경계선 적용",
     "excel_live.set_formula": "Excel 수식 적용",
     "excel_live.save_workbook": "Excel 통합문서 저장",

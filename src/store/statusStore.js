@@ -53,6 +53,7 @@ function emptyModule() {
     port: null,
     models: [],
     message: "",
+    reasonCode: null,
     operation: null,
     lastChecked: null,
     lastError: null,

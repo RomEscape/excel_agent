@@ -82,6 +82,11 @@ export async function storeCredential(service, value) {
   return parseResponse(raw);
 }
 
+export async function getCredential(service) {
+  const raw = await call("get_credential", { service });
+  return parseResponse(raw);
+}
+
 export async function deleteCredential(service) {
   const raw = await call("delete_credential", { service });
   return parseResponse(raw);
@@ -128,6 +133,79 @@ export async function getAuditLogs(limit) {
   return parseResponse(raw);
 }
 
+// ── Gmail ─────────────────────────────────────────────────────────────────
+
+export async function gmailStatus() {
+  const raw = await call("gmail_status");
+  return parseResponse(raw);
+}
+
+export async function gmailConnect() {
+  const raw = await call("gmail_connect");
+  return parseResponse(raw);
+}
+
+export async function gmailDisconnect() {
+  const raw = await call("gmail_disconnect");
+  return parseResponse(raw);
+}
+
+export async function gmailFetchEmails(maxResults) {
+  const raw = await call("gmail_fetch_emails", {
+    max_results: maxResults ?? null,
+  });
+  return parseResponse(raw);
+}
+
+export async function gmailGetEmailBody(messageId) {
+  const raw = await call("gmail_get_email_body", { message_id: messageId });
+  return parseResponse(raw);
+}
+
+export async function gmailSummarizeEmail(messageId) {
+  const raw = await call("gmail_summarize_email", { message_id: messageId });
+  return parseResponse(raw);
+}
+
+export async function gmailSummarizeBatch(maxResults) {
+  const raw = await call("gmail_summarize_batch", {
+    max_results: maxResults ?? null,
+  });
+  return parseResponse(raw);
+}
+
+/**
+ * Generate a professional Korean reply draft for an email.
+ *
+ * @param {string} emailId
+ * @returns {Promise<{ draft: string }>}
+ */
+export async function gmailDraftReply(emailId) {
+  const raw = await call("gmail_draft_reply", { email_id: emailId });
+  return parseResponse(raw);
+}
+
+/**
+ * Classify emails by urgency using AI.
+ *
+ * @param {string[]} emailIds
+ * @returns {Promise<{ priorities: Array<{ id: string, tag: string, reason: string }> }>}
+ */
+export async function gmailPrioritize(emailIds) {
+  const raw = await call("gmail_prioritize", { email_ids: emailIds });
+  return parseResponse(raw);
+}
+
+export async function getFilterRules() {
+  const raw = await call("get_filter_rules");
+  return parseResponse(raw);
+}
+
+export async function updateFilterRules(rules) {
+  const raw = await call("update_filter_rules", { rules });
+  return parseResponse(raw);
+}
+
 // ── Telegram ──────────────────────────────────────────────────────────────
 
 export async function telegramStatus() {
@@ -145,7 +223,93 @@ export async function telegramStop() {
   return parseResponse(raw);
 }
 
+// ── Excel AI ──────────────────────────────────────────────────────────────
+
+/**
+ * Upload an xlsx/csv file by local path.
+ * Returns { file_id, filename, sheet_names, row_count, col_count, columns, ... }
+ *
+ * @param {string} filePath - Absolute local file path
+ */
+export async function excelUpload(filePath) {
+  const raw = await call("excel_upload", { file_path: filePath });
+  return parseResponse(raw);
+}
+
+/**
+ * Ask a natural-language question about an uploaded spreadsheet.
+ *
+ * @param {string} fileId
+ * @param {string} question
+ * @returns {Promise<{ answer: string }>}
+ */
+export async function excelAnalyze(fileId, question) {
+  const raw = await call("excel_analyze", { file_id: fileId, question });
+  return parseResponse(raw);
+}
+
+/**
+ * Auto-generate a comprehensive Korean data analysis report.
+ *
+ * @param {string} fileId
+ * @returns {Promise<{ report: string }>}
+ */
+export async function excelReport(fileId) {
+  const raw = await call("excel_report", { file_id: fileId });
+  return parseResponse(raw);
+}
+
+/**
+ * Get Excel formula suggestions based on the file's column structure.
+ *
+ * @param {string} fileId
+ * @returns {Promise<{ suggestions: string }>}
+ */
+export async function excelFormulas(fileId) {
+  const raw = await call("excel_formulas", { file_id: fileId });
+  return parseResponse(raw);
+}
+
+/**
+ * Extract numeric columns as Chart.js-ready data.
+ *
+ * @param {string} fileId
+ * @param {string} sheetName
+ * @returns {Promise<{ labels: Array, datasets: Array }>}
+ */
+export async function excelChartData(fileId, sheetName) {
+  const raw = await call("excel_chart_data", {
+    file_id: fileId,
+    sheet_name: sheetName,
+  });
+  return parseResponse(raw);
+}
+
+/**
+ * Export the analysis report appended as a new sheet to the original workbook.
+ * Saves to Downloads folder and returns the saved file path.
+ *
+ * @param {string} fileId
+ * @param {string} reportMarkdown
+ * @returns {Promise<string>} Saved file path
+ */
+export async function excelExport(fileId, reportMarkdown) {
+  const raw = await call("excel_export", {
+    file_id: fileId,
+    report_markdown: reportMarkdown,
+  });
+  return parseResponse(raw);
+}
+
 // ── Excel Live(COM) ────────────────────────────────────────────────────────
+
+/**
+ * Excel Live 연결 상태와 열린 워크북 목록을 조회한다.
+ */
+export async function excelLiveStatus() {
+  const raw = await call("excel_live_status");
+  return parseResponse(raw);
+}
 
 /**
  * 자연어 엑셀 명령을 실행한다.
@@ -154,20 +318,21 @@ export async function telegramStop() {
  * @param {string | null} workbookId
  * @param {string | null} sheetName
  * @param {boolean} approve
+ * @param {string | null} contextRange
  */
 export async function excelLiveCommand(
   message,
   workbookId = null,
   sheetName = null,
   approve = false,
-  history = [],
+  contextRange = null,
 ) {
   const raw = await call("excel_live_command", {
     message,
     workbookId,
     sheetName,
     approve,
-    history,
+    contextRange,
   });
   return parseResponse(raw);
 }
@@ -195,6 +360,81 @@ export async function excelLiveSubmitApproval(approvalId, approved, reason = nul
  */
 export async function excelLiveSaveWorkbook(workbookId = null) {
   const raw = await call("excel_live_save_workbook", { workbookId });
+  return parseResponse(raw);
+}
+
+// ── Document AI ───────────────────────────────────────────────────────────
+
+/**
+ * Generate a Korean document draft.
+ *
+ * @param {string} docType  - 보고서 | 기획안 | 회의록 | 계약서초안 | 이메일 | 제안서
+ * @param {string} content  - Core content / key points
+ * @param {string} tone     - 공식적 | 친근한 | 전문적
+ * @param {string} length   - 짧게 | 보통 | 길게
+ * @returns {Promise<{ draft: string }>}
+ */
+export async function documentGenerate(docType, content, tone, length) {
+  const raw = await call("document_generate", {
+    doc_type: docType,
+    content,
+    tone,
+    length,
+  });
+  return parseResponse(raw);
+}
+
+/**
+ * Export document as Word (.docx). Saves to Downloads, returns saved path.
+ *
+ * @param {string} title
+ * @param {string} content - Markdown content
+ * @returns {Promise<string>} Saved file path
+ */
+export async function documentExportDocx(title, content) {
+  const raw = await call("document_export_docx", { title, content });
+  return parseResponse(raw);
+}
+
+/**
+ * Export document as PDF. Saves to Downloads, returns saved path.
+ *
+ * @param {string} title
+ * @param {string} content - Markdown content
+ * @returns {Promise<string>} Saved file path
+ */
+export async function documentExportPdf(title, content) {
+  const raw = await call("document_export_pdf", { title, content });
+  return parseResponse(raw);
+}
+
+// ── Phase 5: Agent Approval ───────────────────────────────────────────────────
+
+/**
+ * 승인/거부 결정을 사이드카에 전달한다.
+ *
+ * @param {string} approvalId
+ * @param {boolean} approved
+ * @param {string} [reason] - 거부 사유 (선택, 30자 이내). sidecar가 받지 않으면 무시됨.
+ * @returns {Promise<{ ok: boolean, approved: boolean, tool_name: string }>}
+ */
+export async function agentSubmitApproval(approvalId, approved, reason) {
+  // rejection_reason 키로 Tauri command에 전달 (N-1 Sprint 4 — ipc.rs 시그니처 정렬)
+  const args = { approval_id: approvalId, approved };
+  if (!approved && reason && typeof reason === "string") {
+    args.rejection_reason = reason;
+  }
+  const raw = await call("agent_submit_approval", args);
+  return parseResponse(raw);
+}
+
+/**
+ * 대기 중인 승인 요청 목록을 조회한다 (폴링용).
+ *
+ * @returns {Promise<{ pending: Array }>}
+ */
+export async function agentPendingApprovals() {
+  const raw = await call("agent_pending_approvals");
   return parseResponse(raw);
 }
 
@@ -324,7 +564,7 @@ export async function securityRespondApproval(approvalId, approved) {
   return parseResponse(raw);
 }
 
-// ── Phase 1: officeclaw — Workspace ────────────────────────────────────────
+// ── Phase 1: Private-Claw — Workspace ────────────────────────────────────────
 
 /**
  * 워크스페이스 파일 목록을 반환한다.
@@ -510,7 +750,7 @@ export async function discordStop() {
   return parseResponse(raw);
 }
 
-// ── Phase 1: officeclaw — Telegram setup ───────────────────────────────────
+// ── Phase 1: Private-Claw — Telegram setup ───────────────────────────────────
 
 /**
  * 텔레그램 봇 토큰을 설정하고 연결 테스트를 수행한다.
@@ -521,54 +761,6 @@ export async function discordStop() {
  */
 export async function telegramSetup(token, chatId) {
   const raw = await call("telegram_setup", { token, chat_id: chatId ?? null });
-  return parseResponse(raw);
-}
-
-// ── Phase 3: Permissions (에이전트 허용 범위) ──────────────────────────────────
-
-/**
- * 현재 권한 설정(허용 폴더/앱, 셸·Python 화이트리스트)을 반환한다.
- *
- * @returns {Promise<{ allowed_folders: string[], allowed_apps: string[], shell_command_whitelist: string[], python_module_whitelist: string[] }>}
- */
-export async function permissionsGet() {
-  const raw = await call("permissions_get");
-  return parseResponse(raw);
-}
-
-/**
- * 권한 설정을 일괄 저장한다.
- *
- * @param {{ allowed_folders: string[], allowed_apps: string[], shell_command_whitelist: string[], python_module_whitelist: string[] }} data
- */
-export async function permissionsUpdate(data) {
-  const raw = await call("permissions_update", data);
-  return parseResponse(raw);
-}
-
-/**
- * 셸/Python 명령을 SAFE 화이트리스트에 추가한다.
- *
- * @param {string} command
- * @param {'shell'|'python'} commandType
- * @param {string} [reason]
- */
-export async function permissionsWhitelistAdd(command, commandType, reason) {
-  const raw = await call("permissions_whitelist_add", {
-    command,
-    command_type: commandType,
-    reason: reason || "",
-  });
-  return parseResponse(raw);
-}
-
-/**
- * 화이트리스트에서 명령을 제거한다.
- *
- * @param {string} command
- */
-export async function permissionsWhitelistRemove(command) {
-  const raw = await call("permissions_whitelist_remove", { command });
   return parseResponse(raw);
 }
 
@@ -626,7 +818,53 @@ export async function maintenanceCleanup() {
   return parseResponse(raw);
 }
 
-// ── Local AI (Ollama) ─────────────────────────────────────────────────────
+// ── Phase 4: Agent / OpenClaw ─────────────────────────────────────────────
+
+/**
+ * OpenClaw 게이트웨이 현재 상태를 확인한다.
+ *
+ * @returns {Promise<{ state: 'running'|'stopped'|'error', port: number, message: string }>}
+ */
+export async function openclawStatus() {
+  const raw = await call("openclaw_status");
+  return parseResponse(raw);
+}
+
+/**
+ * `openclaw` 바이너리가 시스템에 설치되어 있는지 확인한다.
+ * 게이트웨이 실행 여부와 별개 — 자동 설치 UI를 띄울지 결정하는 용도.
+ *
+ * @returns {Promise<{ installed: boolean, version: string|null, source: 'path'|'login-shell'|null }>}
+ */
+export async function openclawInstalled() {
+  const raw = await call("openclaw_installed");
+  return parseResponse(raw);
+}
+
+/**
+ * OpenClaw 게이트웨이가 18789에서 응답하도록 보장한다 (idempotent).
+ * 이미 떠 있으면 즉시 OK, 아니면 자식 프로세스로 spawn 후 ready까지 대기.
+ *
+ * 자동 설치 모달이 npm install 완료 후 호출하여 즉시 온라인 전환.
+ *
+ * @returns {Promise<{ state: 'running'|'stopped'|'error', port: number, message: string }>}
+ */
+export async function openclawEnsureRunning() {
+  const raw = await call("openclaw_ensure_running");
+  return parseResponse(raw);
+}
+
+/**
+ * OpenClaw config를 Ollama 프로바이더로 비인터랙티브 설정한다.
+ * `models.providers.ollama.baseUrl` + `agents.defaults.model = ollama/<model>`을 set.
+ *
+ * @param {string} model — 예: "qwen3:4b", "qwen3:8b" (provider prefix 없이)
+ * @returns {Promise<{ ok: boolean, applied: Array, model: string }>}
+ */
+export async function openclawUseOllama(model) {
+  const raw = await call("openclaw_use_ollama", { model });
+  return parseResponse(raw);
+}
 
 /**
  * Ollama 종합 상태 — 바이너리 설치, 데몬 실행(11434), 설치된 모델 목록.
@@ -653,6 +891,15 @@ export async function ollamaStatus() {
 //     message: string,
 //     manual_command: string,  // 사용자가 직접 실행할 명령 (실패 시 복사 제공)
 //   }
+
+/**
+ * `npm install -g openclaw@latest` — 사용자 로그인 셸 경유.
+ * @returns {Promise<object>} InstallResult
+ */
+export async function installerInstallOpenClaw() {
+  // invoke는 직접 객체를 반환 (parseResponse 불필요 — Rust가 serde_json::Value로 반환)
+  return invoke("install_openclaw");
+}
 
 /**
  * `brew install ollama` (macOS 전용).
@@ -682,6 +929,65 @@ export async function installerPullModel(model) {
 /** 진행 중인 설치 자식 프로세스를 kill한다. NO-OP if none. */
 export async function installerCancel() {
   return invoke("cancel_install");
+}
+
+/**
+ * OpenClaw 세션을 통해 AI 에이전트와 대화한다.
+ *
+ * 보안 레이어(Python sidecar)를 경유하여 OpenClaw 게이트웨이로 전달된다.
+ * DENIED 키워드가 포함된 경우 사이드카에서 차단된다.
+ *
+ * @param {string} message - 사용자 메시지
+ * @param {string|null} [sessionId] - 기존 세션 ID (null이면 새 세션 자동 생성)
+ * @returns {Promise<{ response: string, session_id: string, tool_calls: Array }>}
+ */
+export async function agentChat(message, sessionId) {
+  const raw = await call("agent_chat", {
+    message,
+    session_id: sessionId ?? null,
+  });
+  return parseResponse(raw);
+}
+
+/**
+ * 활성 OpenClaw 세션 목록을 반환한다.
+ *
+ * @returns {Promise<{ sessions: Array }>}
+ */
+export async function agentSessions() {
+  const raw = await call("agent_sessions");
+  return parseResponse(raw);
+}
+
+/**
+ * 설치된 OpenClaw 스킬 목록을 반환한다.
+ *
+ * @returns {Promise<{ skills: Array, count: number }>}
+ */
+export async function skillsInstalled() {
+  const raw = await call("skills_installed");
+  return parseResponse(raw);
+}
+
+/**
+ * ClawHub에서 스킬을 설치한다.
+ *
+ * @param {string} skillName - ClawHub 스킬 이름 (예: "gog-gmail")
+ * @returns {Promise<{ success: boolean, skill_name: string }>}
+ */
+export async function skillsInstall(skillName) {
+  const raw = await call("skills_install", { skill_name: skillName });
+  return parseResponse(raw);
+}
+
+/**
+ * ClawHub 추천 스킬 카탈로그를 반환한다.
+ *
+ * @returns {Promise<{ skills: Array, cached: boolean }>}
+ */
+export async function skillsCatalog() {
+  const raw = await call("skills_catalog");
+  return parseResponse(raw);
 }
 
 // ── Phase 3 (2026-05): Rust keyring + audit (Python sidecar 우회 경로) ──────
@@ -728,4 +1034,73 @@ export async function rustAuditLastBlockedAt() {
   return invoke("rust_audit_last_blocked_at");
 }
 
+// ── OpenClaw CLI 서브프로세스 wrapper (2026-05-20) ──────────────────────────
+//
+// `openclaw gateway call <method>` / `openclaw agent`를 spawn해 결과 JSON을 반환.
+// WebSocket 직결 대신 OpenClaw 자체 CLI에 핸드셰이크/auth/세션을 위임 — 게이트웨이
+// 마이너 버전이 바뀌어도 우리 wrapper는 영향받지 않는다.
+//
+// 사용자 셋업 책임: Ollama 프로바이더 등록 (`openclaw configure` 또는
+// `OLLAMA_API_KEY=*`), device pairing 등은 별도. 이 wrapper는 그저 CLI를 부른다.
+
+/**
+ * 게이트웨이 메서드 호출 — health / system-presence / cron.* 등.
+ *
+ * @param {string} method
+ * @param {object|null} [params] — `--params` JSON
+ * @param {{ token?:string, password?:string, url?:string, timeoutMs?:number, expectFinal?:boolean }} [opts]
+ * @returns {Promise<any>} stdout JSON
+ */
+export async function openclawCliCall(method, params, opts) {
+  return invoke("openclaw_cli_call", {
+    method,
+    params: params ?? null,
+    opts: opts
+      ? {
+          token: opts.token ?? null,
+          password: opts.password ?? null,
+          url: opts.url ?? null,
+          timeout_ms: opts.timeoutMs ?? null,
+          expect_final: !!opts.expectFinal,
+        }
+      : null,
+  });
+}
+
+/**
+ * 에이전트 한 턴 실행 — 메신저 봇이 받은 메시지를 게이트웨이로 전달할 때 사용.
+ *
+ * @param {{
+ *   message: string,
+ *   agent?: string,
+ *   sessionId?: string,
+ *   to?: string,
+ *   channel?: string,
+ *   model?: string,
+ *   deliver?: boolean,
+ *   opts?: object,
+ * }} req
+ */
+export async function openclawCliAgent(req) {
+  return invoke("openclaw_cli_agent", {
+    req: {
+      message: req.message,
+      agent: req.agent ?? null,
+      session_id: req.sessionId ?? null,
+      to: req.to ?? null,
+      channel: req.channel ?? null,
+      model: req.model ?? null,
+      deliver: !!req.deliver,
+      opts: req.opts
+        ? {
+            token: req.opts.token ?? null,
+            password: req.opts.password ?? null,
+            url: req.opts.url ?? null,
+            timeout_ms: req.opts.timeoutMs ?? null,
+            expect_final: !!req.opts.expectFinal,
+          }
+        : { token: null, password: null, url: null, timeout_ms: null, expect_final: false },
+    },
+  });
+}
 

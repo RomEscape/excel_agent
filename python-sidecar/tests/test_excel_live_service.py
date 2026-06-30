@@ -441,6 +441,59 @@ def test_apply_border_sets_all_edges_and_inside_lines():
         assert border.Color is not None
 
 
+def test_fill_range_applies_color_to_entire_target_range():
+    service, wb1, _ = _build_service()
+    result = service.fill_range(
+        workbook_id=wb1.fullname,
+        sheet_name="Sheet1",
+        target_range="B2:C3",
+        fill_color="#FFFF00",
+    )
+    assert result["changed_cells"] == 4
+    assert result["address"] == "B2:C3"
+    sheet = service._find_sheet(wb1, "Sheet1")
+    assert sheet._colors[(2, 2)] == (255, 255, 0)
+    assert sheet._colors[(3, 3)] == (255, 255, 0)
+
+
+def test_create_table_writes_empty_cells_and_border():
+    service, wb1, _ = _build_service()
+    result = service.create_table(
+        workbook_id=wb1.fullname,
+        sheet_name="Sheet1",
+        start_cell="E5",
+        rows=3,
+        cols=4,
+        with_border=True,
+    )
+    assert result["created"] is True
+    assert result["address"] == "E5:H7"
+    read = service.read_range(wb1.fullname, "Sheet1", "E5:H7")
+    assert read["row_count"] == 3
+    assert read["col_count"] == 4
+    border_map = service._find_sheet(wb1, "Sheet1")._borders
+    for edge in (7, 8, 9, 10, 11, 12):
+        assert border_map[(5, 5, edge)].LineStyle == 1
+
+
+def test_get_range_snapshot_reports_shape_and_filled_cells():
+    service, wb1, _ = _build_service()
+    service.write_range(
+        workbook_id=wb1.fullname,
+        sheet_name="Sheet1",
+        start_cell="B2",
+        values_2d=[["A", ""], [None, 10]],
+    )
+    snap = service.get_range_snapshot(
+        workbook_id=wb1.fullname,
+        sheet_name="Sheet1",
+        range_ref="B2:C3",
+    )
+    assert snap["row_count"] == 2
+    assert snap["col_count"] == 2
+    assert snap["filled_cells"] == 2
+
+
 def test_set_formula_applies_to_entire_range():
     service, wb1, _ = _build_service()
     result = service.set_formula(
