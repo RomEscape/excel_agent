@@ -43,11 +43,20 @@ class _FakeExcelService:
     def read_range(self, workbook_id, sheet_name, range_ref):
         return {"values": [[1, 2]], "address": range_ref, "row_count": 1, "col_count": 2}
 
+    def get_range_snapshot(self, workbook_id, sheet_name, range_ref):
+        return {"address": range_ref, "row_count": 5, "col_count": 5, "filled_cells": 4}
+
     def write_range(self, workbook_id, sheet_name, start_cell, values_2d):
         return {"written_cells": 2, "address": f"{start_cell}:B1"}
 
+    def create_table(self, workbook_id, sheet_name, start_cell, rows, cols, with_border):
+        return {"created": True, "address": "B2:F6", "rows": rows, "cols": cols}
+
     def highlight_by_condition(self, workbook_id, sheet_name, target_range, operator, threshold, fill_color):
         return {"matched_cells": 3, "changed_cells": 3, "address": target_range}
+
+    def fill_range(self, workbook_id, sheet_name, target_range, fill_color):
+        return {"changed_cells": 12, "address": target_range}
 
     def apply_border(self, workbook_id, sheet_name, target_range, line_style, weight, color):
         return {"changed_cells": 4, "address": target_range}
@@ -184,10 +193,49 @@ def test_action_apply_border_uses_active_selection_when_range_missing(monkeypatc
     assert body["action"] == "excel_live.apply_border"
 
 
+def test_action_create_table_uses_active_cell_when_start_missing(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+
+    resp = client.post(
+        "/excel-live/action",
+        json={
+            "action": "excel_live.create_table",
+            "params": {"rows": 5, "cols": 5},
+            "approve": True,
+        },
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["action"] == "excel_live.create_table"
+    assert body["result"]["rows"] == 5
+    assert body["result"]["cols"] == 5
+
+
+def test_command_rule_based_fill_range(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+
+    resp = client.post(
+        "/excel-live/command",
+        json={
+            "message": "표 색을 전반적으로 노랗게 칠해줘",
+            "workbook_id": r"C:\work\sales.xlsx",
+            "sheet_name": "Sheet1",
+            "approve": False,
+        },
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["action"] == "excel_live.fill_range"
+    assert body["approval_required"] is True
+
+
 def test_command_parse_failure_returns_400_instead_of_list_fallback(monkeypatch):
     monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
 
-    async def _raise_parse(_message, llm_service):
+    async def _raise_parse(_message, llm_service, context):
         raise ValueError("엑셀 명령을 해석하지 못했습니다.")
 
     monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _raise_parse)
@@ -199,4 +247,110 @@ def test_command_parse_failure_returns_400_instead_of_list_fallback(monkeypatch)
     )
     assert resp.status_code == 400
     assert "해석하지 못했습니다" in resp.json().get("detail", "")
+
+
+def test_command_executes_action_plan_sequentially(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+
+    async def _plan_parse(_message, llm_service, context):
+        return {
+            "action_plan": [
+                {"action": "excel_live.read_range", "params": {"range_ref": "A1:B2"}, "reason": "현재 상태 확인"},
+                {"action": "excel_live.read_range", "params": {"range_ref": "B2:C3"}, "reason": "후속 확인"},
+            ],
+            "reason": "2단계 계획 실행",
+        }
+
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _plan_parse)
+
+    resp = client.post(
+        "/excel-live/command",
+        json={"message": "계획형 테스트", "approve": True},
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["action"] == "excel_live.read_range"
+    assert body["result"]["executed_steps"] == 2
+
+
+def test_command_passes_context_range_to_parser(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+
+    async def _plan_parse(_message, llm_service, context):
+        assert context["context_range"] == "C3:E9"
+        return {
+            "action_plan": [
+                {"action": "excel_live.read_range", "params": {"range_ref": "C3:E9"}, "reason": "문맥 범위 사용"}
+            ],
+            "reason": "문맥 기반",
+        }
+
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _plan_parse)
+
+    resp = client.post(
+        "/excel-live/command",
+        json={"message": "이 범위 확인", "context_range": "C3:E9", "approve": True},
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["action"] == "excel_live.read_range"
+
+
+def test_command_stabilizes_table_intent_when_llm_returns_invalid_write_range(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+
+    async def _plan_parse(_message, llm_service, context):
+        return {
+            "action_plan": [
+                {"action": "excel_live.write_range", "params": {"start_cell": "__ACTIVE_CELL__"}, "reason": "표 생성"}
+            ],
+            "reason": "테이블 생성",
+        }
+
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _plan_parse)
+
+    resp = client.post(
+        "/excel-live/command",
+        json={"message": "5*5 표 만들어줘", "approve": True},
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["action"] == "excel_live.create_table"
+    assert body["result"]["rows"] == 5
+    assert body["result"]["cols"] == 5
+
+
+def test_command_applies_context_range_to_here_border(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+
+    async def _plan_parse(_message, llm_service, context):
+        return {
+            "action_plan": [
+                {
+                    "action": "excel_live.apply_border",
+                    "params": {"target_range": "__ACTIVE_SELECTION__"},
+                    "reason": "문맥 범위 테두리",
+                }
+            ],
+            "reason": "context",
+        }
+
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _plan_parse)
+
+    resp = client.post(
+        "/excel-live/command",
+        json={"message": "여기에 테두리 적용해줘", "context_range": "B2:D5", "approve": True},
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["action"] == "excel_live.apply_border"
+    assert body["result"]["address"] == "B2:D5"
 

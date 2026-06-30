@@ -104,8 +104,12 @@ fn spawn_gateway_process(port: u16) -> Result<Child, String> {
     // sidecar(OpenClaw client)와 gateway 인증 토큰을 맞추기 위해
     // OPENCLAW_GATEWAY_TOKEN을 명시적으로 주입한다.
     // - 환경변수에 값이 있으면 그 값을 사용
+    // - 없으면 ~/.openclaw/openclaw.json의 gateway.auth.token을 사용
     // - dev 환경에서는 기본값 dev-token 사용
     let gateway_token = std::env::var("OPENCLAW_GATEWAY_TOKEN").unwrap_or_else(|_| {
+        if let Some(token) = load_gateway_token_from_openclaw_config() {
+            return token;
+        }
         if cfg!(debug_assertions) {
             "dev-token".to_string()
         } else {
@@ -194,6 +198,28 @@ fn spawn_gateway_process(port: u16) -> Result<Child, String> {
         .spawn()
         .map_err(|e| format!("openclaw/npx 실행 실패 (Node.js가 설치되어 있나요?): {}", e))?;
     Ok(npx)
+}
+
+fn load_gateway_token_from_openclaw_config() -> Option<String> {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)?;
+    let cfg_path = home.join(".openclaw").join("openclaw.json");
+    if !cfg_path.exists() {
+        return None;
+    }
+
+    let raw = std::fs::read_to_string(cfg_path).ok()?;
+    let json: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let token = json
+        .get("gateway")
+        .and_then(|v| v.get("auth"))
+        .and_then(|v| v.get("token"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if token.is_empty() { None } else { Some(token) }
 }
 
 /// 게이트웨이 HTTP health 엔드포인트를 최대 30초간 폴링한다.
@@ -404,19 +430,33 @@ pub async fn get_openclaw_status(
     if running && reachable {
         serde_json::json!({
             "state": "running",
+            "reason_code": "RUNNING_OK",
             "port": port,
             "message": format!("OpenClaw 게이트웨이 실행 중 (포트 {})", port)
         })
     } else if running && !reachable {
         serde_json::json!({
             "state": "error",
+            "reason_code": "PROCESS_RUNNING_PORT_UNREACHABLE",
             "port": port,
             "message": "OpenClaw 게이트웨이가 응답하지 않습니다"
         })
     } else {
+        let install_info = is_openclaw_installed().await;
+        let installed = install_info
+            .get("installed")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let reason_code = if installed {
+            "INSTALLED_BUT_STOPPED"
+        } else {
+            "OPENCLAW_NOT_INSTALLED_OR_PATH_MISMATCH"
+        };
         serde_json::json!({
             "state": "stopped",
+            "reason_code": reason_code,
             "port": port,
+            "installed_hint": installed,
             "message": "OpenClaw 게이트웨이가 실행되지 않았습니다. npm install -g openclaw@latest 를 실행해 주세요."
         })
     }

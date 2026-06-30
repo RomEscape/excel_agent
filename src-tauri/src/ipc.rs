@@ -756,6 +756,7 @@ pub async fn excel_live_command(
     workbook_id: Option<String>,
     sheet_name: Option<String>,
     approve: Option<bool>,
+    context_range: Option<String>,
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
@@ -771,6 +772,7 @@ pub async fn excel_live_command(
         "workbook_id": workbook_id,
         "sheet_name": sheet_name,
         "approve": approve.unwrap_or(false),
+        "context_range": context_range,
     });
 
     let resp = client

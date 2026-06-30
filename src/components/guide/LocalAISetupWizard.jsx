@@ -71,6 +71,11 @@ function isGatewayUnavailableError(err) {
   );
 }
 
+function isTokenMismatchError(err) {
+  const msg = String(err?.message ?? err ?? "").toLowerCase();
+  return msg.includes("gateway token mismatch") || msg.includes("토큰이 sidecar와 일치하지");
+}
+
 function isSidecarUnavailableError(err) {
   const msg = String(err?.message ?? err ?? "");
   return (
@@ -116,6 +121,7 @@ export default function LocalAISetupWizard() {
         state: ocModule.running ? "running" : "stopped",
         message: ocModule.message,
         port: ocModule.port,
+        reason_code: ocModule.reasonCode,
       },
       ocInstalled: { installed: ocModule.installed, version: ocModule.version },
       oll: {
@@ -275,6 +281,16 @@ export default function LocalAISetupWizard() {
             pushLog(stepId, "info", "OpenClaw를 시작하고 있어요...");
             const result = await STATUS_MODULES.openclaw.start();
             if (result?.state !== "running") {
+              if (result?.reason_code === "OPENCLAW_NOT_INSTALLED_OR_PATH_MISMATCH") {
+                pushLog(stepId, "info", "OpenClaw 설치/경로 문제가 감지되어 설치 단계를 자동 재실행합니다...");
+                const installResult = await STATUS_MODULES.openclaw.install();
+                handleInstallResult(stepId, installResult);
+                const retry = await STATUS_MODULES.openclaw.start();
+                if (retry?.state === "running") {
+                  pushLog(stepId, "info", "✓ 재설치 후 OpenClaw 실행이 정상화되었습니다.");
+                  break;
+                }
+              }
               throw new Error(result?.message || "OpenClaw를 시작하지 못했어요");
             }
             pushLog(stepId, "info", "✓ OpenClaw가 응답하고 있어요");
@@ -357,7 +373,15 @@ export default function LocalAISetupWizard() {
             try {
               reply = await askAgentWithTimeout();
             } catch (err) {
-              if (isSidecarUnavailableError(err)) {
+              if (isTokenMismatchError(err)) {
+                pushLog(stepId, "info", "게이트웨이 인증 토큰 불일치가 감지되어 OpenClaw를 다시 시작합니다...");
+                const startResult = await STATUS_MODULES.openclaw.start();
+                if (startResult?.state !== "running") {
+                  throw new Error(startResult?.message || "OpenClaw 게이트웨이를 자동으로 다시 시작하지 못했어요.");
+                }
+                await new Promise((r) => setTimeout(r, 1200));
+                reply = await askAgentWithTimeout();
+              } else if (isSidecarUnavailableError(err)) {
                 pushLog(stepId, "info", "백그라운드 서비스가 아직 준비 중이라 잠시 후 다시 시도합니다...");
                 await new Promise((r) => setTimeout(r, 1800));
                 reply = await askAgentWithTimeout();

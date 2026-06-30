@@ -1,6 +1,8 @@
-"""Excel Live 자연어 파서 규칙 테스트."""
+"""Excel Live 자연어 파서 규칙/플래너 테스트."""
 
-from office_claw_sidecar.services.excel_live_agent import parse_command_rule_based
+import asyncio
+
+from office_claw_sidecar.services.excel_live_agent import parse_command_rule_based, parse_excel_live_command
 
 
 def test_parse_highlight_command_korean():
@@ -217,4 +219,85 @@ def test_parse_apply_border_cell_range_not_misclassified_as_write():
     assert parsed is not None
     assert parsed["action"] == "excel_live.apply_border"
     assert parsed["params"]["target_range"] == "B10"
+
+
+def test_parse_create_table_with_multiplication_notation():
+    parsed = parse_command_rule_based("5 * 5 표를 하나 만들어줘")
+    assert parsed is not None
+    assert parsed["action"] == "excel_live.create_table"
+    assert parsed["params"]["start_cell"] == "__ACTIVE_CELL__"
+    assert parsed["params"]["rows"] == 5
+    assert parsed["params"]["cols"] == 5
+
+
+def test_parse_fill_range_without_threshold_uses_active_selection():
+    parsed = parse_command_rule_based("표 색을 전반적으로 노랗게 칠해줘")
+    assert parsed is not None
+    assert parsed["action"] == "excel_live.fill_range"
+    assert parsed["params"]["target_range"] == "__ACTIVE_SELECTION__"
+    assert parsed["params"]["fill_color"] == "#FFFF00"
+
+
+class _FakeLLM:
+    def __init__(self, response):
+        self._response = response
+        self._idx = 0
+
+    async def chat(self, messages):
+        if isinstance(self._response, list):
+            out = self._response[min(self._idx, len(self._response) - 1)]
+            self._idx += 1
+            return out
+        return self._response
+
+
+def test_parse_excel_live_command_prefers_llm_action_plan():
+    llm = _FakeLLM(
+        '{"action_plan":[{"action":"excel_live.create_table","params":{"start_cell":"__ACTIVE_CELL__","rows":5,"cols":5},"reason":"표 생성"}],"reason":"요청 작업 계획"}'
+    )
+    parsed = asyncio.run(parse_excel_live_command("5 * 5 표 만들어줘", llm))
+    assert parsed["action_plan"][0]["action"] == "excel_live.create_table"
+    assert parsed["action_plan"][0]["params"]["rows"] == 5
+
+
+def test_parse_excel_live_command_raises_when_llm_fails():
+    llm = _FakeLLM("json 아님")
+    try:
+        asyncio.run(parse_excel_live_command("B2:D5 범위에 경계선 적용해줘", llm))
+        assert False, "ValueError expected"
+    except ValueError:
+        pass
+
+
+def test_parse_rule_based_uses_context_range_for_ambiguous_border():
+    parsed = parse_command_rule_based("여기에 테두리 적용해줘", context_range="C3:E9")
+    assert parsed is not None
+    assert parsed["action"] == "excel_live.apply_border"
+    assert parsed["params"]["target_range"] == "C3:E9"
+
+
+def test_parse_excel_live_command_passes_context_to_planner():
+    llm = _FakeLLM(
+        '{"action_plan":[{"action":"excel_live.fill_range","params":{"target_range":"C3:E9","fill_color":"#FFFF00"},"reason":"이전 범위 색칠"}],"reason":"문맥 기반 계획"}'
+    )
+    parsed = asyncio.run(
+        parse_excel_live_command(
+            "이 범위 노랗게 칠해줘",
+            llm,
+            context={"context_range": "C3:E9"},
+        )
+    )
+    assert parsed["action_plan"][0]["action"] == "excel_live.fill_range"
+    assert parsed["action_plan"][0]["params"]["target_range"] == "C3:E9"
+
+
+def test_parse_excel_live_command_replans_when_edit_intent_misclassified():
+    llm = _FakeLLM(
+        [
+            '{"action_plan":[{"action":"excel_live.list_workbooks","params":{},"reason":"오분류"}],"reason":"first"}',
+            '{"action_plan":[{"action":"excel_live.apply_border","params":{"target_range":"B2:D5","line_style":"continuous","weight":"medium","color":"#000000"},"reason":"재계획 성공"}],"reason":"second"}',
+        ]
+    )
+    parsed = asyncio.run(parse_excel_live_command("B2:D5 범위에 경계선 적용해줘", llm))
+    assert parsed["action_plan"][0]["action"] == "excel_live.apply_border"
 

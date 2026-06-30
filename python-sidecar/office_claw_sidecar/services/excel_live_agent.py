@@ -18,7 +18,9 @@ SUPPORTED_ACTIONS = {
     "excel_live.select_workbook",
     "excel_live.read_range",
     "excel_live.write_range",
+    "excel_live.create_table",
     "excel_live.highlight_by_condition",
+    "excel_live.fill_range",
     "excel_live.apply_border",
     "excel_live.set_formula",
     "excel_live.save_workbook",
@@ -164,7 +166,7 @@ def _range_to_empty_payload(range_ref: str) -> tuple[str, list[list[Any]]]:
     return left, values_2d
 
 
-def parse_command_rule_based(message: str) -> dict[str, Any] | None:
+def parse_command_rule_based(message: str, *, context_range: str | None = None) -> dict[str, Any] | None:
     text = message.strip()
     lowered = text.lower()
     write_verbs = r"(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|write|set|input|fill)"
@@ -218,10 +220,36 @@ def parse_command_rule_based(message: str) -> dict[str, Any] | None:
             "reason": "셀 값 삭제 요청",
         }
 
+    # 예: "5 * 5 표 만들어줘", "3x4 테이블 생성"
+    table_match = re.search(
+        r"(\d{1,3})\s*(?:\*|x|×)\s*(\d{1,3})\s*(?:표|테이블|table)",
+        lowered,
+        re.IGNORECASE,
+    )
+    if not table_match:
+        table_match = re.search(
+            r"(\d{1,3})\s*행\s*(\d{1,3})\s*열\s*(?:표|테이블|table)",
+            lowered,
+            re.IGNORECASE,
+        )
+    if table_match and re.search(r"(만들|생성|작성|create|make)", lowered):
+        rows = max(1, min(100, int(table_match.group(1))))
+        cols = max(1, min(50, int(table_match.group(2))))
+        return {
+            "action": "excel_live.create_table",
+            "params": {
+                "start_cell": "__ACTIVE_CELL__",
+                "rows": rows,
+                "cols": cols,
+                "with_border": True,
+            },
+            "reason": "선택 셀 기준 표 생성 요청",
+        }
+
     # "테두리 넣어줘"가 값 쓰기(write_range)로 잘못 분류되지 않도록
     # 경계선 의도를 읽기/쓰기보다 우선 판별한다.
     if re.search(border_words, lowered) and re.search(border_apply_words, lowered):
-        target_range = _extract_target_range_from_text(lowered) or "__ACTIVE_SELECTION__"
+        target_range = _extract_target_range_from_text(lowered) or context_range or "__ACTIVE_SELECTION__"
         # 사용자 체감상 "적용이 안 됨"을 줄이기 위해 기본을 눈에 띄는 medium으로 둔다.
         weight = "medium"
         if re.search(r"(얇게|얇은|thin)", lowered):
@@ -248,7 +276,7 @@ def parse_command_rule_based(message: str) -> dict[str, Any] | None:
     if re.search(read_verbs, lowered) and not re.search(write_verbs, lowered):
         range_ref = _extract_target_range_from_text(lowered)
         if not range_ref:
-            range_ref = "__ACTIVE_SELECTION__"
+            range_ref = context_range or "__ACTIVE_SELECTION__"
         return {
             "action": "excel_live.read_range",
             "params": {"range_ref": range_ref},
@@ -276,13 +304,30 @@ def parse_command_rule_based(message: str) -> dict[str, Any] | None:
     # 예: "A열 50보다 큰 값 노란색으로 칠해줘", "A1:A20 >= 100 highlight"
     if re.search(r"(칠해|강조|표시|highlight|색|채워|배경|바꿔)", lowered):
         op_threshold = _parse_operator_threshold(lowered)
-        # 범위를 특정하지 않은 강조 명령은 A:A로 좁게 잡으면 체감상 "안 된다"가 되기 쉽다.
-        # 기본값을 A:Z로 넓혀 일반 표(좌측 영역)에서 자연어 명령이 더 잘 동작하게 한다.
-        target_range = _extract_target_range_from_text(lowered) or "A:Z"
         color_match = re.search(
             r"(노란색|노랑|yellow|빨간색|빨강|red|초록색|초록|green|파란색|파랑|blue)",
             lowered,
         )
+        # 예: "표 색을 전반적으로 노랗게 칠해줘"처럼 조건 없는 전체 채우기
+        if op_threshold is None:
+            broad_intent = bool(
+                re.search(r"(전반|전체|전체적|모든|표\s*색|배경색|통으로)", lowered)
+            )
+            target_range = _extract_target_range_from_text(lowered) or (
+                context_range or "__ACTIVE_SELECTION__" if broad_intent else "A:Z"
+            )
+            return {
+                "action": "excel_live.fill_range",
+                "params": {
+                    "target_range": target_range,
+                    "fill_color": _normalize_color(color_match.group(1)) if color_match else "#FFFF00",
+                },
+                "reason": "범위 전체 배경색 적용 요청",
+            }
+
+        # 범위를 특정하지 않은 강조 명령은 A:A로 좁게 잡으면 체감상 "안 된다"가 되기 쉽다.
+        # 기본값을 A:Z로 넓혀 일반 표(좌측 영역)에서 자연어 명령이 더 잘 동작하게 한다.
+        target_range = _extract_target_range_from_text(lowered) or "A:Z"
         if op_threshold:
             operator, threshold = op_threshold
             color = _normalize_color(color_match.group(1)) if color_match else "#FFFF00"
@@ -498,7 +543,9 @@ async def parse_command_with_llm(message: str, llm_service) -> dict[str, Any]:
         "- excel_live.select_workbook\n"
         "- excel_live.read_range\n"
         "- excel_live.write_range\n"
+        "- excel_live.create_table\n"
         "- excel_live.highlight_by_condition\n"
+        "- excel_live.fill_range\n"
         "- excel_live.save_workbook\n\n"
         "- excel_live.apply_border\n"
         "- excel_live.set_formula\n\n"
@@ -525,31 +572,155 @@ async def parse_command_with_llm(message: str, llm_service) -> dict[str, Any]:
     return {"action": action, "params": params, "reason": parsed.get("reason", "")}
 
 
-async def parse_excel_live_command(message: str, llm_service) -> dict[str, Any]:
-    rule = parse_command_rule_based(message)
-    if rule is not None:
-        return rule
+def _ensure_action_step(step: dict[str, Any]) -> dict[str, Any]:
+    action = str(step.get("action", "")).strip()
+    if action not in SUPPORTED_ACTIONS:
+        raise ValueError(f"지원하지 않는 action: {action}")
+    params = step.get("params", {})
+    if not isinstance(params, dict):
+        params = {}
+    reason = str(step.get("reason", "")).strip()
+    return {"action": action, "params": params, "reason": reason}
+
+
+async def parse_command_plan_with_llm(
+    message: str,
+    llm_service,
+    *,
+    context: dict[str, Any] | None = None,
+    forbid_list_action: bool = False,
+) -> dict[str, Any]:
+    """
+    LLM 기반 계획형 파서.
+
+    출력은 action_plan 배열을 우선으로 사용한다.
+    - action_plan: [{"action": "...", "params": {...}, "reason": "..."}]
+    """
+    context = context or {}
+    context_range = str(context.get("context_range", "") or "").strip().upper()
+    workbook_id = str(context.get("workbook_id", "") or "").strip()
+    sheet_name = str(context.get("sheet_name", "") or "").strip()
+    context_line = (
+        f"최근 컨텍스트: workbook_id={workbook_id or 'auto'}, sheet={sheet_name or 'auto'}, "
+        f"context_range={context_range or 'none'}\n"
+    )
+    prompt = (
+        "너는 Excel Live 작업 플래너다. 사용자 메시지를 실행 계획 JSON으로만 반환해라.\n"
+        "허용 action:\n"
+        "- excel_live.list_workbooks\n"
+        "- excel_live.select_workbook\n"
+        "- excel_live.read_range\n"
+        "- excel_live.write_range\n"
+        "- excel_live.create_table\n"
+        "- excel_live.highlight_by_condition\n"
+        "- excel_live.fill_range\n"
+        "- excel_live.save_workbook\n"
+        "- excel_live.apply_border\n"
+        "- excel_live.set_formula\n\n"
+        "규칙:\n"
+        "1) JSON 외 텍스트 금지\n"
+        "2) action_plan은 1~4개 단계\n"
+        "3) 각 단계는 action/params/reason 포함\n"
+        "4) 범위가 없으면 __ACTIVE_SELECTION__ 또는 __ACTIVE_CELL__ 사용 가능\n"
+        "4-1) context_range가 주어졌고 사용자가 '이 범위/여기/전반적으로'처럼 모호하게 말하면 context_range를 우선 사용\n"
+        "5) 모호하면 list_workbooks 대신 read_range로 현재 선택 범위를 먼저 읽고 다음 단계를 계획\n"
+        f"6) forbid_list_action={str(bool(forbid_list_action)).lower()} 일 때 첫 단계를 excel_live.list_workbooks로 반환하면 안 된다\n\n"
+        f"{context_line}"
+        "출력 형식:\n"
+        '{"action_plan":[{"action":"excel_live.read_range","params":{"range_ref":"__ACTIVE_SELECTION__"},"reason":"현재 범위 확인"}],"reason":"한 줄 한국어"}\n\n'
+        f"사용자 메시지: {message}"
+    )
+    raw = await llm_service.chat([{"role": "user", "content": prompt}])
+    match = re.search(r"\{.*\}", raw, re.DOTALL)
+    if not match:
+        raise ValueError("LLM 계획 JSON 파싱 실패")
+    parsed = json.loads(match.group(0))
+
+    steps_raw = parsed.get("action_plan")
+    if isinstance(steps_raw, list) and steps_raw:
+        action_plan = []
+        for raw_step in steps_raw[:4]:
+            if isinstance(raw_step, dict):
+                action_plan.append(_ensure_action_step(raw_step))
+        if not action_plan:
+            raise ValueError("LLM action_plan이 비어 있습니다.")
+        return {"action_plan": action_plan, "reason": str(parsed.get("reason", "")).strip()}
+
+    # 하위 호환: action/params 단일 형태도 수용
+    single = _ensure_action_step(parsed)
+    return {"action_plan": [single], "reason": str(parsed.get("reason", "")).strip()}
+
+
+async def parse_excel_live_command(
+    message: str,
+    llm_service,
+    context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    context = context or {}
+    lowered = str(message or "").lower()
+    explicit_list_intent = any(
+        token in lowered
+        for token in [
+            "열린 통합문서",
+            "워크북 목록",
+            "열린 파일 목록",
+            "list workbooks",
+            "workbook list",
+        ]
+    )
+    likely_edit_intent = any(
+        token in lowered
+        for token in [
+            "경계선",
+            "테두리",
+            "border",
+            "입력",
+            "작성",
+            "수식",
+            "강조",
+            "칠해",
+            "배경색",
+            "표",
+            "테이블",
+            "저장",
+            "만들어",
+            "생성",
+        ]
+    )
+    # 에이전트 단일 경로: 규칙 파서 없이 LLM 플래너만 사용한다.
     try:
-        parsed = await parse_command_with_llm(message, llm_service)
-        lowered = str(message or "").lower()
-        likely_edit_intent = any(
-            token in lowered
-            for token in [
-                "경계선",
-                "테두리",
-                "border",
-                "입력",
-                "작성",
-                "수식",
-                "강조",
-                "칠해",
-                "저장",
-            ]
+        planned = await parse_command_plan_with_llm(
+            message,
+            llm_service,
+            context=context,
         )
-        # 사용자의 편집 의도가 강한데 list_workbooks가 나오면 오분류로 간주한다.
-        if likely_edit_intent and parsed.get("action") == "excel_live.list_workbooks":
-            raise ValueError("편집 의도 명령을 목록 조회로 해석했습니다.")
-        return parsed
+        action_plan = planned["action_plan"]
+        # 명시적 목록 조회가 아닌데 list_workbooks가 나오면 1회 재계획한다.
+        if (
+            not explicit_list_intent
+            and action_plan
+            and action_plan[0].get("action") == "excel_live.list_workbooks"
+        ):
+            planned = await parse_command_plan_with_llm(
+                message,
+                llm_service,
+                context=context,
+                forbid_list_action=True,
+            )
+            action_plan = planned["action_plan"]
+            if (
+                action_plan
+                and action_plan[0].get("action") == "excel_live.list_workbooks"
+                and likely_edit_intent
+            ):
+                raise ValueError("편집 의도 명령을 목록 조회로 해석했습니다.")
+        first = action_plan[0]
+        return {
+            "action_plan": action_plan,
+            "action": first["action"],
+            "params": first["params"],
+            "reason": planned.get("reason", "") or first.get("reason", ""),
+        }
     except Exception as exc:
         raise ValueError(
             "엑셀 명령을 해석하지 못했습니다. 범위/동작을 함께 적어주세요. 예: 'B2:D5 범위에 경계선 적용해줘'"

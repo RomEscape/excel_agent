@@ -335,6 +335,10 @@ npm run tauri:dev
 - 삽입 형식: `[[EXCEL_RANGE:A1:C3]]` + TSV 미리보기 블록
 - 이후 `이 범위`, `해당 범위`, `복사한 범위`처럼 말해도 선택 범위를 기준으로 처리된다.
 - 명령 해석 실패 시에는 `열린 통합문서 목록`으로 조용히 폴백하지 않고, 명확한 오류(HTTP 400)로 반환한다.
+- 실행 안정화 레이어:
+  - `/excel-live/command`는 Planner/Executor 경로(`excel_live_executor.py`)로 단계 실행/검증/재시도를 고정한다.
+  - LLM이 `5*5 표 만들어줘`를 `write_range`(불완전 파라미터)로 잘못 만들면 서버가 `create_table(rows=5, cols=5)`로 자동 보정한다.
+  - `여기에 테두리`처럼 모호 지시어는 `context_range`를 우선 사용하고, 마지막 성공 범위를 workbook 단위로 기억해 후속 턴에서 재사용한다.
 
 전체 67개 검증 입력 세트는 루트 파일에서 바로 확인 가능:
 

@@ -165,6 +165,44 @@ class ExcelLiveService:
             "col_count": col_count,
         }
 
+    def get_range_snapshot(
+        self,
+        workbook_id: str | None,
+        sheet_name: str | None,
+        range_ref: str,
+    ) -> dict[str, Any]:
+        """
+        범위 상태 스냅샷(검증용)을 반환한다.
+        - row/col 크기
+        - 값이 채워진 셀 개수
+        """
+        target_id = workbook_id or self._selected_workbook_id
+        if not target_id:
+            raise WorkbookNotFoundError("workbook_id가 필요합니다.")
+        wb = self._find_workbook(target_id)
+        if sheet_name:
+            resolved_sheet = self._find_sheet(wb, sheet_name)
+            resolved_sheet_name = str(getattr(resolved_sheet, "name", "") or "")
+        else:
+            resolved_sheet = wb.sheets.active
+            resolved_sheet_name = str(getattr(resolved_sheet, "name", "") or "")
+        data = self.read_range(target_id, resolved_sheet_name, range_ref)
+        values = data.get("values", [])
+        filled = 0
+        for row in values:
+            for v in row:
+                if v is None:
+                    continue
+                if isinstance(v, str) and not v.strip():
+                    continue
+                filled += 1
+        return {
+            "address": data.get("address", range_ref),
+            "row_count": int(data.get("row_count", 0) or 0),
+            "col_count": int(data.get("col_count", 0) or 0),
+            "filled_cells": filled,
+        }
+
     def write_range(
         self,
         workbook_id: str | None,
@@ -235,6 +273,40 @@ class ExcelLiveService:
             "address": str(rng.address),
         }
 
+    def fill_range(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        target_range: str,
+        fill_color: str = "#FFFF00",
+    ) -> dict[str, Any]:
+        """지정 범위 전체의 배경색을 변경한다."""
+        target_id = workbook_id or self._selected_workbook_id
+        if not target_id:
+            raise WorkbookNotFoundError("workbook_id가 필요합니다.")
+
+        wb = self._find_workbook(target_id)
+        sheet = self._find_sheet(wb, sheet_name)
+        rng = self._resolve_target_range(sheet, target_range)
+        rgb = self._hex_to_rgb(fill_color)
+        rng.color = rgb
+
+        start_row = int(getattr(rng, "row", 1))
+        start_col = int(getattr(rng, "column", 1))
+        rows_obj = getattr(rng, "rows", None)
+        cols_obj = getattr(rng, "columns", None)
+        row_count = int(getattr(rows_obj, "count", 1) or 1)
+        col_count = int(getattr(cols_obj, "count", 1) or 1)
+        for r in range(row_count):
+            for c in range(col_count):
+                cell_ref = f"{self._idx_to_col(start_col + c)}{start_row + r}"
+                self._ensure_visual_gridline(sheet.range(cell_ref), rgb)
+
+        return {
+            "changed_cells": row_count * col_count,
+            "address": str(rng.address),
+        }
+
     def apply_border(
         self,
         workbook_id: str | None,
@@ -302,6 +374,44 @@ class ExcelLiveService:
         return {
             "formula_applied_cells": row_count * col_count,
             "address": str(rng.address),
+        }
+
+    def create_table(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        start_cell: str,
+        rows: int,
+        cols: int,
+        with_border: bool = True,
+    ) -> dict[str, Any]:
+        """시작 셀 기준으로 지정 크기의 표 영역을 생성한다."""
+        target_id = workbook_id or self._selected_workbook_id
+        if not target_id:
+            raise WorkbookNotFoundError("workbook_id가 필요합니다.")
+        row_count = max(1, min(100, int(rows)))
+        col_count = max(1, min(50, int(cols)))
+
+        wb = self._find_workbook(target_id)
+        sheet = self._find_sheet(wb, sheet_name)
+        rng = sheet.range(start_cell).resize(row_count, col_count)
+        rng.value = [["" for _ in range(col_count)] for _ in range(row_count)]
+
+        if with_border:
+            api_range = getattr(rng, "api", None)
+            if api_range is not None:
+                # left, top, bottom, right, inside_v, inside_h
+                for edge in (7, 8, 9, 10, 11, 12):
+                    border = api_range.Borders(edge)
+                    border.LineStyle = 1
+                    border.Weight = 2
+                    border.Color = self._rgb_to_excel_color((0, 0, 0))
+
+        return {
+            "created": True,
+            "address": str(rng.address),
+            "rows": row_count,
+            "cols": col_count,
         }
 
     def save_workbook(self, workbook_id: str | None) -> dict[str, Any]:

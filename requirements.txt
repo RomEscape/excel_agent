@@ -13,6 +13,8 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 keyring>=25.3.0
 httpx>=0.27.0
+# Starlette/FastAPI TestClient deprecation 경고 제거용(테스트 의존성)
+httpx2>=2.5.0
 pydantic>=2.9.0
 google-auth>=2.29.0
 google-auth-oauthlib>=1.2.0

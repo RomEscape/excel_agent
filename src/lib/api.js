@@ -318,13 +318,21 @@ export async function excelLiveStatus() {
  * @param {string | null} workbookId
  * @param {string | null} sheetName
  * @param {boolean} approve
+ * @param {string | null} contextRange
  */
-export async function excelLiveCommand(message, workbookId = null, sheetName = null, approve = false) {
+export async function excelLiveCommand(
+  message,
+  workbookId = null,
+  sheetName = null,
+  approve = false,
+  contextRange = null,
+) {
   const raw = await call("excel_live_command", {
     message,
     workbookId,
     sheetName,
     approve,
+    contextRange,
   });
   return parseResponse(raw);
 }

@@ -1,4 +1,4 @@
-Excel Live 테스트 입력 명령어 세트 (67개)
+Excel Live 테스트 입력 명령어 세트 (71개)
 원본: docs/excel-live-command-list.txt
 검증 기준: python-sidecar 룰 파서 + 복합 분해 로직 기준 (2026-06-20)
 
@@ -76,6 +76,10 @@ Excel Live 테스트 입력 명령어 세트 (67개)
 65. [high] [[EXCEL_RANGE:B2:D12]] 이 범위에 경계선 적용해줘 -> excel_live.apply_border
 66. [high] [[EXCEL_RANGE:C4:F9]] 복사한 범위에 굵게 경계선 적용해줘 -> excel_live.apply_border
 67. [mid] B10에 테두리 넣어줘 -> excel_live.apply_border
+68. [mid] 5 * 5 표를 하나 만들어줘 -> excel_live.create_table
+69. [mid] 표 색을 전반적으로 노랗게 칠해줘 -> excel_live.fill_range
+70. [high] [[EXCEL_RANGE:C3:E9]] 이 범위에 테두리 적용해줘 -> excel_live.apply_border (context_range)
+71. [high] [[EXCEL_RANGE:C3:E9]] 여기 전반적으로 노란색으로 칠해줘 -> excel_live.fill_range (context_range)
 
 해석 실패 정책
 - 모호/실패 명령은 `excel_live.list_workbooks`로 자동 폴백하지 않고 HTTP 400을 반환한다.

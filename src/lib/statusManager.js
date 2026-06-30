@@ -69,6 +69,7 @@ export const STATUS_MODULES = {
           running,
           port: statusRes?.port ?? 18789,
           message: statusRes?.message ?? "",
+          reasonCode: statusRes?.reason_code ?? null,
           state: deriveState({ installed, running }),
           lastChecked: Date.now(),
           lastError: null,
@@ -133,6 +134,7 @@ export const STATUS_MODULES = {
           running,
           port: result?.port ?? 18789,
           message: result?.message ?? "",
+          reasonCode: result?.reason_code ?? null,
           state: running ? "running_healthy" : "error",
           lastChecked: Date.now(),
           operation: null,
@@ -332,6 +334,7 @@ export function getDerivedDiag() {
       state: oc.running ? "running" : "stopped",
       message: oc.message,
       port: oc.port,
+      reason_code: oc.reasonCode,
     },
     ocInstalled: { installed: oc.installed, version: oc.version },
     oll: {
