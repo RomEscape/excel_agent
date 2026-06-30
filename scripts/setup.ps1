@@ -163,6 +163,10 @@ Test-RequiredCommand -Name "node" -InstallHint "Node.js LTS 설치 후 새 터�
 Test-RequiredCommand -Name "npm" -InstallHint "Node.js 설치에 npm이 포함됩니다. PATH를 확인해 주세요."
 Invoke-Step -Title "Node 의존성 설치 (npm ci)" -Command "npm ci"
 
+if (-not (Get-Command openclaw -ErrorAction SilentlyContinue)) {
+    Write-Warning "[SETUP_OPENCLAW_MISSING_OR_PATH] openclaw 명령을 찾지 못했습니다. 설치 후 새 터미널에서 npm prefix/PATH를 다시 확인해 주세요."
+}
+
 if (Get-Command uv -ErrorAction SilentlyContinue) {
     Invoke-Step -Title "Python 의존성 동기화 (uv sync --extra dev)" -Command "uv sync --extra dev" -WorkingDirectory $SidecarDir
 } else {
@@ -198,5 +202,10 @@ Write-Host "=== 통합 설치 완료 ===" -ForegroundColor Green
 Write-Host "OPENCLAW_HOME=$env:OPENCLAW_HOME"
 Write-Host "CARGO_HOME=$env:CARGO_HOME"
 Write-Host "NPM_CONFIG_PREFIX=$env:NPM_CONFIG_PREFIX"
+if (Get-Command openclaw -ErrorAction SilentlyContinue) {
+    Write-Host "OPENCLAW_CLI=detected"
+} else {
+    Write-Host "OPENCLAW_CLI=missing (reason_code=SETUP_OPENCLAW_MISSING_OR_PATH)"
+}
 Write-Host "다음 실행 명령:"
 Write-Host "  npm run tauri:dev"

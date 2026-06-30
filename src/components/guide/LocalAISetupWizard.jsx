@@ -1,12 +1,14 @@
 /**
- * LocalAISetupWizard.jsx — "Ollama 로컬 모델"을 한 번에 자동 설정.
+ * LocalAISetupWizard.jsx — "OpenClaw + Ollama 로컬 모델"을 한 번에 자동 설정.
  *
  * 진단 → 계획 → 자동 실행 → 검증 단일 모달.
  * 단계:
- *   0. Ollama 설치 (공식 배포본 — macOS는 .app, Windows는 winget/설치 프로그램) — 미설치 시
- *   1. Ollama 데몬 실행 (탐지된 실물 경로로 실행) — 미실행 시
- *   2. Ollama 모델 다운로드 (`ollama pull <model>`) — 미다운로드 시
- *   3. AI 대화 테스트 (`/llm/chat` → Ollama) — 항상
+ *   1. OpenClaw 설치 (`npm install -g openclaw@latest`) — 미설치 시
+ *   2. OpenClaw 게이트웨이 시작 (`openclaw gateway --port 18789`) — 미실행 시
+ *   3. Ollama 설치 (macOS: brew / Windows: winget) — 미설치 시
+ *   4. Ollama 데몬 실행 (macOS: brew services / Windows: Ollama 앱 시작) — 미실행 시
+ *   5. Ollama 모델 다운로드 (`ollama pull <model>`) — 미다운로드 시
+ *   6. OpenClaw → Ollama 연결 (`openclaw config set ...` 비인터랙티브) — 항상
  *
  * 모든 단계는 멱등하게 동작 — 이미 충족되면 즉시 skip.
  */
@@ -21,12 +23,9 @@ import {
   Download,
   ChevronRight,
   ExternalLink,
-  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusRow } from "@/components/ui/status";
-import { ModelSelectField } from "@/components/ui/wizard";
-import { useOllamaModels } from "@/hooks/useOllamaModels";
 import useAppStore from "@/store/appStore";
 import useStatusStore from "@/store/statusStore";
 import {
@@ -35,7 +34,8 @@ import {
   getDerivedDiag,
 } from "@/lib/statusManager";
 import {
-  chat,
+  openclawUseOllama,
+  agentChat,
   installerCancel,
   saveLLMSettings,
 } from "@/lib/api";
@@ -49,16 +49,41 @@ import {
   hasModelInstalled,
 } from "@/lib/localAISetup";
 import {
-  QWEN3_LOCAL_PRESET,
+  QWEN3_OPENCLAW_PRESET,
   applyLocalStackPreset,
 } from "@/lib/localStack";
 import { toUserMessage } from "@/lib/errorMessages";
 
+/** 진단/검증 후 잠깐 기다림 (ms) */
+const DETECTION_DELAY_MS = 1000;
+
 // ── 단계 정의 (순수 로직은 @/lib/localAISetup.js로 분리, 여기는 wizard 전용 상수만) ──
 
 /** 프롬프트 검증 시 보낼 핑 메시지 — 응답 형식·언어는 모델마다 다르므로 *비어있지 않은 응답*만 검사 */
-const PING_MESSAGE = QWEN3_LOCAL_PRESET.pingMessage;
+const PING_MESSAGE = QWEN3_OPENCLAW_PRESET.pingMessage;
 const PROMPT_TEST_TIMEOUT_MS = 120_000;
+
+function isGatewayUnavailableError(err) {
+  const msg = String(err?.message ?? err ?? "");
+  return (
+    msg.includes("HTTP 503") ||
+    msg.includes("OpenClaw 게이트웨이가 실행되지 않았습니다")
+  );
+}
+
+function isTokenMismatchError(err) {
+  const msg = String(err?.message ?? err ?? "").toLowerCase();
+  return msg.includes("gateway token mismatch") || msg.includes("토큰이 sidecar와 일치하지");
+}
+
+function isSidecarUnavailableError(err) {
+  const msg = String(err?.message ?? err ?? "");
+  return (
+    msg.includes("Connection refused") ||
+    msg.includes("19532") ||
+    msg.includes("백그라운드 서비스에 연결할 수 없습니다")
+  );
+}
 
 // ── 메인 컴포넌트 ───────────────────────────────────────────────────────────
 
@@ -70,6 +95,7 @@ export default function LocalAISetupWizard() {
 
   // 새 중앙 상태 store에서 모듈 데이터 구독 — App 루트의 useStatusPoller가 자동 갱신.
   // 이 wizard는 더 이상 자체 fetch를 하지 않고 store의 데이터를 읽기만 한다.
+  const ocModule = useStatusStore((s) => s.modules.openclaw);
   const ollamaModule = useStatusStore((s) => s.modules.ollama);
 
   const [open, setOpen] = useState(false);
@@ -84,13 +110,20 @@ export default function LocalAISetupWizard() {
   // cancelRef.current는 runAll 루프의 다음 step 진입 직전 검사용으로만 사용.
   const cancelRef = useRef(false);
 
-  // store 모듈 상태 → buildPlan/isAllReady가 받는 diag 형태로 변환.
-  // 아직 한 번도 check 안 됨(unknown)이면 diag=null로 두어 로딩 표시.
+  // store 모듈 상태 → buildPlan/isAllReady가 받는 diag 형태로 변환 (호환성).
+  // 두 모듈 모두 unknown(=한 번도 check 안 됨)이면 diag=null로 두어 로딩 표시.
   const diag = useMemo(() => {
-    if (ollamaModule.state === "unknown") {
+    if (ocModule.state === "unknown" && ollamaModule.state === "unknown") {
       return null;
     }
     return {
+      oc: {
+        state: ocModule.running ? "running" : "stopped",
+        message: ocModule.message,
+        port: ocModule.port,
+        reason_code: ocModule.reasonCode,
+      },
+      ocInstalled: { installed: ocModule.installed, version: ocModule.version },
       oll: {
         installed: ollamaModule.installed,
         running: ollamaModule.running,
@@ -98,7 +131,7 @@ export default function LocalAISetupWizard() {
         version: ollamaModule.version,
       },
     };
-  }, [ollamaModule]);
+  }, [ocModule, ollamaModule]);
 
   // 진단 트리거 — 실제 fetch는 statusManager가 담당, 결과는 store로 자동 반영.
   // 단계별 실행 후 readiness 판정에 사용하기 위해 fresh diag도 반환한다.
@@ -109,23 +142,25 @@ export default function LocalAISetupWizard() {
 
   // 앱 시작 직후 1회 진단은 App.jsx의 useStatusPoller가 처리 — 여기선 별도 트리거 불필요.
 
-  // 모달 자동 노출 결정 — 온보딩을 마쳤는데 로컬 스택이 덜 준비된 경우
+  // 모달 자동 노출 결정 — provider=ollama인 사용자에게만 자동 노출
+  // (Claude API 사용자는 글로벌 이벤트로 수동 트리거 가능)
   useEffect(() => {
     if (!diag) return;
     if (!onboardingComplete) return;
     if (dismissed) return;
+    if (llmConfig?.provider !== "ollama") return;
     const allReady = isAllReady(diag, model);
     if (!allReady && !open) {
       setOpen(true);
     }
-  }, [diag, onboardingComplete, dismissed, model, open]);
+  }, [diag, onboardingComplete, dismissed, model, open, llmConfig?.provider]);
 
   // llmConfig의 model이 있으면 초기값으로 사용
   useEffect(() => {
-    if (llmConfig?.model) {
+    if (llmConfig?.provider === "ollama" && llmConfig?.model) {
       setModel(llmConfig.model);
     }
-  }, [llmConfig?.model]);
+  }, [llmConfig?.provider, llmConfig?.model]);
 
   // 글로벌 이벤트 — Dashboard "지금 자동 설치" 등에서 다시 열기.
   // 모달을 *즉시* 열어 사용자에게 피드백을 주고, 진단은 백그라운드로 갱신한다.
@@ -142,12 +177,12 @@ export default function LocalAISetupWizard() {
       setErrorMsg("");
       runDiagnosis();
     };
-    window.addEventListener("officeclaw:open-local-ai-setup", handler);
+    window.addEventListener("private-claw:open-local-ai-setup", handler);
     // 기존 이벤트 호환
-    window.addEventListener("officeclaw:open-ai-setup", handler);
+    window.addEventListener("private-claw:open-openclaw-install", handler);
     return () => {
-      window.removeEventListener("officeclaw:open-local-ai-setup", handler);
-      window.removeEventListener("officeclaw:open-ai-setup", handler);
+      window.removeEventListener("private-claw:open-local-ai-setup", handler);
+      window.removeEventListener("private-claw:open-openclaw-install", handler);
     };
   }, [runDiagnosis]);
 
@@ -237,6 +272,30 @@ export default function LocalAISetupWizard() {
       // 결과는 InstallResult — handleInstallResult가 실패 시 throw + 컨텍스트 첨부.
       try {
         switch (stepId) {
+          case STEP.INSTALL_OC: {
+            const result = await STATUS_MODULES.openclaw.install();
+            handleInstallResult(stepId, result);
+            break;
+          }
+          case STEP.START_OC: {
+            pushLog(stepId, "info", "OpenClaw를 시작하고 있어요...");
+            const result = await STATUS_MODULES.openclaw.start();
+            if (result?.state !== "running") {
+              if (result?.reason_code === "OPENCLAW_NOT_INSTALLED_OR_PATH_MISMATCH") {
+                pushLog(stepId, "info", "OpenClaw 설치/경로 문제가 감지되어 설치 단계를 자동 재실행합니다...");
+                const installResult = await STATUS_MODULES.openclaw.install();
+                handleInstallResult(stepId, installResult);
+                const retry = await STATUS_MODULES.openclaw.start();
+                if (retry?.state === "running") {
+                  pushLog(stepId, "info", "✓ 재설치 후 OpenClaw 실행이 정상화되었습니다.");
+                  break;
+                }
+              }
+              throw new Error(result?.message || "OpenClaw를 시작하지 못했어요");
+            }
+            pushLog(stepId, "info", "✓ OpenClaw가 응답하고 있어요");
+            break;
+          }
           case STEP.INSTALL_OLLAMA: {
             const result = await STATUS_MODULES.ollama.install();
             handleInstallResult(stepId, result);
@@ -253,19 +312,95 @@ export default function LocalAISetupWizard() {
             handleInstallResult(stepId, result);
             break;
           }
+          case STEP.CONFIG_OC: {
+            pushLog(stepId, "info", `AI 모델(${model})을 OpenClaw에 연결하고 있어요...`);
+            try {
+              await openclawUseOllama(model);
+              pushLog(stepId, "info", "✓ 연결 완료");
+            } catch (err) {
+              const msg = String(err?.message ?? err);
+              // Windows GUI 환경에서 openclaw CLI 경로 해석 실패(os error 3) 케이스가 있다.
+              // 이때도 실제 agent 경로가 정상 동작하면 불필요하게 setup 전체를 실패 처리하지 않는다.
+              const pathLikeError =
+                msg.includes("os error 3") || msg.includes("지정된 경로를 찾을 수 없습니다");
+              if (!pathLikeError) {
+                throw err;
+              }
+              pushLog(
+                stepId,
+                "info",
+                "OpenClaw CLI 경로 확인에 실패했지만, 실제 AI 대화 경로로 연결 상태를 재검증합니다..."
+              );
+              const probe = await Promise.race([
+                agentChat(PING_MESSAGE, null),
+                new Promise((_, rej) =>
+                  setTimeout(
+                    () => rej(new Error("OpenClaw 연결 재검증이 시간 초과되었습니다.")),
+                    20_000
+                  )
+                ),
+              ]);
+              const probeText = String(probe?.response ?? "").trim();
+              if (!probeText) {
+                throw err;
+              }
+              pushLog(stepId, "info", "✓ 대화 경로가 정상이라 연결 단계를 통과 처리합니다.");
+            }
+            break;
+          }
           case STEP.PROMPT_TEST: {
             pushLog(stepId, "info", "AI에게 간단한 인사를 보내볼게요...");
-            // /llm/chat 경유로 Ollama 응답 경로를 검증한다 (별도 게이트웨이 없음).
-            const reply = await Promise.race([
-              chat(PING_MESSAGE, model),
-              new Promise((_, rej) =>
-                setTimeout(
-                  () => rej(new Error("AI 응답이 너무 오래 걸려요. 처음 모델을 띄우면 1-2분 걸릴 수 있어요.")),
-                  PROMPT_TEST_TIMEOUT_MS
-                )
-              ),
-            ]);
-            const text = String(reply?.response ?? reply ?? "").trim();
+            pushLog(stepId, "info", "테스트 전에 OpenClaw 게이트웨이 상태를 다시 확인합니다...");
+            const ensureGateway = await STATUS_MODULES.openclaw.start();
+            if (ensureGateway?.state !== "running") {
+              throw new Error(
+                ensureGateway?.message || "OpenClaw 게이트웨이를 준비하지 못해 AI 대화 테스트를 진행할 수 없어요."
+              );
+            }
+
+            const askAgentWithTimeout = () =>
+              Promise.race([
+                agentChat(PING_MESSAGE, null),
+                new Promise((_, rej) =>
+                  setTimeout(
+                    () => rej(new Error("AI 응답이 너무 오래 걸려요. 처음 모델을 띄우면 1-2분 걸릴 수 있어요.")),
+                    PROMPT_TEST_TIMEOUT_MS
+                  )
+                ),
+              ]);
+
+            let reply;
+            try {
+              reply = await askAgentWithTimeout();
+            } catch (err) {
+              if (isTokenMismatchError(err)) {
+                pushLog(stepId, "info", "게이트웨이 인증 토큰 불일치가 감지되어 OpenClaw를 다시 시작합니다...");
+                const startResult = await STATUS_MODULES.openclaw.start();
+                if (startResult?.state !== "running") {
+                  throw new Error(startResult?.message || "OpenClaw 게이트웨이를 자동으로 다시 시작하지 못했어요.");
+                }
+                await new Promise((r) => setTimeout(r, 1200));
+                reply = await askAgentWithTimeout();
+              } else if (isSidecarUnavailableError(err)) {
+                pushLog(stepId, "info", "백그라운드 서비스가 아직 준비 중이라 잠시 후 다시 시도합니다...");
+                await new Promise((r) => setTimeout(r, 1800));
+                reply = await askAgentWithTimeout();
+              } else {
+                if (!isGatewayUnavailableError(err)) {
+                  throw err;
+                }
+                pushLog(stepId, "info", "OpenClaw 게이트웨이가 꺼져 있어 자동으로 다시 시작합니다...");
+                const startResult = await STATUS_MODULES.openclaw.start();
+                if (startResult?.state !== "running") {
+                  throw new Error(startResult?.message || "OpenClaw 게이트웨이를 자동으로 다시 시작하지 못했어요.");
+                }
+                // 게이트웨이 재기동 직후 초기화 시간을 짧게 준다.
+                await new Promise((r) => setTimeout(r, 1200));
+                pushLog(stepId, "info", "게이트웨이 재시작 완료. AI 대화 테스트를 다시 시도합니다.");
+                reply = await askAgentWithTimeout();
+              }
+            }
+            const text = String(reply?.response ?? "").trim();
             if (!text) {
               throw new Error("AI가 응답하지 않았어요");
             }
@@ -513,14 +648,14 @@ export default function LocalAISetupWizard() {
               {(stepStates[STEP.INSTALL_OLLAMA]?.status === "error" ||
                 stepStates[STEP.START_OLLAMA]?.status === "error") && (
                 <p className="mt-2">
-                  자동 설치/실행이 실패하면 아래에서 직접 내려받아 설치한 뒤 [재진단]을 눌러주세요.{" "}
+                  자동 설치/실행이 실패하면 Ollama를 직접 설치/실행한 뒤 [재진단]을 눌러주세요.{" "}
                   <a
                     href="https://ollama.com/download"
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center gap-1 underline"
                   >
-                    로컬 AI 엔진 내려받기 (ollama.com)
+                    Ollama 다운로드
                     <ExternalLink className="h-3 w-3" />
                   </a>
                 </p>
@@ -606,19 +741,23 @@ export default function LocalAISetupWizard() {
 // ── 하위 컴포넌트 ──────────────────────────────────────────────────────────
 
 // 진단 카드 — 사용자에게 *세부* 항목별 상태를 보여주는 유일한 화면.
-// 다른 위치(StatusBar/Dashboard)는 "AI 엔진 준비됨/문제 있음" 단일 표시지만,
+// 다른 위치(StatusBar/Dashboard)는 "OpenClaw 준비됨/문제 있음" 단일 표시지만,
 // 여기서는 진단 목적이므로 설치/실행/모델을 모두 분리해서 보여준다.
 // 통일된 톤 시스템(STATUS_TONE) 사용 — "준비됨"(ok) / "문제 있음"(warning).
 function DiagnosisCard({ diag, model }) {
+  const ocInst = !!diag.ocInstalled?.installed;
+  const ocRun = diag.oc?.state === "running";
   const ollInst = !!diag.oll?.installed;
   const ollRun = !!diag.oll?.running;
   const modelInst = hasModelInstalled(diag.oll?.models, model);
 
-  // 사용자 친화적 표현 — 포트/데몬 같은 용어는 표시하지 않음.
+  // 사용자 친화적 표현 — 포트/데몬/게이트웨이 같은 용어는 표시하지 않음.
   // 버전은 hint(우측 메타)로만 작게 표시.
   const items = [
-    { label: "로컬 AI 엔진 설치", ok: ollInst, hint: diag.oll?.version },
-    { label: "로컬 AI 엔진 실행", ok: ollRun },
+    { label: "OpenClaw 설치", ok: ocInst, hint: diag.ocInstalled?.version },
+    { label: "OpenClaw 실행", ok: ocRun },
+    { label: "Ollama 설치", ok: ollInst, hint: diag.oll?.version },
+    { label: "Ollama 실행", ok: ollRun },
     { label: `AI 모델 (${model})`, ok: modelInst },
   ];
 
@@ -645,104 +784,61 @@ function DiagnosisCard({ diag, model }) {
   );
 }
 
-/**
- * 모델 선택 — **이 컴퓨터에 설치된 모델** + 받을 수 있는 추천 모델.
- *
- * 목록은 `useOllamaModels`가 중앙 statusStore(= Rust `ollama_status` → `/api/tags`,
- * `ollama list`와 같은 목록)에서 가져온다. 예전에는 추천 2개를 라디오로 박아둬서,
- * 이미 받아둔 모델이 있어도 목록에 안 보이고 `직접 입력`에 손으로 쳐야 했다.
- *
- * 여기서는 설치 목록만 보여주면 안 된다 — 이 화면의 목적이 **아직 없는 모델을
- * 받는 것**이라, 갓 설치한 사용자는 목록이 비어 고를 것이 없다. 그래서
- * 추천 모델을 `installed: false`로 함께 올리고 배지로 구분한다.
- */
 function ModelPicker({ model, onChange }) {
   const [custom, setCustom] = useState(false);
-
-  // 추천 카탈로그(미설치여도 받을 수 있는 것) + 현재 선택값.
-  // 현재 선택값을 넣는 이유: 직접 입력한 모델이 목록에 없으면 셀렉트가
-  // placeholder로 떨어져 "무엇을 고른 상태인지" 화면에서 사라진다.
-  const extraIds = useMemo(
-    () => [...RECOMMENDED_MODELS.map((m) => m.id), model].filter(Boolean),
-    [model]
-  );
-  const { options, installedCount, refresh, refreshing } = useOllamaModels({ extraIds });
-
-  // 추천 카탈로그에만 있는 설명 문구 — 셀렉트 항목에는 안 들어가므로 아래에 붙인다.
-  const note = RECOMMENDED_MODELS.find((m) => m.id === model)?.note;
-  const selected = options.find((o) => o.id === model);
-
   return (
     <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="flex items-center gap-1.5 text-xs font-semibold">
-          <Download className="h-3.5 w-3.5 text-primary" />
-          AI 모델 선택
-        </p>
-        <button
-          type="button"
-          onClick={refresh}
-          disabled={refreshing}
-          title="설치된 모델 목록 새로고침"
-          className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-50"
-        >
-          {refreshing ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <RefreshCw className="h-3 w-3" />
-          )}
-          새로고침
-        </button>
-      </div>
-
+      <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold">
+        <Download className="h-3.5 w-3.5 text-primary" />
+        AI 모델 선택
+      </p>
       <div className="space-y-1.5">
-        <ModelSelectField
-          options={options}
-          value={custom ? "" : model}
-          onChange={(id) => {
-            onChange(id);
-            setCustom(false);
-          }}
-          disabled={custom}
-          placeholder="모델을 선택해주세요."
-          emptyLabel="고를 수 있는 모델이 없습니다."
-        />
-
-        {/* 선택한 모델이 무엇인지 한 줄로 밝힌다 — 배지만으로는 "미설치"가
-            "받아야 한다"는 뜻인지 "못 쓴다"는 뜻인지 갈린다. */}
-        {!custom && selected && (
-          <p className="text-[11px] text-muted-foreground">
-            {selected.installed
-              ? "이미 받아둔 모델이에요 — 다운로드 단계는 건너뜁니다."
-              : "아직 없는 모델이에요 — 아래 단계에서 내려받습니다."}
-            {note ? ` ${note}` : ""}
-          </p>
-        )}
-
+        {RECOMMENDED_MODELS.map((m) => (
+          <label
+            key={m.id}
+            className={`flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-1.5 text-xs ${
+              model === m.id && !custom
+                ? "border-primary bg-primary/5"
+                : "border-border hover:bg-muted/50"
+            }`}
+          >
+            <input
+              type="radio"
+              name="ollama-model"
+              checked={model === m.id && !custom}
+              onChange={() => {
+                onChange(m.id);
+                setCustom(false);
+              }}
+              className="mt-0.5"
+            />
+            <div className="flex-1">
+              <div className="font-medium">{m.label}</div>
+              <div className="text-muted-foreground">{m.note}</div>
+            </div>
+          </label>
+        ))}
         <label
           className={`flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs ${
             custom ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
           }`}
         >
           <input
-            type="checkbox"
+            type="radio"
+            name="ollama-model"
             checked={custom}
-            onChange={(e) => setCustom(e.target.checked)}
+            onChange={() => setCustom(true)}
           />
-          <span className="font-medium shrink-0">직접 입력:</span>
+          <span className="font-medium">직접 입력:</span>
           <input
             type="text"
             disabled={!custom}
             value={custom ? model : ""}
             onChange={(e) => onChange(e.target.value)}
             placeholder="qwen3:8b"
-            className="min-w-0 flex-1 rounded border border-input bg-background px-2 py-0.5 font-mono text-[11px] disabled:opacity-50"
+            className="flex-1 rounded border border-input bg-background px-2 py-0.5 font-mono text-[11px] disabled:opacity-50"
           />
         </label>
-
-        <p className="text-[11px] text-muted-foreground">
-          이 컴퓨터에 설치된 모델 {installedCount}개
-        </p>
       </div>
     </div>
   );
