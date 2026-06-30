@@ -301,3 +301,41 @@ def test_parse_excel_live_command_replans_when_edit_intent_misclassified():
     parsed = asyncio.run(parse_excel_live_command("B2:D5 범위에 경계선 적용해줘", llm))
     assert parsed["action_plan"][0]["action"] == "excel_live.apply_border"
 
+
+def test_parse_excel_live_command_raises_when_highlight_intent_still_list_after_replan():
+    llm = _FakeLLM(
+        [
+            '{"action_plan":[{"action":"excel_live.list_workbooks","params":{},"reason":"first misclassify"}],"reason":"first"}',
+            '{"action_plan":[{"action":"excel_live.list_workbooks","params":{},"reason":"second misclassify"}],"reason":"second"}',
+        ]
+    )
+    try:
+        asyncio.run(parse_excel_live_command("A열에서 10 이상인 셀만 노란색 배경 적용", llm))
+        assert False, "ValueError expected"
+    except ValueError:
+        pass
+
+
+def test_parse_excel_live_command_replans_when_edit_intent_returns_read_range():
+    llm = _FakeLLM(
+        [
+            '{"action_plan":[{"action":"excel_live.list_workbooks","params":{},"reason":"first misclassify"}],"reason":"first"}',
+            '{"action_plan":[{"action":"excel_live.read_range","params":{"range_ref":"__ACTIVE_SELECTION__"},"reason":"second still passive"}],"reason":"second"}',
+            '{"action_plan":[{"action":"excel_live.highlight_by_condition","params":{"target_range":"A:A","operator":">=","threshold":10,"fill_color":"#FFFF00"},"reason":"edit plan"}],"reason":"third"}',
+        ]
+    )
+    parsed = asyncio.run(parse_excel_live_command("A열에서 10 이상인 셀만 노란색 배경 적용", llm))
+    assert parsed["action_plan"][0]["action"] == "excel_live.highlight_by_condition"
+
+
+def test_parse_excel_live_command_uses_intent_field_for_replan():
+    llm = _FakeLLM(
+        [
+            '{"intent":"edit","action_plan":[{"action":"excel_live.read_range","params":{"range_ref":"__ACTIVE_SELECTION__"},"reason":"bad"}],"reason":"first"}',
+            '{"intent":"edit","action_plan":[{"action":"excel_live.fill_range","params":{"target_range":"A:A","fill_color":"#FFFF00"},"reason":"good"}],"reason":"second"}',
+        ]
+    )
+    parsed = asyncio.run(parse_excel_live_command("애매한 표현", llm))
+    assert parsed["intent"] == "edit"
+    assert parsed["action_plan"][0]["action"] == "excel_live.fill_range"
+

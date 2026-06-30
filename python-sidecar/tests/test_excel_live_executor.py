@@ -43,3 +43,50 @@ def test_execute_plan_runs_steps_in_order():
     assert len(out.steps) == 2
     assert called[0][1]["range_ref"] == "A1"
     assert called[1][1]["range_ref"] == "B2"
+
+
+def test_execute_plan_retries_and_aborts_on_verify_failure():
+    calls = {"count": 0}
+
+    def _execute(action, params):
+        calls["count"] += 1
+        return {"address": "A1", "row_count": 1, "col_count": 1}
+
+    def _verify(action, params, result):
+        return False, "changed_cells=0"
+
+    out = execute_plan(
+        steps=[
+            PlanStep(action="excel_live.fill_range", params={"target_range": "A:A"}, reason="first"),
+            PlanStep(action="excel_live.read_range", params={"range_ref": "A1"}, reason="second"),
+        ],
+        execute_action=_execute,
+        verify_step=_verify,
+        max_attempts=2,
+        abort_on_failure=True,
+    )
+    # 첫 step만 2회 재시도 후 중단
+    assert calls["count"] == 2
+    assert len(out.steps) == 1
+    assert out.steps[0].verified is False
+    assert out.steps[0].retried is True
+    assert out.steps[0].verify_detail == "changed_cells=0"
+
+
+def test_execute_plan_captures_action_exception():
+    def _execute(action, params):
+        raise RuntimeError("COM error")
+
+    def _verify(action, params, result):
+        return True
+
+    out = execute_plan(
+        steps=[PlanStep(action="excel_live.write_range", params={"start_cell": "A1", "values_2d": [[1]]})],
+        execute_action=_execute,
+        verify_step=_verify,
+        max_attempts=1,
+        abort_on_failure=True,
+    )
+    assert len(out.steps) == 1
+    assert out.steps[0].error is not None
+    assert out.steps[0].verified is False

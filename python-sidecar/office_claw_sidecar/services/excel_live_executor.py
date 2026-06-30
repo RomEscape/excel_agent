@@ -26,6 +26,8 @@ class StepExecutionResult:
     result: dict[str, Any]
     retried: bool
     verified: bool
+    error: str | None = None
+    verify_detail: str | None = None
 
 
 @dataclass
@@ -63,31 +65,55 @@ def execute_plan(
     *,
     steps: list[PlanStep],
     execute_action: Callable[[str, dict[str, Any]], dict[str, Any]],
-    verify_step: Callable[[str, dict[str, Any], dict[str, Any]], bool],
+    verify_step: Callable[[str, dict[str, Any], dict[str, Any]], bool | tuple[bool, str]],
     max_attempts: int = 2,
+    abort_on_failure: bool = True,
+    on_step_complete: Callable[[StepExecutionResult], None] | None = None,
 ) -> ExecutionResult:
     results: list[StepExecutionResult] = []
     for idx, step in enumerate(steps, start=1):
         last_result: dict[str, Any] | None = None
         verified = False
+        verify_detail: str | None = None
+        error_text: str | None = None
         attempts = max(1, int(max_attempts))
+        used_attempts = 0
         for _ in range(attempts):
-            out = execute_action(step.action, step.params)
+            used_attempts += 1
+            try:
+                out = execute_action(step.action, step.params)
+            except Exception as exc:  # noqa: BLE001 - 실행기에서 예외를 결과로 구조화한다.
+                error_text = str(exc)
+                if used_attempts >= attempts:
+                    break
+                continue
             last_result = out
-            if verify_step(step.action, step.params, out):
+            checked = verify_step(step.action, step.params, out)
+            if isinstance(checked, tuple):
+                is_ok, detail = checked
+            else:
+                is_ok, detail = bool(checked), ""
+            if is_ok:
                 verified = True
+                verify_detail = None
                 break
+            verify_detail = detail or "verify_failed"
         if last_result is None:
             last_result = {}
-        results.append(
-            StepExecutionResult(
-                index=idx,
-                action=step.action,
-                params=step.params,
-                reason=step.reason,
-                result=last_result,
-                retried=attempts > 1 and not verified,
-                verified=verified,
-            )
+        step_result = StepExecutionResult(
+            index=idx,
+            action=step.action,
+            params=step.params,
+            reason=step.reason,
+            result=last_result,
+            retried=used_attempts > 1,
+            verified=verified,
+            error=error_text,
+            verify_detail=verify_detail,
         )
+        results.append(step_result)
+        if on_step_complete is not None:
+            on_step_complete(step_result)
+        if abort_on_failure and (step_result.error or not step_result.verified):
+            break
     return ExecutionResult(steps=results)
