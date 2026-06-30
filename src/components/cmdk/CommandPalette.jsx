@@ -6,7 +6,7 @@
  * - 250ms debounce, fuzzy 한/영 검색
  * - 키보드: ↑↓ Enter Esc, Tab 그룹 jump
  *
- * Layout이 글로벌 이벤트 listener로 토글한다 (window 'private-claw:open-cmdk').
+ * Layout이 글로벌 이벤트 listener로 토글한다 (window 'officeclaw:open-cmdk').
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {

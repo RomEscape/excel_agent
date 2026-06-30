@@ -1,7 +1,7 @@
 """
-Workspace sandbox — Phase 1 (Private-Claw).
+Workspace sandbox — Phase 1 (officeclaw).
 
-워크스페이스 경로: ~/PrivateClaw/Workspace
+워크스페이스 경로: ~/officeclaw/Workspace
 모든 파일 접근은 이 경로 내부로 제한된다.
 symlink를 따라가도 워크스페이스 외부를 가리키면 차단.
 """
@@ -11,7 +11,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-WORKSPACE_ROOT = Path.home() / "PrivateClaw" / "Workspace"
+from office_claw_sidecar.config import get_workspace_root
+
+# 경로 단일 출처는 config.get_workspace_root() (~/officeclaw/Workspace)
+WORKSPACE_ROOT = get_workspace_root()
 
 
 def _ensure_workspace() -> None:

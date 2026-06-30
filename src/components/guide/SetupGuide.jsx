@@ -531,7 +531,7 @@ function OpenClawGuide() {
           <div className="text-sm">
             <p className="font-semibold text-foreground">왜 OpenClaw가 필요한가요?</p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              ajou-ai는 OpenClaw를 통해 PC 작업(파일·메일·문서 등)을 안전하게
+              officeclaw는 OpenClaw를 통해 PC 작업(파일·메일·문서 등)을 안전하게
               수행해요. 모든 명령은 실행 전에 보안 정책으로 검사돼요.
             </p>
           </div>
@@ -547,7 +547,7 @@ function OpenClawGuide() {
               한 번에 설치하기 (권장)
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              터미널을 직접 열지 않고 ajou-ai가 npm install을 실행합니다.
+              터미널을 직접 열지 않고 officeclaw가 npm install을 실행합니다.
               설치 중 진행 로그가 실시간으로 표시되며 언제든 중단할 수 있습니다.
             </p>
           </div>
@@ -647,7 +647,7 @@ function OpenClawGuide() {
           <p>설치가 끝나면 아래 명령으로 OpenClaw를 시작해요.</p>
           <CopyableCommand command="openclaw start" />
           <p>
-            ajou-ai 앱 우측 상단의 <strong>OpenClaw</strong> 표시가 초록색으로 바뀌면
+            officeclaw 앱 우측 상단의 <strong>OpenClaw</strong> 표시가 초록색으로 바뀌면
             정상이에요.
           </p>
         </Step>
@@ -861,7 +861,7 @@ function GmailGuide() {
               Gmail은 OpenClaw 스킬로 제공됩니다
             </p>
             <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">
-              ajou-ai v3.0부터 Gmail 연동은 ajou-ai가 직접 관리하지 않고
+              officeclaw v3.0부터 Gmail 연동은 officeclaw가 직접 관리하지 않고
               OpenClaw의 외부 스킬 패키지로 이관되었습니다. 메신저에서 "메일 확인해줘"
               명령을 사용하면 OpenClaw가 자동으로 Gmail 스킬을 호출합니다.
             </p>
@@ -893,7 +893,7 @@ function ClaudeGuide({ onGoToCredentials, onGoToSettings }) {
         </Step>
         <Step number={2} title="API 키 발급">
           <p>왼쪽 메뉴에서 <strong>API Keys</strong>를 선택합니다.</p>
-          <p><strong>Create Key</strong> 버튼을 클릭하고 이름을 입력합니다. (예: <CodeBlock>private-claw</CodeBlock>)</p>
+          <p><strong>Create Key</strong> 버튼을 클릭하고 이름을 입력합니다. (예: <CodeBlock>officeclaw</CodeBlock>)</p>
           <p>생성된 키를 복사합니다. 키는 이 화면에서 한 번만 표시되므로 바로 저장하세요.</p>
           <Note>API 키는 <CodeBlock>sk-ant-api03-</CodeBlock>로 시작합니다. 크레딧이 있어야 API를 사용할 수 있습니다.</Note>
         </Step>

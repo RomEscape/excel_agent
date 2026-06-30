@@ -1,5 +1,5 @@
 """
-messenger/telegram.py — Phase 1 (Private-Claw).
+messenger/telegram.py — Phase 1 (officeclaw).
 
 역할: 자연어 패턴 인식 유틸 + TelegramService의 thin proxy adapter.
 

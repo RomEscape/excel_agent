@@ -78,7 +78,7 @@ const useAppStore = create(
        */
       sidebarCollapsed: false,
 
-      // ── Phase 1: Private-Claw state ────────────────────────────────────────
+      // ── Phase 1: officeclaw state ────────────────────────────────────────
 
       /**
        * 텔레그램 봇 연결 상태.
@@ -90,7 +90,7 @@ const useAppStore = create(
        * 워크스페이스 경로 (표시용).
        * @type {string}
        */
-      workspacePath: "~/PrivateClaw/Workspace",
+      workspacePath: "~/officeclaw/Workspace",
 
       /**
        * 온보딩에서 선택된 메신저.

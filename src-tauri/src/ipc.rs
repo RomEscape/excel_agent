@@ -350,6 +350,14 @@ pub async fn ollama_status() -> Result<String, String> {
     Ok(info.to_string())
 }
 
+/// Node.js 설치 여부 — OpenClaw(npm 글로벌 패키지) 설치의 선행 조건.
+/// 자동 설치 단계를 띄울지(미설치) 건너뛸지(설치됨) 결정하는 용도.
+#[tauri::command]
+pub async fn node_installed() -> Result<String, String> {
+    let info = crate::node::is_node_installed().await;
+    Ok(info.to_string())
+}
+
 // ── Phase 3 (2026-05): Rust keyring + audit ─────────────────────────────────
 //
 // Python의 KeyringService/AuditService와 *동일한* 저장소(OS keychain +
@@ -976,13 +984,12 @@ pub async fn command_audit_clear(state: State<'_, Mutex<SidecarState>>) -> Resul
     .await
 }
 
-// ── Phase 1: Private-Claw — Workspace commands ──────────────────────────────
+// ── Phase 1: officeclaw — Workspace commands ──────────────────────────────
 
 /// 워크스페이스 폴더를 Finder(macOS) / Explorer(Windows)로 연다.
 #[tauri::command]
 pub async fn open_workspace_folder(_app: tauri::AppHandle) -> Result<String, String> {
-    let home = dirs_home().ok_or_else(|| "홈 디렉토리를 찾을 수 없습니다".to_string())?;
-    let workspace = home.join("PrivateClaw").join("Workspace");
+    let workspace = workspace_dir().ok_or_else(|| "홈 디렉토리를 찾을 수 없습니다".to_string())?;
 
     // 디렉토리가 없으면 생성
     if !workspace.exists() {
@@ -1028,8 +1035,8 @@ pub async fn open_workspace_file(path: String) -> Result<String, String> {
     }
 
     // 2) 워크스페이스 루트 확인/생성
-    let home = dirs_home().ok_or_else(|| "홈 디렉토리를 찾을 수 없습니다".to_string())?;
-    let workspace_root = home.join("PrivateClaw").join("Workspace");
+    let workspace_root =
+        workspace_dir().ok_or_else(|| "홈 디렉토리를 찾을 수 없습니다".to_string())?;
     if !workspace_root.exists() {
         std::fs::create_dir_all(&workspace_root)
             .map_err(|e| format!("워크스페이스 폴더 생성 실패: {}", e))?;
@@ -1161,7 +1168,7 @@ pub async fn workspace_create_excel_file(
 /// 보안 샌드박스:
 ///   - 경로 내 `..` 컴포넌트 차단 (디렉토리 탈출 방지)
 ///   - 절대 경로 차단 — 반드시 상대 경로 사용
-///   - 최종 경로는 ~/PrivateClaw/Workspace/{path} 고정
+///   - 최종 경로는 ~/officeclaw/Workspace/{path} 고정
 ///
 /// 호출 측(Frontend)은 base64 표준 인코딩(RFC 4648) 문자열을 전달해야 한다.
 #[tauri::command]
@@ -1183,8 +1190,8 @@ pub async fn workspace_write_file_binary(
     }
 
     // 3. 워크스페이스 루트 확인 및 생성
-    let home = dirs_home().ok_or_else(|| "홈 디렉토리를 찾을 수 없습니다".to_string())?;
-    let workspace_root = home.join("PrivateClaw").join("Workspace");
+    let workspace_root =
+        workspace_dir().ok_or_else(|| "홈 디렉토리를 찾을 수 없습니다".to_string())?;
     if !workspace_root.exists() {
         std::fs::create_dir_all(&workspace_root)
             .map_err(|e| format!("워크스페이스 폴더 생성 실패: {}", e))?;
@@ -1411,6 +1418,12 @@ fn dirs_home() -> Option<std::path::PathBuf> {
     std::env::var_os("HOME")
         .map(std::path::PathBuf::from)
         .or_else(|| std::env::var_os("USERPROFILE").map(std::path::PathBuf::from))
+}
+
+/// 워크스페이스 루트 (~/officeclaw/Workspace). 경로 단일 출처.
+/// Python sandbox(config.get_workspace_root)와 동일한 위치를 가리킨다.
+fn workspace_dir() -> Option<std::path::PathBuf> {
+    dirs_home().map(|home| home.join("officeclaw").join("Workspace"))
 }
 
 #[tauri::command]

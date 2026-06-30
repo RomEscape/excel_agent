@@ -7,7 +7,12 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import Depends, FastAPI, Request, HTTPException
 
-from office_claw_sidecar.config import TEMP_SUBDIRS, cleanup_temp, get_data_dir
+from office_claw_sidecar.config import (
+    TEMP_SUBDIRS,
+    cleanup_temp,
+    get_data_dir,
+    migrate_legacy_paths,
+)
 from office_claw_sidecar.routers import (
     agent,
     audit,
@@ -37,6 +42,10 @@ _MAX_AGE_SECONDS = 24 * 60 * 60  # 24 hours
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Run startup/shutdown tasks around the application lifecycle."""
+    # 레거시 ~/PrivateClaw → ~/officeclaw 1회 이전. DB 연결·워크스페이스 생성보다
+    # 반드시 먼저 실행해야 기존 데이터가 새 경로로 안전하게 옮겨진다.
+    migrate_legacy_paths()
+
     # Ensure the app data directory and all required temp subdirectories exist
     # before any router tries to write to them.
     data_dir = get_data_dir()
@@ -134,7 +143,7 @@ app.include_router(llm.router, prefix="/llm", dependencies=[Depends(verify_auth)
 app.include_router(audit.router, prefix="/audit", dependencies=[Depends(verify_auth)])
 app.include_router(telegram.router, prefix="/telegram", dependencies=[Depends(verify_auth)])
 
-# ── Phase 1: Private-Claw 워크스페이스 라우터 ──────────────────────────────────
+# ── Phase 1: officeclaw 워크스페이스 라우터 ──────────────────────────────────
 app.include_router(workspace.router, prefix="/workspace", dependencies=[Depends(verify_auth)])
 app.include_router(settings.router, prefix="/settings", dependencies=[Depends(verify_auth)])
 app.include_router(maintenance.router, prefix="/maintenance", dependencies=[Depends(verify_auth)])

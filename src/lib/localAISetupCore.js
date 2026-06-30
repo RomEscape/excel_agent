@@ -8,6 +8,7 @@ import {
 } from "./localStack/index.js";
 
 export const STEP = Object.freeze({
+  INSTALL_NODE: "install-node",
   INSTALL_OC: "install-oc",
   START_OC: "start-oc",
   INSTALL_OLLAMA: "install-ollama",
@@ -18,6 +19,7 @@ export const STEP = Object.freeze({
 });
 
 export const STEP_LABEL = Object.freeze({
+  [STEP.INSTALL_NODE]: "Node.js 설치",
   [STEP.INSTALL_OC]: "OpenClaw 설치",
   [STEP.START_OC]: "OpenClaw 실행",
   [STEP.INSTALL_OLLAMA]: "Ollama 설치",
@@ -64,6 +66,8 @@ export function buildPlan(diag, model) {
   const skipped = [];
   const route = (done, id) => (done ? skipped.push(id) : todo.push(id));
 
+  // Node는 OpenClaw(npm 패키지)의 선행 조건 — 가장 먼저 확인하고 없으면 설치.
+  route(Boolean(diag?.node?.installed), STEP.INSTALL_NODE);
   route(Boolean(diag?.ocInstalled?.installed), STEP.INSTALL_OC);
   route(diag?.oc?.state === "running", STEP.START_OC);
   route(Boolean(diag?.oll?.installed), STEP.INSTALL_OLLAMA);

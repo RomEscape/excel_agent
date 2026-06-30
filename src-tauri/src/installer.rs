@@ -208,6 +208,43 @@ fn run_shell_streaming(
     })
 }
 
+/// Tauri command: Node.js 설치 — OpenClaw(npm 글로벌 패키지)의 선행 조건.
+///
+/// - Windows: `winget install -e --id OpenJS.NodeJS.LTS ...` (무인 설치, LTS 채널이
+///   가장 안정적). `--silent --disable-interactivity`로 설치 UI/프롬프트가 떠서
+///   스트리밍이 멈추는 것을 막는다.
+/// - macOS: `brew install node`
+#[tauri::command]
+pub async fn install_node(
+    app: AppHandle,
+    state: State<'_, Mutex<InstallerState>>,
+) -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let cmd = "winget install -e --id OpenJS.NodeJS.LTS --silent --disable-interactivity --accept-package-agreements --accept-source-agreements";
+        let result = run_shell_streaming(app, &state, "install-node", cmd, cmd)?;
+        serde_json::to_value(result).map_err(|e| e.to_string())
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let result = run_shell_streaming(
+            app,
+            &state,
+            "install-node",
+            "brew install node",
+            "brew install node",
+        )?;
+        serde_json::to_value(result).map_err(|e| e.to_string())
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = (app, state);
+        Err("자동 설치는 현재 macOS/Windows만 지원됩니다. https://nodejs.org 에서 직접 설치해 주세요.".to_string())
+    }
+}
+
 /// Tauri command: OpenClaw 전역 설치 — `npm install -g openclaw@latest`
 ///
 /// manual_command에는 sudo를 포함하지 않는다 — 프론트에서 result.eacces 플래그를
@@ -249,13 +286,10 @@ pub async fn install_ollama(
 
     #[cfg(target_os = "windows")]
     {
-        let result = run_shell_streaming(
-            app,
-            &state,
-            "install-ollama",
-            "winget install -e --id Ollama.Ollama --accept-package-agreements --accept-source-agreements",
-            "winget install -e --id Ollama.Ollama --accept-package-agreements --accept-source-agreements",
-        )?;
+        // --silent --disable-interactivity: 설치 UI/프롬프트가 떠서 스트리밍이
+        // 멈추는 것을 막는다 (무인 설치 안정성).
+        let cmd = "winget install -e --id Ollama.Ollama --silent --disable-interactivity --accept-package-agreements --accept-source-agreements";
+        let result = run_shell_streaming(app, &state, "install-ollama", cmd, cmd)?;
         serde_json::to_value(result).map_err(|e| e.to_string())
     }
 

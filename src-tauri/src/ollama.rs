@@ -25,7 +25,6 @@ pub async fn is_ollama_installed() -> serde_json::Value {
         }
     }
     // GUI 앱은 nvm/asdf 등이 주입한 PATH를 못 받는 경우가 많아 로그인 셸로 한 번 더 시도.
-    // Windows에서는 위 직접 실행으로 충분하므로 Unix 전용 폴백으로 둔다 (기존 동작 유지).
     #[cfg(not(target_os = "windows"))]
     {
         if let Ok(output) = crate::shell::run_login_shell("ollama --version") {
@@ -39,7 +38,54 @@ pub async fn is_ollama_installed() -> serde_json::Value {
             }
         }
     }
+
+    // Windows GUI 앱은 PATH에 Ollama 설치 폴더가 없는 경우가 많아 직접 실행이 실패한다.
+    // 표준 설치 위치를 확인해 "설치돼 있는데 미설치로 보여서 다시 설치하는" 문제를 막는다.
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(exe) = windows_ollama_exe() {
+            if let Ok(output) = Command::new(&exe).arg("--version").output() {
+                if output.status.success() {
+                    let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    return serde_json::json!({
+                        "installed": true,
+                        "version": version,
+                        "source": "program-files"
+                    });
+                }
+            }
+            // 실행은 실패해도 파일이 존재하면 설치된 것으로 간주.
+            return serde_json::json!({
+                "installed": true,
+                "version": null,
+                "source": "program-files"
+            });
+        }
+    }
+
     serde_json::json!({ "installed": false, "version": null, "source": null })
+}
+
+/// Windows에서 Ollama 실행 파일(CLI)의 표준 설치 경로를 찾는다.
+/// winget(Ollama.Ollama)/공식 설치 모두 아래 위치에 `ollama.exe`를 둔다.
+/// 탐지와 데몬 시작이 같은 경로를 바라보도록 단일 소스로 둔다.
+#[cfg(target_os = "windows")]
+pub fn windows_ollama_exe() -> Option<std::path::PathBuf> {
+    use std::path::PathBuf;
+    [
+        std::env::var("LOCALAPPDATA").ok().map(|p| {
+            PathBuf::from(p)
+                .join("Programs")
+                .join("Ollama")
+                .join("ollama.exe")
+        }),
+        std::env::var("ProgramFiles")
+            .ok()
+            .map(|p| PathBuf::from(p).join("Ollama").join("ollama.exe")),
+    ]
+    .into_iter()
+    .flatten()
+    .find(|p| p.exists())
 }
 
 /// Ollama 데몬이 11434에서 응답하는지 확인 (HTTP /api/tags).
@@ -79,13 +125,15 @@ pub async fn list_ollama_models() -> serde_json::Value {
 pub async fn get_ollama_status() -> serde_json::Value {
     let installed_info = is_ollama_installed().await;
     let running = is_ollama_running().await;
+    // 데몬이 11434에서 응답하면 바이너리 탐지가 실패했더라도 설치된 것으로 간주.
+    let installed = installed_info["installed"].as_bool().unwrap_or(false) || running;
     let models = if running {
         list_ollama_models().await
     } else {
         serde_json::json!({ "models": [] })
     };
     serde_json::json!({
-        "installed": installed_info["installed"],
+        "installed": installed,
         "version": installed_info["version"],
         "running": running,
         "port": OLLAMA_PORT,

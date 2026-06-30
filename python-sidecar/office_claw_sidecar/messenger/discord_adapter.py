@@ -1,5 +1,5 @@
 """
-messenger/discord_adapter.py — Phase 3 (Private-Claw) Discord 어댑터.
+messenger/discord_adapter.py — Phase 3 (officeclaw) Discord 어댑터.
 
 discord.py 기반 어댑터. (파일명: discord_adapter.py — discord 패키지명 충돌 방지)
 공통 MessengerAdapter(base.py) 인터페이스를 SlackAdapter와 함께 구현한다.
@@ -82,7 +82,7 @@ class DiscordAdapter(MessengerAdapter):
         intents = discord.Intents.default()
         intents.message_content = True
 
-        self._client = _PrivateClawDiscordClient(
+        self._client = _OfficeClawDiscordClient(
             adapter=self,
             allowed_guild_id=self._allowed_guild_id,
             allowed_user_ids=self._allowed_user_ids,
@@ -221,7 +221,7 @@ class DiscordAdapter(MessengerAdapter):
 
 # ── Discord 클라이언트 내부 구현 ──────────────────────────────────────────────────
 
-class _PrivateClawDiscordClient:
+class _OfficeClawDiscordClient:
     """
     discord.py Client 래퍼.
 

@@ -2,7 +2,7 @@
 
 개인정보 보호 중심의 로컬 AI 업무 에이전트. 모든 처리가 사용자 머신 안에서 끝나며, 외부 중계 서버가 없다.  
 **Tauri 데스크탑 앱 + Python FastAPI 사이드카 + 로컬 LLM(Ollama/OpenClaw)** 3계층 구성.
-앱 표시명은 **Team 503 AI**(구 ajou-ai)로 사용한다.
+앱 표시명은 **officeclaw**로 사용한다.
 
 ---
 
@@ -210,8 +210,8 @@ python-sidecar/
 
 비개발자에게는 소스코드 실행보다 **릴리스 EXE 배포**가 가장 안전하고 쉽다.
 
-1. GitHub Releases에서 최신 Windows 패키지(`Team 503 AI`) 다운로드
-2. 압축 해제 후 `Team 503 AI.exe` 실행
+1. GitHub Releases에서 최신 Windows 패키지(`officeclaw`) 다운로드
+2. 압축 해제 후 `officeclaw.exe` 실행
 3. 첫 실행 시 `LocalAISetupWizard`에서 의존성/Ollama/OpenClaw 자동 점검
 4. 워크스페이스에서 Excel 파일 열고 채팅으로 바로 작업
 

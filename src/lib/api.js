@@ -337,7 +337,7 @@ export async function securityRespondApproval(approvalId, approved) {
   return parseResponse(raw);
 }
 
-// ── Phase 1: Private-Claw — Workspace ────────────────────────────────────────
+// ── Phase 1: officeclaw — Workspace ────────────────────────────────────────
 
 /**
  * 워크스페이스 파일 목록을 반환한다.
@@ -523,7 +523,7 @@ export async function discordStop() {
   return parseResponse(raw);
 }
 
-// ── Phase 1: Private-Claw — Telegram setup ───────────────────────────────────
+// ── Phase 1: officeclaw — Telegram setup ───────────────────────────────────
 
 /**
  * 텔레그램 봇 토큰을 설정하고 연결 테스트를 수행한다.
@@ -697,6 +697,17 @@ export async function ollamaStatus() {
   return parseResponse(raw);
 }
 
+/**
+ * Node.js 설치 여부 — OpenClaw(npm 글로벌 패키지) 설치의 선행 조건.
+ * 자동 설치 단계를 띄울지(미설치) 건너뛸지(설치됨) 결정하는 용도.
+ *
+ * @returns {Promise<{ installed: boolean, version: string|null, source: string|null }>}
+ */
+export async function nodeInstalled() {
+  const raw = await call("node_installed");
+  return parseResponse(raw);
+}
+
 // ── Installer commands ───────────────────────────────────────────────────────
 //
 // macOS GUI 앱의 PATH 제한($SHELL 미적용)을 우회하기 위해 Rust 측에서
@@ -712,6 +723,15 @@ export async function ollamaStatus() {
 //     message: string,
 //     manual_command: string,  // 사용자가 직접 실행할 명령 (실패 시 복사 제공)
 //   }
+
+/**
+ * Node.js 설치 (OpenClaw 선행 조건).
+ * - Windows: winget OpenJS.NodeJS.LTS / macOS: brew install node
+ * @returns {Promise<object>} InstallResult
+ */
+export async function installerInstallNode() {
+  return invoke("install_node");
+}
 
 /**
  * `npm install -g openclaw@latest` — 사용자 로그인 셸 경유.

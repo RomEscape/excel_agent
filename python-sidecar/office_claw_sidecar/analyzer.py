@@ -1,5 +1,5 @@
 """
-analyzer.py — Phase 2 (Private-Claw) 정적 명령 분석기.
+analyzer.py — Phase 2 (officeclaw) 정적 명령 분석기.
 
 에이전트가 생성한 Python/Shell 스크립트를 Python AST + 정규식으로 분석하여
 SAFE / CONFIRM / DENIED 등급을 판정한다.

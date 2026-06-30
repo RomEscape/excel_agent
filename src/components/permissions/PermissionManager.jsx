@@ -243,7 +243,7 @@ export default function PermissionManager() {
                     size="sm"
                     className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
                     onClick={() => removeFolder(folder)}
-                    disabled={folder === "~/PrivateClaw/Workspace"}
+                    disabled={folder === "~/officeclaw/Workspace"}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
@@ -315,7 +315,7 @@ export default function PermissionManager() {
               <Input
                 value={newShellCmd}
                 onChange={(e) => setNewShellCmd(e.target.value)}
-                placeholder="rm ~/PrivateClaw/Workspace/temp.txt"
+                placeholder="rm ~/officeclaw/Workspace/temp.txt"
                 className="text-sm font-mono"
                 onKeyDown={(e) => e.key === "Enter" && addShellCmd()}
               />

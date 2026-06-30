@@ -1,6 +1,6 @@
 {
   "identifier": "default",
-  "description": "Default capabilities for ajou-ai",
+  "description": "Default capabilities for officeclaw",
   "windows": ["main"],
   "permissions": [
     "core:default",

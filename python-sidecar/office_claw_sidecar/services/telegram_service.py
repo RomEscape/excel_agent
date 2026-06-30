@@ -1,5 +1,5 @@
 """
-TelegramService — Phase 1 + Phase 2 (Private-Claw) 텔레그램 에이전트.
+TelegramService — Phase 1 + Phase 2 (officeclaw) 텔레그램 에이전트.
 
 단일 진입점: 모든 봇 로직은 이 클래스에 집중된다.
 messenger/telegram.py는 자연어 패턴 정규식 유틸만 제공하며,
@@ -914,7 +914,7 @@ def _cmd_ws_list(path: str = "") -> str:
         return f"파일 목록 조회 실패: {e}"
 
     if not entries:
-        return "워크스페이스가 비어있습니다.\n경로: ~/PrivateClaw/Workspace"
+        return "워크스페이스가 비어있습니다.\n경로: ~/officeclaw/Workspace"
 
     lines = ["워크스페이스 파일 목록:\n"]
     for entry in entries:

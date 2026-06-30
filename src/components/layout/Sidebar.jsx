@@ -25,7 +25,7 @@ import useStatusStore from "@/store/statusStore";
  *
  * collapsed 모드: 64px (icon-only). expanded: 240px.
  *   - hover 200ms 후 라벨 tooltip
- *   - localStorage 키 `private-claw:sidebar-collapsed`로 persist
+ *   - appStore의 zustand persist(`office-claw-store`)로 sidebarCollapsed 유지
  *   - 토글: Cmd+B (Layout이 처리)
  */
 const PRIMARY_ITEMS = [
@@ -102,7 +102,7 @@ export default function Sidebar() {
   const handleClickPrimary = (item) => {
     if (item.gated && ocBlocked) {
       // OpenClaw가 죽어 있으면 자동 설치 prompt를 즉시 띄움 (설정 탭 경유 X)
-      window.dispatchEvent(new CustomEvent("private-claw:open-openclaw-install"));
+      window.dispatchEvent(new CustomEvent("officeclaw:open-openclaw-install"));
       return;
     }
     setCurrentPage(item.id);
@@ -124,9 +124,9 @@ export default function Sidebar() {
           collapsed ? "justify-center px-2 py-4" : "gap-2 px-4 py-5"
         )}
       >
-        <img src={appIcon} alt="Team 503 AI" className="h-7 w-7 shrink-0 rounded-md" />
+        <img src={appIcon} alt="officeclaw" className="h-7 w-7 shrink-0 rounded-md" />
         {!collapsed && (
-          <span className="font-bold text-base tracking-tight">Team 503 AI</span>
+          <span className="font-bold text-base tracking-tight">officeclaw</span>
         )}
       </div>
 

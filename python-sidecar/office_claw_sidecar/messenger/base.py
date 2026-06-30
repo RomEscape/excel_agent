@@ -1,5 +1,5 @@
 """
-messenger/base.py — Phase 3 (Private-Claw) 메신저 어댑터 추상 기반 클래스.
+messenger/base.py — Phase 3 (officeclaw) 메신저 어댑터 추상 기반 클래스.
 
 모든 메신저 어댑터(Telegram, Slack, Discord)는 이 ABC를 구현해야 한다.
 analyze_and_guard() HITL 패턴은 각 어댑터에서 동일하게 적용된다.
@@ -113,7 +113,7 @@ async def _ws_list() -> str:
     except Exception as e:
         return f"파일 목록 조회 실패: {e}"
     if not entries:
-        return "워크스페이스가 비어있습니다.\n경로: ~/PrivateClaw/Workspace"
+        return "워크스페이스가 비어있습니다.\n경로: ~/officeclaw/Workspace"
     lines = ["워크스페이스 파일 목록:\n"]
     for entry in entries:
         prefix = "[폴더]" if entry["is_dir"] else "[파일]"
@@ -197,7 +197,7 @@ class MessengerAdapter(ABC):
     """
     메신저 어댑터 공통 인터페이스.
 
-    Private-Claw의 모든 메신저 어댑터가 구현해야 하는 계약:
+    officeclaw의 모든 메신저 어댑터가 구현해야 하는 계약:
     - 시작/중지: start() / stop()
     - 텍스트 전송: send_message()
     - 파일 전송: send_file()

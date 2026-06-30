@@ -2,6 +2,7 @@ mod audit;
 mod installer;
 mod ipc;
 mod keyring_svc;
+mod node;
 mod ollama;
 mod openclaw;
 mod openclaw_cli;
@@ -73,6 +74,7 @@ pub fn run() {
             ipc::openclaw_ensure_running,
             ipc::openclaw_use_ollama,
             ipc::ollama_status,
+            ipc::node_installed,
             // Phase 3 (2026-05): Rust keyring + audit — Python과 같은 저장소 공유
             ipc::rust_credential_set,
             ipc::rust_credential_get,
@@ -87,6 +89,7 @@ pub fn run() {
             ipc::openclaw_cli_call,
             ipc::openclaw_cli_agent,
             // Installer: macOS GUI PATH 우회 + 실시간 로그 스트리밍
+            installer::install_node,
             installer::install_openclaw,
             installer::install_ollama,
             installer::start_ollama,
@@ -127,7 +130,7 @@ pub fn run() {
             ipc::permissions_update,
             ipc::permissions_whitelist_add,
             ipc::permissions_whitelist_remove,
-            // Phase 1: Private-Claw — Workspace + Telegram setup
+            // Phase 1: officeclaw — Workspace + Telegram setup
             ipc::open_workspace_folder,
             ipc::open_workspace_file,
             ipc::workspace_list_files,
