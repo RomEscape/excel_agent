@@ -139,6 +139,21 @@ def test_action_without_workbook_id_uses_first_open_workbook(monkeypatch):
 
 def test_command_rule_based_highlight(monkeypatch):
     monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    
+    async def _plan_parse(_message, llm_service, context):
+        return {
+            "intent": "edit",
+            "action_plan": [
+                {
+                    "action": "excel_live.highlight_by_condition",
+                    "params": {"target_range": "A:A", "operator": ">=", "threshold": 50, "fill_color": "#FFFF00"},
+                    "reason": "조건부 강조",
+                }
+            ],
+            "reason": "highlight",
+        }
+
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _plan_parse)
 
     resp = client.post(
         "/excel-live/command",
@@ -353,4 +368,55 @@ def test_command_applies_context_range_to_here_border(monkeypatch):
     assert body["ok"] is True
     assert body["action"] == "excel_live.apply_border"
     assert body["result"]["address"] == "B2:D5"
+
+
+def test_command_replans_once_when_execution_verify_fails(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+
+    async def _plan_parse(_message, llm_service, context):
+        return {
+            "intent": "edit",
+            "action_plan": [
+                {"action": "excel_live.fill_range", "params": {"target_range": "A:A"}, "reason": "1차 계획"}
+            ],
+            "reason": "first plan",
+        }
+
+    replanned_called = {"count": 0}
+
+    async def _replan_parse(_message, llm_service, context, forbid_list_action=False, require_edit_action=False):
+        replanned_called["count"] += 1
+        return {
+            "intent": "edit",
+            "action_plan": [
+                {
+                    "action": "excel_live.apply_border",
+                    "params": {"target_range": "B2:D5", "line_style": "continuous", "weight": "medium", "color": "#000000"},
+                    "reason": "2차 계획",
+                }
+            ],
+            "reason": "replanned",
+        }
+
+    verify_count = {"count": 0}
+
+    def _verify_step_result(**kwargs):
+        verify_count["count"] += 1
+        # 첫 계획(fill_range)은 계속 실패, 재계획(apply_border)만 성공
+        return kwargs.get("action") == "excel_live.apply_border"
+
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _plan_parse)
+    monkeypatch.setattr(excel_live_router, "parse_command_plan_with_llm", _replan_parse)
+    monkeypatch.setattr(excel_live_router, "_verify_step_result", _verify_step_result)
+
+    resp = client.post(
+        "/excel-live/command",
+        json={"message": "전반적으로 색칠", "approve": True},
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["action"] == "excel_live.apply_border"
+    assert replanned_called["count"] == 1
 

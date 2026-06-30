@@ -1,8 +1,6 @@
 """Excel Live 라우터 — 자연어 기반 실시간 Excel(COM) 제어 API."""
 
 from __future__ import annotations
-
-import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -14,9 +12,18 @@ from pydantic import BaseModel, Field
 from office_claw_sidecar.models.approval import ApprovalRequest, ApprovalResponse
 from office_claw_sidecar.services.audit_service import AuditService
 from office_claw_sidecar.services.excel_live_agent import parse_excel_live_command
+from office_claw_sidecar.services.excel_live_agent import parse_command_plan_with_llm
 from office_claw_sidecar.services.excel_live_executor import (
     execute_plan,
     normalize_plan_steps,
+)
+from office_claw_sidecar.services.excel_live_plan_critic import (
+    build_replan_context,
+    should_replan_after_execution,
+)
+from office_claw_sidecar.services.excel_live_plan_validator import (
+    ValidationContext,
+    validate_plan,
 )
 from office_claw_sidecar.services.excel_live_service import (
     ExcelConnectionError,
@@ -121,71 +128,8 @@ def _normalize_range_text(range_ref: str | None) -> str:
     return text
 
 
-def _extract_table_shape(message: str) -> tuple[int, int] | None:
-    text = str(message or "").lower()
-    m = re.search(r"(\d{1,3})\s*(?:\*|x|×)\s*(\d{1,3})\s*(?:표|테이블|table)", text)
-    if not m:
-        m = re.search(r"(\d{1,3})\s*행\s*(\d{1,3})\s*열\s*(?:표|테이블|table)", text)
-    if not m:
-        return None
-    rows = max(1, min(100, int(m.group(1))))
-    cols = max(1, min(50, int(m.group(2))))
-    return rows, cols
-
-
 def _context_key(workbook_id: str | None) -> str:
     return str(workbook_id or "__selected__").strip().lower() or "__selected__"
-
-
-def _stabilize_plan_step(
-    *,
-    action: str,
-    params: dict[str, Any],
-    message: str,
-    workbook_id: str | None,
-    context_range: str | None,
-) -> tuple[str, dict[str, Any]]:
-    fixed_action = str(action or "").strip()
-    fixed_params = dict(params or {})
-    msg = str(message or "")
-    lowered = msg.lower()
-    explicit_context = _normalize_range_text(context_range)
-    recent_context = _recent_range_by_workbook.get(_context_key(workbook_id), "")
-    preferred_range = explicit_context or recent_context
-
-    # LLM이 표 생성 의도를 write_range + 불완전 파라미터로 내는 경우를 복구한다.
-    if fixed_action == "excel_live.write_range" and not isinstance(fixed_params.get("values_2d"), list):
-        shape = _extract_table_shape(msg)
-        if shape and any(token in lowered for token in ["표", "테이블", "table", "만들", "생성", "create"]):
-            rows, cols = shape
-            return (
-                "excel_live.create_table",
-                {
-                    "start_cell": "__ACTIVE_CELL__",
-                    "rows": rows,
-                    "cols": cols,
-                    "with_border": True,
-                },
-            )
-
-    if fixed_action in {"excel_live.fill_range", "excel_live.apply_border", "excel_live.highlight_by_condition"}:
-        target = _normalize_range_text(fixed_params.get("target_range"))
-        if (not target or target == "__ACTIVE_SELECTION__") and preferred_range:
-            fixed_params["target_range"] = preferred_range
-        if fixed_action == "excel_live.fill_range":
-            fixed_params.setdefault("fill_color", "#FFFF00")
-        if fixed_action == "excel_live.apply_border":
-            fixed_params.setdefault("line_style", "continuous")
-            fixed_params.setdefault("weight", "medium")
-            fixed_params.setdefault("color", "#000000")
-
-    if fixed_action == "excel_live.create_table":
-        fixed_params.setdefault("start_cell", "__ACTIVE_CELL__")
-        fixed_params["rows"] = max(1, min(100, int(fixed_params.get("rows", 5) or 5)))
-        fixed_params["cols"] = max(1, min(50, int(fixed_params.get("cols", 5) or 5)))
-        fixed_params["with_border"] = bool(fixed_params.get("with_border", True))
-
-    return fixed_action, fixed_params
 
 
 def _execute_action(
@@ -364,37 +308,6 @@ def _verify_step_result(
     return True
 
 
-def _execute_action_with_retry(
-    *,
-    action: str,
-    params: dict[str, Any],
-    workbook_id: str | None,
-    sheet_name: str | None,
-    max_attempts: int = 2,
-) -> dict[str, Any]:
-    """단일 액션 실행 + 검증 실패 시 1회 재시도."""
-    last_result: dict[str, Any] | None = None
-    for _attempt in range(max_attempts):
-        result = _execute_action(
-            action=action,
-            params=params,
-            workbook_id=workbook_id,
-            sheet_name=sheet_name,
-        )
-        last_result = result
-        if _verify_step_result(
-            action=action,
-            params=params,
-            result=result,
-            workbook_id=workbook_id,
-            sheet_name=sheet_name,
-        ):
-            return result
-    if last_result is not None:
-        return last_result
-    raise ExcelLiveError("액션 실행에 실패했습니다.")
-
-
 def _build_approval(action: str, params: dict[str, Any]) -> ApprovalRequest:
     approval_id = str(uuid.uuid4())
     summary = {
@@ -427,6 +340,24 @@ def get_status():
 
 @router.post("/action", response_model=ExcelLiveActionResponse)
 def post_action(req: ExcelLiveActionRequest):
+    try:
+        validated_single = validate_plan(
+            normalize_plan_steps([{"action": req.action, "params": req.params, "reason": ""}]),
+            context=ValidationContext(
+                message=req.action,
+                workbook_id=req.workbook_id,
+                sheet_name=req.sheet_name,
+                context_range=None,
+                recent_range=_recent_range_by_workbook.get(_context_key(req.workbook_id)),
+            ),
+        )
+    except Exception as exc:
+        raise _map_error(exc)
+    if not validated_single:
+        raise HTTPException(status_code=400, detail="실행 가능한 action을 생성하지 못했습니다.")
+    req.action = validated_single[0].action
+    req.params = validated_single[0].params
+
     tool_def = get_tool(req.action)
     if tool_def and tool_def.permission == PermissionLevel.DENIED:
         return ExcelLiveActionResponse(
@@ -498,69 +429,108 @@ async def post_command(
             ]
         )
 
-    # CONFIRM이 필요한 단계가 있으면 기존 승인 UX를 유지하기 위해
-    # 첫 CONFIRM 단계에서 즉시 반환한다.
-    stabilized_steps = []
-    for step in action_plan:
-        action, params = _stabilize_plan_step(
-            action=step.action,
-            params=step.params,
-            message=req.message,
-            workbook_id=req.workbook_id,
-            context_range=req.context_range,
-        )
-        stabilized_steps.append((action, params, step.reason))
-        tool_def = get_tool(action)
-        if tool_def and tool_def.permission == PermissionLevel.DENIED:
-            return ExcelLiveActionResponse(
-                ok=False,
-                action=action,
-                reason="보안 정책에 의해 거부된 작업입니다.",
-            )
-        if tool_def and tool_def.permission == PermissionLevel.CONFIRM and not req.approve:
-            pending = _build_approval(action, params)
-            _pending_approvals[pending.approval_id] = PendingExcelApproval(
-                action=action,
-                params=params,
+    base_context = {
+        "context_range": req.context_range,
+        "workbook_id": req.workbook_id,
+        "sheet_name": req.sheet_name,
+    }
+
+    def _validate_steps(steps):
+        return validate_plan(
+            steps,
+            context=ValidationContext(
+                message=req.message,
                 workbook_id=req.workbook_id,
                 sheet_name=req.sheet_name,
-                created_at=pending.created_at,
-            )
-            return ExcelLiveActionResponse(
-                ok=True,
-                action=action,
-                approval_required=True,
-                pending_approval=pending,
-                reason=step.reason or "승인이 필요한 작업입니다.",
-            )
+                context_range=base_context.get("context_range"),
+                recent_range=_recent_range_by_workbook.get(_context_key(req.workbook_id)),
+            ),
+        )
 
     try:
-        execution = execute_plan(
-            steps=normalize_plan_steps(
-                [
-                    {"action": a, "params": p, "reason": r}
-                    for (a, p, r) in stabilized_steps
-                ]
-            ),
-            execute_action=lambda action, params: _execute_action_with_retry(
-                action=action,
-                params=params,
-                workbook_id=req.workbook_id,
-                sheet_name=req.sheet_name,
-            ),
-            verify_step=lambda action, params, result: _verify_step_result(
-                action=action,
-                params=params,
-                result=result,
-                workbook_id=req.workbook_id,
-                sheet_name=req.sheet_name,
-            ),
-            max_attempts=2,
-        )
+        current_plan = _validate_steps(action_plan)
     except Exception as exc:
         raise _map_error(exc)
 
-    if not execution.steps:
+    execution = None
+    replan_count = 0
+    max_replans = 1
+    while True:
+        # CONFIRM이 필요한 단계가 있으면 기존 승인 UX를 유지하기 위해
+        # 첫 CONFIRM 단계에서 즉시 반환한다.
+        for step in current_plan:
+            action = step.action
+            params = step.params
+            tool_def = get_tool(action)
+            if tool_def and tool_def.permission == PermissionLevel.DENIED:
+                return ExcelLiveActionResponse(
+                    ok=False,
+                    action=action,
+                    reason="보안 정책에 의해 거부된 작업입니다.",
+                )
+            if tool_def and tool_def.permission == PermissionLevel.CONFIRM and not req.approve:
+                pending = _build_approval(action, params)
+                _pending_approvals[pending.approval_id] = PendingExcelApproval(
+                    action=action,
+                    params=params,
+                    workbook_id=req.workbook_id,
+                    sheet_name=req.sheet_name,
+                    created_at=pending.created_at,
+                )
+                return ExcelLiveActionResponse(
+                    ok=True,
+                    action=action,
+                    approval_required=True,
+                    pending_approval=pending,
+                    reason=step.reason or "승인이 필요한 작업입니다.",
+                )
+
+        try:
+            execution = execute_plan(
+                steps=current_plan,
+                execute_action=lambda action, params: _execute_action(
+                    action=action,
+                    params=params,
+                    workbook_id=req.workbook_id,
+                    sheet_name=req.sheet_name,
+                ),
+                verify_step=lambda action, params, result: _verify_step_result(
+                    action=action,
+                    params=params,
+                    result=result,
+                    workbook_id=req.workbook_id,
+                    sheet_name=req.sheet_name,
+                ),
+                max_attempts=2,
+                abort_on_failure=True,
+            )
+        except Exception as exc:
+            raise _map_error(exc)
+
+        if not should_replan_after_execution(
+            execution,
+            intent=str(parsed.get("intent", "unknown")),
+            replan_count=replan_count,
+            max_replans=max_replans,
+        ):
+            break
+
+        replan_count += 1
+        replan_context = build_replan_context(base_context=base_context, execution=execution)
+        try:
+            replanned = await parse_command_plan_with_llm(
+                req.message,
+                llm,
+                context=replan_context,
+                forbid_list_action=True,
+                require_edit_action=True,
+            )
+            current_plan = _validate_steps(normalize_plan_steps(replanned.get("action_plan")))
+            parsed["reason"] = replanned.get("reason", "") or parsed.get("reason", "")
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"재계획 실패: {exc}")
+
+    if execution is None or not execution.steps:
         raise HTTPException(status_code=400, detail="실행 가능한 계획(step)을 생성하지 못했습니다.")
 
     last = execution.last

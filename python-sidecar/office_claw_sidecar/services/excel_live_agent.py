@@ -27,6 +27,49 @@ SUPPORTED_ACTIONS = {
 }
 
 
+def _has_likely_edit_intent(message: str) -> bool:
+    lowered = str(message or "").lower()
+    token_hit = any(
+        token in lowered
+        for token in [
+            "경계선",
+            "테두리",
+            "border",
+            "입력",
+            "작성",
+            "적용",
+            "수식",
+            "강조",
+            "칠해",
+            "배경",
+            "배경색",
+            "색",
+            "노란색",
+            "빨간색",
+            "파란색",
+            "초록색",
+            "표",
+            "테이블",
+            "table",
+            "저장",
+            "만들어",
+            "만들",
+            "생성",
+            "채워",
+            "바꿔",
+        ]
+    )
+    if token_hit:
+        return True
+
+    # "A열에서 10 이상인 셀" 같은 조건부 문장을 편집 의도로 인식한다.
+    has_numeric_condition = bool(
+        re.search(r"(-?\d+(?:\.\d+)?)\s*(이상|초과|이하|미만|보다\s*크|보다\s*작|>=|<=|>|<|==|!=)", lowered)
+    )
+    has_cell_target = bool(re.search(r"([a-z]\s*열|[a-z]+\d+:[a-z]+\d+|[a-z]+\d+)", lowered, re.IGNORECASE))
+    return has_numeric_condition and has_cell_target
+
+
 def _extract_range_ref(text: str) -> str | None:
     match = re.search(r"\b([a-z]+\d+:[a-z]+\d+|[a-z]:[a-z]|[a-z]+\d+)\b", text, re.IGNORECASE)
     if not match:
@@ -589,6 +632,7 @@ async def parse_command_plan_with_llm(
     *,
     context: dict[str, Any] | None = None,
     forbid_list_action: bool = False,
+    require_edit_action: bool = False,
 ) -> dict[str, Any]:
     """
     LLM 기반 계획형 파서.
@@ -623,11 +667,15 @@ async def parse_command_plan_with_llm(
         "3) 각 단계는 action/params/reason 포함\n"
         "4) 범위가 없으면 __ACTIVE_SELECTION__ 또는 __ACTIVE_CELL__ 사용 가능\n"
         "4-1) context_range가 주어졌고 사용자가 '이 범위/여기/전반적으로'처럼 모호하게 말하면 context_range를 우선 사용\n"
-        "5) 모호하면 list_workbooks 대신 read_range로 현재 선택 범위를 먼저 읽고 다음 단계를 계획\n"
+        "5) plan 상위에 intent를 반드시 포함한다: edit | read | navigate\n"
+        "6) intent=edit이면 첫 단계는 편집 action이어야 한다\n"
+        "   (write_range/create_table/highlight_by_condition/fill_range/apply_border/set_formula/save_workbook)\n"
         f"6) forbid_list_action={str(bool(forbid_list_action)).lower()} 일 때 첫 단계를 excel_live.list_workbooks로 반환하면 안 된다\n\n"
+        f"7) require_edit_action={str(bool(require_edit_action)).lower()} 일 때 첫 단계는 반드시 편집 액션이어야 한다\n"
+        "   (편집 액션: write_range/create_table/highlight_by_condition/fill_range/apply_border/set_formula/save_workbook)\n\n"
         f"{context_line}"
         "출력 형식:\n"
-        '{"action_plan":[{"action":"excel_live.read_range","params":{"range_ref":"__ACTIVE_SELECTION__"},"reason":"현재 범위 확인"}],"reason":"한 줄 한국어"}\n\n'
+        '{"intent":"edit","mutates_workbook":true,"action_plan":[{"action":"excel_live.fill_range","params":{"target_range":"__ACTIVE_SELECTION__","fill_color":"#FFFF00"},"reason":"범위 배경색 변경"}],"reason":"한 줄 한국어"}\n\n'
         f"사용자 메시지: {message}"
     )
     raw = await llm_service.chat([{"role": "user", "content": prompt}])
@@ -644,11 +692,27 @@ async def parse_command_plan_with_llm(
                 action_plan.append(_ensure_action_step(raw_step))
         if not action_plan:
             raise ValueError("LLM action_plan이 비어 있습니다.")
-        return {"action_plan": action_plan, "reason": str(parsed.get("reason", "")).strip()}
+        intent = str(parsed.get("intent", "")).strip().lower()
+        if intent not in {"edit", "read", "navigate"}:
+            intent = "unknown"
+        return {
+            "action_plan": action_plan,
+            "reason": str(parsed.get("reason", "")).strip(),
+            "intent": intent,
+            "mutates_workbook": bool(parsed.get("mutates_workbook", intent == "edit")),
+        }
 
     # 하위 호환: action/params 단일 형태도 수용
     single = _ensure_action_step(parsed)
-    return {"action_plan": [single], "reason": str(parsed.get("reason", "")).strip()}
+    intent = str(parsed.get("intent", "")).strip().lower()
+    if intent not in {"edit", "read", "navigate"}:
+        intent = "unknown"
+    return {
+        "action_plan": [single],
+        "reason": str(parsed.get("reason", "")).strip(),
+        "intent": intent,
+        "mutates_workbook": bool(parsed.get("mutates_workbook", intent == "edit")),
+    }
 
 
 async def parse_excel_live_command(
@@ -658,35 +722,11 @@ async def parse_excel_live_command(
 ) -> dict[str, Any]:
     context = context or {}
     lowered = str(message or "").lower()
-    explicit_list_intent = any(
-        token in lowered
-        for token in [
-            "열린 통합문서",
-            "워크북 목록",
-            "열린 파일 목록",
-            "list workbooks",
-            "workbook list",
-        ]
-    )
-    likely_edit_intent = any(
-        token in lowered
-        for token in [
-            "경계선",
-            "테두리",
-            "border",
-            "입력",
-            "작성",
-            "수식",
-            "강조",
-            "칠해",
-            "배경색",
-            "표",
-            "테이블",
-            "저장",
-            "만들어",
-            "생성",
-        ]
-    )
+    non_edit_actions = {
+        "excel_live.list_workbooks",
+        "excel_live.select_workbook",
+        "excel_live.read_range",
+    }
     # 에이전트 단일 경로: 규칙 파서 없이 LLM 플래너만 사용한다.
     try:
         planned = await parse_command_plan_with_llm(
@@ -695,6 +735,20 @@ async def parse_excel_live_command(
             context=context,
         )
         action_plan = planned["action_plan"]
+        intent = str(planned.get("intent", "unknown")).lower()
+        explicit_list_intent = any(
+            token in lowered
+            for token in [
+                "열린 통합문서",
+                "워크북 목록",
+                "열린 파일 목록",
+                "list workbooks",
+                "workbook list",
+            ]
+        )
+        likely_edit_intent = intent == "edit" or (
+            intent == "unknown" and _has_likely_edit_intent(message)
+        )
         # 명시적 목록 조회가 아닌데 list_workbooks가 나오면 1회 재계획한다.
         if (
             not explicit_list_intent
@@ -714,12 +768,25 @@ async def parse_excel_live_command(
                 and likely_edit_intent
             ):
                 raise ValueError("편집 의도 명령을 목록 조회로 해석했습니다.")
+        # 편집 의도인데 관찰/조회 액션으로 끝나면 강제 재계획한다.
+        if likely_edit_intent and action_plan and action_plan[0].get("action") in non_edit_actions:
+            planned = await parse_command_plan_with_llm(
+                message,
+                llm_service,
+                context=context,
+                forbid_list_action=True,
+                require_edit_action=True,
+            )
+            action_plan = planned["action_plan"]
+            if action_plan and action_plan[0].get("action") in non_edit_actions:
+                raise ValueError("편집 의도 명령을 편집 액션으로 계획하지 못했습니다.")
         first = action_plan[0]
         return {
             "action_plan": action_plan,
             "action": first["action"],
             "params": first["params"],
             "reason": planned.get("reason", "") or first.get("reason", ""),
+            "intent": intent,
         }
     except Exception as exc:
         raise ValueError(
