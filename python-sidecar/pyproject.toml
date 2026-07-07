@@ -34,7 +34,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
-    "httpx2>=2.5.0",
     "pyinstaller>=6.0",
     "sentence-transformers>=3.0.0",
 ]

@@ -134,6 +134,39 @@ function hasLikelyExcelActionIntent(message) {
   ].some((kw) => lower.includes(kw));
 }
 
+function isTransientAgentError(err) {
+  const msg = String(err?.message ?? err ?? "").toLowerCase();
+  return (
+    msg.includes("http 503") ||
+    msg.includes("gateway token mismatch") ||
+    msg.includes("connection refused") ||
+    msg.includes("timed out") ||
+    msg.includes("timeout") ||
+    msg.includes("요청 타임아웃") ||
+    msg.includes("응답 읽기 실패")
+  );
+}
+
+function withTimeout(promiseFactory, timeoutMs, label) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+    Promise.resolve()
+      .then(() => promiseFactory())
+      .then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (err) => {
+          clearTimeout(timer);
+          reject(err);
+        }
+      );
+  });
+}
+
 function extractExcelRangeTag(text) {
   const m = String(text || "").match(/\[\[EXCEL_RANGE:([A-Z0-9:]+)\]\]/i);
   return m ? m[1].toUpperCase() : null;
@@ -194,6 +227,27 @@ function formatExcelLiveResult(action, result = {}) {
   }
   if (action === "excel_live.set_formula") {
     return `${result.address || ""} 범위에 수식을 적용했습니다 (${result.formula_applied_cells || 0}개 셀).`;
+  }
+  if (action === "excel_live.verify_formula_result") {
+    return `${result.address || ""} 검증 결과: 비어있지 않은 셀 ${result.non_empty_cells || 0}개, 숫자 셀 ${result.numeric_cells || 0}개, 합계 ${result.sum ?? 0}, 평균 ${result.average ?? 0}`;
+  }
+  if (action === "excel_live.sort_range") {
+    return `${result.address || ""} 범위를 ${result.order === "desc" ? "내림차순" : "오름차순"}으로 정렬했습니다.`;
+  }
+  if (action === "excel_live.filter_rows") {
+    return `${result.address || ""} 범위에서 조건에 맞는 ${result.filtered_rows || 0}개 행을 필터링했습니다.`;
+  }
+  if (action === "excel_live.dedupe_rows") {
+    return `${result.address || ""} 범위에서 중복 ${result.removed_rows || 0}개 행을 제거했습니다.`;
+  }
+  if (action === "excel_live.pivot_table") {
+    return `${result.sheet_name || ""} 시트에 집계표를 생성했습니다 (${result.rows || 0}행 × ${result.cols || 0}열).`;
+  }
+  if (action === "excel_live.create_chart") {
+    return `${result.sheet_name || ""} 시트에 ${result.chart_type || "line"} 차트를 생성했습니다.`;
+  }
+  if (action === "excel_live.validate_data") {
+    return `${result.address || ""} 범위 검증 결과, 이슈 ${result.total_issues || 0}건을 찾았습니다.`;
   }
   if (action === "excel_live.save_workbook") {
     return `엑셀 파일을 저장했습니다 (${result.name || result.full_path || "현재 통합문서"}).`;
@@ -482,6 +536,20 @@ function ChatSidePanel({ openclawState }) {
   const [lastExcelRangeRef, setLastExcelRangeRef] = useState(null);
   const pendingUserMsgRef = useRef(null); // session 발급 전 첫 user msg 임시 보관
 
+  const runWithRetry = useCallback(async (fn, label, timeoutMs = 45000) => {
+    const runOnce = () => withTimeout(fn, timeoutMs, label);
+    try {
+      return await runOnce();
+    } catch (err) {
+      const msg = String(err?.message ?? err ?? "");
+      const timeoutLike = /timeout|timed out|aborted/i.test(msg);
+      if (!isTransientAgentError(err) && !timeoutLike) throw err;
+      setPendingTaskLabel(`${label} 재시도 중...`);
+      await new Promise((r) => setTimeout(r, 900));
+      return runOnce();
+    }
+  }, []);
+
   // textarea auto-grow: 1행 ~ 5행 (최대 ~120px)
   useEffect(() => {
     const ta = textareaRef.current;
@@ -601,7 +669,20 @@ function ChatSidePanel({ openclawState }) {
           const cmd = commands[i];
           const contextRangeForCmd = hasExplicitRangeInCommand(cmd) ? null : lastExcelRangeRef;
           setPendingTaskLabel(`엑셀 명령 ${i + 1}/${commands.length} 실행 중...`);
-          const excelResult = await excelLiveCommand(cmd, null, null, false, contextRangeForCmd);
+          const excelResult = await runWithRetry(
+            () => excelLiveCommand(cmd, null, null, activeSessionId, false, contextRangeForCmd),
+            "엑셀 명령"
+          );
+          if (excelResult?.result?.ask_follow_up) {
+            const followText = String(
+              excelResult?.result?.follow_up_question ||
+                excelResult?.reason ||
+                "작업을 진행하려면 추가 정보가 필요합니다."
+            ).trim();
+            addAgentMessage({ role: "agent", text: followText });
+            if (activeSessionId) persistMessageSilent(activeSessionId, "agent", followText);
+            break;
+          }
           if (excelResult?.approval_required && excelResult?.pending_approval) {
             setPendingExcelApproval(excelResult.pending_approval);
             setPendingExcelComposite({
@@ -632,7 +713,10 @@ function ChatSidePanel({ openclawState }) {
         }
       } else {
         setPendingTaskLabel("AI가 답변을 생성하는 중...");
-        const result = await agentChat(trimmed, activeSessionId);
+        const result = await runWithRetry(
+          () => agentChat(trimmed, activeSessionId),
+          "AI 대화"
+        );
         const newSessionId = result.session_id;
         addAgentMessage({
           role: "agent",
@@ -658,11 +742,13 @@ function ChatSidePanel({ openclawState }) {
         }
       }
     } catch (err) {
-      const errText = toUserMessage(err, "작업 처리 중 오류가 발생했습니다. 다시 시도해 주세요.");
+      const fallbackMsg = "작업 처리 중 오류가 발생했습니다. 다시 시도해 주세요.";
+      const rawErr = String(err?.message ?? err ?? "");
+      const errText = toUserMessage(rawErr, fallbackMsg);
       addAgentMessage({
         role: "agent",
         text: null,
-        error: errText,
+        error: errText === fallbackMsg ? `${errText} (${rawErr.slice(0, 120)})` : errText,
       });
       const sid = activeSessionId;
       if (sid) {
@@ -702,7 +788,22 @@ function ChatSidePanel({ openclawState }) {
         for (let i = pendingExcelComposite.currentIndex + 1; i < commands.length; i += 1) {
           const contextRangeForCmd = hasExplicitRangeInCommand(commands[i]) ? null : lastExcelRangeRef;
           setPendingTaskLabel(`엑셀 명령 ${i + 1}/${commands.length} 실행 중...`);
-          const excelResult = await excelLiveCommand(commands[i], null, null, false, contextRangeForCmd);
+          const excelResult = await runWithRetry(
+            () => excelLiveCommand(commands[i], null, null, activeSessionId, false, contextRangeForCmd),
+            "엑셀 명령"
+          );
+          if (excelResult?.result?.ask_follow_up) {
+            const followText = String(
+              excelResult?.result?.follow_up_question ||
+                excelResult?.reason ||
+                "작업을 진행하려면 추가 정보가 필요합니다."
+            ).trim();
+            addAgentMessage({ role: "agent", text: followText });
+            if (activeSessionId) {
+              persistMessageSilent(activeSessionId, "agent", followText);
+            }
+            return;
+          }
           if (excelResult?.approval_required && excelResult?.pending_approval) {
             setPendingExcelApproval(excelResult.pending_approval);
             setPendingExcelComposite({ commands, currentIndex: i });
@@ -738,7 +839,7 @@ function ChatSidePanel({ openclawState }) {
       }
       setPendingTaskLabel("");
     }
-  }, [pendingExcelApproval, pendingExcelComposite, addAgentMessage, activeSessionId, lastExcelRangeRef]);
+  }, [pendingExcelApproval, pendingExcelComposite, addAgentMessage, activeSessionId, lastExcelRangeRef, runWithRetry]);
 
   const handleExcelApprovalCancel = useCallback(async () => {
     if (!pendingExcelApproval) return;
@@ -783,7 +884,7 @@ function ChatSidePanel({ openclawState }) {
     if (loading || isUnavailable || insertingRangeContext) return;
     setInsertingRangeContext(true);
     try {
-      const out = await excelLiveCommand("지금 선택한 범위 읽어줘", null, null, false);
+      const out = await excelLiveCommand("지금 선택한 범위 읽어줘", null, null, activeSessionId, false);
       const result = out?.result || {};
       const address = String(result.address || "").toUpperCase();
       if (!address) {
@@ -816,7 +917,7 @@ function ChatSidePanel({ openclawState }) {
     } finally {
       setInsertingRangeContext(false);
     }
-  }, [loading, isUnavailable, insertingRangeContext, addAgentMessage]);
+  }, [loading, isUnavailable, insertingRangeContext, addAgentMessage, activeSessionId]);
 
   const handleKeyDown = (e) => {
     // IME 조합 중 Enter는 변환 확정 — 전송하지 않는다.

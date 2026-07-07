@@ -317,6 +317,7 @@ export async function excelLiveStatus() {
  * @param {string} message
  * @param {string | null} workbookId
  * @param {string | null} sheetName
+ * @param {string | null} sessionId
  * @param {boolean} approve
  * @param {string | null} contextRange
  */
@@ -324,6 +325,7 @@ export async function excelLiveCommand(
   message,
   workbookId = null,
   sheetName = null,
+  sessionId = null,
   approve = false,
   contextRange = null,
 ) {
@@ -331,6 +333,7 @@ export async function excelLiveCommand(
     message,
     workbookId,
     sheetName,
+    sessionId,
     approve,
     contextRange,
   });

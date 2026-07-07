@@ -278,9 +278,69 @@ class OpenClawClient:
                 "websockets 패키지가 설치되지 않았습니다: pip install websockets"
             ) from exc
 
+        token_candidates = self._build_auth_token_candidates()
+        last_error: OpenClawUnavailableError | None = None
+
+        for idx, token in enumerate(token_candidates):
+            try:
+                ws, hello_payload = await self._connect_once(websockets, token)
+                # 새 디바이스 토큰 캐싱
+                new_token = (
+                    hello_payload.get("auth", {}).get("deviceToken")
+                    if isinstance(hello_payload.get("auth"), dict)
+                    else None
+                )
+                if isinstance(new_token, str) and new_token.strip():
+                    self._device_token = new_token.strip()
+                    self._save_token(self._device_token)
+
+                self._ws = ws
+                self._connected = True
+                self._listener_task = asyncio.create_task(self._listener_loop())
+                logger.info("[openclaw] Gateway connected (port %d)", self._port)
+                return
+            except OpenClawUnavailableError as exc:
+                last_error = exc
+                msg = str(exc).lower()
+                token_mismatch = ("token mismatch" in msg) or ("unauthorized" in msg)
+                has_next = idx < (len(token_candidates) - 1)
+                if token_mismatch and has_next:
+                    logger.warning(
+                        "[openclaw] 인증 토큰 불일치 감지, 다른 토큰으로 재시도합니다 (%d/%d)",
+                        idx + 2,
+                        len(token_candidates),
+                    )
+                    continue
+                raise
+
+        raise last_error or OpenClawUnavailableError("핸드셰이크 실패: 원인 불명")
+
+    def _build_auth_token_candidates(self) -> list[str]:
+        """
+        핸드셰이크에 사용할 인증 토큰 후보를 우선순위대로 구성한다.
+
+        우선순위:
+          1) OPENCLAW_GATEWAY_TOKEN
+          2) ~/.openclaw/openclaw.json 의 gateway.auth.token
+          3) 캐시된 device token
+          4) 빈 토큰(무인증 모드 호환)
+        """
+        candidates: list[str] = []
+        env_token = (os.environ.get("OPENCLAW_GATEWAY_TOKEN") or "").strip()
+        cfg_token = (self._load_gateway_token_from_openclaw_config() or "").strip()
+        cached_token = (self._load_token() or "").strip()
+
+        for token in (env_token, cfg_token, cached_token, ""):
+            if token in candidates:
+                continue
+            candidates.append(token)
+        return candidates
+
+    async def _connect_once(self, websockets_module, auth_token: str) -> tuple[object, dict]:
+        """단일 토큰으로 1회 WebSocket 연결 + connect 핸드셰이크를 수행한다."""
         uri = f"ws://127.0.0.1:{self._port}"
         try:
-            ws = await websockets.connect(
+            ws = await websockets_module.connect(
                 uri,
                 open_timeout=5,
                 ping_interval=20,
@@ -310,10 +370,6 @@ class OpenClawClient:
             raise OpenClawUnavailableError("핸드셰이크 실패: connect.challenge nonce 수신 불가")
 
         # 2) connect req 전송 (gateway protocol v4)
-        auth_token = (os.environ.get("OPENCLAW_GATEWAY_TOKEN") or "").strip()
-        if not auth_token:
-            auth_token = self._load_gateway_token_from_openclaw_config() or ""
-        cached_token = self._load_token()
         connect_params: dict = {
             "minProtocol": 4,
             "maxProtocol": 4,
@@ -326,8 +382,8 @@ class OpenClawClient:
             "role": "operator",
             "scopes": ["operator.admin"],
         }
-        if auth_token or cached_token:
-            connect_params["auth"] = {"token": auth_token or cached_token}
+        if auth_token:
+            connect_params["auth"] = {"token": auth_token}
 
         connect_id = str(uuid.uuid4())
         await ws.send(
@@ -365,20 +421,7 @@ class OpenClawClient:
             await ws.close()
             raise OpenClawUnavailableError("핸드셰이크 실패: connect 응답 타임아웃")
 
-        # 새 디바이스 토큰 캐싱
-        new_token = (
-            hello_payload.get("auth", {}).get("deviceToken")
-            if isinstance(hello_payload.get("auth"), dict)
-            else None
-        )
-        if isinstance(new_token, str) and new_token.strip():
-            self._device_token = new_token.strip()
-            self._save_token(self._device_token)
-
-        self._ws = ws
-        self._connected = True
-        self._listener_task = asyncio.create_task(self._listener_loop())
-        logger.info("[openclaw] Gateway connected (port %d)", self._port)
+        return ws, hello_payload
 
     async def _listener_loop(self) -> None:
         """게이트웨이로부터 프레임을 지속적으로 수신하는 루프."""
