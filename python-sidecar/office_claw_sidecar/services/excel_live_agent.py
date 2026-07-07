@@ -12,6 +12,8 @@ import json
 import re
 from typing import Any
 
+from office_claw_sidecar.services.excel_live_table_presets import match_table_preset
+
 
 SUPPORTED_ACTIONS = {
     "excel_live.list_workbooks",
@@ -23,6 +25,13 @@ SUPPORTED_ACTIONS = {
     "excel_live.fill_range",
     "excel_live.apply_border",
     "excel_live.set_formula",
+    "excel_live.verify_formula_result",
+    "excel_live.sort_range",
+    "excel_live.filter_rows",
+    "excel_live.dedupe_rows",
+    "excel_live.pivot_table",
+    "excel_live.create_chart",
+    "excel_live.validate_data",
     "excel_live.save_workbook",
 }
 
@@ -39,6 +48,9 @@ def _has_likely_edit_intent(message: str) -> bool:
             "작성",
             "적용",
             "수식",
+            "함수",
+            "계산",
+            "검증",
             "강조",
             "칠해",
             "배경",
@@ -57,6 +69,13 @@ def _has_likely_edit_intent(message: str) -> bool:
             "생성",
             "채워",
             "바꿔",
+            "정렬",
+            "필터",
+            "중복",
+            "피벗",
+            "차트",
+            "그래프",
+            "검증",
         ]
     )
     if token_hit:
@@ -592,6 +611,13 @@ async def parse_command_with_llm(message: str, llm_service) -> dict[str, Any]:
         "- excel_live.save_workbook\n\n"
         "- excel_live.apply_border\n"
         "- excel_live.set_formula\n\n"
+        "- excel_live.verify_formula_result\n\n"
+        "- excel_live.sort_range\n"
+        "- excel_live.filter_rows\n"
+        "- excel_live.dedupe_rows\n"
+        "- excel_live.pivot_table\n"
+        "- excel_live.create_chart\n"
+        "- excel_live.validate_data\n\n"
         "규칙:\n"
         "1) JSON 외 텍스트 금지\n"
         "2) action은 허용 목록 중 하나\n"
@@ -661,6 +687,13 @@ async def parse_command_plan_with_llm(
         "- excel_live.save_workbook\n"
         "- excel_live.apply_border\n"
         "- excel_live.set_formula\n\n"
+        "- excel_live.verify_formula_result\n\n"
+        "- excel_live.sort_range\n"
+        "- excel_live.filter_rows\n"
+        "- excel_live.dedupe_rows\n"
+        "- excel_live.pivot_table\n"
+        "- excel_live.create_chart\n"
+        "- excel_live.validate_data\n\n"
         "규칙:\n"
         "1) JSON 외 텍스트 금지\n"
         "2) action_plan은 1~4개 단계\n"
@@ -669,13 +702,16 @@ async def parse_command_plan_with_llm(
         "4-1) context_range가 주어졌고 사용자가 '이 범위/여기/전반적으로'처럼 모호하게 말하면 context_range를 우선 사용\n"
         "5) plan 상위에 intent를 반드시 포함한다: edit | read | navigate\n"
         "6) intent=edit이면 첫 단계는 편집 action이어야 한다\n"
-        "   (write_range/create_table/highlight_by_condition/fill_range/apply_border/set_formula/save_workbook)\n"
+        "   (write_range/create_table/highlight_by_condition/fill_range/apply_border/set_formula/sort_range/filter_rows/dedupe_rows/pivot_table/create_chart/save_workbook)\n"
         f"6) forbid_list_action={str(bool(forbid_list_action)).lower()} 일 때 첫 단계를 excel_live.list_workbooks로 반환하면 안 된다\n\n"
         f"7) require_edit_action={str(bool(require_edit_action)).lower()} 일 때 첫 단계는 반드시 편집 액션이어야 한다\n"
-        "   (편집 액션: write_range/create_table/highlight_by_condition/fill_range/apply_border/set_formula/save_workbook)\n\n"
+        "   (편집 액션: write_range/create_table/highlight_by_condition/fill_range/apply_border/set_formula/sort_range/filter_rows/dedupe_rows/pivot_table/create_chart/save_workbook)\n\n"
+        "8) create_table 정보가 부족하면 slot_fill/partial_params/follow_up_question를 함께 넣을 수 있다\n"
+        "   - slot_fill 예: {\"rows\":5,\"cols\":5,\"headers\":[\"금액\",\"장소\"]}\n"
+        "   - follow_up_question 예: \"표 크기와 헤더를 알려주세요. 예: 5*5, 금액, 장소, 날짜\"\n\n"
         f"{context_line}"
         "출력 형식:\n"
-        '{"intent":"edit","mutates_workbook":true,"action_plan":[{"action":"excel_live.fill_range","params":{"target_range":"__ACTIVE_SELECTION__","fill_color":"#FFFF00"},"reason":"범위 배경색 변경"}],"reason":"한 줄 한국어"}\n\n'
+        '{"intent":"edit","mutates_workbook":true,"action_plan":[{"action":"excel_live.fill_range","params":{"target_range":"__ACTIVE_SELECTION__","fill_color":"#FFFF00"},"reason":"범위 배경색 변경"}],"slot_fill":{},"partial_params":{},"follow_up_question":"","reason":"한 줄 한국어"}\n\n'
         f"사용자 메시지: {message}"
     )
     raw = await llm_service.chat([{"role": "user", "content": prompt}])
@@ -700,6 +736,11 @@ async def parse_command_plan_with_llm(
             "reason": str(parsed.get("reason", "")).strip(),
             "intent": intent,
             "mutates_workbook": bool(parsed.get("mutates_workbook", intent == "edit")),
+            "slot_fill": parsed.get("slot_fill") if isinstance(parsed.get("slot_fill"), dict) else {},
+            "partial_params": (
+                parsed.get("partial_params") if isinstance(parsed.get("partial_params"), dict) else {}
+            ),
+            "follow_up_question": str(parsed.get("follow_up_question", "")).strip(),
         }
 
     # 하위 호환: action/params 단일 형태도 수용
@@ -712,6 +753,9 @@ async def parse_command_plan_with_llm(
         "reason": str(parsed.get("reason", "")).strip(),
         "intent": intent,
         "mutates_workbook": bool(parsed.get("mutates_workbook", intent == "edit")),
+        "slot_fill": parsed.get("slot_fill") if isinstance(parsed.get("slot_fill"), dict) else {},
+        "partial_params": parsed.get("partial_params") if isinstance(parsed.get("partial_params"), dict) else {},
+        "follow_up_question": str(parsed.get("follow_up_question", "")).strip(),
     }
 
 
@@ -726,6 +770,7 @@ async def parse_excel_live_command(
         "excel_live.list_workbooks",
         "excel_live.select_workbook",
         "excel_live.read_range",
+        "excel_live.validate_data",
     }
     # 에이전트 단일 경로: 규칙 파서 없이 LLM 플래너만 사용한다.
     try:
@@ -787,6 +832,9 @@ async def parse_excel_live_command(
             "params": first["params"],
             "reason": planned.get("reason", "") or first.get("reason", ""),
             "intent": intent,
+            "slot_fill": planned.get("slot_fill", {}),
+            "partial_params": planned.get("partial_params", {}),
+            "follow_up_question": planned.get("follow_up_question", ""),
         }
     except Exception as exc:
         raise ValueError(
@@ -804,4 +852,79 @@ def _column_span(start_col: str, end_col: str) -> int:
     start = col_to_num(start_col)
     end = col_to_num(end_col)
     return max(1, end - start + 1)
+
+
+def extract_create_table_slot_hints(message: str) -> dict[str, Any]:
+    """
+    create_table 멀티턴 슬롯필링용 힌트를 자연어에서 추출한다.
+
+    반환 키:
+    - rows: int | None
+    - cols: int | None
+    - headers: list[str]
+    - start_cell: str | None
+    - table_intent: bool
+    """
+    text = str(message or "").strip()
+    lowered = text.lower()
+    preset = match_table_preset(text)
+
+    table_intent = (
+        any(token in lowered for token in ["표", "테이블", "table"])
+        and any(token in lowered for token in ["만들", "생성", "create", "작성"])
+    )
+    if preset is not None:
+        table_intent = True
+
+    rows: int | None = None
+    cols: int | None = None
+    m = re.search(r"(\d{1,3})\s*(?:\*|x|×)\s*(\d{1,3})", lowered)
+    if not m:
+        m = re.search(r"(\d{1,3})\s*행\s*(\d{1,3})\s*열", lowered)
+    if not m:
+        m = re.search(r"(\d{1,3})\s*by\s*(\d{1,3})", lowered)
+    if m:
+        rows = max(1, min(100, int(m.group(1))))
+        cols = max(1, min(50, int(m.group(2))))
+
+    start_cell = _extract_range_ref(text)
+    if start_cell and ":" in start_cell:
+        start_cell = start_cell.split(":")[0]
+
+    # "금액, 장소, 날짜, 요건, 비고" 형태를 우선 처리한다.
+    headers: list[str] = []
+    header_source = re.sub(r"\d{1,3}\s*(?:\*|x|×)\s*\d{1,3}", "", text, flags=re.I)
+    comma_tokens = [token.strip() for token in re.split(r"[,/|]", header_source) if token.strip()]
+    if len(comma_tokens) >= 2:
+        filtered: list[str] = []
+        for token in comma_tokens:
+            t = token.strip()
+            if not t:
+                continue
+            if re.fullmatch(r"\d{1,3}\s*(?:\*|x|×)\s*\d{1,3}", t.lower()):
+                continue
+            t = re.sub(r"^(?:크기로|헤더는|헤더|컬럼은|컬럼)\s*", "", t, flags=re.I).strip()
+            t = re.sub(r"(?:표|테이블|table)\s*(?:로|을|를)?\s*(?:만들어줘|생성해줘|create.*)?$", "", t, flags=re.I).strip()
+            if t:
+                filtered.append(t)
+        if len(filtered) >= 2:
+            headers = filtered
+
+    return {
+        "rows": rows,
+        "cols": cols,
+        "headers": headers,
+        "start_cell": start_cell,
+        "table_intent": table_intent,
+        "template_key": preset.key if preset else None,
+        "template_headers": list(preset.headers) if preset else [],
+        "template_rows": preset.default_rows if preset else None,
+        "template_cols": preset.default_cols if preset else None,
+        "template_follow_up_question": preset.follow_up_question if preset else "",
+        "blank_table": any(token in lowered for token in ["빈 표", "빈표", "그냥 빈"]),
+        "affirmative": any(
+            token in lowered
+            for token in ["응", "네", "좋아", "그대로", "그 정도", "맞아", "yes", "ok", "okay"]
+        ),
+    }
 

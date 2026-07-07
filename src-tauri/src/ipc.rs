@@ -755,6 +755,7 @@ pub async fn excel_live_command(
     message: String,
     workbook_id: Option<String>,
     sheet_name: Option<String>,
+    session_id: Option<String>,
     approve: Option<bool>,
     context_range: Option<String>,
 ) -> Result<String, String> {
@@ -771,6 +772,7 @@ pub async fn excel_live_command(
         "message": message,
         "workbook_id": workbook_id,
         "sheet_name": sheet_name,
+        "session_id": session_id,
         "approve": approve.unwrap_or(false),
         "context_range": context_range,
     });
