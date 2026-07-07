@@ -2,7 +2,11 @@
 
 import asyncio
 
-from office_claw_sidecar.services.excel_live_agent import parse_command_rule_based, parse_excel_live_command
+from office_claw_sidecar.services.excel_live_agent import (
+    extract_create_table_slot_hints,
+    parse_command_rule_based,
+    parse_excel_live_command,
+)
 
 
 def test_parse_highlight_command_korean():
@@ -236,6 +240,21 @@ def test_parse_fill_range_without_threshold_uses_active_selection():
     assert parsed["action"] == "excel_live.fill_range"
     assert parsed["params"]["target_range"] == "__ACTIVE_SELECTION__"
     assert parsed["params"]["fill_color"] == "#FFFF00"
+
+
+def test_extract_create_table_slot_hints_with_size_and_headers():
+    hints = extract_create_table_slot_hints("5*5크기로 금액, 장소, 날짜, 요건, 비고 표 만들어줘")
+    assert hints["table_intent"] is True
+    assert hints["rows"] == 5
+    assert hints["cols"] == 5
+    assert hints["headers"] == ["금액", "장소", "날짜", "요건", "비고"]
+
+
+def test_extract_create_table_slot_hints_detects_template_without_table_word():
+    hints = extract_create_table_slot_hints("프로젝트 진행 상황 체크리스트 만들어줘")
+    assert hints["table_intent"] is True
+    assert hints["template_key"] == "checklist"
+    assert len(hints["template_headers"]) >= 4
 
 
 class _FakeLLM:

@@ -1,0 +1,169 @@
+[
+  {
+    "id": "excel_format_report_001",
+    "domain": "sales",
+    "user_level": "beginner",
+    "initial_query": "보기 좋게 만들어줘",
+    "intent": "FORMAT_SHEET",
+    "sub_intents": ["EXPORT_PRINT"],
+    "ambiguity_level": "high",
+    "required_slots": ["task_goal", "output_location", "safety_policy"],
+    "dialogue": [
+      {"role": "user", "content": "보기 좋게 만들어줘"},
+      {"role": "assistant", "content": "서식만 정리할까요, 데이터도 같이 정리할까요?"},
+      {"role": "user", "content": "서식만"},
+      {"role": "assistant", "content": "원본 수정 대신 복사본 시트에 적용할까요?"},
+      {"role": "user", "content": "응"}
+    ],
+    "expected_route": ["ConversationAgent", "IntentRouter", "TaskPlanner", "FormatAgent", "Validator"],
+    "expected_tools": [],
+    "risk_level": "low",
+    "needs_confirmation": false,
+    "validation_criteria": ["원본 시트 보존", "제목행/열너비/숫자형식 적용"]
+  },
+  {
+    "id": "excel_protect_input_001",
+    "domain": "hr",
+    "user_level": "beginner",
+    "initial_query": "상태값은 드롭다운으로 선택하게 해줘",
+    "intent": "VALIDATION_RULE",
+    "sub_intents": ["SAFETY_PERMISSION"],
+    "ambiguity_level": "medium",
+    "required_slots": ["target_sheet", "target_range", "operation"],
+    "dialogue": [
+      {"role": "user", "content": "상태값은 드롭다운으로 선택하게 해줘"},
+      {"role": "assistant", "content": "대상 범위를 알려주세요."},
+      {"role": "user", "content": "E2:E500"},
+      {"role": "assistant", "content": "목록 값은 무엇으로 할까요?"},
+      {"role": "user", "content": "완료,진행중,지연,보류"}
+    ],
+    "expected_route": ["IntentRouter", "SlotFilling", "ValidationAgent", "Executor", "Validator"],
+    "expected_tools": ["excel_live.set_data_validation"],
+    "risk_level": "medium",
+    "needs_confirmation": true,
+    "validation_criteria": ["목록 유효성 규칙 적용", "잘못된 값 입력 차단"]
+  },
+  {
+    "id": "excel_import_merge_001",
+    "domain": "finance",
+    "user_level": "intermediate",
+    "initial_query": "파일 여러 개 합쳐줘",
+    "intent": "IMPORT_MERGE",
+    "sub_intents": ["CLEAN_DATA"],
+    "ambiguity_level": "high",
+    "required_slots": ["target_sheet", "output_location", "safety_policy"],
+    "dialogue": [
+      {"role": "user", "content": "파일 여러 개 합쳐줘"},
+      {"role": "assistant", "content": "폴더 경로를 알려주세요."},
+      {"role": "user", "content": "C:/data/monthly"},
+      {"role": "assistant", "content": "특정 시트만 읽을까요?"},
+      {"role": "user", "content": "매출"}
+    ],
+    "expected_route": ["IntentRouter", "ImportMergeAgent", "Executor", "Validator"],
+    "expected_tools": ["excel_live.consolidate_workbooks_from_folder"],
+    "risk_level": "medium",
+    "needs_confirmation": true,
+    "validation_criteria": ["열린 파일 수 집계", "통합 행수/열수 기록", "결과 시트 생성"]
+  },
+  {
+    "id": "excel_debug_formula_001",
+    "domain": "sales",
+    "user_level": "beginner",
+    "initial_query": "#N/A가 왜 떠?",
+    "intent": "DEBUG_FORMULA",
+    "sub_intents": ["LOOKUP_MATCH"],
+    "ambiguity_level": "high",
+    "required_slots": ["target_range", "error_policy"],
+    "dialogue": [
+      {"role": "user", "content": "#N/A가 왜 떠?"},
+      {"role": "assistant", "content": "문제가 나는 열/범위를 알려주세요."},
+      {"role": "user", "content": "D2:D200"},
+      {"role": "assistant", "content": "조회 기준 키 열이 무엇인가요?"},
+      {"role": "user", "content": "A열 코드"}
+    ],
+    "expected_route": ["IntentRouter", "DebugAgent", "Validator"],
+    "expected_tools": [],
+    "risk_level": "low",
+    "needs_confirmation": false,
+    "validation_criteria": ["오류 셀 개수", "원인 후보(키 미존재/공백/타입불일치) 리포트"]
+  },
+  {
+    "id": "excel_export_print_001",
+    "domain": "project",
+    "user_level": "beginner",
+    "initial_query": "A4 한 장에 맞춰줘",
+    "intent": "EXPORT_PRINT",
+    "sub_intents": ["FORMAT_SHEET"],
+    "ambiguity_level": "medium",
+    "required_slots": ["target_sheet", "output_format"],
+    "dialogue": [
+      {"role": "user", "content": "A4 한 장에 맞춰줘"},
+      {"role": "assistant", "content": "가로/세로 방향 중 무엇으로 맞출까요?"},
+      {"role": "user", "content": "가로"}
+    ],
+    "expected_route": ["IntentRouter", "PrintLayoutAgent", "Validator"],
+    "expected_tools": [],
+    "risk_level": "low",
+    "needs_confirmation": false,
+    "validation_criteria": ["인쇄영역 설정", "페이지 너비 1장 맞춤"]
+  },
+  {
+    "id": "excel_automation_macro_001",
+    "domain": "sales",
+    "user_level": "advanced",
+    "initial_query": "Module1.RefreshReport 매크로 실행해줘",
+    "intent": "AUTOMATION",
+    "sub_intents": ["SAFETY_PERMISSION"],
+    "ambiguity_level": "low",
+    "required_slots": ["target_sheet", "operation"],
+    "dialogue": [
+      {"role": "user", "content": "Module1.RefreshReport 매크로 실행해줘"},
+      {"role": "assistant", "content": "실행 전 백업을 만들까요?"},
+      {"role": "user", "content": "응"}
+    ],
+    "expected_route": ["SafetyAgent", "AutomationAgent", "Executor", "Validator"],
+    "expected_tools": ["excel_live.run_vba_macro"],
+    "risk_level": "high",
+    "needs_confirmation": true,
+    "validation_criteria": ["매크로 실행 성공 여부", "예외 메시지 수집", "실행 전 승인 로그"]
+  },
+  {
+    "id": "excel_permission_readonly_001",
+    "domain": "general",
+    "user_level": "beginner",
+    "initial_query": "파일이 읽기 전용이라 수정이 안 돼",
+    "intent": "SAFETY_PERMISSION",
+    "sub_intents": ["EXPLAIN_HELP"],
+    "ambiguity_level": "medium",
+    "required_slots": ["safety_policy", "output_location"],
+    "dialogue": [
+      {"role": "user", "content": "파일이 읽기 전용이라 수정이 안 돼"},
+      {"role": "assistant", "content": "원본을 유지하고 새 파일로 작업할까요?"},
+      {"role": "user", "content": "응"}
+    ],
+    "expected_route": ["ConversationAgent", "SafetyAgent", "TaskPlanner"],
+    "expected_tools": [],
+    "risk_level": "medium",
+    "needs_confirmation": true,
+    "validation_criteria": ["읽기전용 상태 안내", "대안 경로(복사본 작업) 제공"]
+  },
+  {
+    "id": "excel_explain_pivot_001",
+    "domain": "education",
+    "user_level": "beginner",
+    "initial_query": "피벗이 뭐야?",
+    "intent": "EXPLAIN_HELP",
+    "sub_intents": [],
+    "ambiguity_level": "low",
+    "required_slots": [],
+    "dialogue": [
+      {"role": "user", "content": "피벗이 뭐야?"},
+      {"role": "assistant", "content": "피벗은 데이터를 행/열 기준으로 집계해 요약표를 만드는 기능입니다."}
+    ],
+    "expected_route": ["IntentRouter", "ExplainAgent"],
+    "expected_tools": [],
+    "risk_level": "low",
+    "needs_confirmation": false,
+    "validation_criteria": ["쉬운 설명", "실행 전제 없는 정보형 응답"]
+  }
+]
