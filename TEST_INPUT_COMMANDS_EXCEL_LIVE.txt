@@ -1,6 +1,7 @@
 Excel Live 테스트 입력 명령어 세트 (67개)
 원본: docs/excel-live-command-list.txt
-검증 기준: python-sidecar 룰 파서 + 복합 분해 로직 기준 (2026-06-20)
+검증 기준: Ollama tool-calling (OpenAI 호환 tools) 기준 — LLM이 함수를 선택하므로
+`-> excel_live.*` 표기는 기대 액션(정답 레이블)이며, 수동 QA 시 실제 선택된 함수와 비교한다. (2026-07-08)
 
 01. [low] 열린 통합문서 목록 보여줘 -> excel_live.list_workbooks
 02. [low] workbook list please -> excel_live.list_workbooks

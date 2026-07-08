@@ -181,46 +181,7 @@ fn spawn_dev_sidecar_process(port: u16, auth_token: &str) -> Result<(), String> 
         .env("PYTHONUTF8", "1")
         .env("PYTHONIOENCODING", "utf-8");
 
-    if let Some(token) = load_gateway_token_from_openclaw_config() {
-        if !token.is_empty() {
-            cmd.env("OPENCLAW_GATEWAY_TOKEN", token);
-        }
-    }
-
     cmd.spawn()
         .map_err(|e| format!("Dev sidecar 자동 기동 실패: {}", e))?;
     Ok(())
-}
-
-fn load_gateway_token_from_openclaw_config() -> Option<String> {
-    if let Ok(token) = std::env::var("OPENCLAW_GATEWAY_TOKEN") {
-        let t = token.trim().to_string();
-        if !t.is_empty() {
-            return Some(t);
-        }
-    }
-
-    let home = std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(PathBuf::from)?;
-    let cfg_path = home.join(".openclaw").join("openclaw.json");
-    if !cfg_path.exists() {
-        return None;
-    }
-
-    let raw = std::fs::read_to_string(cfg_path).ok()?;
-    let json: serde_json::Value = serde_json::from_str(&raw).ok()?;
-    let token = json
-        .get("gateway")
-        .and_then(|v| v.get("auth"))
-        .and_then(|v| v.get("token"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    if token.is_empty() {
-        None
-    } else {
-        Some(token)
-    }
 }

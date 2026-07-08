@@ -14,7 +14,6 @@ from office_claw_sidecar.config import (
     migrate_legacy_paths,
 )
 from office_claw_sidecar.routers import (
-    agent,
     audit,
     backup,
     chat,
@@ -27,7 +26,6 @@ from office_claw_sidecar.routers import (
     permissions,
     security,
     settings,
-    skills,
     slack,
     telegram,
     workspace,
@@ -148,9 +146,7 @@ app.include_router(workspace.router, prefix="/workspace", dependencies=[Depends(
 app.include_router(settings.router, prefix="/settings", dependencies=[Depends(verify_auth)])
 app.include_router(maintenance.router, prefix="/maintenance", dependencies=[Depends(verify_auth)])
 
-# ── Phase 4: OpenClaw 에이전트 라우터 (신규) ──────────────────────────────────
-app.include_router(agent.router, prefix="/agent", dependencies=[Depends(verify_auth)])
-app.include_router(skills.router, prefix="/skills", dependencies=[Depends(verify_auth)])
+# ── 보안 라우터 ───────────────────────────────────────────────────────────────
 app.include_router(security.router, prefix="/security", dependencies=[Depends(verify_auth)])
 
 # ── Phase 3: 멀티 메신저 + 권한 설정 라우터 ─────────────────────────────────────
@@ -187,10 +183,6 @@ def main() -> None:
 
     global _auth_token
     _auth_token = args.auth_token
-    # dev 모드(tauri에서 auth-token=dev-token)에서는 gateway 토큰도 dev-token으로 고정해
-    # OpenClaw gateway 인증 토큰 mismatch를 방지한다.
-    if args.auth_token == "dev-token" and not os.environ.get("OPENCLAW_GATEWAY_TOKEN"):
-        os.environ["OPENCLAW_GATEWAY_TOKEN"] = "dev-token"
 
     uvicorn.run(
         "office_claw_sidecar.main:app",

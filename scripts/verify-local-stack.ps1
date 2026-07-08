@@ -1,4 +1,4 @@
-# 로컬 스택 스모크 테스트: Ollama → OpenClaw Gateway → Sidecar /agent/chat
+# 로컬 스택 스모크 테스트: Ollama → Sidecar → tool-calling 채팅 경로
 # 사용: .\scripts\verify-local-stack.ps1 [-SidecarPort 19532]
 
 param(
@@ -6,8 +6,6 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$ProjectRoot = Split-Path -Parent $PSScriptRoot
-. (Join-Path $ProjectRoot "scripts\local-env.ps1")
 
 function Test-Endpoint($Name, $Script) {
     Write-Host "`n== $Name =="
@@ -24,26 +22,35 @@ function Test-Endpoint($Name, $Script) {
 $ok = $true
 $ok = (Test-Endpoint "Ollama API" {
     $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 5
-    if (-not $tags.models) { throw "모델 목록 없음" }
+    if (-not $tags.models) { throw "모델 목록 없음 — 'ollama pull qwen3:4b' 실행 필요" }
     $tags.models | ForEach-Object { "  - $($_.name)" }
 }) -and $ok
 
-$ok = (Test-Endpoint "OpenClaw Gateway" {
-    openclaw gateway health | Out-Host
+$ok = (Test-Endpoint "Ollama OpenAI 호환 API (/v1/models)" {
+    $models = Invoke-RestMethod -Uri "http://127.0.0.1:11434/v1/models" -TimeoutSec 5
+    if (-not $models.data) { throw "OpenAI 호환 모델 목록 없음" }
 }) -and $ok
 
 $ok = (Test-Endpoint "Sidecar /health" {
     Invoke-RestMethod -Uri "http://127.0.0.1:$SidecarPort/health" -TimeoutSec 5 | Format-List
 }) -and $ok
 
-$ok = (Test-Endpoint "Sidecar /agent/chat" {
-    $r = Invoke-RestMethod -Uri "http://127.0.0.1:$SidecarPort/agent/chat" -Method Post `
+$ok = (Test-Endpoint "Sidecar /llm/chat (Ollama 직행)" {
+    $r = Invoke-RestMethod -Uri "http://127.0.0.1:$SidecarPort/llm/chat" -Method Post `
         -Body '{"message":"Reply with exactly: OK"}' -ContentType "application/json" -TimeoutSec 180
     if (-not $r.response -or $r.response.Trim().Length -eq 0) {
         throw "빈 응답: $($r | ConvertTo-Json -Compress)"
     }
     "response: $($r.response)"
-    "session_id: $($r.session_id)"
+}) -and $ok
+
+$ok = (Test-Endpoint "Sidecar /excel-live/command (tool-calling)" {
+    $r = Invoke-RestMethod -Uri "http://127.0.0.1:$SidecarPort/excel-live/command" -Method Post `
+        -Body '{"message":"안녕하세요. 지금은 연결 확인 중이에요."}' -ContentType "application/json" -TimeoutSec 180
+    if (-not $r.assistant_text -and -not $r.result) {
+        throw "빈 응답: $($r | ConvertTo-Json -Compress)"
+    }
+    "assistant_text: $($r.assistant_text)"
 }) -and $ok
 
 if ($ok) {
