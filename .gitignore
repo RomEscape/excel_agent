@@ -44,3 +44,6 @@ credentials.json
 # 개인 테스트/잔여 파일 (루트에 두지 않도록)
 api_keys.py
 text_1.xlsx
+
+# 개발 로그 (로컬 전용 — 버전관리 제외)
+개발일지.md
