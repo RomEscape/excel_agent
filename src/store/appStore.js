@@ -32,13 +32,6 @@ import { persist } from "zustand/middleware";
  * @property {string} [message]
  */
 
-/**
- * @typedef {Object} OpenClawStatus
- * @property {'checking'|'running'|'stopped'|'error'} state
- * @property {string} message
- * @property {number} [port]
- */
-
 const useAppStore = create(
   persist(
     (set) => ({
@@ -98,30 +91,20 @@ const useAppStore = create(
        */
       selectedMessenger: "telegram",
 
-      // ── Phase 4: OpenClaw / Agent state ────────────────────────────────────
-
-      /** @type {OpenClawStatus} */
-      openclawStatus: {
-        state: "checking",
-        message: "OpenClaw 확인 중...",
-      },
+      // ── 채팅 세션 / 승인 state ─────────────────────────────────────────────
 
       /**
-       * 현재 활성 OpenClaw 세션 ID.
-       * null이면 다음 agentChat 호출 시 새 세션이 자동 생성된다.
+       * 현재 활성 채팅 세션 ID (chat_history 영속화용).
+       * null이면 다음 메시지 전송 시 프론트에서 새 세션 ID를 생성한다.
        * @type {string|null}
        */
       activeSessionId: null,
 
       /**
-       * 현재 대기 중인 CONFIRM 승인 요청.
+       * 현재 대기 중인 CONFIRM 승인 요청 (메신저 보안 CONFIRM 봇 오프라인 폴백).
+       * command/reason/audit_id 또는 tool_name/summary 필드가 채워질 수 있다.
        *
-       * 두 종류의 CONFIRM이 동일 상태를 공유한다:
-       *   1) Phase 4 에이전트 스킬 CONFIRM — tool_name/tool_display_name/summary/args_preview 사용
-       *   2) Phase 2 메신저 보안 CONFIRM (봇 오프라인 폴백) — command/reason/audit_id 사용
-       *
-       * Layout.jsx의 ApprovalDialog는 두 케이스를 모두 렌더링하므로 필드가 일부만 채워질 수 있다.
-       * null이면 승인 다이얼로그 미표시.
+       * Layout.jsx의 ApprovalDialog가 이 상태를 렌더링한다. null이면 미표시.
        * @type {{
        *   approval_id?: string;
        *   tool_name?: string;
@@ -165,11 +148,7 @@ const useAppStore = create(
       /** Mark onboarding as complete — hides the wizard permanently */
       completeOnboarding: () => set({ onboardingComplete: true }),
 
-      /** Update OpenClaw gateway connection status */
-      setOpenClawStatus: (/** @type {OpenClawStatus} */ status) =>
-        set({ openclawStatus: status }),
-
-      /** Update the active OpenClaw session ID */
+      /** Update the active chat session ID */
       setActiveSessionId: (/** @type {string|null} */ sessionId) =>
         set({ activeSessionId: sessionId }),
 

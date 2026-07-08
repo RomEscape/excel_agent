@@ -1,6 +1,5 @@
 import React, { useEffect, useCallback, useState, useRef } from "react";
 import {
-  Bot,
   Cpu,
   ShieldCheck,
   Command,
@@ -12,7 +11,6 @@ import {
   Hash,
 } from "lucide-react";
 import useAppStore from "@/store/appStore";
-import useStatusStore from "@/store/statusStore";
 import {
   healthCheck,
   getLLMSettings,
@@ -25,7 +23,6 @@ import {
 import { cn } from "@/lib/utils";
 import {
   STATUS_TONE,
-  getOpenClawStatus,
   getLLMStatus,
   getMessengerStatus,
   getSecurityStatus,
@@ -43,7 +40,7 @@ const PAGE_LABELS = {
   security: "설정 / 보안",
   permissions: "설정 / 에이전트 허용 범위",
   messenger_settings: "설정 / 메신저",
-  guide: "설정 / OpenClaw 설치",
+  guide: "설정 / 로컬 AI",
 };
 
 // 활성 메신저별 아이콘
@@ -139,14 +136,6 @@ export default function StatusBar() {
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
   const setSidebarCollapsed = useAppStore((s) => s.setSidebarCollapsed);
   const selectedMessenger = useAppStore((s) => s.selectedMessenger);
-  // OpenClaw 상태는 중앙 statusStore에서 — App의 useStatusPoller가 자동 갱신.
-  const ocModule = useStatusStore((s) => s.modules.openclaw);
-  // 기존 코드 호환 (getOpenClawStatus가 받는 string state)
-  const ocState = ocModule.running
-    ? "running"
-    : ocModule.state === "unknown"
-    ? "checking"
-    : "stopped";
 
   // 보안 통계 (마스킹/차단 합산)
   const [secStats, setSecStats] = useState(null);
@@ -183,7 +172,7 @@ export default function StatusBar() {
     }
   }, [setLLMConfig]);
 
-  // OpenClaw 상태는 중앙 useStatusPoller가 폴링 — 여기선 별도 처리 불필요.
+  // Ollama 상태는 중앙 useStatusPoller가 폴링 — 여기선 별도 처리 불필요.
 
   // 보안 통계 + 승인 대기 폴링 (30s)
   const refreshSecurity = useCallback(async () => {
@@ -245,7 +234,6 @@ export default function StatusBar() {
   }, [checkHealth, loadLLMConfig, refreshSecurity, refreshMessenger]);
 
   // ── 톤/라벨 도출 (모두 통합 매퍼 사용) ────────────────────────────────────
-  const oc = getOpenClawStatus(ocState);
   const llm = getLLMStatus({
     sidecarState: sidecarStatus.state,
     llmReachable,
@@ -260,16 +248,8 @@ export default function StatusBar() {
   });
   const sec = getSecurityStatus({
     pendingCount,
-    ocRunning: ocModule.running,
+    llmRunning: llm.tone === "ok",
   });
-
-  const ocTooltip = (
-    <div className="space-y-1">
-      <p className="font-semibold text-foreground">OpenClaw</p>
-      <p className="text-muted-foreground">상태: {toneLabel(oc.tone)}</p>
-      <p className="pt-1 text-[11px] text-muted-foreground">클릭하면 설치 가이드로 이동해요</p>
-    </div>
-  );
 
   const masked = secStats?.masking?.total ?? 0;
   const blocked = secStats?.blocked_count?.total ?? 0;
@@ -354,15 +334,8 @@ export default function StatusBar() {
         <span className="truncate font-medium text-foreground/80">{pageLabel}</span>
       </div>
 
-      {/* 우측: 4-segment status hub + ⌘K hint */}
+      {/* 우측: status hub + ⌘K hint */}
       <div className="flex items-center gap-1">
-        <StatusSegment
-          icon={Bot}
-          label="OpenClaw"
-          tone={oc.tone}
-          tooltip={ocTooltip}
-          onClick={() => setCurrentPage("guide")}
-        />
         <StatusSegment
           icon={ShieldCheck}
           label="보안"

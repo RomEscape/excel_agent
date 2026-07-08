@@ -32,7 +32,7 @@ export default function App() {
   const telegramConnected = useAppStore((s) => s.telegramConnected);
   const autoStartAttempted = useRef(false);
 
-  // 시스템 상태 중앙 폴러 — openclaw/ollama 등 모든 모듈 상태를 30초마다 자동 갱신.
+  // 시스템 상태 중앙 폴러 — ollama 모듈 상태를 30초마다 자동 갱신.
   // Dashboard/StatusBar/LocalAISetupWizard는 모두 statusStore에서 동일한 데이터를 읽는다.
   useStatusPoller();
 
@@ -116,7 +116,7 @@ export default function App() {
       <Layout />
       {!onboardingComplete && <OnboardingWizard />}
 
-      {/* OpenClaw + Ollama 로컬 모델 자동 설정 위저드
+      {/* Ollama 로컬 모델 자동 설정 위저드
           OnboardingWizard가 떠 있으면 내부 가드로 노출 안 함(중복 방지) */}
       <LocalAISetupWizard />
 

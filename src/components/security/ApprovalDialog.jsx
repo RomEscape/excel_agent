@@ -4,7 +4,7 @@
  * R-S2: decision context 강화.
  *   - meta: 요청자(source) / 스킬(tool_name) / 세션(8자)
  *   - 명령 200자 초과 시 "전체 보기" 토글 (max-height 60vh + scroll)
- *   - 거부 시 사유 입력 (선택, 30자) — agentSubmitApproval(id, false, reason)로 전달
+ *   - 거부 시 사유 입력 (선택, 30자) — securityRespondApproval(id, false)로 전달
  *   - 키보드: Y/Enter 승인, N/Esc 거부 (단일키는 input focus 시 무시)
  *   - 위험 등급(`danger` prop): file delete 등 → 빨강 + "삭제하려면 1초 누르기" 추가 confirm
  */

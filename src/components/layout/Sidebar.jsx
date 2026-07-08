@@ -9,7 +9,7 @@ import {
   Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getOpenClawStatus } from "@/lib/statusTokens";
+import { getOllamaStatus } from "@/lib/statusTokens";
 import useAppStore from "@/store/appStore";
 import useStatusStore from "@/store/statusStore";
 
@@ -18,8 +18,8 @@ import useStatusStore from "@/store/statusStore";
  *
  * 핵심 메뉴(상단) — 비개발자도 즉시 이해 가능한 4개 영역:
  *   1) 대시보드 — 작업 요약 (실행중/완료)
- *   2) 워크스페이스 — 파일/문서 작업 공간 (OpenClaw 미설치 시 자물쇠로 가드)
- *   3) 대화 — 메신저 모니터링 (OpenClaw 미설치 시 자물쇠로 가드)
+ *   2) 워크스페이스 — 파일/문서 작업 공간 (AI 엔진 미준비 시 자물쇠로 가드)
+ *   3) 대화 — 메신저 모니터링 (AI 엔진 미준비 시 자물쇠로 가드)
  *
  * 설정(하단) — 모든 부가 메뉴를 탭으로 흡수.
  *
@@ -35,7 +35,7 @@ const PRIMARY_ITEMS = [
 ];
 
 // 200ms hover delay 후 등장하는 라벨 tooltip (collapsed 시).
-// 게이팅된 항목은 라벨에 "OpenClaw 설치 필요"를 명시.
+// 게이팅된 항목은 라벨에 "AI 엔진 준비 필요"를 명시.
 function CollapsedLabel({ label, gated }) {
   const [show, setShow] = useState(false);
   const timerRef = useRef(null);
@@ -63,7 +63,7 @@ function CollapsedLabel({ label, gated }) {
           {gated && (
             <span className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400">
               <Lock className="h-2.5 w-2.5" />
-              OpenClaw가 준비되면 사용할 수 있어요
+              AI 엔진이 준비되면 사용할 수 있어요
             </span>
           )}
         </span>
@@ -76,18 +76,13 @@ export default function Sidebar() {
   const currentPage = useAppStore((s) => s.currentPage);
   const setCurrentPage = useAppStore((s) => s.setCurrentPage);
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
-  // 중앙 status store에서 OpenClaw 상태 — Dashboard/StatusBar와 동일한 데이터 소스
-  const ocModule = useStatusStore((s) => s.modules.openclaw);
+  // 중앙 status store에서 Ollama 상태 — Dashboard/StatusBar와 동일한 데이터 소스
+  const ollamaState = useStatusStore((s) => s.modules.ollama.state);
 
-  // OpenClaw가 "준비됨" 상태가 아니면 워크스페이스/대화 메뉴를 자물쇠로 가드.
-  // 통합 톤 매퍼(getOpenClawStatus)로 판정 — StatusBar/Dashboard와 정확히 일치.
+  // AI 엔진(Ollama)이 "준비됨" 상태가 아니면 워크스페이스/대화 메뉴를 자물쇠로 가드.
+  // 통합 톤 매퍼(getOllamaStatus)로 판정 — StatusBar/Dashboard와 정확히 일치.
   // unknown(=초기/확인 중)에서는 가드하지 않음 (확인 결과 나오기 전).
-  const ocState = ocModule.running
-    ? "running"
-    : ocModule.state === "unknown"
-    ? "checking"
-    : "stopped";
-  const ocBlocked = getOpenClawStatus(ocState).tone === "warning";
+  const aiBlocked = getOllamaStatus(ollamaState).tone === "warning";
   const collapsed = !!sidebarCollapsed;
 
   const isSettingsActive =
@@ -100,9 +95,9 @@ export default function Sidebar() {
     currentPage === "guide";
 
   const handleClickPrimary = (item) => {
-    if (item.gated && ocBlocked) {
-      // OpenClaw가 죽어 있으면 자동 설치 prompt를 즉시 띄움 (설정 탭 경유 X)
-      window.dispatchEvent(new CustomEvent("officeclaw:open-openclaw-install"));
+    if (item.gated && aiBlocked) {
+      // AI 엔진이 준비 안 됐으면 자동 설치 prompt를 즉시 띄움 (설정 탭 경유 X)
+      window.dispatchEvent(new CustomEvent("officeclaw:open-ai-setup"));
       return;
     }
     setCurrentPage(item.id);
@@ -135,7 +130,7 @@ export default function Sidebar() {
         <ul className="space-y-1 px-2">
           {PRIMARY_ITEMS.map((item) => {
             const { id, label, icon: Icon, gated } = item;
-            const isGated = gated && ocBlocked;
+            const isGated = gated && aiBlocked;
             const active = currentPage === id;
             return (
               <li key={id} className="relative">
@@ -155,7 +150,7 @@ export default function Sidebar() {
                   aria-label={collapsed ? label : undefined}
                   title={
                     !collapsed && isGated
-                      ? "OpenClaw가 준비되면 사용할 수 있어요 — 클릭해서 설치 가이드로 이동"
+                      ? "AI 엔진이 준비되면 사용할 수 있어요 — 클릭해서 설치 가이드로 이동"
                       : undefined
                   }
                 >
@@ -164,15 +159,15 @@ export default function Sidebar() {
                     <>
                       <span className="flex-1 text-left">{label}</span>
                       {isGated && (
-                        <Lock className="h-3 w-3 shrink-0 text-amber-500" aria-label="OpenClaw 준비 필요" />
+                        <Lock className="h-3 w-3 shrink-0 text-amber-500" aria-label="AI 엔진 준비 필요" />
                       )}
                     </>
                   )}
                   {collapsed && isGated && (
                     <span
                       className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-100 ring-2 ring-amber-300 dark:bg-amber-900/60 dark:ring-amber-700"
-                      aria-label="OpenClaw 준비 필요 — 잠김"
-                      title="OpenClaw가 준비되면 사용할 수 있어요"
+                      aria-label="AI 엔진 준비 필요 — 잠김"
+                      title="AI 엔진이 준비되면 사용할 수 있어요"
                     >
                       <Lock className="h-2.5 w-2.5 text-amber-600 dark:text-amber-300" />
                     </span>

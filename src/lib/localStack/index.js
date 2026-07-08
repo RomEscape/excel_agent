@@ -1,6 +1,6 @@
 export {
-  QWEN3_OPENCLAW_PRESET,
-} from "./qwen3OpenClaw.js";
+  QWEN3_LOCAL_PRESET,
+} from "./qwen3Local.js";
 export {
   LOCAL_STACK_PRESETS,
   LOCAL_STACK_MODEL_OPTIONS,
