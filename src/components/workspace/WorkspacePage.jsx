@@ -34,6 +34,7 @@ import {
   History,
   Trash2,
   Save,
+  RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -56,6 +57,8 @@ import {
   excelLiveStatus,
   excelLiveSubmitApproval,
   excelLiveSaveWorkbook,
+  excelLiveListBackups,
+  excelLiveRestoreLastBackup,
   telegramStatus,
   chatSaveMessage,
   chatListSessions,
@@ -251,6 +254,9 @@ function formatExcelLiveResult(action, result = {}) {
   }
   if (action === "excel_live.save_workbook") {
     return `엑셀 파일을 저장했습니다 (${result.name || result.full_path || "현재 통합문서"}).`;
+  }
+  if (action === "excel_live.restore_last_backup") {
+    return `최근 백업으로 복구했습니다 (${result.name || result.full_path || "현재 통합문서"}).`;
   }
   return "엑셀 작업이 완료되었습니다.";
 }
@@ -530,6 +536,8 @@ function ChatSidePanel({ openclawState }) {
   const [pendingExcelApproval, setPendingExcelApproval] = useState(null);
   const [excelApprovalBusy, setExcelApprovalBusy] = useState(false);
   const [excelSaving, setExcelSaving] = useState(false);
+  const [excelRestoreBusy, setExcelRestoreBusy] = useState(false);
+  const [pendingExcelRestore, setPendingExcelRestore] = useState(null);
   const [insertingRangeContext, setInsertingRangeContext] = useState(false);
   const [pendingTaskLabel, setPendingTaskLabel] = useState("");
   const [pendingExcelComposite, setPendingExcelComposite] = useState(null);
@@ -880,6 +888,65 @@ function ChatSidePanel({ openclawState }) {
     }
   }, [loading, excelSaving, isUnavailable, addAgentMessage, activeSessionId]);
 
+  const handleRequestRestoreWorkbook = useCallback(async () => {
+    if (loading || excelSaving || excelRestoreBusy || isUnavailable) return;
+    setExcelRestoreBusy(true);
+    try {
+      const listed = await excelLiveListBackups(null, 10);
+      const backups = Array.isArray(listed?.backups) ? listed.backups : [];
+      if (backups.length === 0) {
+        addAgentMessage({
+          role: "system",
+          text: "복구 가능한 백업이 없습니다. 먼저 편집 작업을 실행해 백업을 생성해 주세요.",
+        });
+        return;
+      }
+      const latest = backups[0];
+      setPendingExcelRestore({
+        workbookId: listed?.workbook_id || null,
+        backupPath: latest.backup_path || null,
+        backupName: latest.backup_name || latest.backup_path || "(이름 없음)",
+        modifiedAt: latest.modified_at || "",
+      });
+    } catch (err) {
+      addAgentMessage({
+        role: "agent",
+        error: toUserMessage(err, "복구용 백업 목록 조회에 실패했습니다."),
+      });
+    } finally {
+      setExcelRestoreBusy(false);
+    }
+  }, [loading, excelSaving, excelRestoreBusy, isUnavailable, addAgentMessage]);
+
+  const handleRestoreWorkbookConfirm = useCallback(async () => {
+    if (!pendingExcelRestore) return;
+    setExcelRestoreBusy(true);
+    try {
+      const out = await excelLiveRestoreLastBackup(
+        pendingExcelRestore.workbookId,
+        pendingExcelRestore.backupPath,
+      );
+      const text = formatExcelLiveResult(out?.action, out?.result);
+      addAgentMessage({ role: "system", text });
+      if (activeSessionId) {
+        persistMessageSilent(activeSessionId, "system", text);
+      }
+    } catch (err) {
+      addAgentMessage({
+        role: "agent",
+        error: toUserMessage(err, "엑셀 복구 중 오류가 발생했습니다. 다시 시도해 주세요."),
+      });
+    } finally {
+      setExcelRestoreBusy(false);
+      setPendingExcelRestore(null);
+    }
+  }, [pendingExcelRestore, addAgentMessage, activeSessionId, persistMessageSilent]);
+
+  const handleRestoreWorkbookCancel = useCallback(() => {
+    if (excelRestoreBusy) return;
+    setPendingExcelRestore(null);
+  }, [excelRestoreBusy]);
+
   const handleInsertExcelRangeContext = useCallback(async () => {
     if (loading || isUnavailable || insertingRangeContext) return;
     setInsertingRangeContext(true);
@@ -990,11 +1057,22 @@ function ChatSidePanel({ openclawState }) {
             size="sm"
             className="h-7 gap-1 px-2 text-xs"
             onClick={handleSaveWorkbook}
-            disabled={isUnavailable || loading || excelSaving}
+            disabled={isUnavailable || loading || excelSaving || excelRestoreBusy}
             title="현재 열려 있는 엑셀 파일 저장"
           >
             <Save className="h-3 w-3" />
             {excelSaving ? "저장 중..." : "엑셀 저장"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs"
+            onClick={handleRequestRestoreWorkbook}
+            disabled={isUnavailable || loading || excelSaving || excelRestoreBusy}
+            title="최근 백업으로 마지막 변경 되돌리기"
+          >
+            <RotateCcw className="h-3 w-3" />
+            {excelRestoreBusy ? "복구 준비..." : "되돌리기"}
           </Button>
         </div>
       </div>
@@ -1105,6 +1183,19 @@ function ChatSidePanel({ openclawState }) {
         confirmVariant="default"
         onConfirm={handleExcelApprovalConfirm}
         onCancel={handleExcelApprovalCancel}
+      />
+      <AlertDialog
+        open={!!pendingExcelRestore}
+        title="마지막 변경 되돌리기"
+        description={
+          pendingExcelRestore
+            ? `가장 최근 백업으로 복구합니다.\n\n백업: ${pendingExcelRestore.backupName}\n시각: ${pendingExcelRestore.modifiedAt || "알 수 없음"}\n\n복구 직전 상태는 pre_restore 백업으로 한 번 더 저장됩니다.`
+            : ""
+        }
+        confirmLabel={excelRestoreBusy ? "복구 중..." : "복구 실행"}
+        confirmVariant="destructive"
+        onConfirm={handleRestoreWorkbookConfirm}
+        onCancel={handleRestoreWorkbookCancel}
       />
 
       {/* 메시지 영역 */}

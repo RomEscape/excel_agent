@@ -131,7 +131,7 @@ python-sidecar/
 │   │   ├── llm_service.py / ollama_service.py / claude_service.py
 │   │   ├── openclaw_client.py      # OpenClaw WebSocket 클라이언트
 │   │   ├── tool_registry.py        # 도구 권한 레지스트리 (SAFE/CONFIRM/DENIED)
-│   │   ├── excel_live_service.py   # xlwings COM 제어
+│   │   ├── excel_live_service.py   # xlwings 기반 Excel 제어 (Windows COM / macOS appscript)
 │   │   ├── excel_live_agent.py     # 자연어 → Excel 명령 파싱
 │   │   ├── telegram_service.py     # 텔레그램 봇
 │   │   ├── gmail_service.py        # Gmail OAuth (텔레그램 봇에서 사용)
@@ -262,6 +262,9 @@ bash ./scripts/setup.sh --no-build-sidecar
 # 2. 앱 실행
 npm run tauri:dev
 ```
+
+> Excel Live 실편집은 **macOS + Microsoft Excel Desktop**에서 동작한다.  
+> Linux는 Excel Desktop 자동화 런타임이 없어 Excel Live 실시간 편집 대상이 아니다.
 
 > `requirements.txt`는 pip 전용 파일이라 npm/cargo를 담을 수 없다.  
 > 전체 준비는 위 통합 스크립트를 사용하면 된다.  

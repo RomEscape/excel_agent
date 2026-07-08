@@ -78,6 +78,8 @@ pub fn run() {
             ipc::excel_live_command,
             ipc::excel_live_submit_approval,
             ipc::excel_live_save_workbook,
+            ipc::excel_live_list_backups,
+            ipc::excel_live_restore_last_backup,
             ipc::document_generate,
             ipc::document_export_docx,
             ipc::document_export_pdf,

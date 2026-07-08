@@ -366,6 +366,28 @@ export async function excelLiveSaveWorkbook(workbookId = null) {
   return parseResponse(raw);
 }
 
+/**
+ * 현재 통합문서 기준 복구 백업 목록(최신순)을 조회한다.
+ *
+ * @param {string | null} workbookId
+ * @param {number} limit
+ */
+export async function excelLiveListBackups(workbookId = null, limit = 20) {
+  const raw = await call("excel_live_list_backups", { workbookId, limit });
+  return parseResponse(raw);
+}
+
+/**
+ * 가장 최근(또는 지정) 백업 파일로 통합문서를 복구한다.
+ *
+ * @param {string | null} workbookId
+ * @param {string | null} backupPath
+ */
+export async function excelLiveRestoreLastBackup(workbookId = null, backupPath = null) {
+  const raw = await call("excel_live_restore_last_backup", { workbookId, backupPath });
+  return parseResponse(raw);
+}
+
 // ── Document AI ───────────────────────────────────────────────────────────
 
 /**

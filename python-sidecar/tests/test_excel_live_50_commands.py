@@ -189,7 +189,10 @@ def _load_sentence_transformer():
 
 
 def _max_embedding_cosine(messages: list[str]) -> float:
-    from sentence_transformers import util  # type: ignore[import-untyped]
+    try:
+        from sentence_transformers import util  # type: ignore[import-untyped]
+    except Exception as exc:  # pragma: no cover - 환경별 의존성 가드
+        pytest.skip(f"sentence-transformers util import 실패: {exc}")
 
     model = _load_sentence_transformer()
     embeddings = model.encode(messages, convert_to_tensor=True, normalize_embeddings=True)

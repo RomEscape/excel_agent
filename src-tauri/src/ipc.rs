@@ -857,6 +857,77 @@ pub async fn excel_live_save_workbook(
     read_response(resp).await
 }
 
+#[tauri::command]
+pub async fn excel_live_list_backups(
+    state: State<'_, Mutex<SidecarState>>,
+    workbook_id: Option<String>,
+    limit: Option<i32>,
+) -> Result<String, String> {
+    let (url, client, token) = {
+        let s = state.lock().map_err(|e| e.to_string())?;
+        (
+            sidecar_url(&s, "/excel-live/backups"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
+    };
+
+    let mut req = client.get(&url).bearer_auth(&token);
+    let mut query: Vec<(&str, String)> = Vec::new();
+    if let Some(wb) = workbook_id.as_ref() {
+        if !wb.trim().is_empty() {
+            query.push(("workbook_id", wb.clone()));
+        }
+    }
+    if let Some(n) = limit {
+        if n > 0 {
+            query.push(("limit", n.to_string()));
+        }
+    }
+    if !query.is_empty() {
+        req = req.query(&query);
+    }
+
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| format!("Excel 백업 목록 조회 실패: {}", e))?;
+
+    read_response(resp).await
+}
+
+#[tauri::command]
+pub async fn excel_live_restore_last_backup(
+    state: State<'_, Mutex<SidecarState>>,
+    workbook_id: Option<String>,
+    backup_path: Option<String>,
+) -> Result<String, String> {
+    let (url, client, token) = {
+        let s = state.lock().map_err(|e| e.to_string())?;
+        (
+            sidecar_url(&s, "/excel-live/restore-last"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
+    };
+
+    let body = serde_json::json!({
+        "workbook_id": workbook_id,
+        "backup_path": backup_path,
+    });
+
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(120))
+        .send()
+        .await
+        .map_err(|e| format!("Excel 마지막 변경 복구 실패: {}", e))?;
+
+    read_response(resp).await
+}
+
 // ── Document AI commands ────────────────────────────────────────────────────
 
 #[tauri::command]

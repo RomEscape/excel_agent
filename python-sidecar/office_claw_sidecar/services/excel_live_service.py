@@ -1,5 +1,5 @@
 """
-Excel Live Service — 실행 중인 Excel(COM) 실시간 제어용 서비스.
+Excel Live Service — 실행 중인 Excel 실시간 제어용 서비스(xlwings).
 
 MVP Day 1 범위:
   - Excel 연결 가능 여부 확인
@@ -8,8 +8,8 @@ MVP Day 1 범위:
   - 기본 범위 읽기(read_range)
 
 주의:
-  - Windows + Excel Desktop 환경을 전제로 한다.
-  - xlwings 의존성은 lazy import로 처리하여 비-Windows 테스트 환경에서도
+  - Windows/macOS + Excel Desktop 환경을 전제로 한다.
+  - xlwings 의존성은 lazy import로 처리하여 비 Excel 테스트 환경에서도
     모듈 import 자체는 실패하지 않도록 한다.
 """
 
@@ -29,7 +29,7 @@ class ExcelLiveError(Exception):
 
 
 class ExcelDependencyError(ExcelLiveError):
-    """xlwings/pywin32 의존성 누락 또는 import 실패."""
+    """xlwings 또는 OS별 자동화 의존성 누락/import 실패."""
 
 
 class ExcelConnectionError(ExcelLiveError):
@@ -61,7 +61,7 @@ class WorkbookInfo:
 
 
 class ExcelLiveService:
-    """실행 중인 Excel(COM) 제어 서비스."""
+    """실행 중인 Excel 제어 서비스(xlwings 기반)."""
 
     def __init__(self, xw_module: Any | None = None) -> None:
         self._xw = xw_module
@@ -74,7 +74,8 @@ class ExcelLiveService:
             import xlwings as xw  # type: ignore[import]
         except Exception as exc:  # pragma: no cover - 환경 의존
             raise ExcelDependencyError(
-                "xlwings 모듈을 불러올 수 없습니다. Windows 환경에서 xlwings/pywin32를 설치해 주세요."
+                "xlwings 모듈을 불러올 수 없습니다. "
+                "Windows는 pywin32, macOS는 appscript 의존성을 함께 설치해 주세요."
             ) from exc
         self._xw = xw
         return xw
@@ -1300,6 +1301,128 @@ class ExcelLiveService:
             "backup_path": str(backup_path),
             "source_path": str(src),
             "workbook_id": self._workbook_id(wb),
+        }
+
+    def list_workbook_backups(
+        self,
+        workbook_id: str | None,
+        *,
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        """대상 통합문서의 복구 백업 목록을 최신순으로 반환한다."""
+        target_id = workbook_id or self._selected_workbook_id
+        if not target_id:
+            raise WorkbookNotFoundError("백업 목록을 조회할 통합문서를 찾지 못했습니다. workbook_id가 필요합니다.")
+
+        wb = self._find_workbook(target_id)
+        full_path = str(getattr(wb, "fullname", "") or "").strip()
+        if not full_path:
+            raise ExcelLiveError("아직 파일 경로가 없는 통합문서입니다. 먼저 다른 이름으로 저장해 주세요.")
+
+        src = Path(full_path).resolve()
+        backup_dir = src.parent / "officeclaw_backups"
+        max_items = max(1, min(200, int(limit)))
+        rows: list[dict[str, Any]] = []
+
+        if backup_dir.exists() and backup_dir.is_dir():
+            pattern = f"{src.stem}.*{src.suffix}"
+            for fp in backup_dir.glob(pattern):
+                if not fp.is_file():
+                    continue
+                try:
+                    stat = fp.stat()
+                    rows.append(
+                        {
+                            "backup_path": str(fp.resolve()),
+                            "backup_name": fp.name,
+                            "size_bytes": int(stat.st_size),
+                            "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+                            "modified_ts": float(stat.st_mtime),
+                        }
+                    )
+                except Exception:
+                    continue
+
+        rows.sort(key=lambda item: float(item.get("modified_ts", 0.0)), reverse=True)
+        for row in rows:
+            row.pop("modified_ts", None)
+
+        return {
+            "workbook_id": self._workbook_id(wb),
+            "source_path": str(src),
+            "backup_dir": str(backup_dir),
+            "backups": rows[:max_items],
+        }
+
+    def restore_workbook_from_backup(
+        self,
+        workbook_id: str | None,
+        *,
+        backup_path: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        백업 파일로 통합문서를 복구한다.
+
+        동작:
+        1) 현재 파일을 pre_restore 백업으로 1회 보존
+        2) 현재 통합문서를 저장하지 않고 닫음
+        3) 선택한 백업 파일을 원본 파일 경로로 덮어씀
+        4) 원본 파일을 다시 열어 작업 계속
+        """
+        target_id = workbook_id or self._selected_workbook_id
+        if not target_id:
+            raise WorkbookNotFoundError("복구할 통합문서를 찾지 못했습니다. workbook_id가 필요합니다.")
+
+        wb = self._find_workbook(target_id)
+        source_path = str(getattr(wb, "fullname", "") or "").strip()
+        if not source_path:
+            raise ExcelLiveError("파일 경로가 없는 통합문서는 복구할 수 없습니다.")
+        src = Path(source_path).resolve()
+        if not src.exists() or not src.is_file():
+            raise ExcelLiveError(f"원본 통합문서 경로가 유효하지 않습니다: {source_path}")
+
+        if backup_path:
+            chosen_backup = Path(str(backup_path)).expanduser().resolve()
+        else:
+            listed = self.list_workbook_backups(target_id, limit=1)
+            backups = listed.get("backups", [])
+            if not backups:
+                raise ExcelLiveError("복구 가능한 백업이 없습니다.")
+            chosen_backup = Path(str(backups[0].get("backup_path", ""))).resolve()
+
+        if not chosen_backup.exists() or not chosen_backup.is_file():
+            raise ExcelLiveError(f"백업 파일을 찾을 수 없습니다: {chosen_backup}")
+
+        pre_restore_info = self.create_workbook_backup(target_id, label="pre_restore")
+
+        try:
+            api_wb = getattr(wb, "api", None)
+            if api_wb is not None and hasattr(api_wb, "Close"):
+                api_wb.Close(SaveChanges=False)
+            else:
+                wb.close()
+        except Exception as exc:
+            raise ExcelLiveError(f"복구 전 통합문서 닫기 실패: {exc}") from exc
+
+        try:
+            shutil.copy2(chosen_backup, src)
+        except Exception as exc:
+            raise ExcelLiveError(f"백업 파일 복구 실패: {exc}") from exc
+
+        try:
+            reopened = self._xw_module().Book(str(src))
+            self._selected_workbook_id = self._workbook_id(reopened)
+        except Exception as exc:
+            raise ExcelLiveError(f"복구 후 통합문서 다시 열기 실패: {exc}") from exc
+
+        return {
+            "restored": True,
+            "workbook_id": self._workbook_id(reopened),
+            "name": str(getattr(reopened, "name", "") or ""),
+            "full_path": str(src),
+            "restored_from_backup_path": str(chosen_backup),
+            "pre_restore_backup_path": str(pre_restore_info.get("backup_path", "")),
+            "active_sheet": self._active_sheet_name(reopened),
         }
 
     def get_active_selection_ref(
