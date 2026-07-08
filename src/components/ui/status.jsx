@@ -2,13 +2,13 @@
  * 통일된 상태 표시 컴포넌트 모음.
  *
  * 모든 톤은 `lib/statusTokens.js`의 STATUS_TONE에서 가져온다.
- * 도메인별 변환은 같은 파일의 getOpenClawStatus / getLLMStatus / getMessengerStatus / getSecurityStatus.
+ * 도메인별 변환은 같은 파일의 getOllamaStatus / getLLMStatus / getMessengerStatus / getSecurityStatus.
  *
  * 컴포넌트:
  *   - StatusDot: 점 + 라벨 (StatusBar segment, 작은 행 안내)
  *   - StatusBadge: 알약 배지 (인라인 표시 — MessengerSettings, ConversationsPage 등)
  *   - StatusRow: 아이콘 + 제목 + 설명 (LocalAISetupWizard 진단 항목, Dashboard 카드)
- *   - StatusBanner: 큰 배너 (Dashboard 메인 OpenClaw 영역)
+ *   - StatusBanner: 큰 배너 (Dashboard 메인 AI 엔진 영역)
  */
 import React from "react";
 import { cn } from "@/lib/utils";

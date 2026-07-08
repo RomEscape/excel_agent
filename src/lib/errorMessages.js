@@ -132,27 +132,16 @@ const ERROR_MAPPINGS = [
     message: "데이터를 읽는 중 오류가 발생했습니다. 다시 시도해 주세요.",
   },
 
-  // OpenClaw gateway
+  // Ollama tool-calling 미지원 (예: Claude provider에서 /excel-live/command 호출)
   {
-    pattern: /gateway token mismatch|token mismatch|provide gateway auth token/i,
+    pattern: /tools\(function calling\)를 지원하지 않습니다|function calling/i,
     message:
-      "OpenClaw 인증 토큰이 일치하지 않습니다. LocalAISetupWizard에서 OpenClaw 재시작을 다시 실행해 주세요.",
+      "현재 AI provider가 함수 호출(tool-calling)을 지원하지 않습니다. 설정에서 Ollama provider로 전환해 주세요.",
   },
+  // Ollama 서버 연결 실패 (사이드카가 503으로 반환)
   {
-    pattern: /openclaw|gateway.*18789|18789.*gateway/i,
-    message: "OpenClaw 게이트웨이에 연결할 수 없습니다. OpenClaw가 설치되고 실행 중인지 확인해 주세요.",
-  },
-
-  // WebSocket / realtime connection
-  {
-    pattern: /WebSocket|ws:\/\//i,
-    message: "실시간 연결이 끊어졌습니다. 앱을 재시작해 주세요.",
-  },
-
-  // Skill install failure
-  {
-    pattern: /skill.*install|install.*skill|npm.*install.*fail/i,
-    message: "스킬 설치에 실패했습니다. 네트워크 연결을 확인하고 다시 시도해 주세요.",
+    pattern: /Ollama 서버에 연결할 수 없습니다|503/i,
+    message: "Ollama가 실행되지 않고 있습니다. 로컬 AI 설정에서 Ollama 실행을 확인해 주세요.",
   },
 
   // Session expiry

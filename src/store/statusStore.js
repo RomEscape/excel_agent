@@ -3,7 +3,7 @@
  *
  * 사용자 요청: "각 모듈이 상태를 체크해서 가지고 있으면서 그걸 대시보드에서 보여주는 형식".
  *
- * 모듈별 슬롯(`modules.openclaw`, `modules.ollama`, ...)에 동일한 형태의 상태 객체를 보관:
+ * 모듈별 슬롯(`modules.ollama`, ...)에 동일한 형태의 상태 객체를 보관:
  *
  *   {
  *     state: ModuleState,
@@ -77,8 +77,6 @@ const useStatusStore = create((set, get) => ({
    * 새 모듈을 추가하려면 여기 초기값 + statusManager.js에 정의 추가.
    */
   modules: {
-    node: emptyModule(),
-    openclaw: emptyModule(),
     ollama: emptyModule(),
   },
 

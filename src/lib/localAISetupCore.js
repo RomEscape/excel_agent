@@ -8,24 +8,16 @@ import {
 } from "./localStack/index.js";
 
 export const STEP = Object.freeze({
-  INSTALL_NODE: "install-node",
-  INSTALL_OC: "install-oc",
-  START_OC: "start-oc",
   INSTALL_OLLAMA: "install-ollama",
   START_OLLAMA: "start-ollama",
   PULL_MODEL: "pull-model",
-  CONFIG_OC: "config-oc",
   PROMPT_TEST: "prompt-test",
 });
 
 export const STEP_LABEL = Object.freeze({
-  [STEP.INSTALL_NODE]: "Node.js 설치",
-  [STEP.INSTALL_OC]: "OpenClaw 설치",
-  [STEP.START_OC]: "OpenClaw 실행",
   [STEP.INSTALL_OLLAMA]: "Ollama 설치",
   [STEP.START_OLLAMA]: "Ollama 실행",
   [STEP.PULL_MODEL]: "AI 모델 다운로드",
-  [STEP.CONFIG_OC]: "OpenClaw에 AI 모델 연결",
   [STEP.PROMPT_TEST]: "AI 대화 테스트",
 });
 
@@ -55,10 +47,9 @@ export function hasModelInstalled(models, model) {
 
 export function isAllReady(diag, model) {
   if (!diag) return false;
-  const ocOK = diag.oc?.state === "running" && diag.ocInstalled?.installed;
   const ollOK = diag.oll?.installed && diag.oll?.running;
   const modelOK = hasModelInstalled(diag.oll?.models, model);
-  return Boolean(ocOK && ollOK && modelOK);
+  return Boolean(ollOK && modelOK);
 }
 
 export function buildPlan(diag, model) {
@@ -66,15 +57,11 @@ export function buildPlan(diag, model) {
   const skipped = [];
   const route = (done, id) => (done ? skipped.push(id) : todo.push(id));
 
-  // Node는 OpenClaw(npm 패키지)의 선행 조건 — 가장 먼저 확인하고 없으면 설치.
-  route(Boolean(diag?.node?.installed), STEP.INSTALL_NODE);
-  route(Boolean(diag?.ocInstalled?.installed), STEP.INSTALL_OC);
-  route(diag?.oc?.state === "running", STEP.START_OC);
   route(Boolean(diag?.oll?.installed), STEP.INSTALL_OLLAMA);
   route(Boolean(diag?.oll?.running), STEP.START_OLLAMA);
   route(hasModelInstalled(diag?.oll?.models, model), STEP.PULL_MODEL);
 
-  todo.push(STEP.CONFIG_OC);
+  // 대화 테스트는 항상 마지막에 수행해 Ollama 응답 경로를 검증한다.
   todo.push(STEP.PROMPT_TEST);
 
   return { todo, skipped };

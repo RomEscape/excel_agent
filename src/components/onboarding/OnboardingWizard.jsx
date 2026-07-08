@@ -1,16 +1,15 @@
 /**
  * OnboardingWizard — 첫 실행 시 표시되는 온보딩 마법사 (Phase 3 officeclaw).
  *
- * Step 0: OpenClaw 설치 확인
- * Step 1: LLM 엔진 선택 (Ollama 설치 가이드 강화)
- * Step 2: 메신저 선택 (Telegram / Slack / Discord)
- * Step 3: 선택된 메신저 설정
- * Step 4: 워크스페이스 폴더 확인
- * Step 5: 완료 안내
+ * Step 0: LLM 엔진 선택 (Ollama 설치 가이드 강화)
+ * Step 1: 메신저 선택 (Telegram / Slack / Discord)
+ * Step 2: 선택된 메신저 설정
+ * Step 3: 워크스페이스 폴더 확인
+ * Step 4: 완료 안내
  *
  * appStore의 `onboardingComplete`가 false일 때만 표시된다.
  */
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Cpu,
   CheckCircle2,
@@ -37,13 +36,10 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { StatusBanner } from "@/components/ui/status";
 import useAppStore from "@/store/appStore";
 import {
   saveLLMSettings,
   healthCheck,
-  openclawStatus,
-  openclawInstalled,
   telegramSetup,
   telegramStatus,
   telegramStart,
@@ -55,10 +51,9 @@ import {
 } from "@/lib/api";
 import { toUserMessage } from "@/lib/errorMessages";
 
-const TOTAL_STEPS = 6;
+const TOTAL_STEPS = 5;
 
 const STEP_LABELS = [
-  "OpenClaw 확인",
   "LLM 선택",
   "메신저 선택",
   "메신저 설정",
@@ -91,122 +86,7 @@ function StepDots({ current }) {
   );
 }
 
-// ── Step 0: OpenClaw 설치 확인 ────────────────────────────────────────────────
-
-function StepOpenClaw({ onNext, onPrev, stepIndex }) {
-  const setOpenClawStatus = useAppStore((s) => s.setOpenClawStatus);
-  const [status, setStatus] = useState("checking");
-
-  // openclaw 바이너리 설치 여부를 우선 검사한다 — 게이트웨이가 일시적으로 stopped여도
-  // 바이너리가 있으면 "ok"로 간주해 다음 단계로 진행 가능. 게이트웨이 상태는 부가 정보로만 갱신.
-  const checkOpenClaw = useCallback(async () => {
-    setStatus("checking");
-    try {
-      const inst = await openclawInstalled();
-      if (inst?.installed) {
-        setStatus("ok");
-        // 게이트웨이 실행 상태는 별도로 한 번 더 조회해 store 갱신 (실패해도 무시)
-        try {
-          const result = await openclawStatus();
-          setOpenClawStatus({
-            state: result?.state ?? "stopped",
-            message: result?.message ?? "",
-            port: result?.port,
-          });
-        } catch {
-          setOpenClawStatus({ state: "stopped", message: "" });
-        }
-      } else {
-        setStatus("missing");
-        setOpenClawStatus({ state: "stopped", message: "openclaw 바이너리 미설치" });
-      }
-    } catch {
-      setStatus("missing");
-      setOpenClawStatus({ state: "error", message: "OpenClaw 설치 확인 실패" });
-    }
-  }, [setOpenClawStatus]);
-
-  useEffect(() => {
-    checkOpenClaw();
-  }, [checkOpenClaw]);
-
-  return (
-    <div className="space-y-6">
-      <div className="text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-          <Bot className="h-7 w-7 text-primary" />
-        </div>
-        <h2 className="text-xl font-bold">OpenClaw 설치 확인</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          officeclaw는 OpenClaw를 통해 AI 기능을 실행해요.
-        </p>
-      </div>
-
-      {status === "checking" && (
-        <StatusBanner
-          tone="pending"
-          icon={Bot}
-          title="OpenClaw 확인 중"
-          description="설치와 실행 상태를 확인하고 있어요..."
-        />
-      )}
-
-      {status === "ok" && (
-        <StatusBanner
-          tone="ok"
-          icon={Bot}
-          title="OpenClaw 준비됨"
-          description="OpenClaw가 정상적으로 실행되고 있어요."
-        />
-      )}
-
-      {status === "missing" && (
-        <StatusBanner
-          tone="warning"
-          icon={Bot}
-          title="OpenClaw 문제 있음"
-          description={
-            <ol className="ml-4 space-y-2 list-decimal">
-              <li>
-                Node.js 22+ 가 설치되어 있는지 확인하세요.{" "}
-                <a href="https://nodejs.org" target="_blank" rel="noreferrer" className="underline underline-offset-2">
-                  nodejs.org
-                </a>
-              </li>
-              <li>
-                터미널에서 아래 명령어를 실행하세요:
-                <code className="ml-2 mt-1 block rounded bg-amber-100 px-2 py-1 font-mono dark:bg-amber-900/40">
-                  npm install -g openclaw@latest
-                </code>
-              </li>
-              <li>앱을 재시작하거나 아래 "재확인" 버튼을 누르세요.</li>
-            </ol>
-          }
-        />
-      )}
-
-      <div className="flex gap-2">
-        {status === "missing" && (
-          <Button variant="outline" className="flex-1" onClick={checkOpenClaw}>
-            <RefreshCw className="mr-1.5 h-4 w-4" />
-            재확인
-          </Button>
-        )}
-        <Button
-          className="flex-1"
-          onClick={() => onNext(status === "missing")}
-          disabled={status === "checking"}
-          variant={status === "missing" ? "outline" : "default"}
-        >
-          {status === "missing" ? "건너뛰기 (나중에 설치)" : "다음"}
-          <ChevronRight className="ml-1 h-4 w-4" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// ── Step 1: LLM 선택 (Ollama 설치 가이드 강화) ────────────────────────────────
+// ── Step 0: LLM 선택 (Ollama 설치 가이드 강화) ────────────────────────────────
 
 function StepLLM({ onNext, onPrev }) {
   const setLLMConfig = useAppStore((s) => s.setLLMConfig);
@@ -1118,13 +998,12 @@ function StepComplete({ onFinish, onPrev }) {
 
 /**
  * Main onboarding wizard — shown only when onboardingComplete is false.
- * Phase 3 (officeclaw): 6단계 흐름
- *   0: OpenClaw 확인
- *   1: LLM 선택 (Ollama 설치 가이드 강화)
- *   2: 메신저 선택 (Telegram / Slack / Discord)
- *   3: 메신저별 설정 (분기)
- *   4: 워크스페이스 폴더 확인
- *   5: 완료
+ * Phase 3 (officeclaw): 5단계 흐름
+ *   0: LLM 선택 (Ollama 설치 가이드 강화)
+ *   1: 메신저 선택 (Telegram / Slack / Discord)
+ *   2: 메신저별 설정 (분기)
+ *   3: 워크스페이스 폴더 확인
+ *   4: 완료
  */
 export default function OnboardingWizard() {
   const completeOnboarding = useAppStore((s) => s.completeOnboarding);
@@ -1142,7 +1021,6 @@ export default function OnboardingWizard() {
   }[selectedMessenger] ?? StepTelegram;
 
   const steps = [
-    <StepOpenClaw key="openclaw" onNext={goNext} onPrev={goPrev} stepIndex={0} />,
     <StepLLM key="llm" onNext={goNext} onPrev={goPrev} />,
     <StepMessengerChoice key="messenger-choice" onNext={goNext} onPrev={goPrev} />,
     <MessengerStep key={`messenger-${selectedMessenger}`} onNext={goNext} onPrev={goPrev} />,

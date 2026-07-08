@@ -2,7 +2,7 @@
  * CommandPalette — Cmd/Ctrl+K 명령 팔레트.
  *
  * 직접 구현 (cmdk/headlessui 같은 외부 패키지 사용 안 함).
- * - 페이지 4개 + Settings 7탭 + 액션 (OpenClaw 재시작, 봇 재시작, 워크스페이스 폴더 열기, 실행 기록 초기화)
+ * - 페이지 4개 + Settings 7탭 + 액션 (로컬 AI 설정, 봇 재시작, 워크스페이스 폴더 열기, 실행 기록 초기화)
  * - 250ms debounce, fuzzy 한/영 검색
  * - 키보드: ↑↓ Enter Esc, Tab 그룹 jump
  *
@@ -86,7 +86,7 @@ const buildCommands = ({ tgConfigured, slackConfigured, discordConfigured } = {}
   { id: "nav.settings", group: "페이지", label: "설정", hint: "통합 설정 허브", icon: SettingsIcon, run: ({ setCurrentPage, close }) => { setCurrentPage("settings"); close(); } },
 
   // 그룹: 설정
-  { id: "settings.guide", group: "설정", label: "OpenClaw 설치", icon: Bot, run: ({ setCurrentPage, close }) => { setCurrentPage("guide"); close(); } },
+  { id: "settings.guide", group: "설정", label: "로컬 AI 설정", icon: Bot, run: ({ setCurrentPage, close }) => { setCurrentPage("guide"); close(); } },
   { id: "settings.general", group: "설정", label: "일반", icon: SlidersHorizontal, run: ({ setCurrentPage, close }) => { setCurrentPage("settings"); close(); } },
   { id: "settings.messenger", group: "설정", label: "메신저", icon: MessagesSquare, run: ({ setCurrentPage, close }) => { setCurrentPage("messenger_settings"); close(); } },
   { id: "settings.credentials", group: "설정", label: "자격증명", icon: KeyRound, run: ({ setCurrentPage, close }) => { setCurrentPage("credentials"); close(); } },
@@ -96,10 +96,10 @@ const buildCommands = ({ tgConfigured, slackConfigured, discordConfigured } = {}
 
   // 그룹: 액션
   {
-    id: "action.openclaw_settings",
+    id: "action.local_ai_settings",
     group: "액션",
-    label: "OpenClaw 설치 가이드 열기",
-    hint: "게이트웨이가 멈춘 경우 재설치/재실행 안내",
+    label: "로컬 AI 설정 가이드 열기",
+    hint: "Ollama 설치/실행/모델 다운로드 안내",
     icon: RefreshCw,
     run: ({ setCurrentPage, close }) => {
       setCurrentPage("guide");

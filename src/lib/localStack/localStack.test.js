@@ -6,7 +6,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  QWEN3_OPENCLAW_PRESET,
+  QWEN3_LOCAL_PRESET,
   DEFAULT_PRESET_ID,
   DEFAULT_OLLAMA_MODEL,
   getLocalStackPreset,
@@ -14,15 +14,15 @@ import {
 } from "./index.js";
 import { hasModelInstalled } from "../localAISetupCore.js";
 
-describe("qwen3-openclaw preset", () => {
-  it("기본 프리셋 ID가 qwen3-openclaw이다", () => {
-    assert.equal(DEFAULT_PRESET_ID, "qwen3-openclaw");
+describe("qwen3-local preset", () => {
+  it("기본 프리셋 ID가 qwen3-local이다", () => {
+    assert.equal(DEFAULT_PRESET_ID, "qwen3-local");
   });
 
   it("Ollama 모델 태그는 qwen3:4b이다", () => {
     assert.equal(DEFAULT_OLLAMA_MODEL, "qwen3:4b");
-    assert.equal(QWEN3_OPENCLAW_PRESET.ollamaModel, "qwen3:4b");
-    assert.equal(QWEN3_OPENCLAW_PRESET.hfModel, "Qwen/Qwen3-4B-Instruct");
+    assert.equal(QWEN3_LOCAL_PRESET.ollamaModel, "qwen3:4b");
+    assert.equal(QWEN3_LOCAL_PRESET.hfModel, "Qwen/Qwen3-4B-Instruct");
   });
 
   it("LLM 설정은 ollama + qwen3:4b이다", () => {

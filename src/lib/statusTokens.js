@@ -64,27 +64,28 @@ export const STATUS_TONE = Object.freeze({
 });
 
 /**
- * OpenClaw 게이트웨이 상태 → tone + 사용자용 라벨.
+ * Ollama(로컬 AI 엔진) 상태 → tone + 사용자용 라벨.
  *
- * sidecar가 노출하는 state: 'running' | 'stopped' | 'error' | 'checking'.
+ * statusStore의 ollama 모듈 state-machine 값을 받는다:
+ *   'running_healthy' | 'installed_stopped' | 'not_installed' | 'error' | 'unknown'.
  * 사용자에게는 install/start 구분 없이 "준비됨/문제 있음/확인 중"만 노출.
  * (세부 구분이 필요한 LocalAISetupWizard의 진단 화면은 별도 처리)
  *
  * @param {string} state
  * @returns {{ tone: 'ok'|'warning'|'pending', label: string, sub?: string }}
  */
-export function getOpenClawStatus(state) {
-  if (state === "running") {
-    return { tone: "ok", label: "OpenClaw 준비됨" };
+export function getOllamaStatus(state) {
+  if (state === "running_healthy" || state === "running") {
+    return { tone: "ok", label: "AI 엔진 준비됨" };
   }
-  if (state === "checking") {
-    return { tone: "pending", label: "OpenClaw 확인 중" };
+  if (state === "unknown" || state === "checking") {
+    return { tone: "pending", label: "AI 엔진 확인 중" };
   }
-  // stopped | error | 그 외 — 모두 "문제 있음"으로 통일
+  // installed_stopped | not_installed | error | 그 외 — 모두 "문제 있음"으로 통일
   return {
     tone: "warning",
-    label: "OpenClaw 문제 있음",
-    sub: "설치 또는 실행이 필요해요",
+    label: "AI 엔진 문제 있음",
+    sub: "Ollama 설치 또는 실행이 필요해요",
   };
 }
 
@@ -141,9 +142,9 @@ export function getMessengerStatus({ running, configured, unknown, name }) {
 /**
  * 보안 상태 → tone + 라벨.
  *
- * pendingCount > 0이면 "승인 대기"로 warning. sidecar/OpenClaw 자체가 문제면 pending.
+ * pendingCount > 0이면 "승인 대기"로 warning. AI 엔진 자체가 준비 전이면 pending.
  */
-export function getSecurityStatus({ pendingCount, ocRunning }) {
+export function getSecurityStatus({ pendingCount, llmRunning }) {
   if (pendingCount > 0) {
     return {
       tone: "warning",
@@ -151,8 +152,8 @@ export function getSecurityStatus({ pendingCount, ocRunning }) {
       sub: `승인 대기 ${pendingCount}건`,
     };
   }
-  if (!ocRunning) {
-    return { tone: "pending", label: "보안", sub: "OpenClaw가 준비되면 활성화돼요" };
+  if (!llmRunning) {
+    return { tone: "pending", label: "보안", sub: "AI 엔진이 준비되면 활성화돼요" };
   }
   return { tone: "ok", label: "보안", sub: "안전하게 보호 중" };
 }

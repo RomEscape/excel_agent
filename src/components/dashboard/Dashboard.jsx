@@ -3,7 +3,7 @@
  *
  * 핵심 역할:
  *   1) 진행 중 / 완료 작업 요약 (감사 로그 기반 집계)
- *   2) OpenClaw 게이트웨이 상태 (가장 큰 카드 — 비개발자가 가장 먼저 봐야 함)
+ *   2) 로컬 AI(Ollama) 상태 (가장 큰 카드 — 비개발자가 가장 먼저 봐야 함)
  *   3) 보안 상태 한눈에 보기 (마스킹/차단 통계)
  *   4) 최근 활동 타임라인
  *
@@ -12,7 +12,7 @@
  *   - 메일/엑셀/문서 빠른시작 카드 (deprecated 모듈)
  *   - LLM/Gmail/Telegram 개별 카드 (Settings에서 관리 — 대시보드는 핵심 신호만)
  */
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Activity,
   Bot,
@@ -29,7 +29,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBanner } from "@/components/ui/status";
-import { getOpenClawStatus } from "@/lib/statusTokens";
+import { getOllamaStatus } from "@/lib/statusTokens";
 import { cn } from "@/lib/utils";
 import useAppStore from "@/store/appStore";
 import useStatusStore from "@/store/statusStore";
@@ -71,20 +71,20 @@ function SummaryCard({ icon: Icon, label, value, hint, accent, loading, onClick 
   );
 }
 
-// ── OpenClaw 상태 배너 (가장 강조되는 영역) ────────────────────────────────────
+// ── 로컬 AI(Ollama) 상태 배너 (가장 강조되는 영역) ─────────────────────────────
 //
-// 통일된 톤 시스템 사용 — getOpenClawStatus가 반환한 tone/label을 그대로 표시.
+// 통일된 톤 시스템 사용 — getOllamaStatus가 반환한 tone/label을 그대로 표시.
 // 어디서든 동일하게 "준비됨/문제 있음/확인 중" 어휘로 표시된다.
 //
-function OpenClawBanner({ state, port, message, onConfigure }) {
-  const { tone } = getOpenClawStatus(state);
+function LocalAIBanner({ state, onConfigure }) {
+  const { tone } = getOllamaStatus(state);
 
   if (tone === "ok") {
     return (
       <StatusBanner
         tone="ok"
         icon={Bot}
-        title="OpenClaw 준비됨"
+        title="AI 엔진 준비됨"
         description="AI 명령을 받을 준비가 됐어요."
       />
     );
@@ -95,7 +95,7 @@ function OpenClawBanner({ state, port, message, onConfigure }) {
       <StatusBanner
         tone="pending"
         icon={Bot}
-        title="OpenClaw 확인 중"
+        title="AI 엔진 확인 중"
         description="현재 상태를 확인하고 있어요..."
       />
     );
@@ -107,7 +107,7 @@ function OpenClawBanner({ state, port, message, onConfigure }) {
     <StatusBanner
       tone="warning"
       icon={Bot}
-      title="OpenClaw 준비가 필요해요"
+      title="AI 엔진 준비가 필요해요"
       description="비개발자도 따라할 수 있는 단계별 설치 가이드를 준비했어요."
       actions={
         <Button size="sm" onClick={onConfigure}>
@@ -230,7 +230,7 @@ function RecentActivity({ logs, loading }) {
 
 // ── 첫 명령 가이드 카드 ──────────────────────────────────────────────────────
 //
-// 활동 0건 + OpenClaw 정상 + 텔레그램 봇 정보가 있을 때만 표시.
+// 활동 0건 + AI 엔진 정상 + 텔레그램 봇 정보가 있을 때만 표시.
 // 비개발자가 "다음에 뭘 해야 하나?"를 모르는 상태를 해결한다.
 //
 
@@ -313,22 +313,8 @@ function FirstCommandGuide({ botUsername, onGoToConversations, onGoToMessenger }
 
 export default function Dashboard() {
   const setCurrentPage = useAppStore((s) => s.setCurrentPage);
-  // 중앙 status store에서 OpenClaw 모듈 상태 구독 — App의 useStatusPoller가 자동 갱신.
-  // Dashboard는 더 이상 자체 openclawStatus fetch를 하지 않는다.
-  const ocModule = useStatusStore((s) => s.modules.openclaw);
-  // 기존 코드 호환을 위해 ocStatus 동등 객체 변환 (state/port/message)
-  const ocStatus = useMemo(
-    () => ({
-      state: ocModule.running
-        ? "running"
-        : ocModule.state === "unknown"
-        ? "checking"
-        : "stopped",
-      port: ocModule.port ?? 18789,
-      message: ocModule.message,
-    }),
-    [ocModule]
-  );
+  // 중앙 status store에서 Ollama 모듈 상태 구독 — App의 useStatusPoller가 자동 갱신.
+  const ollamaState = useStatusStore((s) => s.modules.ollama.state);
 
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState(null);
@@ -336,7 +322,7 @@ export default function Dashboard() {
   const [secStats, setSecStats] = useState(null);
   const [botUsername, setBotUsername] = useState(null);
 
-  // OpenClaw 상태는 중앙 store가 담당 → 여기선 audit/security/telegram만 fetch.
+  // Ollama 상태는 중앙 store가 담당 → 여기선 audit/security/telegram만 fetch.
   const loadData = useCallback(async () => {
     setLoading(true);
     const [statsResult, logsResult, secResult, tgResult] = await Promise.allSettled([
@@ -373,9 +359,9 @@ export default function Dashboard() {
   const pending = stats?.confirm_pending ?? Math.max(0, derivedPending);
   const blocked = (stats?.denied ?? 0) + (stats?.confirm_rejected ?? 0);
 
-  // 첫 명령 가이드 표시 조건: 활동 0건 + OpenClaw 정상
+  // 첫 명령 가이드 표시 조건: 활동 0건 + AI 엔진 정상
   const showFirstCommandGuide =
-    !loading && totalCommands === 0 && ocStatus.state === "running";
+    !loading && totalCommands === 0 && ollamaState === "running_healthy";
 
   // 승인 대기 카드 클릭 시 — 실행 기록 페이지로 이동하면서 confirm_pending 필터 적용
   const goToPending = () => {
@@ -405,14 +391,12 @@ export default function Dashboard() {
         </Button>
       </div>
 
-      {/* OpenClaw 상태 — 비개발자가 가장 먼저 봐야 할 영역.
+      {/* 로컬 AI(Ollama) 상태 — 비개발자가 가장 먼저 봐야 할 영역.
           미설치 시 App 레벨 prompt를 즉시 재개해 1-click 설치 흐름으로 진입. */}
-      <OpenClawBanner
-        state={ocStatus.state}
-        port={ocStatus.port}
-        message={ocStatus.message}
+      <LocalAIBanner
+        state={ollamaState}
         onConfigure={() =>
-          window.dispatchEvent(new CustomEvent("officeclaw:open-openclaw-install"))
+          window.dispatchEvent(new CustomEvent("officeclaw:open-ai-setup"))
         }
       />
 

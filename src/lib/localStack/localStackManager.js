@@ -27,7 +27,7 @@ export async function applyLocalStackPreset(presetId, { saveLLMSettings, setLLMC
 }
 
 /**
- * Ollama pull / openclaw config에 쓸 모델 태그.
+ * Ollama pull에 쓸 모델 태그.
  * @param {string} [presetId]
  */
 export function getPresetOllamaModel(presetId = DEFAULT_PRESET_ID) {

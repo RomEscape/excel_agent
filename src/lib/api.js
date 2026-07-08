@@ -155,12 +155,19 @@ export async function telegramStop() {
  * @param {string | null} sheetName
  * @param {boolean} approve
  */
-export async function excelLiveCommand(message, workbookId = null, sheetName = null, approve = false) {
+export async function excelLiveCommand(
+  message,
+  workbookId = null,
+  sheetName = null,
+  approve = false,
+  history = [],
+) {
   const raw = await call("excel_live_command", {
     message,
     workbookId,
     sheetName,
     approve,
+    history,
   });
   return parseResponse(raw);
 }
@@ -188,26 +195,6 @@ export async function excelLiveSubmitApproval(approvalId, approved, reason = nul
  */
 export async function excelLiveSaveWorkbook(workbookId = null) {
   const raw = await call("excel_live_save_workbook", { workbookId });
-  return parseResponse(raw);
-}
-
-// ── Phase 5: Agent Approval ───────────────────────────────────────────────────
-
-/**
- * 승인/거부 결정을 사이드카에 전달한다.
- *
- * @param {string} approvalId
- * @param {boolean} approved
- * @param {string} [reason] - 거부 사유 (선택, 30자 이내). sidecar가 받지 않으면 무시됨.
- * @returns {Promise<{ ok: boolean, approved: boolean, tool_name: string }>}
- */
-export async function agentSubmitApproval(approvalId, approved, reason) {
-  // rejection_reason 키로 Tauri command에 전달 (N-1 Sprint 4 — ipc.rs 시그니처 정렬)
-  const args = { approval_id: approvalId, approved };
-  if (!approved && reason && typeof reason === "string") {
-    args.rejection_reason = reason;
-  }
-  const raw = await call("agent_submit_approval", args);
   return parseResponse(raw);
 }
 
@@ -639,53 +626,7 @@ export async function maintenanceCleanup() {
   return parseResponse(raw);
 }
 
-// ── Phase 4: Agent / OpenClaw ─────────────────────────────────────────────
-
-/**
- * OpenClaw 게이트웨이 현재 상태를 확인한다.
- *
- * @returns {Promise<{ state: 'running'|'stopped'|'error', port: number, message: string }>}
- */
-export async function openclawStatus() {
-  const raw = await call("openclaw_status");
-  return parseResponse(raw);
-}
-
-/**
- * `openclaw` 바이너리가 시스템에 설치되어 있는지 확인한다.
- * 게이트웨이 실행 여부와 별개 — 자동 설치 UI를 띄울지 결정하는 용도.
- *
- * @returns {Promise<{ installed: boolean, version: string|null, source: 'path'|'login-shell'|null }>}
- */
-export async function openclawInstalled() {
-  const raw = await call("openclaw_installed");
-  return parseResponse(raw);
-}
-
-/**
- * OpenClaw 게이트웨이가 18789에서 응답하도록 보장한다 (idempotent).
- * 이미 떠 있으면 즉시 OK, 아니면 자식 프로세스로 spawn 후 ready까지 대기.
- *
- * 자동 설치 모달이 npm install 완료 후 호출하여 즉시 온라인 전환.
- *
- * @returns {Promise<{ state: 'running'|'stopped'|'error', port: number, message: string }>}
- */
-export async function openclawEnsureRunning() {
-  const raw = await call("openclaw_ensure_running");
-  return parseResponse(raw);
-}
-
-/**
- * OpenClaw config를 Ollama 프로바이더로 비인터랙티브 설정한다.
- * `models.providers.ollama.baseUrl` + `agents.defaults.model = ollama/<model>`을 set.
- *
- * @param {string} model — 예: "qwen3:4b", "qwen3:8b" (provider prefix 없이)
- * @returns {Promise<{ ok: boolean, applied: Array, model: string }>}
- */
-export async function openclawUseOllama(model) {
-  const raw = await call("openclaw_use_ollama", { model });
-  return parseResponse(raw);
-}
+// ── Local AI (Ollama) ─────────────────────────────────────────────────────
 
 /**
  * Ollama 종합 상태 — 바이너리 설치, 데몬 실행(11434), 설치된 모델 목록.
@@ -694,17 +635,6 @@ export async function openclawUseOllama(model) {
  */
 export async function ollamaStatus() {
   const raw = await call("ollama_status");
-  return parseResponse(raw);
-}
-
-/**
- * Node.js 설치 여부 — OpenClaw(npm 글로벌 패키지) 설치의 선행 조건.
- * 자동 설치 단계를 띄울지(미설치) 건너뛸지(설치됨) 결정하는 용도.
- *
- * @returns {Promise<{ installed: boolean, version: string|null, source: string|null }>}
- */
-export async function nodeInstalled() {
-  const raw = await call("node_installed");
   return parseResponse(raw);
 }
 
@@ -723,24 +653,6 @@ export async function nodeInstalled() {
 //     message: string,
 //     manual_command: string,  // 사용자가 직접 실행할 명령 (실패 시 복사 제공)
 //   }
-
-/**
- * Node.js 설치 (OpenClaw 선행 조건).
- * - Windows: winget OpenJS.NodeJS.LTS / macOS: brew install node
- * @returns {Promise<object>} InstallResult
- */
-export async function installerInstallNode() {
-  return invoke("install_node");
-}
-
-/**
- * `npm install -g openclaw@latest` — 사용자 로그인 셸 경유.
- * @returns {Promise<object>} InstallResult
- */
-export async function installerInstallOpenClaw() {
-  // invoke는 직접 객체를 반환 (parseResponse 불필요 — Rust가 serde_json::Value로 반환)
-  return invoke("install_openclaw");
-}
 
 /**
  * `brew install ollama` (macOS 전용).
@@ -770,55 +682,6 @@ export async function installerPullModel(model) {
 /** 진행 중인 설치 자식 프로세스를 kill한다. NO-OP if none. */
 export async function installerCancel() {
   return invoke("cancel_install");
-}
-
-/**
- * OpenClaw 세션을 통해 AI 에이전트와 대화한다.
- *
- * 보안 레이어(Python sidecar)를 경유하여 OpenClaw 게이트웨이로 전달된다.
- * DENIED 키워드가 포함된 경우 사이드카에서 차단된다.
- *
- * @param {string} message - 사용자 메시지
- * @param {string|null} [sessionId] - 기존 세션 ID (null이면 새 세션 자동 생성)
- * @returns {Promise<{ response: string, session_id: string, tool_calls: Array }>}
- */
-export async function agentChat(message, sessionId) {
-  const raw = await call("agent_chat", {
-    message,
-    session_id: sessionId ?? null,
-  });
-  return parseResponse(raw);
-}
-
-/**
- * 설치된 OpenClaw 스킬 목록을 반환한다.
- *
- * @returns {Promise<{ skills: Array, count: number }>}
- */
-export async function skillsInstalled() {
-  const raw = await call("skills_installed");
-  return parseResponse(raw);
-}
-
-/**
- * ClawHub에서 스킬을 설치한다.
- *
- * @param {string} skillName - ClawHub 스킬 이름 (예: "gog-gmail")
- * @returns {Promise<{ success: boolean, skill_name: string }>}
- */
-export async function skillsInstall(skillName) {
-  const raw = await call("skills_install", { skill_name: skillName });
-  return parseResponse(raw);
-}
-
-/**
- * ClawHub 추천 스킬 카탈로그를 반환한다.
- *
- * @returns {Promise<{ skills: Array, cached: boolean }>}
- */
-export async function skillsCatalog() {
-  const raw = await call("skills_catalog");
-  return parseResponse(raw);
 }
 
 // ── Phase 3 (2026-05): Rust keyring + audit (Python sidecar 우회 경로) ──────
@@ -865,73 +728,4 @@ export async function rustAuditLastBlockedAt() {
   return invoke("rust_audit_last_blocked_at");
 }
 
-// ── OpenClaw CLI 서브프로세스 wrapper (2026-05-20) ──────────────────────────
-//
-// `openclaw gateway call <method>` / `openclaw agent`를 spawn해 결과 JSON을 반환.
-// WebSocket 직결 대신 OpenClaw 자체 CLI에 핸드셰이크/auth/세션을 위임 — 게이트웨이
-// 마이너 버전이 바뀌어도 우리 wrapper는 영향받지 않는다.
-//
-// 사용자 셋업 책임: Ollama 프로바이더 등록 (`openclaw configure` 또는
-// `OLLAMA_API_KEY=*`), device pairing 등은 별도. 이 wrapper는 그저 CLI를 부른다.
-
-/**
- * 게이트웨이 메서드 호출 — health / system-presence / cron.* 등.
- *
- * @param {string} method
- * @param {object|null} [params] — `--params` JSON
- * @param {{ token?:string, password?:string, url?:string, timeoutMs?:number, expectFinal?:boolean }} [opts]
- * @returns {Promise<any>} stdout JSON
- */
-export async function openclawCliCall(method, params, opts) {
-  return invoke("openclaw_cli_call", {
-    method,
-    params: params ?? null,
-    opts: opts
-      ? {
-          token: opts.token ?? null,
-          password: opts.password ?? null,
-          url: opts.url ?? null,
-          timeout_ms: opts.timeoutMs ?? null,
-          expect_final: !!opts.expectFinal,
-        }
-      : null,
-  });
-}
-
-/**
- * 에이전트 한 턴 실행 — 메신저 봇이 받은 메시지를 게이트웨이로 전달할 때 사용.
- *
- * @param {{
- *   message: string,
- *   agent?: string,
- *   sessionId?: string,
- *   to?: string,
- *   channel?: string,
- *   model?: string,
- *   deliver?: boolean,
- *   opts?: object,
- * }} req
- */
-export async function openclawCliAgent(req) {
-  return invoke("openclaw_cli_agent", {
-    req: {
-      message: req.message,
-      agent: req.agent ?? null,
-      session_id: req.sessionId ?? null,
-      to: req.to ?? null,
-      channel: req.channel ?? null,
-      model: req.model ?? null,
-      deliver: !!req.deliver,
-      opts: req.opts
-        ? {
-            token: req.opts.token ?? null,
-            password: req.opts.password ?? null,
-            url: req.opts.url ?? null,
-            timeout_ms: req.opts.timeoutMs ?? null,
-            expect_final: !!req.opts.expectFinal,
-          }
-        : { token: null, password: null, url: null, timeout_ms: null, expect_final: false },
-    },
-  });
-}
 
