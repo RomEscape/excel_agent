@@ -21,4 +21,6 @@ slack-bolt>=1.18.0
 discord.py>=2.3.0
 websockets>=12.0
 xlwings>=0.33.0
+# OS별 Excel 자동화 런타임
 pywin32>=306; platform_system == "Windows"
+appscript; platform_system == "Darwin"

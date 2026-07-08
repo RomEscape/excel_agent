@@ -1885,6 +1885,7 @@ name = "office-claw-sidecar"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "appscript", marker = "sys_platform == 'darwin'" },
     { name = "discord-py" },
     { name = "fastapi" },
     { name = "google-api-python-client" },
@@ -1917,6 +1918,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "appscript", marker = "sys_platform == 'darwin'" },
     { name = "discord-py", specifier = ">=2.3.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "google-api-python-client", specifier = ">=2.130.0" },

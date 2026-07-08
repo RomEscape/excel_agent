@@ -1,11 +1,12 @@
 """FastAPI application entry point for the Office Claw sidecar."""
 
 import argparse
+import json
 import logging
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import Depends, FastAPI, Request, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 
 from office_claw_sidecar.config import (
     TEMP_SUBDIRS,
@@ -30,6 +31,7 @@ from office_claw_sidecar.routers import (
     telegram,
     workspace,
 )
+from office_claw_sidecar.services.user_harness_service import record_user_harness_event
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +122,25 @@ app = FastAPI(title="Office Claw Sidecar", version="0.1.0", lifespan=lifespan)
 # Auth token set at startup
 _auth_token: str | None = None
 
+_HARNESS_TRACK_PATHS = {
+    "/excel-live/command",
+    "/excel-live/action",
+    "/excel-live/approval",
+    "/excel-live/backups",
+    "/excel-live/restore-last",
+    "/agent/chat",
+}
+
+
+def _parse_json_bytes(raw: bytes) -> dict:
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw.decode("utf-8"))
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        return {}
+
 
 def verify_auth(request: Request) -> None:
     """Verify the Bearer token matches the one passed at startup."""
@@ -131,6 +152,44 @@ def verify_auth(request: Request) -> None:
     token = auth_header[7:]
     if token != _auth_token:
         raise HTTPException(status_code=403, detail="Invalid auth token")
+
+
+@app.middleware("http")
+async def user_harness_middleware(request: Request, call_next):
+    if request.url.path not in _HARNESS_TRACK_PATHS:
+        return await call_next(request)
+
+    started = time.time()
+    req_body = await request.body()
+    req_json = _parse_json_bytes(req_body)
+
+    response = await call_next(request)
+    response_body = b""
+    async for chunk in response.body_iterator:
+        response_body += chunk
+
+    elapsed_ms = int((time.time() - started) * 1000)
+    res_json = _parse_json_bytes(response_body)
+
+    try:
+        record_user_harness_event(
+            route=request.url.path,
+            method=request.method,
+            request_payload=req_json,
+            response_payload=res_json,
+            status_code=response.status_code,
+            elapsed_ms=elapsed_ms,
+        )
+    except Exception as exc:
+        logger.warning("사용자 하네스 로그 저장 실패(무시): %s", exc)
+
+    return Response(
+        content=response_body,
+        status_code=response.status_code,
+        headers=dict(response.headers),
+        media_type=response.media_type,
+        background=response.background,
+    )
 
 
 app.include_router(health.router, dependencies=[Depends(verify_auth)])

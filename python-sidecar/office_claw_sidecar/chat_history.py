@@ -1,7 +1,7 @@
 """
 chat_history.py — Sprint 5 채팅 세션 영속화.
 
-채팅 메시지를 ~/officeclaw/audit.db 에 저장한다.
+채팅 메시지를 ~/PrivateClaw/audit.db 에 저장한다.
 기존 command_log 테이블과 같은 DB를 공유하되, 별도 테이블(chat_messages)을 사용.
 
 테이블 스키마:
@@ -22,14 +22,14 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+from pathlib import Path
 from typing import Optional
 
-from office_claw_sidecar.config import get_app_db_path
+from office_claw_sidecar.services.unified_log_service import append_unified_event
 
 logger = logging.getLogger(__name__)
 
-# command_log 테이블과 같은 DB를 공유 — config.get_app_db_path()가 단일 출처
-_DB_PATH = get_app_db_path()
+_DB_PATH = Path.home() / "PrivateClaw" / "audit.db"
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS chat_messages (
@@ -91,7 +91,21 @@ def save_message(
             (session_id, role, text, tool_calls_str, masked_count, masked_types_str, error_text),
         )
         conn.commit()
-        return cur.lastrowid
+        row_id = int(cur.lastrowid or 0)
+        append_unified_event(
+            "chat_message",
+            {
+                "id": row_id,
+                "session_id": session_id,
+                "role": role,
+                "text": text or "",
+                "tool_calls": tool_calls if isinstance(tool_calls, list) else None,
+                "masked_count": int(masked_count or 0),
+                "masked_types": masked_types if isinstance(masked_types, list) else [],
+                "error_text": error_text or "",
+            },
+        )
+        return row_id
     finally:
         conn.close()
 

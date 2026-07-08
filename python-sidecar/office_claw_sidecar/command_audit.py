@@ -1,10 +1,10 @@
 """
-command_audit.py — Phase 2 (officeclaw) 명령 감사 로그.
+command_audit.py — Phase 2 (Private-Claw) 명령 감사 로그.
 
 모든 명령 실행/차단 이력을 SQLite DB에 기록한다.
 기존 AuditService(audit_service.py)의 JSONL 로그와는 별도로 동작한다.
 
-DB 위치: ~/officeclaw/audit.db
+DB 위치: ~/PrivateClaw/audit.db
 테이블: command_log
   id               INTEGER PRIMARY KEY AUTOINCREMENT
   timestamp        TEXT    NOT NULL  (ISO-8601 UTC)
@@ -26,14 +26,15 @@ from __future__ import annotations
 import sqlite3
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
-from office_claw_sidecar.config import get_app_db_path
+from office_claw_sidecar.services.unified_log_service import append_unified_event
 
 logger = logging.getLogger(__name__)
 
-# DB 경로 — config.get_app_db_path()가 단일 출처 (~/officeclaw/audit.db)
-_DB_PATH = get_app_db_path()
+# DB 경로 — ~/PrivateClaw/ 디렉토리 사용
+_DB_PATH = Path.home() / "PrivateClaw" / "audit.db"
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS command_log (
@@ -173,7 +174,25 @@ class CommandAuditLogger:
                     (ts, grade, lang, cmd_short, reason, pattern, approved_int, user_id, normalized_source,
                      tool_name, session_id),
                 )
-                return cur.lastrowid or 0
+                row_id = int(cur.lastrowid or 0)
+                append_unified_event(
+                    "command_audit",
+                    {
+                        "id": row_id,
+                        "timestamp": ts,
+                        "grade": grade,
+                        "lang": lang,
+                        "command": cmd_short,
+                        "reason": reason,
+                        "pattern": pattern,
+                        "approved": approved,
+                        "user_id": user_id,
+                        "source": normalized_source,
+                        "tool_name": tool_name or "",
+                        "session_id": session_id or "",
+                    },
+                )
+                return row_id
         except sqlite3.Error as e:
             logger.error("CommandAuditLogger.log 실패: %s", e)
             return 0
@@ -203,6 +222,14 @@ class CommandAuditLogger:
                     "UPDATE command_log SET approved = ?, rejection_reason = ? WHERE id = ?",
                     (approved_int, reason_to_save, row_id),
                 )
+            append_unified_event(
+                "command_audit_approval",
+                {
+                    "id": int(row_id),
+                    "approved": bool(approved),
+                    "rejection_reason": reason_to_save or "",
+                },
+            )
         except sqlite3.Error as e:
             logger.error("CommandAuditLogger.update_approval 실패: %s", e)
 
