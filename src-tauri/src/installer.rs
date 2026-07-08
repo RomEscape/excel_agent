@@ -3,15 +3,14 @@
 //! ## 왜 별도 모듈인가
 //!
 //! Tauri GUI 앱은 launchd가 주는 최소 PATH(`/usr/bin:/bin:/usr/sbin:/sbin`)만
-//! 상속받는다. `npm`/`brew`/`ollama`는 `/usr/local/bin`, `/opt/homebrew/bin`,
-//! `~/.nvm/...` 등에 있어 GUI PATH에 잡히지 않는다.
+//! 상속받는다. `brew`/`ollama`는 `/usr/local/bin`, `/opt/homebrew/bin` 등에 있어
+//! GUI PATH에 잡히지 않는다.
 //!
-//! `@tauri-apps/plugin-shell`의 `Command.create("npm", ...)`는 이 PATH를 그대로
-//! 사용하기 때문에 `npm: not found`로 즉시 실패한다. 같은 프로젝트의
-//! `openclaw::is_openclaw_installed` / `spawn_openclaw` / `configure_openclaw_ollama`는
+//! `@tauri-apps/plugin-shell`의 `Command.create("brew", ...)`는 이 PATH를 그대로
+//! 사용하기 때문에 `brew: not found`로 즉시 실패한다. `ollama::is_ollama_installed`는
 //! 이미 `$SHELL -lc "..."` 폴백을 구현해 이 문제를 회피하고 있다.
 //!
-//! 이 모듈은 **설치 명령(npm/brew/ollama)에도 같은 패턴을 적용**해서:
+//! 이 모듈은 **설치 명령(brew/winget/ollama)에도 같은 패턴을 적용**해서:
 //!   1. 사용자 로그인 셸($SHELL)로 `-lc` 호출 → ~/.zshrc / ~/.bashrc / /etc/profile
 //!      을 모두 거쳐 nvm/asdf/Homebrew PATH가 잡힌다
 //!   2. stdout/stderr 라인을 Tauri 이벤트(`installer:log`)로 스트리밍 → 프론트에서
@@ -206,62 +205,6 @@ fn run_shell_streaming(
         message,
         manual_command: manual_command.to_string(),
     })
-}
-
-/// Tauri command: Node.js 설치 — OpenClaw(npm 글로벌 패키지)의 선행 조건.
-///
-/// - Windows: `winget install -e --id OpenJS.NodeJS.LTS ...` (무인 설치, LTS 채널이
-///   가장 안정적). `--silent --disable-interactivity`로 설치 UI/프롬프트가 떠서
-///   스트리밍이 멈추는 것을 막는다.
-/// - macOS: `brew install node`
-#[tauri::command]
-pub async fn install_node(
-    app: AppHandle,
-    state: State<'_, Mutex<InstallerState>>,
-) -> Result<serde_json::Value, String> {
-    #[cfg(target_os = "windows")]
-    {
-        let cmd = "winget install -e --id OpenJS.NodeJS.LTS --silent --disable-interactivity --accept-package-agreements --accept-source-agreements";
-        let result = run_shell_streaming(app, &state, "install-node", cmd, cmd)?;
-        serde_json::to_value(result).map_err(|e| e.to_string())
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        let result = run_shell_streaming(
-            app,
-            &state,
-            "install-node",
-            "brew install node",
-            "brew install node",
-        )?;
-        serde_json::to_value(result).map_err(|e| e.to_string())
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        let _ = (app, state);
-        Err("자동 설치는 현재 macOS/Windows만 지원됩니다. https://nodejs.org 에서 직접 설치해 주세요.".to_string())
-    }
-}
-
-/// Tauri command: OpenClaw 전역 설치 — `npm install -g openclaw@latest`
-///
-/// manual_command에는 sudo를 포함하지 않는다 — 프론트에서 result.eacces 플래그를
-/// 보고 EACCES 케이스에만 "sudo " 프리픽스를 붙여 표시한다.
-#[tauri::command]
-pub async fn install_openclaw(
-    app: AppHandle,
-    state: State<'_, Mutex<InstallerState>>,
-) -> Result<serde_json::Value, String> {
-    let result = run_shell_streaming(
-        app,
-        &state,
-        "install-oc",
-        "npm install -g openclaw@latest",
-        "npm install -g openclaw@latest",
-    )?;
-    serde_json::to_value(result).map_err(|e| e.to_string())
 }
 
 /// Tauri command: Ollama 설치.

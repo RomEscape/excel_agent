@@ -18,15 +18,6 @@
           "args": true
         },
         {
-          "name": "npm",
-          "cmd": "npm",
-          "args": [
-            "install",
-            "-g",
-            "openclaw@latest"
-          ]
-        },
-        {
           "name": "brew-install-ollama",
           "cmd": "brew",
           "args": [

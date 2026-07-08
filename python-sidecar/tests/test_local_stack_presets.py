@@ -2,15 +2,15 @@
 
 from office_claw_sidecar.local_stack import (
     DEFAULT_PRESET_ID,
-    QWEN3_OPENCLAW,
+    QWEN3_LOCAL,
     get_default_llm_config,
     get_preset,
 )
 
 
-def test_default_preset_is_qwen3_openclaw():
-    assert DEFAULT_PRESET_ID == "qwen3-openclaw"
-    assert get_preset()["id"] == QWEN3_OPENCLAW["id"]
+def test_default_preset_is_qwen3_local():
+    assert DEFAULT_PRESET_ID == "qwen3-local"
+    assert get_preset()["id"] == QWEN3_LOCAL["id"]
 
 
 def test_default_llm_config_matches_ollama_qwen3():

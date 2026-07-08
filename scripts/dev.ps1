@@ -15,16 +15,12 @@ Write-Host "=== Starting Office Claw Development ==="
 
 # Start Python sidecar in background
 Write-Host "Starting Python sidecar..."
-$envScript = Join-Path $ProjectDir "scripts\local-env.ps1"
-if (Test-Path $envScript) { . $envScript }
 
 $sidecarJob = Start-Job -ScriptBlock {
-    param($dir, $gwToken)
+    param($dir)
     Set-Location "$dir/python-sidecar"
-    if ($gwToken) { $env:OPENCLAW_GATEWAY_TOKEN = $gwToken }
-    $env:OLLAMA_API_KEY = "ollama-local"
     uv run python -m office_claw_sidecar --port 19532
-} -ArgumentList $ProjectDir, $env:OPENCLAW_GATEWAY_TOKEN
+} -ArgumentList $ProjectDir
 
 Write-Host "Sidecar Job ID: $($sidecarJob.Id)"
 

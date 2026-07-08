@@ -2,10 +2,7 @@ mod audit;
 mod installer;
 mod ipc;
 mod keyring_svc;
-mod node;
 mod ollama;
-mod openclaw;
-mod openclaw_cli;
 mod shell;
 mod sidecar;
 mod tray;
@@ -18,25 +15,12 @@ pub fn run() {
         // Sprint 5: 자동 업데이트 플러그인
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
-            // Register OpenClaw state (before spawning so IPC commands can access it)
-            app.manage(std::sync::Mutex::new(openclaw::OpenClawState::default()));
-
             // Installer state — 진행 중인 설치 자식 프로세스 핸들 (cancel용).
             app.manage(std::sync::Mutex::new(installer::InstallerState::default()));
 
-            // Spawn the OpenClaw gateway first, then the Python sidecar
+            // Python sidecar 기동
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                // Step 1: Start OpenClaw gateway
-                let openclaw_state =
-                    app_handle.state::<std::sync::Mutex<openclaw::OpenClawState>>();
-                match openclaw::spawn_openclaw(&openclaw_state).await {
-                    Ok(()) => println!("[office-claw] OpenClaw gateway started"),
-                    Err(e) => eprintln!("[office-claw] OpenClaw gateway unavailable: {}", e),
-                    // Not fatal — app continues, Python sidecar may fall back to direct LLM
-                }
-
-                // Step 2: Start Python sidecar
                 match sidecar::spawn_sidecar(&app_handle).await {
                     Ok(()) => println!("[office-claw] Sidecar started successfully"),
                     Err(e) => eprintln!("[office-claw] Failed to start sidecar: {}", e),
@@ -66,15 +50,8 @@ pub fn run() {
             ipc::excel_live_submit_approval,
             ipc::excel_live_save_workbook,
             ipc::maintenance_cleanup,
-            // Phase 4: OpenClaw / Agent commands
-            ipc::agent_chat,
-            ipc::agent_sessions,
-            ipc::openclaw_status,
-            ipc::openclaw_installed,
-            ipc::openclaw_ensure_running,
-            ipc::openclaw_use_ollama,
+            // Ollama 로컬 LLM 상태
             ipc::ollama_status,
-            ipc::node_installed,
             // Phase 3 (2026-05): Rust keyring + audit — Python과 같은 저장소 공유
             ipc::rust_credential_set,
             ipc::rust_credential_get,
@@ -85,22 +62,11 @@ pub fn run() {
             ipc::rust_audit_masking_stats,
             ipc::rust_audit_blocked,
             ipc::rust_audit_last_blocked_at,
-            // OpenClaw CLI 서브프로세스 wrapper (2026-05-20)
-            ipc::openclaw_cli_call,
-            ipc::openclaw_cli_agent,
             // Installer: macOS GUI PATH 우회 + 실시간 로그 스트리밍
-            installer::install_node,
-            installer::install_openclaw,
             installer::install_ollama,
             installer::start_ollama,
             installer::pull_ollama_model,
             installer::cancel_install,
-            ipc::skills_installed,
-            ipc::skills_install,
-            ipc::skills_catalog,
-            // Phase 5: Security — Approval
-            ipc::agent_submit_approval,
-            ipc::agent_pending_approvals,
             // Phase 5: Security — Dashboard
             ipc::security_stats,
             ipc::security_blocked_log,

@@ -21,9 +21,9 @@ class LocalStackPreset(TypedDict):
     llm: LlmConfig
 
 
-QWEN3_OPENCLAW: LocalStackPreset = {
-    "id": "qwen3-openclaw",
-    "label": "Qwen 3 + OpenClaw (로컬)",
+QWEN3_LOCAL: LocalStackPreset = {
+    "id": "qwen3-local",
+    "label": "Qwen 3 (로컬 Ollama)",
     "hf_model": "Qwen/Qwen3-4B-Instruct",
     "ollama_model": "qwen3:4b",
     "multimodal": False,
@@ -31,10 +31,10 @@ QWEN3_OPENCLAW: LocalStackPreset = {
 }
 
 PRESETS: dict[str, LocalStackPreset] = {
-    QWEN3_OPENCLAW["id"]: QWEN3_OPENCLAW,
+    QWEN3_LOCAL["id"]: QWEN3_LOCAL,
 }
 
-DEFAULT_PRESET_ID = QWEN3_OPENCLAW["id"]
+DEFAULT_PRESET_ID = QWEN3_LOCAL["id"]
 
 
 def get_preset(preset_id: str = DEFAULT_PRESET_ID) -> LocalStackPreset:

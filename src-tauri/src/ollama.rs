@@ -141,93 +141,6 @@ pub async fn get_ollama_status() -> serde_json::Value {
     })
 }
 
-/// OpenClaw 설정을 Ollama로 맞춘다.
-///
-/// 비인터랙티브로 실행:
-///   1. `openclaw config set models.providers.ollama.baseUrl http://127.0.0.1:11434`
-///   2. `openclaw config set agents.defaults.model ollama/<model>`
-///
-/// `model`은 `llama3.2:latest` 같은 전체 태그를 받음.
-pub async fn configure_openclaw_ollama(model: &str) -> Result<serde_json::Value, String> {
-    validate_model_name(model)?;
-
-    let runs = [
-        (
-            "models.providers.ollama.baseUrl",
-            format!("http://127.0.0.1:{}", OLLAMA_PORT),
-        ),
-        ("models.providers.ollama.apiKey", "ollama-local".to_string()),
-        ("models.providers.ollama.api", "ollama".to_string()),
-        ("agents.defaults.model", format!("ollama/{}", model)),
-    ];
-
-    let mut applied = Vec::new();
-    for (path, value) in runs.iter() {
-        let result = run_openclaw_config_set(path, value).await?;
-        applied.push(serde_json::json!({ "path": path, "value": value, "stdout": result }));
-    }
-
-    Ok(serde_json::json!({
-        "ok": true,
-        "applied": applied,
-        "model": format!("ollama/{}", model),
-    }))
-}
-
-/// `openclaw config set <path> <value>`를 비동기로 실행하고 stdout 반환.
-async fn run_openclaw_config_set(path: &str, value: &str) -> Result<String, String> {
-    let path = path.to_string();
-    let value = value.to_string();
-    let result = tokio::task::spawn_blocking(move || {
-        // 1차: 직접 실행
-        let direct = Command::new("openclaw")
-            .args(["config", "set", &path, &value])
-            .output();
-        if let Ok(out) = direct {
-            if out.status.success() {
-                return Ok(String::from_utf8_lossy(&out.stdout).to_string());
-            }
-            // 실패면 stderr 포함해서 다음 시도
-            let _ = String::from_utf8_lossy(&out.stderr);
-        }
-        // 2차: npx 폴백 (PATH에 openclaw가 없더라도 Node만 있으면 실행 가능)
-        let via_npx = Command::new("npx")
-            .args(["--yes", "openclaw", "config", "set", &path, &value])
-            .output();
-        if let Ok(out) = via_npx {
-            if out.status.success() {
-                return Ok(String::from_utf8_lossy(&out.stdout).to_string());
-            }
-            let _ = String::from_utf8_lossy(&out.stderr);
-        }
-
-        // 3차: 로그인 셸 (OS별 분기)
-        let cmd = format!(
-            "openclaw config set {} {}",
-            shell_quote(&path),
-            shell_quote(&value)
-        );
-        let via_shell = crate::shell::run_login_shell(&cmd);
-        match via_shell {
-            Ok(out) if out.status.success() => Ok(String::from_utf8_lossy(&out.stdout).to_string()),
-            Ok(out) => Err(format!(
-                "openclaw config set 실패 (code {:?}): {}",
-                out.status.code(),
-                String::from_utf8_lossy(&out.stderr).trim()
-            )),
-            Err(e) => Err(format!("openclaw 실행 실패: {}", e)),
-        }
-    })
-    .await
-    .map_err(|e| format!("작업 join 실패: {}", e))?;
-    result
-}
-
-/// shell single-quote escaping — 사용자 입력은 위에서 이미 sanitize했지만 path에 dot이 있어 따옴표 필요.
-fn shell_quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', "'\\''"))
-}
-
 /// 모델명에 셸 메타문자가 들어있지 않은지 검증.
 ///
 /// `phi3.5`, `llama3.2:latest`, `qwen2.5:7b-instruct` 같은 합법적인 Ollama 태그는 허용하고,
@@ -293,16 +206,6 @@ mod tests {
                 bad
             );
         }
-    }
-
-    #[test]
-    fn shell_quote_escapes_single_quotes() {
-        // path 자체에 dot이 있어 따옴표 처리 필요. 만약 path에 따옴표가 들어가도 깨지면 안 됨.
-        assert_eq!(
-            shell_quote("agents.defaults.model"),
-            "'agents.defaults.model'"
-        );
-        assert_eq!(shell_quote("foo'bar"), "'foo'\\''bar'");
     }
 
     #[test]

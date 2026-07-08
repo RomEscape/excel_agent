@@ -3,7 +3,6 @@ use std::sync::Mutex;
 use std::time::Duration;
 use tauri::State;
 
-use crate::openclaw::OpenClawState;
 use crate::sidecar::SidecarState;
 
 /// Helper to build the sidecar URL.
@@ -224,12 +223,15 @@ pub async fn excel_live_command(
     workbook_id: Option<String>,
     sheet_name: Option<String>,
     approve: Option<bool>,
+    history: Option<serde_json::Value>,
 ) -> Result<String, String> {
+    // history: [{role, content}] — 멀티턴 맥락. 없으면 빈 배열로 전달.
     let body = serde_json::json!({
         "message": message,
         "workbook_id": workbook_id,
         "sheet_name": sheet_name,
         "approve": approve.unwrap_or(false),
+        "history": history.unwrap_or_else(|| serde_json::json!([])),
     });
     sidecar_request(
         &state,
@@ -303,58 +305,12 @@ pub async fn maintenance_cleanup(state: State<'_, Mutex<SidecarState>>) -> Resul
     .await
 }
 
-// ── Phase 4: Agent / OpenClaw commands ─────────────────────────────────────
-
-/// OpenClaw 게이트웨이 현재 상태 확인.
-/// React UI에서 연결 상태 배지를 렌더링하는 데 사용.
-#[tauri::command]
-pub async fn openclaw_status(oc_state: State<'_, Mutex<OpenClawState>>) -> Result<String, String> {
-    let status = crate::openclaw::get_openclaw_status(&oc_state).await;
-    Ok(status.to_string())
-}
-
-/// `openclaw` 바이너리 설치 여부를 확인한다.
-/// 게이트웨이 실행 여부와 무관 — 자동 설치 UI를 띄울지 결정하는 용도.
-#[tauri::command]
-pub async fn openclaw_installed() -> Result<String, String> {
-    let info = crate::openclaw::is_openclaw_installed().await;
-    Ok(info.to_string())
-}
-
-/// 게이트웨이가 18789에서 응답하도록 보장한다 (idempotent).
-/// - 이미 떠 있으면 즉시 OK
-/// - 아니면 자식 프로세스로 spawn 후 ready까지 대기
-///
-/// React 자동 설치 모달이 npm install 완료 후 호출해 즉시 온라인 전환을 트리거.
-#[tauri::command]
-pub async fn openclaw_ensure_running(
-    oc_state: State<'_, Mutex<OpenClawState>>,
-) -> Result<String, String> {
-    crate::openclaw::spawn_openclaw(&oc_state).await?;
-    let status = crate::openclaw::get_openclaw_status(&oc_state).await;
-    Ok(status.to_string())
-}
-
-/// OpenClaw config를 Ollama 프로바이더로 맞춘다 (비인터랙티브).
-/// 인자 `model` 예: "llama3.2", "qwen2.5:7b" — provider prefix는 자동으로 "ollama/" 부여.
-#[tauri::command]
-pub async fn openclaw_use_ollama(model: String) -> Result<String, String> {
-    let result = crate::ollama::configure_openclaw_ollama(&model).await?;
-    Ok(result.to_string())
-}
+// ── Ollama 로컬 LLM ─────────────────────────────────────────────────────────
 
 /// Ollama 종합 상태 — installed, running, version, models 한 번에.
 #[tauri::command]
 pub async fn ollama_status() -> Result<String, String> {
     let info = crate::ollama::get_ollama_status().await;
-    Ok(info.to_string())
-}
-
-/// Node.js 설치 여부 — OpenClaw(npm 글로벌 패키지) 설치의 선행 조건.
-/// 자동 설치 단계를 띄울지(미설치) 건너뛸지(설치됨) 결정하는 용도.
-#[tauri::command]
-pub async fn node_installed() -> Result<String, String> {
-    let info = crate::node::is_node_installed().await;
     Ok(info.to_string())
 }
 
@@ -422,166 +378,6 @@ pub fn rust_audit_blocked(
 #[tauri::command]
 pub fn rust_audit_last_blocked_at(app: tauri::AppHandle) -> Option<String> {
     crate::audit::last_blocked_at(&app)
-}
-
-// ── OpenClaw CLI 서브프로세스 wrapper (2026-05-20) ───────────────────────────
-//
-// 게이트웨이에 WebSocket으로 직접 붙는 대신, `openclaw gateway call` / `openclaw agent`
-// 서브프로세스를 spawn해 결과 JSON을 받는다. 게이트웨이 프로토콜 변경 내성이 강하다.
-
-/// 게이트웨이 메서드 호출 — health, system-presence, cron.* 등.
-#[tauri::command]
-pub async fn openclaw_cli_call(
-    method: String,
-    params: Option<serde_json::Value>,
-    opts: Option<crate::openclaw_cli::CallOpts>,
-) -> Result<serde_json::Value, String> {
-    let opts = opts.unwrap_or_default();
-    crate::openclaw_cli::gateway_call(&method, params.as_ref(), &opts)
-        .await
-        .map_err(|e| e.into_string())
-}
-
-/// 에이전트 한 턴 실행 — 메신저 봇 메시지를 게이트웨이로 전달할 때 사용.
-#[tauri::command]
-pub async fn openclaw_cli_agent(
-    req: crate::openclaw_cli::AgentTurnRequest,
-) -> Result<serde_json::Value, String> {
-    crate::openclaw_cli::agent_turn(&req)
-        .await
-        .map_err(|e| e.into_string())
-}
-
-/// OpenClaw 세션을 통해 메시지를 전송한다.
-/// Python 보안 레이어를 경유: /agent/chat
-///
-/// session_id가 None이면 새 세션을 생성한다.
-#[tauri::command]
-pub async fn agent_chat(
-    state: State<'_, Mutex<SidecarState>>,
-    message: String,
-    session_id: Option<String>,
-) -> Result<String, String> {
-    let body = serde_json::json!({ "message": message, "session_id": session_id });
-    sidecar_request(
-        &state,
-        Method::POST,
-        "/agent/chat",
-        Some(body),
-        Some(Duration::from_secs(180)),
-        "Agent 채팅 요청 실패",
-    )
-    .await
-}
-
-/// 활성 OpenClaw 세션 목록 조회.
-#[tauri::command]
-pub async fn agent_sessions(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
-    sidecar_request(
-        &state,
-        Method::GET,
-        "/agent/sessions",
-        None,
-        Some(Duration::from_secs(10)),
-        "세션 목록 조회 실패",
-    )
-    .await
-}
-
-/// 설치된 OpenClaw 스킬 목록.
-#[tauri::command]
-pub async fn skills_installed(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
-    sidecar_request(
-        &state,
-        Method::GET,
-        "/skills/installed",
-        None,
-        None,
-        "스킬 목록 조회 실패",
-    )
-    .await
-}
-
-/// ClawHub에서 스킬 설치.
-#[tauri::command]
-pub async fn skills_install(
-    state: State<'_, Mutex<SidecarState>>,
-    skill_name: String,
-) -> Result<String, String> {
-    let body = serde_json::json!({ "skill_name": skill_name });
-    sidecar_request(
-        &state,
-        Method::POST,
-        "/skills/install",
-        Some(body),
-        Some(Duration::from_secs(120)),
-        "스킬 설치 요청 실패",
-    )
-    .await
-}
-
-/// ClawHub 스킬 카탈로그 조회.
-#[tauri::command]
-pub async fn skills_catalog(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
-    sidecar_request(
-        &state,
-        Method::GET,
-        "/skills/catalog",
-        None,
-        Some(Duration::from_secs(30)),
-        "스킬 카탈로그 조회 실패",
-    )
-    .await
-}
-
-// ── Phase 5: Agent Approval commands ────────────────────────────────────────
-
-/// 사용자의 승인/거부 결정을 사이드카에 전달한다.
-/// rejection_reason은 거부 시에만 의미 있으며, None이면 /agent/approval body에 포함하지 않는다.
-#[tauri::command]
-pub async fn agent_submit_approval(
-    state: State<'_, Mutex<SidecarState>>,
-    approval_id: String,
-    approved: bool,
-    rejection_reason: Option<String>,
-) -> Result<String, String> {
-    // rejection_reason이 있으면 body에 포함 (None이면 키 자체를 제외)
-    let body = match rejection_reason {
-        Some(ref reason) if !approved => serde_json::json!({
-            "approval_id": approval_id,
-            "approved": approved,
-            "rejection_reason": reason,
-        }),
-        _ => serde_json::json!({
-            "approval_id": approval_id,
-            "approved": approved,
-        }),
-    };
-    sidecar_request(
-        &state,
-        Method::POST,
-        "/agent/approval",
-        Some(body),
-        Some(Duration::from_secs(30)),
-        "승인 전달 실패",
-    )
-    .await
-}
-
-/// 대기 중인 승인 요청 목록을 조회한다 (폴링용).
-#[tauri::command]
-pub async fn agent_pending_approvals(
-    state: State<'_, Mutex<SidecarState>>,
-) -> Result<String, String> {
-    sidecar_request(
-        &state,
-        Method::GET,
-        "/agent/approval/pending",
-        None,
-        Some(Duration::from_secs(5)),
-        "승인 목록 조회 실패",
-    )
-    .await
 }
 
 // ── Phase 5: Security Dashboard commands ─────────────────────────────────────

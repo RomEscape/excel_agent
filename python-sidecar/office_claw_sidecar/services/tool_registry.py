@@ -168,6 +168,54 @@ TOOL_REGISTRY: list[ToolDef] = [
         permission=PermissionLevel.SAFE,
         example_triggers=["엑셀 저장", "통합문서 저장", "지금 파일 저장"],
     ),
+    ToolDef(
+        name="excel_live.calculate_column_stat",
+        description="지정 열(머리글 이름 또는 열 문자)의 숫자 통계 계산 (합계/평균/최소/최대/개수, 읽기 전용)",
+        permission=PermissionLevel.SAFE,
+        example_triggers=["매출 열 다 더해줘", "나이 평균 구해줘", "B열 합계"],
+    ),
+    ToolDef(
+        name="excel_live.filter_rows",
+        description="조건에 맞는 행만 남기고 나머지 데이터 행 삭제 (예: 매출 500만 이상만 남기기)",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["이상인 행만 남겨줘", "조건 맞는 행만", "행 필터링"],
+    ),
+    ToolDef(
+        name="excel_live.sort_rows",
+        description="지정 열 기준으로 데이터 행 정렬 (머리글 제외, 행 순서 변경)",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["정렬해줘", "내림차순으로", "오름차순 정렬"],
+    ),
+    ToolDef(
+        name="excel_live.dedupe_rows",
+        description="중복 데이터 행 제거 (첫 등장 행 유지)",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["중복 제거", "중복 행 지워줘"],
+    ),
+    ToolDef(
+        name="excel_live.drop_column",
+        description="지정 열 삭제 (오른쪽 열이 왼쪽으로 이동)",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["열 삭제", "컬럼 지워줘"],
+    ),
+    ToolDef(
+        name="excel_live.rename_column",
+        description="지정 열의 머리글 이름 변경",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["열 이름 바꿔줘", "머리글 변경"],
+    ),
+    ToolDef(
+        name="excel_live.add_column",
+        description="테이블 오른쪽 끝에 새 열 추가 (선택적으로 수식 채움)",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["열 추가", "새 컬럼 만들어줘"],
+    ),
+    ToolDef(
+        name="excel_live.group_by_aggregate",
+        description="그룹별 집계 계산 (지역별 매출 합계 등, 시트 미수정 읽기 전용)",
+        permission=PermissionLevel.SAFE,
+        example_triggers=["지역별 매출 합계", "그룹별 평균", "카테고리별 개수"],
+    ),
     # ── 명시적 거부 목록 — 어떤 경우에도 실행 불가 ──────────────────────────
     ToolDef(
         name="DENIED.file_delete",
@@ -207,6 +255,12 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "excel_live.apply_border": "Excel 경계선 적용",
     "excel_live.set_formula": "Excel 수식 적용",
     "excel_live.save_workbook": "Excel 통합문서 저장",
+    "excel_live.filter_rows": "Excel 행 필터링(삭제 포함)",
+    "excel_live.sort_rows": "Excel 행 정렬",
+    "excel_live.dedupe_rows": "Excel 중복 행 제거",
+    "excel_live.drop_column": "Excel 열 삭제",
+    "excel_live.rename_column": "Excel 열 이름 변경",
+    "excel_live.add_column": "Excel 열 추가",
 }
 
 # ── 화이트리스트 오버라이드 (런타임에 사용자가 변경 가능) ─────────────────────

@@ -62,6 +62,10 @@ def save_llm_config(config: dict) -> None:
 # ── Abstract provider ─────────────────────────────────────────────────────
 
 
+class LLMToolsNotSupportedError(RuntimeError):
+    """현재 provider가 OpenAI 호환 tools(function calling)를 지원하지 않음."""
+
+
 class LLMProvider(ABC):
     """Common interface for all LLM backends."""
 
@@ -74,6 +78,22 @@ class LLMProvider(ABC):
           [{"role": "user", "content": "..."}, ...]
         """
         ...
+
+    async def chat_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        model: str | None = None,
+    ) -> dict:
+        """
+        OpenAI 호환 tools 배열과 함께 대화를 전송한다.
+
+        반환: {"content": str, "tool_calls": list, "finish_reason": str}
+        지원하지 않는 provider는 LLMToolsNotSupportedError를 던진다.
+        """
+        raise LLMToolsNotSupportedError(
+            f"'{self.provider_name}' provider는 tools(function calling)를 지원하지 않습니다."
+        )
 
     @property
     @abstractmethod
@@ -99,6 +119,22 @@ class OllamaProvider(LLMProvider):
         # 전체 대화 히스토리를 그대로 Ollama에 전달 (멀티턴 지원)
         default_model = get_default_llm_config()["model"]
         return await self._svc.chat_messages(messages, model=model or default_model)
+
+    async def chat_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        model: str | None = None,
+    ) -> dict:
+        # Ollama OpenAI 호환 API로 tools 포함 호출 (function calling)
+        default_model = get_default_llm_config()["model"]
+        return await self._svc.chat_completions(
+            messages,
+            model=model or default_model,
+            tools=tools,
+            # 함수 선택/인자 생성의 일관성을 위해 낮은 온도 고정
+            temperature=0.2,
+        )
 
 
 class ClaudeProvider(LLMProvider):
@@ -136,6 +172,15 @@ class LLMService:
     async def chat(self, messages: list[dict], model: str | None = None) -> str:
         """Send messages to the active provider and return the reply."""
         return await self._provider.chat(messages, model=model)
+
+    async def chat_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        model: str | None = None,
+    ) -> dict:
+        """tools(function calling) 포함 호출을 provider에 위임한다."""
+        return await self._provider.chat_with_tools(messages, tools, model=model)
 
 
 # ── Singleton factory ─────────────────────────────────────────────────────

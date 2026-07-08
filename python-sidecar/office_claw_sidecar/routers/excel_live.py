@@ -1,18 +1,19 @@
-"""Excel Live 라우터 — 자연어 기반 실시간 Excel(COM) 제어 API."""
+"""Excel Live 라우터 — 자연어(tool-calling) 기반 실시간 Excel(COM) 제어 API."""
 
 from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from office_claw_sidecar.models.approval import ApprovalRequest, ApprovalResponse
 from office_claw_sidecar.services.audit_service import AuditService
-from office_claw_sidecar.services.excel_live_agent import parse_excel_live_command
+from office_claw_sidecar.services.excel_actions import execute_excel_action
 from office_claw_sidecar.services.excel_live_service import (
     ExcelConnectionError,
     ExcelDependencyError,
@@ -21,18 +22,34 @@ from office_claw_sidecar.services.excel_live_service import (
     WorksheetNotFoundError,
     get_excel_live_service,
 )
-from office_claw_sidecar.services.llm_service import LLMService, get_llm_service
+from office_claw_sidecar.services.excel_tool_agent import (
+    resume_excel_tool_turn,
+    run_excel_tool_turn,
+)
+from office_claw_sidecar.services.llm_service import (
+    LLMService,
+    LLMToolsNotSupportedError,
+    get_llm_service,
+)
 from office_claw_sidecar.services.tool_registry import PermissionLevel, get_tool
 
 router = APIRouter(tags=["excel-live"])
 _audit = AuditService()
 
 
+class ChatTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
 class ExcelLiveCommandRequest(BaseModel):
-    message: str = Field(..., min_length=1, description="자연어 엑셀 명령")
+    message: str = Field(..., min_length=1, description="자연어 엑셀 명령 또는 일반 대화")
     workbook_id: str | None = Field(None, description="대상 통합문서 ID")
     sheet_name: str | None = Field(None, description="대상 시트명 (생략 시 active sheet)")
     approve: bool = Field(False, description="CONFIRM 작업 승인 여부")
+    history: list[ChatTurn] = Field(
+        default_factory=list, description="이전 대화 턴 (멀티턴 맥락 유지용)"
+    )
 
 
 class ExcelLiveActionRequest(BaseModel):
@@ -50,6 +67,12 @@ class ExcelLiveActionResponse(BaseModel):
     pending_approval: ApprovalRequest | None = None
     result: dict[str, Any] | None = None
     reason: str = ""
+    # tool-calling 경로 확장 필드
+    assistant_text: str = Field("", description="LLM의 자연어 최종 답변 (일반 대화 포함)")
+    executed_actions: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="이번 턴에 즉시 실행된 SAFE 액션 목록 [{action, params, result}]",
+    )
 
 
 @dataclass
@@ -59,9 +82,47 @@ class PendingExcelApproval:
     workbook_id: str | None
     sheet_name: str | None
     created_at: str
+    # B안 재개용 대화 상태 {"messages": [...], "tool_call_id": str}.
+    # tool-calling 경로에서 설정되며, /action 직접 호출 경로에서는 None(단순 실행).
+    resume: dict[str, Any] | None = None
 
 
 _pending_approvals: dict[str, PendingExcelApproval] = {}
+
+
+def _register_and_respond(
+    turn: dict[str, Any], workbook_id: str | None
+) -> ExcelLiveActionResponse:
+    """에이전트 턴 결과를 응답으로 변환한다. approval이면 승인 대기(재개 상태 포함)를 등록."""
+    executed = turn.get("executed", [])
+
+    if turn["type"] == "approval":
+        approval = _build_approval(turn["action"], turn["params"])
+        _pending_approvals[approval.approval_id] = PendingExcelApproval(
+            action=turn["action"],
+            params=turn["params"],
+            workbook_id=workbook_id,
+            sheet_name=turn.get("sheet_name"),
+            created_at=approval.created_at,
+            resume=turn.get("resume"),
+        )
+        return ExcelLiveActionResponse(
+            ok=True,
+            action=turn["action"],
+            approval_required=True,
+            pending_approval=approval,
+            reason=turn.get("reason", ""),
+            executed_actions=executed,
+        )
+
+    last = executed[-1] if executed else None
+    return ExcelLiveActionResponse(
+        ok=True,
+        action=last["action"] if last else "chat",
+        result=last["result"] if last else None,
+        assistant_text=turn.get("assistant_text", ""),
+        executed_actions=executed,
+    )
 
 
 def _map_error(exc: Exception) -> HTTPException:
@@ -76,135 +137,6 @@ def _map_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=500, detail=f"Excel Live 오류: {exc}")
 
 
-def _resolve_sheet_name(service, workbook_id: str | None, sheet_name: str | None) -> str:
-    if sheet_name:
-        return sheet_name
-    rows = service.list_workbooks()
-    if not rows:
-        raise ExcelConnectionError("열린 통합문서가 없습니다.")
-    if workbook_id:
-        lowered = workbook_id.lower()
-        for row in rows:
-            if row["workbook_id"].lower() == lowered or row["name"].lower() == lowered:
-                return row.get("active_sheet") or "Sheet1"
-    return rows[0].get("active_sheet") or "Sheet1"
-
-
-def _resolve_workbook_id(service, workbook_id: str | None) -> str:
-    if workbook_id:
-        return workbook_id
-    selected = service.get_selected_workbook_id()
-    if selected:
-        return selected
-    rows = service.list_workbooks()
-    if not rows:
-        raise WorkbookNotFoundError("열린 통합문서가 없습니다.")
-    return rows[0]["workbook_id"]
-
-
-def _top_left_cell(range_ref: str) -> str:
-    text = str(range_ref or "").strip().upper()
-    if not text:
-        return "A1"
-    return text.split(":")[0]
-
-
-def _execute_action(
-    *,
-    action: str,
-    params: dict[str, Any],
-    workbook_id: str | None,
-    sheet_name: str | None,
-) -> dict[str, Any]:
-    service = get_excel_live_service()
-
-    if action == "excel_live.list_workbooks":
-        return {"workbooks": service.list_workbooks()}
-
-    if action == "excel_live.select_workbook":
-        target = params.get("workbook_id") or params.get("name") or workbook_id
-        if not isinstance(target, str) or not target.strip():
-            raise WorkbookNotFoundError("select_workbook에는 workbook_id 또는 name이 필요합니다.")
-        return service.select_workbook(target.strip())
-
-    if action == "excel_live.read_range":
-        resolved_wb = _resolve_workbook_id(service, workbook_id)
-        resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
-        range_ref = str(params.get("range_ref", "")).strip().upper()
-        if not range_ref or range_ref == "__ACTIVE_SELECTION__":
-            range_ref = service.get_active_selection_ref(resolved_wb, resolved_sheet)
-        return service.read_range(resolved_wb, resolved_sheet, range_ref)
-
-    if action == "excel_live.write_range":
-        resolved_wb = _resolve_workbook_id(service, workbook_id)
-        resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
-        start_cell = str(params.get("start_cell", "")).strip().upper()
-        if not start_cell or start_cell in {"__ACTIVE_CELL__", "__ACTIVE_SELECTION__"}:
-            selected = service.get_active_selection_ref(resolved_wb, resolved_sheet)
-            start_cell = _top_left_cell(selected)
-        values_2d = params.get("values_2d")
-        if not isinstance(values_2d, list):
-            raise ExcelLiveError("write_range에는 values_2d(2차원 배열)가 필요합니다.")
-        normalized_rows: list[list[Any]] = []
-        for row in values_2d:
-            if isinstance(row, list):
-                normalized_rows.append(row)
-            else:
-                normalized_rows.append([row])
-        return service.write_range(resolved_wb, resolved_sheet, start_cell, normalized_rows)
-
-    if action == "excel_live.highlight_by_condition":
-        resolved_wb = _resolve_workbook_id(service, workbook_id)
-        resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
-        target_range = str(params.get("target_range", "A:A")).strip().upper()
-        operator = str(params.get("operator", ">=")).strip()
-        threshold = float(params.get("threshold", 0))
-        fill_color = str(params.get("fill_color", "#FFFF00"))
-        return service.highlight_by_condition(
-            workbook_id=resolved_wb,
-            sheet_name=resolved_sheet,
-            target_range=target_range,
-            operator=operator,
-            threshold=threshold,
-            fill_color=fill_color,
-        )
-
-    if action == "excel_live.apply_border":
-        resolved_wb = _resolve_workbook_id(service, workbook_id)
-        resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
-        target_range = str(params.get("target_range", "")).strip().upper()
-        if not target_range or target_range == "__ACTIVE_SELECTION__":
-            target_range = service.get_active_selection_ref(resolved_wb, resolved_sheet)
-        line_style = str(params.get("line_style", "continuous")).strip().lower()
-        weight = str(params.get("weight", "medium")).strip().lower()
-        color = str(params.get("color", "#000000")).strip()
-        return service.apply_border(
-            workbook_id=resolved_wb,
-            sheet_name=resolved_sheet,
-            target_range=target_range,
-            line_style=line_style,
-            weight=weight,
-            color=color,
-        )
-
-    if action == "excel_live.set_formula":
-        resolved_wb = _resolve_workbook_id(service, workbook_id)
-        resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
-        range_ref = str(params.get("range_ref", "")).strip().upper()
-        if not range_ref or range_ref == "__ACTIVE_SELECTION__":
-            range_ref = service.get_active_selection_ref(resolved_wb, resolved_sheet)
-        formula_a1 = str(params.get("formula_a1", "")).strip()
-        if not formula_a1.startswith("="):
-            raise ExcelLiveError("formula_a1은 '='로 시작해야 합니다.")
-        return service.set_formula(resolved_wb, resolved_sheet, range_ref, formula_a1)
-
-    if action == "excel_live.save_workbook":
-        resolved_wb = _resolve_workbook_id(service, workbook_id)
-        return service.save_workbook(resolved_wb)
-
-    raise ExcelLiveError(f"지원하지 않는 action: {action}")
-
-
 def _build_approval(action: str, params: dict[str, Any]) -> ApprovalRequest:
     approval_id = str(uuid.uuid4())
     summary = {
@@ -212,6 +144,12 @@ def _build_approval(action: str, params: dict[str, Any]) -> ApprovalRequest:
         "excel_live.highlight_by_condition": "조건에 맞는 셀 서식을 변경합니다.",
         "excel_live.apply_border": "선택 범위에 경계선을 적용합니다.",
         "excel_live.set_formula": "지정 범위에 수식을 적용합니다.",
+        "excel_live.filter_rows": "조건에 맞지 않는 행을 삭제합니다 (조건 행만 유지).",
+        "excel_live.sort_rows": "데이터 행 순서를 정렬로 재배열합니다.",
+        "excel_live.dedupe_rows": "중복 데이터 행을 삭제합니다.",
+        "excel_live.drop_column": "지정 열을 삭제합니다.",
+        "excel_live.rename_column": "열 머리글 이름을 변경합니다.",
+        "excel_live.add_column": "테이블에 새 열을 추가합니다.",
     }.get(action, "엑셀 변경 작업을 실행합니다.")
     return ApprovalRequest(
         approval_id=approval_id,
@@ -261,7 +199,7 @@ def post_action(req: ExcelLiveActionRequest):
         )
 
     try:
-        result = _execute_action(
+        result = execute_excel_action(
             action=req.action,
             params=req.params,
             workbook_id=req.workbook_id,
@@ -282,31 +220,44 @@ async def post_command(
     req: ExcelLiveCommandRequest,
     llm: LLMService = Depends(get_llm_service),
 ):
+    """
+    자연어 명령/대화 통합 엔드포인트.
+
+    LLM이 tools(function calling)로 Excel 작업을 선택한다:
+      - SAFE 도구는 즉시 실행되고 결과 기반 답변(assistant_text)이 돌아온다
+      - CONFIRM 도구는 approval_required=True로 승인 대기를 반환한다 (승인 시 /approval에서 루프 재개)
+      - 도구가 필요 없는 일반 대화는 assistant_text만 채워진다
+    """
     try:
-        parsed = await parse_excel_live_command(req.message, llm_service=llm)
-    except ValueError as exc:
+        turn = await run_excel_tool_turn(
+            message=req.message,
+            llm_service=llm,
+            workbook_id=req.workbook_id,
+            sheet_name=req.sheet_name,
+            history=[t.model_dump() for t in req.history],
+        )
+    except LLMToolsNotSupportedError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    action = parsed["action"]
-    params = dict(parsed.get("params", {}))
-    action_req = ExcelLiveActionRequest(
-        action=action,
-        params=params,
-        workbook_id=req.workbook_id,
-        sheet_name=req.sheet_name,
-        approve=req.approve,
-    )
-    result = post_action(action_req)
-    result.reason = parsed.get("reason", "")
-    return result
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Ollama 서버에 연결할 수 없습니다. Ollama가 실행 중인지 확인해 주세요. ({exc})",
+        )
+
+    return _register_and_respond(turn, req.workbook_id)
 
 
 @router.post("/approval", response_model=ExcelLiveActionResponse)
-def post_approval(req: ApprovalResponse):
+async def post_approval(
+    req: ApprovalResponse,
+    llm: LLMService = Depends(get_llm_service),
+):
     pending = _pending_approvals.pop(req.approval_id, None)
     if pending is None:
         raise HTTPException(status_code=404, detail="승인 대기 작업을 찾을 수 없습니다.")
 
     if not req.approved:
+        # 거부 시 나머지 계획은 중단하고 종료한다 (에이전트 루프를 재개하지 않음).
         _audit.log(
             action="excel.live.approval.rejected",
             target=pending.action,
@@ -320,8 +271,29 @@ def post_approval(req: ApprovalResponse):
             result={"approved": False},
         )
 
+    # B안: 재개 상태가 있으면 승인 작업 실행 후 에이전트 루프를 이어간다.
+    if pending.resume is not None:
+        try:
+            turn = await resume_excel_tool_turn(
+                resume=pending.resume,
+                action=pending.action,
+                params=pending.params,
+                workbook_id=pending.workbook_id,
+                sheet_name=pending.sheet_name,
+                llm_service=llm,
+            )
+        except LLMToolsNotSupportedError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except httpx.HTTPError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Ollama 서버에 연결할 수 없습니다. Ollama가 실행 중인지 확인해 주세요. ({exc})",
+            )
+        return _register_and_respond(turn, pending.workbook_id)
+
+    # 재개 상태 없음 (/action 직접 승인 경로) — 단순 실행.
     try:
-        result = _execute_action(
+        result = execute_excel_action(
             action=pending.action,
             params=pending.params,
             workbook_id=pending.workbook_id,
@@ -340,4 +312,3 @@ def post_approval(req: ApprovalResponse):
         )
     except Exception as exc:
         raise _map_error(exc)
-
