@@ -11,7 +11,7 @@ import UpdateNotice from "@/components/updater/UpdateNotice";
 import { Toast } from "@/components/ui/toast";
 import useAppStore from "@/store/appStore";
 import useToast from "@/hooks/useToast";
-import { agentSubmitApproval } from "@/lib/api";
+import { securityRespondApproval } from "@/lib/api";
 import { toUserMessage } from "@/lib/errorMessages";
 
 /**
@@ -158,7 +158,7 @@ export default function Layout() {
     const approvalId = pendingApproval.approval_id;
     setPendingApproval(null);
     try {
-      await agentSubmitApproval(approvalId, true);
+      await securityRespondApproval(approvalId, true);
       showNotify({ message: "승인되었습니다. 작업이 실행됩니다." });
     } catch (err) {
       showNotify({ message: toUserMessage(err, "승인 전달에 실패했습니다.") });
@@ -170,8 +170,7 @@ export default function Layout() {
     const approvalId = pendingApproval.approval_id;
     setPendingApproval(null);
     try {
-      // sidecar가 reason 필드를 받지 않으면 args에서 무시됨 (graceful)
-      await agentSubmitApproval(approvalId, false, reason);
+      await securityRespondApproval(approvalId, false);
     } catch {
       // 거부 전달 실패는 조용히 처리
     }

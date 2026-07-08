@@ -1,13 +1,13 @@
 /**
- * Qwen 3 + OpenClaw 로컬 스택 프리셋.
+ * Qwen 3 로컬 스택 프리셋 (Ollama 단독).
  * Ollama 실행 태그: qwen3:4b (경량 기본값)
  */
 
-export const QWEN3_OPENCLAW_PRESET = Object.freeze({
-  id: "qwen3-openclaw",
-  label: "Qwen 3 + OpenClaw (로컬)",
+export const QWEN3_LOCAL_PRESET = Object.freeze({
+  id: "qwen3-local",
+  label: "Qwen 3 (로컬 Ollama)",
   description:
-    "Qwen 3 모델을 Ollama로 실행하고, OpenClaw 게이트웨이로 대화·스킬을 사용합니다. 한국어 자연어 명령 안정성을 우선합니다.",
+    "Qwen 3 모델을 Ollama로 실행하고, OpenAI 호환 tool-calling으로 엑셀 작업과 대화를 처리합니다. 한국어 자연어 명령 안정성을 우선합니다.",
   hfModel: "Qwen/Qwen3-4B-Instruct",
   ollamaModel: "qwen3:4b",
   multimodal: false,

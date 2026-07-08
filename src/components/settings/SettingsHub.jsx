@@ -2,8 +2,8 @@
  * SettingsHub.jsx — 모든 설정/관리 메뉴를 흡수한 통합 허브.
  *
  * 좌측 sub-nav로 카테고리를 선택하고 우측에 해당 콘텐츠가 렌더링된다.
- * 핵심 가치(비개발자가 OpenClaw를 쉽게 설치 + 보안성 제고)에 맞춰
- * "OpenClaw 설치" 탭을 가장 먼저 강조 노출한다.
+ * 핵심 가치(비개발자가 로컬 AI를 쉽게 설치 + 보안성 제고)에 맞춰
+ * "로컬 AI" 탭을 가장 먼저 강조 노출한다.
  *
  * Sidebar에서 settings/credentials/audit/security/permissions/messenger_settings/guide
  * 어떤 키로 진입해도 Layout이 모두 SettingsHub로 라우팅하므로,
@@ -35,9 +35,9 @@ const SetupGuide = lazy(() => import("@/components/guide/SetupGuide"));
 const TABS = [
   {
     id: "guide",
-    label: "OpenClaw 설치",
+    label: "로컬 AI",
     icon: Bot,
-    description: "비개발자도 따라할 수 있는 설치 가이드",
+    description: "Ollama 설치·실행 단계별 가이드",
     component: SetupGuide,
     highlight: true,
   },

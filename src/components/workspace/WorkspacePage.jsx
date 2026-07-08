@@ -41,9 +41,9 @@ import EmptyState from "@/components/ui/empty-state";
 import AlertDialog from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { toUserMessage } from "@/lib/errorMessages";
-import { splitExcelCompositeCommand } from "@/lib/excelCommandUtils";
 import { migrateLsKey } from "@/lib/localStorageMigration";
 import useAppStore from "@/store/appStore";
+import useStatusStore from "@/store/statusStore";
 import {
   workspaceListFiles,
   workspaceReadFile,
@@ -52,7 +52,6 @@ import {
   workspaceWriteFileBinary,
   openWorkspaceFolder,
   openWorkspaceFile,
-  agentChat,
   excelLiveCommand,
   excelLiveSubmitApproval,
   excelLiveSaveWorkbook,
@@ -105,23 +104,6 @@ function getExt(name) {
 // 예: ~$text_1.xlsx
 function isOfficeLockTempFile(name) {
   return typeof name === "string" && name.startsWith("~$");
-}
-
-function shouldRouteToExcelLive(message) {
-  const text = message.trim();
-  const lower = text.toLowerCase();
-  if (!text) return false;
-  if (/\[\[excel_range:[a-z0-9:]+\]\]/i.test(text)) return true;
-
-  const keywordHit = [
-    "엑셀", "excel", "워크북", "workbook", "시트", "sheet",
-    "셀", "cell", "수식", "formula", "조건부", "강조", "경계선", "테두리", "border",
-  ].some((kw) => lower.includes(kw));
-  if (keywordHit) return true;
-
-  const rangePattern = /\b[A-Z]{1,3}\d{1,7}(?::[A-Z]{1,3}\d{1,7})?\b/i;
-  const columnPattern = /[a-zA-Z]\s*열/;
-  return rangePattern.test(text) || columnPattern.test(text);
 }
 
 function extractExcelRangeTag(text) {
@@ -181,6 +163,35 @@ function formatExcelLiveResult(action, result = {}) {
   }
   if (action === "excel_live.save_workbook") {
     return `엑셀 파일을 저장했습니다 (${result.name || result.full_path || "현재 통합문서"}).`;
+  }
+  if (action === "excel_live.calculate_column_stat") {
+    return `${result.header || result.column || ""} 열 ${result.stat || ""} = ${result.value}`;
+  }
+  if (action === "excel_live.filter_rows") {
+    return `조건에 맞는 ${result.kept_rows || 0}개 행을 남기고 ${result.removed_rows || 0}개 행을 제거했습니다.`;
+  }
+  if (action === "excel_live.sort_rows") {
+    return `${result.column || ""} 기준으로 ${result.sorted_rows || 0}개 행을 정렬했습니다.`;
+  }
+  if (action === "excel_live.dedupe_rows") {
+    return `중복 ${result.removed_duplicates || 0}개 행을 제거했습니다 (${result.kept_rows || 0}개 유지).`;
+  }
+  if (action === "excel_live.drop_column") {
+    return `'${result.dropped_column || ""}' 열을 삭제했습니다.`;
+  }
+  if (action === "excel_live.rename_column") {
+    return `'${result.old_name || ""}' 열을 '${result.new_name || ""}'로 변경했습니다.`;
+  }
+  if (action === "excel_live.add_column") {
+    return `'${result.name || ""}' 열을 추가했습니다.`;
+  }
+  if (action === "excel_live.group_by_aggregate") {
+    const groups = Array.isArray(result.groups) ? result.groups : [];
+    const preview = groups
+      .slice(0, 5)
+      .map((g) => `${g.key}: ${g.value}`)
+      .join(", ");
+    return `${result.group_column || ""}별 ${result.agg || ""} — ${preview}${groups.length > 5 ? " …" : ""}`;
   }
   return "엑셀 작업이 완료되었습니다.";
 }
@@ -442,7 +453,7 @@ function persistMessageSilent(sessionId, role, text, extra = {}) {
   ).catch(() => { /* graceful — sidecar 미지원 */ });
 }
 
-function ChatSidePanel({ openclawState }) {
+function ChatSidePanel({ ollamaState }) {
   const activeSessionId = useAppStore((s) => s.activeSessionId);
   const setActiveSessionId = useAppStore((s) => s.setActiveSessionId);
   const agentMessages = useAppStore((s) => s.agentMessages);
@@ -466,8 +477,6 @@ function ChatSidePanel({ openclawState }) {
   const [excelSaving, setExcelSaving] = useState(false);
   const [insertingRangeContext, setInsertingRangeContext] = useState(false);
   const [pendingTaskLabel, setPendingTaskLabel] = useState("");
-  const [pendingExcelComposite, setPendingExcelComposite] = useState(null);
-  const pendingUserMsgRef = useRef(null); // session 발급 전 첫 user msg 임시 보관
 
   // textarea auto-grow: 1행 ~ 5행 (최대 ~120px)
   useEffect(() => {
@@ -480,7 +489,12 @@ function ChatSidePanel({ openclawState }) {
     ta.style.height = `${newHeight}px`;
   }, [input]);
 
-  const isUnavailable = openclawState === "stopped" || openclawState === "error";
+  // Ollama가 명확히 준비되지 않은 상태(미설치/중지/오류)에서만 채팅 입력을 잠근다.
+  // unknown/checking 중에는 허용하고, 실제 미응답이면 전송 시 503 오류로 안내한다.
+  const isUnavailable =
+    ollamaState === "not_installed" ||
+    ollamaState === "installed_stopped" ||
+    ollamaState === "error";
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -550,94 +564,60 @@ function ChatSidePanel({ openclawState }) {
     }
   }, [confirmDelete, activeSessionId, setActiveSessionId, setAgentMessages, refreshSessions, addAgentMessage]);
 
+  // 최근 대화(최대 8턴)를 OpenAI 형식 history로 변환 — 멀티턴 맥락 유지용.
+  const buildHistory = useCallback(() => {
+    const turns = [];
+    for (const m of agentMessages) {
+      if (m.error) continue;
+      const role = m.role === "user" ? "user" : m.role === "agent" ? "assistant" : null;
+      const content = String(m.text ?? "").trim();
+      if (!role || !content) continue;
+      turns.push({ role, content });
+    }
+    return turns.slice(-8);
+  }, [agentMessages]);
+
   const handleSend = async () => {
     const trimmed = input.trim();
     if (!trimmed || loading || isUnavailable) return;
+
+    // [[EXCEL_RANGE:..]] 태그를 실제 주소로 반영하고 컨텍스트 블록은 제거한다.
+    const rangeRef = extractExcelRangeTag(trimmed);
+    const cleaned = stripExcelContextBlock(trimmed);
+    const message = applyRangeContextToCommand(cleaned, rangeRef) || cleaned || trimmed;
+
     setInput("");
+    // 방금 보낼 user 메시지 이전까지의 맥락을 history로 캡처
+    const history = buildHistory();
     addAgentMessage({ role: "user", text: trimmed });
 
-    // 이미 세션이 있으면 즉시 저장. 없으면 응답 후 session_id 받고 일괄 저장.
-    if (activeSessionId) {
-      persistMessageSilent(activeSessionId, "user", trimmed);
-    } else {
-      pendingUserMsgRef.current = trimmed;
+    // 세션 확보 — 없으면 프론트에서 새 ID 생성 (chat_history 영속화 키)
+    let sid = activeSessionId;
+    if (!sid) {
+      sid = crypto.randomUUID();
+      setActiveSessionId(sid);
     }
+    persistMessageSilent(sid, "user", trimmed);
 
     setLoading(true);
+    setPendingTaskLabel("AI가 처리하는 중...");
     try {
-      if (shouldRouteToExcelLive(trimmed)) {
-        const rangeRef = extractExcelRangeTag(trimmed);
-        const cleanedInput = stripExcelContextBlock(trimmed);
-        const commands = splitExcelCompositeCommand(cleanedInput)
-          .map((cmd) => applyRangeContextToCommand(cmd, rangeRef));
-        for (let i = 0; i < commands.length; i += 1) {
-          const cmd = commands[i];
-          setPendingTaskLabel(`엑셀 명령 ${i + 1}/${commands.length} 실행 중...`);
-          const excelResult = await excelLiveCommand(cmd, null, null, false);
-          if (excelResult?.approval_required && excelResult?.pending_approval) {
-            setPendingExcelApproval(excelResult.pending_approval);
-            setPendingExcelComposite({
-              commands,
-              currentIndex: i,
-            });
-            addAgentMessage({
-              role: "agent",
-              text:
-                commands.length > 1
-                  ? `복합 작업 ${i + 1}/${commands.length} 단계는 승인 후 실행됩니다.`
-                  : "엑셀 변경 작업은 승인 후 실행됩니다.",
-            });
-            break;
-          }
-
-          const answer = formatExcelLiveResult(excelResult?.action, excelResult?.result);
-          const text = commands.length > 1 ? `[${i + 1}/${commands.length}] ${answer}` : answer;
-          addAgentMessage({ role: "agent", text });
-          if (activeSessionId) persistMessageSilent(activeSessionId, "agent", text);
-        }
-
-        if (activeSessionId && pendingUserMsgRef.current) {
-          persistMessageSilent(activeSessionId, "user", pendingUserMsgRef.current);
-          pendingUserMsgRef.current = null;
-        }
+      // 통합 창구 — LLM이 tool-calling으로 엑셀 작업/일반 대화를 판단한다.
+      const res = await excelLiveCommand(message, null, null, false, history);
+      if (res?.approval_required && res?.pending_approval) {
+        setPendingExcelApproval(res.pending_approval);
+        const note = res.reason || "엑셀 변경 작업은 승인 후 실행됩니다.";
+        addAgentMessage({ role: "agent", text: note });
+        persistMessageSilent(sid, "agent", note);
       } else {
-        setPendingTaskLabel("AI가 답변을 생성하는 중...");
-        const result = await agentChat(trimmed, activeSessionId);
-        const newSessionId = result.session_id;
-        addAgentMessage({
-          role: "agent",
-          text: result.response,
-          toolCalls: result.tool_calls,
-          maskedCount: result.masked_count,
-          maskedTypes: result.masked_types,
-        });
-        if (newSessionId) setActiveSessionId(newSessionId);
-
-        // 영속화 — 세션 ID가 새로 발급된 경우 user 메시지도 함께 저장
-        const sid = newSessionId || activeSessionId;
-        if (sid) {
-          if (pendingUserMsgRef.current) {
-            persistMessageSilent(sid, "user", pendingUserMsgRef.current);
-            pendingUserMsgRef.current = null;
-          }
-          persistMessageSilent(sid, "agent", result.response, {
-            toolCalls: result.tool_calls,
-            maskedCount: result.masked_count,
-            maskedTypes: result.masked_types,
-          });
-        }
+        const text = res?.assistant_text || formatExcelLiveResult(res?.action, res?.result);
+        addAgentMessage({ role: "agent", text });
+        persistMessageSilent(sid, "agent", text);
       }
     } catch (err) {
       const errText = toUserMessage(err, "작업 처리 중 오류가 발생했습니다. 다시 시도해 주세요.");
-      addAgentMessage({
-        role: "agent",
-        text: null,
-        error: errText,
-      });
-      const sid = activeSessionId;
-      if (sid) {
-        persistMessageSilent(sid, "agent", "", { errorText: errText });
-      }
+      addAgentMessage({ role: "agent", text: null, error: errText });
+      persistMessageSilent(sid, "agent", "", { errorText: errText });
     } finally {
       setLoading(false);
       setPendingTaskLabel("");
@@ -650,47 +630,18 @@ function ChatSidePanel({ openclawState }) {
     let hasNextPendingApproval = false;
     try {
       const out = await excelLiveSubmitApproval(pendingExcelApproval.approval_id, true, null);
-      const approvalStepText = formatExcelLiveResult(out?.action, out?.result);
-      const isComposite = !!pendingExcelComposite?.commands?.length;
-      const approvalStepLabel = isComposite
-        ? `[${pendingExcelComposite.currentIndex + 1}/${pendingExcelComposite.commands.length}] ${approvalStepText}`
-        : approvalStepText;
-      addAgentMessage({
-        role: "agent",
-        text: approvalStepLabel,
-      });
-      if (activeSessionId) {
-        persistMessageSilent(activeSessionId, "agent", approvalStepLabel);
-      }
+      const text = out?.assistant_text || formatExcelLiveResult(out?.action, out?.result);
+      addAgentMessage({ role: "agent", text });
+      if (activeSessionId) persistMessageSilent(activeSessionId, "agent", text);
 
-      // 복합 명령의 승인 단계였다면 남은 단계를 이어서 실행한다.
-      if (
-        pendingExcelComposite?.commands?.length &&
-        pendingExcelComposite.currentIndex + 1 < pendingExcelComposite.commands.length
-      ) {
-        const { commands } = pendingExcelComposite;
-        for (let i = pendingExcelComposite.currentIndex + 1; i < commands.length; i += 1) {
-          setPendingTaskLabel(`엑셀 명령 ${i + 1}/${commands.length} 실행 중...`);
-          const excelResult = await excelLiveCommand(commands[i], null, null, false);
-          if (excelResult?.approval_required && excelResult?.pending_approval) {
-            setPendingExcelApproval(excelResult.pending_approval);
-            setPendingExcelComposite({ commands, currentIndex: i });
-            addAgentMessage({
-              role: "agent",
-              text: `복합 작업 ${i + 1}/${commands.length} 단계는 승인 후 실행됩니다.`,
-            });
-            hasNextPendingApproval = true;
-            return;
-          }
-          const text = `[${i + 1}/${commands.length}] ${formatExcelLiveResult(
-            excelResult?.action,
-            excelResult?.result,
-          )}`;
-          addAgentMessage({ role: "agent", text });
-          if (activeSessionId) {
-            persistMessageSilent(activeSessionId, "agent", text);
-          }
-        }
+      // B안(승인 후 재개): 승인 실행 결과를 본 LLM이 다음 CONFIRM을 요청하면
+      // 승인 다이얼로그를 다시 띄워 복합 명령을 승인 체인으로 이어간다.
+      if (out?.approval_required && out?.pending_approval) {
+        setPendingExcelApproval(out.pending_approval);
+        const note = out.reason || "다음 작업도 승인이 필요합니다.";
+        addAgentMessage({ role: "agent", text: note });
+        if (activeSessionId) persistMessageSilent(activeSessionId, "agent", note);
+        hasNextPendingApproval = true;
       }
     } catch (err) {
       addAgentMessage({
@@ -701,11 +652,10 @@ function ChatSidePanel({ openclawState }) {
       setExcelApprovalBusy(false);
       if (!hasNextPendingApproval) {
         setPendingExcelApproval(null);
-        setPendingExcelComposite(null);
       }
       setPendingTaskLabel("");
     }
-  }, [pendingExcelApproval, pendingExcelComposite, addAgentMessage, activeSessionId]);
+  }, [pendingExcelApproval, addAgentMessage, activeSessionId]);
 
   const handleExcelApprovalCancel = useCallback(async () => {
     if (!pendingExcelApproval) return;
@@ -721,7 +671,6 @@ function ChatSidePanel({ openclawState }) {
     } finally {
       setExcelApprovalBusy(false);
       setPendingExcelApproval(null);
-      setPendingExcelComposite(null);
       setPendingTaskLabel("");
     }
   }, [pendingExcelApproval, addAgentMessage]);
@@ -797,7 +746,6 @@ function ChatSidePanel({ openclawState }) {
   const handleNewSession = () => {
     setActiveSessionId(null);
     setAgentMessages([]);
-    pendingUserMsgRef.current = null;
     // 새 대화 시작 후 세션 목록 갱신 예약
     setTimeout(() => refreshSessions(), 100);
   };
@@ -1074,7 +1022,7 @@ function ChatSidePanel({ openclawState }) {
       {isUnavailable ? (
         <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
           <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          OpenClaw가 실행되지 않아 사용할 수 없습니다.
+          Ollama(로컬 AI 엔진)가 실행되지 않아 사용할 수 없습니다.
         </div>
       ) : (
         <div className="flex items-end gap-2">
@@ -1100,7 +1048,7 @@ function ChatSidePanel({ openclawState }) {
 // ── 메인 WorkspacePage ──────────────────────────────────────────────────────
 
 export default function WorkspacePage() {
-  const ocStatus = useAppStore((s) => s.openclawStatus);
+  const ollamaState = useStatusStore((s) => s.modules.ollama.state);
   const workspacePath = useAppStore((s) => s.workspacePath);
   const [currentPath, setCurrentPath] = useState("");
   const [files, setFiles] = useState([]);
@@ -1498,7 +1446,7 @@ export default function WorkspacePage() {
             style={{ width: `${chatWidth}px` }}
             aria-label="에이전트 채팅"
           >
-            <ChatSidePanel openclawState={ocStatus.state} />
+            <ChatSidePanel ollamaState={ollamaState} />
           </aside>
         </>
       )}
