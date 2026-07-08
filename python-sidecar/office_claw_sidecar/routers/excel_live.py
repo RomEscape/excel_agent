@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 import asyncio
+import os
+import threading
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -17,7 +19,9 @@ from office_claw_sidecar.services.audit_service import AuditService
 from office_claw_sidecar.services.excel_live_agent import extract_create_table_slot_hints
 from office_claw_sidecar.services.excel_live_agent import parse_excel_live_command
 from office_claw_sidecar.services.excel_live_agent import parse_command_plan_with_llm
+from office_claw_sidecar.services.excel_live_agent import parse_command_rule_based
 from office_claw_sidecar.services.excel_live_executor import (
+    PlanStep,
     execute_plan,
     normalize_plan_steps,
 )
@@ -61,6 +65,11 @@ class ExcelLiveActionRequest(BaseModel):
     workbook_id: str | None = None
     sheet_name: str | None = None
     approve: bool = False
+
+
+class ExcelLiveRestoreLastRequest(BaseModel):
+    workbook_id: str | None = Field(None, description="복구 대상 통합문서 ID")
+    backup_path: str | None = Field(None, description="지정 백업 경로 (없으면 최신 백업)")
 
 
 class ExcelLiveActionResponse(BaseModel):
@@ -121,7 +130,37 @@ _pending_create_table_slots: dict[str, PendingCreateTableSlots] = {}
 _pending_operation_slots: dict[str, PendingExcelOperationSlots] = {}
 _recent_range_by_workbook: dict[str, str] = {}
 _SLOT_TTL_SECONDS = 300
-_COMMAND_PARSE_TIMEOUT_SECONDS = 6.0
+
+
+def _env_float(name: str, default: float, minimum: float) -> float:
+    raw = str(os.getenv(name, "") or "").strip()
+    if not raw:
+        return max(minimum, float(default))
+    try:
+        return max(minimum, float(raw))
+    except Exception:
+        return max(minimum, float(default))
+
+
+def _env_int(name: str, default: int, minimum: int) -> int:
+    raw = str(os.getenv(name, "") or "").strip()
+    if not raw:
+        return max(minimum, int(default))
+    try:
+        return max(minimum, int(raw))
+    except Exception:
+        return max(minimum, int(default))
+
+
+_COMMAND_PARSE_TIMEOUT_SECONDS = _env_float("EXCEL_LIVE_PARSE_TIMEOUT_SECONDS", 10.0, 3.0)
+_COMMAND_PARSE_MAX_ATTEMPTS = _env_int("EXCEL_LIVE_PARSE_MAX_ATTEMPTS", 2, 1)
+_COMMAND_PARSE_RETRY_BACKOFF_SECONDS = _env_float(
+    "EXCEL_LIVE_PARSE_RETRY_BACKOFF_SECONDS",
+    0.5,
+    0.0,
+)
+_EXCEL_QUEUE_TIMEOUT_SECONDS = _env_float("EXCEL_LIVE_QUEUE_TIMEOUT_SECONDS", 180.0, 10.0)
+_EXCEL_QUEUE_LOCK = threading.RLock()
 _ROLLBACK_MAX_CELLS = 50000
 _SKIP_BACKUP_ACTIONS = {
     "excel_live.filter_rows",  # 뷰 필터가 중심이라 파일 백업 비용 대비 이득이 작다.
@@ -137,6 +176,20 @@ _ROLLBACK_SNAPSHOT_ACTIONS = {
     "excel_live.dedupe_rows",
     "excel_live.create_table",
 }
+
+
+def _run_in_excel_queue(task_name: str, fn):
+    queued_at = time.time()
+    acquired = _EXCEL_QUEUE_LOCK.acquire(timeout=_EXCEL_QUEUE_TIMEOUT_SECONDS)
+    if not acquired:
+        raise ExcelLiveError(
+            f"Excel 작업 큐 대기 시간이 초과되었습니다({int(_EXCEL_QUEUE_TIMEOUT_SECONDS)}초): {task_name}"
+        )
+    wait_ms = int((time.time() - queued_at) * 1000)
+    try:
+        return fn(), wait_ms
+    finally:
+        _EXCEL_QUEUE_LOCK.release()
 
 
 def _map_error(exc: Exception) -> HTTPException:
@@ -417,7 +470,8 @@ def _slot_session_key(req: ExcelLiveCommandRequest) -> str:
     sid = str(req.session_id or "").strip()
     if sid:
         return sid
-    return f"excel-live::{_context_key(req.workbook_id)}"
+    # session_id가 없으면 요청 간 슬롯 상태를 공유하지 않는다.
+    return f"excel-live::stateless::{uuid.uuid4().hex}"
 
 
 def _cleanup_expired_table_slots() -> None:
@@ -442,9 +496,104 @@ def _cleanup_expired_operation_slots() -> None:
         _pending_operation_slots.pop(key, None)
 
 
+def _quick_color_hex(word: str) -> str:
+    token = str(word or "").strip().lower()
+    if token in {"노란색", "노랑", "yellow"}:
+        return "#FFFF00"
+    if token in {"빨간색", "빨강", "red"}:
+        return "#FF4D4F"
+    if token in {"파란색", "파랑", "blue"}:
+        return "#4F8CFF"
+    if token in {"초록색", "초록", "green"}:
+        return "#6AC36A"
+    return "#FFFF00"
+
+
+def _quick_extract_colors(text: str) -> list[str]:
+    matches = re.findall(
+        r"(노란색|노랑|yellow|빨간색|빨강|red|파란색|파랑|blue|초록색|초록|green)",
+        str(text or ""),
+        re.IGNORECASE,
+    )
+    out: list[str] = []
+    for raw in matches:
+        color = _quick_color_hex(raw)
+        if not out or out[-1] != color:
+            out.append(color)
+    return out
+
+
+def _quick_parse_condition(text: str) -> tuple[str, float] | None:
+    lowered = str(text or "").lower()
+    sym_match = re.search(r"(>=|<=|>|<|==|!=)\s*(-?\d+(?:\.\d+)?)", lowered)
+    if sym_match:
+        return sym_match.group(1), float(sym_match.group(2))
+
+    text_match = re.search(
+        r"(-?\d+(?:\.\d+)?)\s*(이상|초과|이하|미만|같지 않음|같음)",
+        lowered,
+    )
+    if text_match:
+        op_map = {
+            "이상": ">=",
+            "초과": ">",
+            "이하": "<=",
+            "미만": "<",
+            "같음": "==",
+            "같지 않음": "!=",
+        }
+        return op_map.get(text_match.group(2), ">="), float(text_match.group(1))
+
+    than_match = re.search(
+        r"(-?\d+(?:\.\d+)?)\s*보다\s*(크거나\s*같|작거나\s*같|큰|작은|크|작)",
+        lowered,
+    )
+    if than_match:
+        key = than_match.group(2).replace(" ", "")
+        op_map = {
+            "크": ">",
+            "큰": ">",
+            "작": "<",
+            "작은": "<",
+            "크거나같": ">=",
+            "작거나같": "<=",
+        }
+        op = op_map.get(key)
+        if op:
+            return op, float(than_match.group(1))
+    return None
+
+
+def _is_color_format_request(lowered: str) -> bool:
+    has_color = any(
+        token in lowered
+        for token in [
+            "노란색",
+            "노랑",
+            "yellow",
+            "빨간색",
+            "빨강",
+            "red",
+            "파란색",
+            "파랑",
+            "blue",
+            "초록색",
+            "초록",
+            "green",
+        ]
+    )
+    has_format_verb = any(
+        token in lowered
+        for token in ["색칠", "칠해", "배경", "강조", "표시", "highlight", "구분"]
+    )
+    return has_color and has_format_verb
+
+
 def _detect_operation_intent(message: str) -> str:
     lowered = str(message or "").lower()
-    if any(
+    color_format_request = _is_color_format_request(lowered)
+    color_condition_request = color_format_request and (_quick_parse_condition(lowered) is not None)
+    if (not color_format_request) and any(
         token in lowered
         for token in [
             "곱해서",
@@ -466,7 +615,6 @@ def _detect_operation_intent(message: str) -> str:
             "조회값",
             "조건식",
             "미만이면",
-            "아니면",
             "수식 결과",
             "결과 확인",
             "달성률",
@@ -560,7 +708,7 @@ def _detect_operation_intent(message: str) -> str:
         return "protect"
     if any(
         token in lowered
-        for token in ["파일 여러", "시트 여러", "합쳐", "통합", "merge", "폴더", "원본 파일"]
+        for token in ["파일 여러", "시트 여러", "합쳐", "merge", "폴더", "원본 파일"]
     ):
         return "consolidate"
     if any(token in lowered for token in ["vba", "매크로", "power query", "refreshall", "새로고침"]):
@@ -617,7 +765,7 @@ def _detect_operation_intent(message: str) -> str:
             "예산 초과",
             "지출 내역",
         ]
-    ):
+    ) and (not color_condition_request):
         return "general"
     return ""
 
@@ -690,12 +838,49 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
     lowered = text.lower()
     range_match = re.search(r"\b([A-Z]+\d+:[A-Z]+\d+|[A-Z]+:[A-Z]+|[A-Z]+\d+)\b", text, re.IGNORECASE)
     range_ref = str(range_match.group(1)).upper() if range_match else ""
+    col_match = re.search(r"\b([A-Z])\s*열\b", text, re.IGNORECASE)
+    col_range_ref = f"{str(col_match.group(1)).upper()}:{str(col_match.group(1)).upper()}" if col_match else ""
 
-    if range_ref and any(token in lowered for token in ["읽어", "보여", "확인", "조회"]):
+    if any(
+        token in lowered
+        for token in [
+            "열린 통합문서",
+            "통합문서 목록",
+            "워크북 목록",
+            "열린 파일 목록",
+            "열린 엑셀 파일",
+            "열려 있는 엑셀 파일",
+            "엑셀 파일 확인",
+            "list workbooks",
+            "workbook list",
+        ]
+    ):
+        return [{"action": "excel_live.list_workbooks", "params": {}, "reason": "빠른 규칙 기반 워크북 목록 조회"}]
+
+    select_match = re.search(
+        r"(?:워크북|통합문서|파일|workbook)\s+([^\s]+\.xlsx|[^\s]+)\s*(?:선택|전환|열어|열기|select|switch)",
+        text,
+        re.IGNORECASE,
+    )
+    if select_match:
+        target = str(select_match.group(1)).strip().strip("\"'")
+        if target:
+            return [
+                {
+                    "action": "excel_live.select_workbook",
+                    "params": {"workbook_id": target},
+                    "reason": "빠른 규칙 기반 워크북 선택",
+                }
+            ]
+
+    if (range_ref or col_range_ref) and any(
+        token in lowered for token in ["읽어", "보여", "확인", "조회", "read", "show", "display"]
+    ):
+        target_range = range_ref or col_range_ref
         return [
             {
                 "action": "excel_live.read_range",
-                "params": {"range_ref": range_ref},
+                "params": {"range_ref": target_range},
                 "reason": "빠른 규칙 기반 범위 조회",
             }
         ]
@@ -715,19 +900,69 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
             }
         ]
 
-    if any(token in lowered for token in ["배경색", "색칠", "칠해", "노란색", "노랑", "yellow"]):
+    if any(
+        token in lowered
+        for token in [
+            "배경색",
+            "색칠",
+            "칠해",
+            "강조",
+            "highlight",
+            "노란색",
+            "노랑",
+            "yellow",
+            "빨간색",
+            "빨강",
+            "red",
+            "파란색",
+            "파랑",
+            "blue",
+            "초록색",
+            "초록",
+            "green",
+        ]
+    ):
         target = _normalize_range_text(context_range) or range_ref or "__ACTIVE_SELECTION__"
-        fill = "#FFFF00"
-        if "빨간" in lowered or "빨강" in lowered or "red" in lowered:
-            fill = "#FF4D4F"
-        elif "파란" in lowered or "파랑" in lowered or "blue" in lowered:
-            fill = "#4F8CFF"
-        elif "초록" in lowered or "green" in lowered:
-            fill = "#6AC36A"
+        colors = _quick_extract_colors(lowered)
+        primary = colors[0] if colors else "#FFFF00"
+        condition = _quick_parse_condition(lowered)
+        if condition is not None:
+            operator, threshold = condition
+            has_else_branch = any(token in lowered for token in ["아니면", "나머지", "그 외", "그외", "else"])
+            if has_else_branch and len(colors) >= 2:
+                return [
+                    {
+                        "action": "excel_live.fill_range",
+                        "params": {"target_range": target, "fill_color": colors[1]},
+                        "reason": "빠른 규칙 기반 조건 외 기본 색상 채우기",
+                    },
+                    {
+                        "action": "excel_live.highlight_by_condition",
+                        "params": {
+                            "target_range": target,
+                            "operator": operator,
+                            "threshold": threshold,
+                            "fill_color": primary,
+                        },
+                        "reason": "빠른 규칙 기반 조건부 강조",
+                    },
+                ]
+            return [
+                {
+                    "action": "excel_live.highlight_by_condition",
+                    "params": {
+                        "target_range": target,
+                        "operator": operator,
+                        "threshold": threshold,
+                        "fill_color": primary,
+                    },
+                    "reason": "빠른 규칙 기반 조건부 강조",
+                }
+            ]
         return [
             {
                 "action": "excel_live.fill_range",
-                "params": {"target_range": target, "fill_color": fill},
+                "params": {"target_range": target, "fill_color": primary},
                 "reason": "빠른 규칙 기반 배경색 적용",
             }
         ]
@@ -754,6 +989,8 @@ def _looks_like_excel_request(message: str) -> bool:
     lowered = str(message or "").lower()
     tokens = [
         "엑셀",
+        "통합문서",
+        "워크북",
         "표",
         "테이블",
         "양식",
@@ -858,7 +1095,15 @@ def _looks_like_excel_request(message: str) -> bool:
         "제일 큰",
         "제일 많이",
     ]
-    return any(token in lowered for token in tokens)
+    if any(token in lowered for token in tokens):
+        return True
+    if re.search(r"\b([a-z]{1,3}\d{1,7}:[a-z]{1,3}\d{1,7}|[a-z]{1,3}\d{1,7})\b", lowered, re.IGNORECASE):
+        return True
+    if re.search(r"\b[a-z]\s*열\b", lowered, re.IGNORECASE):
+        return True
+    if any(token in lowered for token in ["read", "show", "display", "workbook", "sheet", "formula"]):
+        return True
+    return False
 
 
 def _build_generic_excel_follow_up(message: str) -> str:
@@ -1335,16 +1580,28 @@ def _merge_operation_slots(
     parsed: dict[str, Any] | None,
 ) -> PendingExcelOperationSlots | None:
     hint_intent = str(hints.get("intent") or "").strip()
+    parsed_intent = ""
+    first_action = ""
+    if parsed and isinstance(parsed.get("action_plan"), list) and parsed["action_plan"]:
+        first = parsed["action_plan"][0] if isinstance(parsed["action_plan"][0], dict) else {}
+        first_action = str(first.get("action", "")).strip()
+        parsed_intent = _action_to_operation_intent(first.get("action"))
+
     if current is None:
-        intent = hint_intent
+        # 파서가 이미 구체 액션을 만들었으면(예: write/read/set_formula 등)
+        # 키워드 기반 operation 슬롯으로 다시 감싸지 않는다.
+        if first_action:
+            return None
+        # LLM이 액션 계획을 냈다면 우선 신뢰하고, 없을 때만 룰 힌트로 폴백한다.
+        intent = parsed_intent or hint_intent
     else:
         intent = str(current.intent or "").strip()
         # 일반(general) 슬롯에서 구체 인텐트가 들어오면 즉시 승격해 멀티턴을 마무리한다.
-        if intent in {"", "general"} and hint_intent and hint_intent != "general":
-            intent = hint_intent
-    if not intent and parsed and isinstance(parsed.get("action_plan"), list) and parsed["action_plan"]:
-        first = parsed["action_plan"][0] if isinstance(parsed["action_plan"][0], dict) else {}
-        intent = _action_to_operation_intent(first.get("action"))
+        if intent in {"", "general"}:
+            if parsed_intent and parsed_intent != "general":
+                intent = parsed_intent
+            elif hint_intent and hint_intent != "general":
+                intent = hint_intent
     if not intent:
         return None
 
@@ -2384,6 +2641,56 @@ def get_status():
     }
 
 
+@router.get("/backups")
+def get_backups(workbook_id: str | None = None, limit: int = 20):
+    service = get_excel_live_service()
+    if not service.is_available():
+        return {
+            "available": False,
+            "workbook_id": workbook_id,
+            "source_path": "",
+            "backup_dir": "",
+            "backups": [],
+        }
+    try:
+        resolved_wb = _resolve_workbook_id(service, workbook_id)
+        listed = service.list_workbook_backups(resolved_wb, limit=max(1, min(200, int(limit))))
+        listed["available"] = True
+        return listed
+    except Exception as exc:
+        raise _map_error(exc)
+
+
+@router.post("/restore-last", response_model=ExcelLiveActionResponse)
+def post_restore_last(req: ExcelLiveRestoreLastRequest):
+    service = get_excel_live_service()
+    try:
+        def _run_restore():
+            resolved_wb = _resolve_workbook_id(service, req.workbook_id)
+            restored = service.restore_workbook_from_backup(
+                resolved_wb,
+                backup_path=req.backup_path,
+            )
+            return resolved_wb, restored
+
+        (resolved_wb, restored), queue_wait_ms = _run_in_excel_queue("restore-last", _run_restore)
+        if isinstance(restored, dict):
+            restored["queue_wait_ms"] = queue_wait_ms
+        _audit.log(
+            action="excel.live.restore_last_backup",
+            target=resolved_wb,
+            detail=f"backup={req.backup_path or 'latest'}",
+        )
+        return ExcelLiveActionResponse(
+            ok=True,
+            action="excel_live.restore_last_backup",
+            result=restored,
+            reason="최근 백업 기준으로 복구했습니다.",
+        )
+    except Exception as exc:
+        raise _map_error(exc)
+
+
 @router.post("/action", response_model=ExcelLiveActionResponse)
 def post_action(req: ExcelLiveActionRequest):
     try:
@@ -2429,21 +2736,27 @@ def post_action(req: ExcelLiveActionRequest):
             reason="승인이 필요한 작업입니다.",
         )
 
-    recovery_backup = (
-        _create_recovery_backup_if_possible(workbook_id=req.workbook_id, label="action")
-        if _action_needs_recovery_backup(req.action)
-        else None
-    )
-
+    recovery_backup: dict[str, Any] | None = None
     try:
-        result = _execute_action(
-            action=req.action,
-            params=req.params,
-            workbook_id=req.workbook_id,
-            sheet_name=req.sheet_name,
-        )
-        if isinstance(result, dict) and recovery_backup:
-            result["recovery_backup"] = recovery_backup
+        def _run_action_once():
+            nonlocal recovery_backup
+            recovery_backup = (
+                _create_recovery_backup_if_possible(workbook_id=req.workbook_id, label="action")
+                if _action_needs_recovery_backup(req.action)
+                else None
+            )
+            return _execute_action(
+                action=req.action,
+                params=req.params,
+                workbook_id=req.workbook_id,
+                sheet_name=req.sheet_name,
+            )
+
+        result, queue_wait_ms = _run_in_excel_queue("action", _run_action_once)
+        if isinstance(result, dict):
+            result["queue_wait_ms"] = queue_wait_ms
+            if recovery_backup:
+                result["recovery_backup"] = recovery_backup
         _audit.log(
             action="excel.live.action",
             target=req.action,
@@ -2470,6 +2783,56 @@ async def post_command(
     hints = extract_create_table_slot_hints(req.message)
     operation_hints = _extract_operation_hints(req.message)
     quick_action_plan = _build_quick_action_plan(req.message, req.context_range)
+    if pending_slot is not None or pending_operation is not None:
+        quick_action_plan = None
+    rule_based_step = parse_command_rule_based(
+        req.message,
+        context_range=req.context_range,
+    )
+    fallback_rule_step: dict[str, Any] | None = (
+        rule_based_step if isinstance(rule_based_step, dict) else None
+    )
+    if pending_operation is not None:
+        fallback_rule_step = None
+    operation_intent = str(operation_hints.get("intent") or "").strip()
+    if operation_intent in {"general", "safety"}:
+        fallback_rule_step = None
+    elif operation_intent == "formula":
+        rule_params = dict(fallback_rule_step.get("params", {})) if fallback_rule_step else {}
+        has_explicit_formula = (
+            bool(fallback_rule_step)
+            and str(fallback_rule_step.get("action", "")).strip() == "excel_live.set_formula"
+            and str(rule_params.get("formula_a1", "")).strip().startswith("=")
+            and bool(re.search(r"\b[A-Z]+\d+(?::[A-Z]+\d+)?\b", str(req.message or ""), re.IGNORECASE))
+        )
+        if not has_explicit_formula:
+            fallback_rule_step = None
+
+    def _normalize_plan_or_empty(raw_steps: Any) -> list[PlanStep]:
+        prepared_steps = raw_steps
+        if isinstance(raw_steps, list):
+            prepared: list[dict[str, Any]] = []
+            for step in raw_steps:
+                if isinstance(step, PlanStep):
+                    action = step.action
+                    params = dict(step.params)
+                    reason = step.reason
+                elif isinstance(step, dict):
+                    action = str(step.get("action", "")).strip()
+                    params = dict(step.get("params", {}))
+                    reason = str(step.get("reason", ""))
+                else:
+                    continue
+                if action == "excel_live.set_formula":
+                    formula = str(params.get("formula_a1", "")).strip()
+                    if formula and not formula.startswith("="):
+                        params["formula_a1"] = f"={formula}"
+                prepared.append({"action": action, "params": params, "reason": reason})
+            prepared_steps = prepared
+        try:
+            return normalize_plan_steps(prepared_steps)
+        except Exception:
+            return []
     fast_operation_intents = {
         "sort",
         "filter",
@@ -2493,34 +2856,67 @@ async def post_command(
     parsed: dict[str, Any] | None = None
     # 멀티턴 슬롯이 이미 잡혔거나, 규칙 기반 힌트로 충분히 분기 가능한 경우에는
     # LLM 파서를 생략해 첫 응답 지연을 줄인다.
+    # 기본 전략: LLM 우선 해석, 룰은 실패/타임아웃 시 폴백.
+    # 다만 이미 진행 중인 슬롯 멀티턴(create_table/operation)은 문맥 일관성을 위해
+    # 기존 슬롯 경로를 우선한다.
     should_parse_with_llm = not (
         pending_slot is not None
         or pending_operation is not None
         or hints.get("table_intent")
-        or operation_hints.get("intent") in fast_operation_intents
     )
+    parse_error: Exception | None = None
+    parse_timeout_count = 0
     if should_parse_with_llm:
-        try:
-            parsed = await asyncio.wait_for(
-                parse_excel_live_command(
-                    req.message,
-                    llm_service=llm,
-                    context={
-                        "context_range": req.context_range,
-                        "workbook_id": req.workbook_id,
-                        "sheet_name": req.sheet_name,
+        for parse_attempt in range(_COMMAND_PARSE_MAX_ATTEMPTS):
+            try:
+                parsed = await asyncio.wait_for(
+                    parse_excel_live_command(
+                        req.message,
+                        llm_service=llm,
+                        context={
+                            "context_range": req.context_range,
+                            "workbook_id": req.workbook_id,
+                            "sheet_name": req.sheet_name,
+                        },
+                    ),
+                    timeout=_COMMAND_PARSE_TIMEOUT_SECONDS,
+                )
+                parse_error = None
+                break
+            except asyncio.TimeoutError as exc:
+                parse_error = exc
+                parse_timeout_count += 1
+                if parse_attempt + 1 < _COMMAND_PARSE_MAX_ATTEMPTS:
+                    backoff = _COMMAND_PARSE_RETRY_BACKOFF_SECONDS * float(parse_attempt + 1)
+                    if backoff > 0:
+                        await asyncio.sleep(backoff)
+                    continue
+                break
+            except ValueError as exc:
+                parse_error = exc
+                break
+
+        if (
+            parsed is None
+            and not quick_action_plan
+            and fallback_rule_step is None
+            and not operation_hints.get("intent")
+        ):
+            if isinstance(parse_error, asyncio.TimeoutError):
+                follow = _build_generic_excel_follow_up(req.message)
+                return ExcelLiveActionResponse(
+                    ok=True,
+                    action="excel_live.clarify",
+                    reason=follow,
+                    result={
+                        "ask_follow_up": True,
+                        "follow_up_question": follow,
+                        "operation_intent": "clarify",
+                        "parse_timeout": True,
+                        "parse_attempts": max(1, parse_timeout_count),
                     },
-                ),
-                timeout=_COMMAND_PARSE_TIMEOUT_SECONDS,
-            )
-        except asyncio.TimeoutError:
-            if (
-                pending_slot is None
-                and pending_operation is None
-                and not hints.get("table_intent")
-                and not operation_hints.get("intent")
-                and not quick_action_plan
-            ):
+                )
+            if isinstance(parse_error, ValueError):
                 if _looks_like_excel_request(req.message):
                     follow = _build_generic_excel_follow_up(req.message)
                     return ExcelLiveActionResponse(
@@ -2533,33 +2929,10 @@ async def post_command(
                             "operation_intent": "clarify",
                         },
                     )
-                raise HTTPException(status_code=400, detail="엑셀 명령 해석 시간이 초과되었습니다.")
-            parsed = None
-        except ValueError as exc:
-            if (
-                pending_slot is None
-                and pending_operation is None
-                and not hints.get("table_intent")
-                and not operation_hints.get("intent")
-                and not quick_action_plan
-            ):
-                if _looks_like_excel_request(req.message):
-                    follow = _build_generic_excel_follow_up(req.message)
-                    return ExcelLiveActionResponse(
-                        ok=True,
-                        action="excel_live.clarify",
-                        reason=follow,
-                        result={
-                            "ask_follow_up": True,
-                            "follow_up_question": follow,
-                            "operation_intent": "clarify",
-                        },
-                    )
-                raise HTTPException(status_code=400, detail=str(exc))
-            parsed = None
+                raise HTTPException(status_code=400, detail=str(parse_error))
 
     if parsed is None and quick_action_plan:
-        action_plan = normalize_plan_steps(quick_action_plan)
+        action_plan = _normalize_plan_or_empty(quick_action_plan)
         parsed = {
             "action_plan": [s.__dict__ for s in action_plan],
             "action": action_plan[0].action if action_plan else "excel_live.read_range",
@@ -2567,6 +2940,17 @@ async def post_command(
             "reason": "빠른 규칙 기반 실행 계획",
             "intent": "edit" if action_plan and action_plan[0].action != "excel_live.read_range" else "read",
         }
+
+    if parsed is None and not quick_action_plan:
+        if isinstance(fallback_rule_step, dict) and fallback_rule_step.get("action"):
+            action_plan = _normalize_plan_or_empty([fallback_rule_step])
+            parsed = {
+                "action_plan": [s.__dict__ for s in action_plan],
+                "action": action_plan[0].action if action_plan else "",
+                "params": action_plan[0].params if action_plan else {},
+                "reason": "룰 기반 폴백 실행 계획",
+                "intent": "edit" if action_plan and action_plan[0].action != "excel_live.read_range" else "read",
+            }
 
     # create_table 멀티턴 슬롯필링 오케스트레이션
     if pending_slot is not None and parsed and parsed.get("action_plan"):
@@ -2623,7 +3007,7 @@ async def post_command(
         }
         _pending_operation_slots.pop(session_key, None)
     else:
-        if pending_operation is not None and not operation_hints.get("intent"):
+        if pending_operation is not None:
             first_action = ""
             has_parsed_plan = False
             if parsed and isinstance(parsed.get("action_plan"), list) and parsed["action_plan"]:
@@ -2662,7 +3046,13 @@ async def post_command(
 
             op_plan_raw = _operation_action_plan(op_slot)
             if op_plan_raw:
-                action_plan = normalize_plan_steps(op_plan_raw)
+                action_plan = _normalize_plan_or_empty(op_plan_raw)
+                if (
+                    not action_plan
+                    and isinstance(fallback_rule_step, dict)
+                    and fallback_rule_step.get("action")
+                ):
+                    action_plan = _normalize_plan_or_empty([fallback_rule_step])
                 parsed = {
                     "action_plan": [s.__dict__ for s in action_plan],
                     "action": action_plan[0].action if action_plan else "excel_live.read_range",
@@ -2672,12 +3062,12 @@ async def post_command(
                 }
                 _pending_operation_slots.pop(session_key, None)
             else:
-                action_plan = normalize_plan_steps(parsed.get("action_plan")) if parsed else []
+                action_plan = _normalize_plan_or_empty(parsed.get("action_plan")) if parsed else []
         else:
-            action_plan = normalize_plan_steps(parsed.get("action_plan")) if parsed else []
+            action_plan = _normalize_plan_or_empty(parsed.get("action_plan")) if parsed else []
 
         if not action_plan and parsed and parsed.get("action"):
-            action_plan = normalize_plan_steps(
+            action_plan = _normalize_plan_or_empty(
                 [
                     {
                         "action": parsed["action"],
@@ -2686,6 +3076,12 @@ async def post_command(
                     }
                 ]
             )
+        if (
+            not action_plan
+            and isinstance(fallback_rule_step, dict)
+            and fallback_rule_step.get("action")
+        ):
+            action_plan = _normalize_plan_or_empty([fallback_rule_step])
 
     if not action_plan:
         if _looks_like_excel_request(req.message):
@@ -2742,13 +3138,9 @@ async def post_command(
     max_replans = 1
     recovery_backup_info: dict[str, Any] | None = None
     rollback_events: list[dict[str, Any]] = []
+    queue_wait_total_ms = 0
     snapshot_holder: dict[str, ActionRollbackSnapshot | None] = {"current": None}
     while True:
-        if recovery_backup_info is None and _plan_needs_recovery_backup(current_plan):
-            recovery_backup_info = _create_recovery_backup_if_possible(
-                workbook_id=req.workbook_id,
-                label="command",
-            )
         # CONFIRM이 필요한 단계가 있으면 기존 승인 UX를 유지하기 위해
         # 첫 CONFIRM 단계에서 즉시 반환한다.
         for step in current_plan:
@@ -2833,13 +3225,23 @@ async def post_command(
                         detail = f"{detail};auto_rollback_applied" if detail else "auto_rollback_applied"
                 return bool(is_ok), str(detail or "")
 
-            execution = execute_plan(
-                steps=current_plan,
-                execute_action=_guarded_execute,
-                verify_step=_guarded_verify,
-                max_attempts=2,
-                abort_on_failure=True,
-            )
+            def _run_execute_once():
+                nonlocal recovery_backup_info
+                if recovery_backup_info is None and _plan_needs_recovery_backup(current_plan):
+                    recovery_backup_info = _create_recovery_backup_if_possible(
+                        workbook_id=req.workbook_id,
+                        label="command",
+                    )
+                return execute_plan(
+                    steps=current_plan,
+                    execute_action=_guarded_execute,
+                    verify_step=_guarded_verify,
+                    max_attempts=2,
+                    abort_on_failure=True,
+                )
+
+            execution, queue_wait_ms = _run_in_excel_queue("command-plan", _run_execute_once)
+            queue_wait_total_ms += queue_wait_ms
         except Exception as exc:
             mapped = _map_error(exc)
             if recovery_backup_info and recovery_backup_info.get("backup_path"):
@@ -2864,7 +3266,7 @@ async def post_command(
                 forbid_list_action=True,
                 require_edit_action=True,
             )
-            current_plan = _validate_steps(normalize_plan_steps(replanned.get("action_plan")))
+            current_plan = _validate_steps(_normalize_plan_or_empty(replanned.get("action_plan")))
             parsed["reason"] = replanned.get("reason", "") or parsed.get("reason", "")
         except Exception as exc:
             raise HTTPException(status_code=400, detail=f"재계획 실패: {exc}")
@@ -2883,6 +3285,8 @@ async def post_command(
         last_result["auto_rollbacks"] = list(rollback_events)
     if recovery_backup_info:
         last_result["recovery_backup"] = recovery_backup_info
+    if queue_wait_total_ms > 0:
+        last_result["queue_wait_ms"] = queue_wait_total_ms
     if len(execution.steps) > 1:
         last_result["executed_steps"] = len(execution.steps)
         last_result["plan"] = [
@@ -2910,6 +3314,7 @@ async def post_command(
                 "executed_steps": len(execution.steps),
                 "auto_rollbacks": list(rollback_events),
                 "recovery_backup": recovery_backup_info,
+                "queue_wait_ms": queue_wait_total_ms,
             },
         )
 
@@ -2926,21 +3331,29 @@ async def post_command(
         retry_formula = _build_formula_retry_variant(formula_a1)
         if retry_formula and _is_numeric_formula_candidate(formula_a1):
             try:
-                retry_set = _execute_action(
-                    action="excel_live.set_formula",
-                    params={
-                        "range_ref": str((formula_step.params or {}).get("range_ref", "__ACTIVE_SELECTION__")),
-                        "formula_a1": retry_formula,
-                    },
-                    workbook_id=req.workbook_id,
-                    sheet_name=req.sheet_name,
+                def _run_formula_retry_once():
+                    retry_set_local = _execute_action(
+                        action="excel_live.set_formula",
+                        params={
+                            "range_ref": str((formula_step.params or {}).get("range_ref", "__ACTIVE_SELECTION__")),
+                            "formula_a1": retry_formula,
+                        },
+                        workbook_id=req.workbook_id,
+                        sheet_name=req.sheet_name,
+                    )
+                    retry_verify_local = _execute_action(
+                        action="excel_live.verify_formula_result",
+                        params={"range_ref": str((formula_step.params or {}).get("range_ref", "__ACTIVE_SELECTION__"))},
+                        workbook_id=req.workbook_id,
+                        sheet_name=req.sheet_name,
+                    )
+                    return retry_set_local, retry_verify_local
+
+                (retry_set, retry_verify), retry_queue_wait_ms = _run_in_excel_queue(
+                    "formula-retry",
+                    _run_formula_retry_once,
                 )
-                retry_verify = _execute_action(
-                    action="excel_live.verify_formula_result",
-                    params={"range_ref": str((formula_step.params or {}).get("range_ref", "__ACTIVE_SELECTION__"))},
-                    workbook_id=req.workbook_id,
-                    sheet_name=req.sheet_name,
-                )
+                queue_wait_total_ms += retry_queue_wait_ms
                 retried_numeric = int(retry_verify.get("numeric_cells", 0) or 0)
                 if retried_numeric > 0:
                     retry_verify["auto_retry_applied"] = True
@@ -2950,6 +3363,8 @@ async def post_command(
                         retry_verify["auto_rollbacks"] = list(rollback_events)
                     if recovery_backup_info:
                         retry_verify["recovery_backup"] = recovery_backup_info
+                    if queue_wait_total_ms > 0:
+                        retry_verify["queue_wait_ms"] = queue_wait_total_ms
                     return ExcelLiveActionResponse(
                         ok=True,
                         action="excel_live.verify_formula_result",
@@ -2971,6 +3386,7 @@ async def post_command(
                 "operation_intent": "formula",
                 "auto_rollbacks": list(rollback_events),
                 "recovery_backup": recovery_backup_info,
+                "queue_wait_ms": queue_wait_total_ms,
             },
         )
 
@@ -3002,21 +3418,27 @@ def post_approval(req: ApprovalResponse):
             result={"approved": False},
         )
 
-    recovery_backup = (
-        _create_recovery_backup_if_possible(workbook_id=pending.workbook_id, label="approval")
-        if _action_needs_recovery_backup(pending.action)
-        else None
-    )
-
+    recovery_backup: dict[str, Any] | None = None
     try:
-        result = _execute_action(
-            action=pending.action,
-            params=pending.params,
-            workbook_id=pending.workbook_id,
-            sheet_name=pending.sheet_name,
-        )
-        if isinstance(result, dict) and recovery_backup:
-            result["recovery_backup"] = recovery_backup
+        def _run_approval_once():
+            nonlocal recovery_backup
+            recovery_backup = (
+                _create_recovery_backup_if_possible(workbook_id=pending.workbook_id, label="approval")
+                if _action_needs_recovery_backup(pending.action)
+                else None
+            )
+            return _execute_action(
+                action=pending.action,
+                params=pending.params,
+                workbook_id=pending.workbook_id,
+                sheet_name=pending.sheet_name,
+            )
+
+        result, queue_wait_ms = _run_in_excel_queue("approval", _run_approval_once)
+        if isinstance(result, dict):
+            result["queue_wait_ms"] = queue_wait_ms
+            if recovery_backup:
+                result["recovery_backup"] = recovery_backup
         _audit.log(
             action="excel.live.approval.executed",
             target=pending.action,

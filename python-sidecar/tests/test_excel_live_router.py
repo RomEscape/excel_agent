@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi.testclient import TestClient
 
 from office_claw_sidecar.main import app
@@ -154,6 +156,33 @@ class _FakeExcelService:
             "full_path": workbook_id,
         }
 
+    def list_workbook_backups(self, workbook_id, limit=20):
+        return {
+            "workbook_id": workbook_id,
+            "source_path": workbook_id,
+            "backup_dir": r"C:\work\officeclaw_backups",
+            "backups": [
+                {
+                    "backup_path": r"C:\work\officeclaw_backups\sales.command.20260707_120000.xlsx",
+                    "backup_name": "sales.command.20260707_120000.xlsx",
+                    "size_bytes": 4096,
+                    "modified_at": "2026-07-07T12:00:00",
+                }
+            ][: max(1, int(limit))],
+        }
+
+    def restore_workbook_from_backup(self, workbook_id, backup_path=None):
+        return {
+            "restored": True,
+            "workbook_id": workbook_id,
+            "name": "sales.xlsx",
+            "full_path": workbook_id,
+            "restored_from_backup_path": backup_path
+            or r"C:\work\officeclaw_backups\sales.command.20260707_120000.xlsx",
+            "pre_restore_backup_path": r"C:\work\officeclaw_backups\sales.pre_restore.20260707_120100.xlsx",
+            "active_sheet": "Sheet1",
+        }
+
 
 def test_excel_live_status(monkeypatch):
     monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
@@ -163,6 +192,35 @@ def test_excel_live_status(monkeypatch):
     body = resp.json()
     assert body["available"] is True
     assert len(body["workbooks"]) == 1
+
+
+def test_excel_live_backups_list(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+
+    resp = client.get("/excel-live/backups?limit=5", headers=HEADERS)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["available"] is True
+    assert body["workbook_id"] == r"C:\work\sales.xlsx"
+    assert len(body["backups"]) == 1
+    assert body["backups"][0]["backup_name"].endswith(".xlsx")
+
+
+def test_excel_live_restore_last(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+
+    resp = client.post(
+        "/excel-live/restore-last",
+        json={
+            "workbook_id": r"C:\work\sales.xlsx",
+        },
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["action"] == "excel_live.restore_last_backup"
+    assert body["result"]["restored"] is True
 
 
 def test_action_confirm_required_then_approval_execute(monkeypatch):
@@ -329,6 +387,38 @@ def test_command_rule_based_fill_range(monkeypatch):
     assert body["approval_required"] is True
 
 
+def test_command_two_color_condition_executes_fill_then_highlight(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+
+    async def _raise_parse(_message, llm_service, context):
+        raise ValueError("LLM parse failed")
+
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _raise_parse)
+
+    resp = client.post(
+        "/excel-live/command",
+        json={
+            "message": "A열 15 이상은 빨간색, 나머지는 노란색으로 칠해줘",
+            "workbook_id": r"C:\work\sales.xlsx",
+            "sheet_name": "Sheet1",
+            "approve": True,
+        },
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["action"] == "excel_live.highlight_by_condition"
+    assert body["result"]["executed_steps"] == 2
+    plan_actions = [step["action"] for step in body["result"]["plan"]]
+    assert plan_actions == ["excel_live.fill_range", "excel_live.highlight_by_condition"]
+
+
+def test_detect_operation_intent_color_else_not_formula():
+    intent = excel_live_router._detect_operation_intent("A열 15 이상은 빨간색 아니면 노란색으로 칠해줘")
+    assert intent != "formula"
+
+
 def test_command_rule_based_clear_range(monkeypatch):
     monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
 
@@ -385,6 +475,27 @@ def test_command_parse_failure_returns_clarify_for_excel_like_request(monkeypatc
     assert body["result"]["ask_follow_up"] is True
 
 
+def test_command_parse_timeout_returns_clarify_not_400(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+
+    async def _raise_timeout(_message, llm_service, context):
+        raise asyncio.TimeoutError()
+
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _raise_timeout)
+
+    resp = client.post(
+        "/excel-live/command",
+        json={"message": "뭔가 이상한 명령", "approve": False},
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["action"] == "excel_live.clarify"
+    assert body["result"]["ask_follow_up"] is True
+    assert body["result"]["parse_timeout"] is True
+
+
 def test_command_parse_failure_problem_phrase_returns_clarify(monkeypatch):
     monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
 
@@ -424,14 +535,16 @@ def test_command_empty_plan_excel_like_returns_clarify(monkeypatch):
     assert body["result"]["ask_follow_up"] is True
 
 
-def test_command_general_followup_skips_llm_parse(monkeypatch):
+def test_command_general_followup_prefers_llm_then_fallback(monkeypatch):
     monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
     excel_live_router._pending_operation_slots.clear()
+    called = {"count": 0}
 
-    async def _must_not_run(_message, llm_service, context):
-        raise AssertionError("LLM parse should be skipped for general rough intent")
+    async def _raise_parse(_message, llm_service, context):
+        called["count"] += 1
+        raise ValueError("LLM parse failed")
 
-    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _must_not_run)
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _raise_parse)
 
     resp = client.post(
         "/excel-live/command",
@@ -443,16 +556,19 @@ def test_command_general_followup_skips_llm_parse(monkeypatch):
     assert body["ok"] is True
     assert body["action"] == "excel_live.general"
     assert body["result"]["ask_follow_up"] is True
+    assert called["count"] == 1
 
 
-def test_command_safety_followup_skips_llm_parse(monkeypatch):
+def test_command_safety_followup_prefers_llm_then_fallback(monkeypatch):
     monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
     excel_live_router._pending_operation_slots.clear()
+    called = {"count": 0}
 
-    async def _must_not_run(_message, llm_service, context):
-        raise AssertionError("LLM parse should be skipped for safety intent")
+    async def _raise_parse(_message, llm_service, context):
+        called["count"] += 1
+        raise ValueError("LLM parse failed")
 
-    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _must_not_run)
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _raise_parse)
 
     resp = client.post(
         "/excel-live/command",
@@ -464,6 +580,7 @@ def test_command_safety_followup_skips_llm_parse(monkeypatch):
     assert body["ok"] is True
     assert body["action"] == "excel_live.safety"
     assert body["result"]["ask_follow_up"] is True
+    assert called["count"] == 1
 
 
 def test_command_validation_error_excel_like_returns_clarify(monkeypatch):
@@ -500,11 +617,13 @@ def test_command_general_slot_upgrades_to_specific_intent(monkeypatch):
     fake = _FakeExcelService()
     monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: fake)
     excel_live_router._pending_operation_slots.clear()
+    called = {"count": 0}
 
-    async def _must_not_run(_message, llm_service, context):
-        raise AssertionError("LLM parse should be skipped for fast operation intents")
+    async def _raise_parse(_message, llm_service, context):
+        called["count"] += 1
+        raise ValueError("LLM parse failed")
 
-    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _must_not_run)
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _raise_parse)
 
     first = client.post(
         "/excel-live/command",
@@ -523,6 +642,8 @@ def test_command_general_slot_upgrades_to_specific_intent(monkeypatch):
     body = second.json()
     assert body["ok"] is True
     assert body["action"] == "excel_live.sort_range"
+    # 첫 턴에서만 LLM 해석 시도, 이후는 pending 슬롯을 이어서 처리한다.
+    assert called["count"] == 1
 
 
 def test_command_executes_action_plan_sequentially(monkeypatch):
@@ -799,6 +920,50 @@ def test_command_replans_once_when_execution_verify_fails(monkeypatch):
     assert body["ok"] is True
     assert body["action"] == "excel_live.apply_border"
     assert replanned_called["count"] == 1
+
+
+def test_command_replan_formula_without_equal_is_normalized(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+
+    async def _plan_parse(_message, llm_service, context):
+        return {
+            "intent": "edit",
+            "action_plan": [
+                {"action": "excel_live.fill_range", "params": {"target_range": "A:A"}, "reason": "1차 계획"}
+            ],
+            "reason": "first plan",
+        }
+
+    async def _replan_parse(_message, llm_service, context, forbid_list_action=False, require_edit_action=False):
+        return {
+            "intent": "edit",
+            "action_plan": [
+                {
+                    "action": "excel_live.set_formula",
+                    "params": {"range_ref": "D2:D6", "formula_a1": "B2*C2"},
+                    "reason": "2차 계획 수식",
+                }
+            ],
+            "reason": "replanned formula",
+        }
+
+    def _verify_step_result(**kwargs):
+        return kwargs.get("action") == "excel_live.set_formula"
+
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _plan_parse)
+    monkeypatch.setattr(excel_live_router, "parse_command_plan_with_llm", _replan_parse)
+    monkeypatch.setattr(excel_live_router, "_verify_step_result", _verify_step_result)
+
+    resp = client.post(
+        "/excel-live/command",
+        json={"message": "금액 계산해줘", "approve": True},
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["action"] == "excel_live.set_formula"
+    assert body["result"]["formula_applied_cells"] >= 1
 
 
 def test_command_create_table_multiturn_slot_fill_with_session(monkeypatch):
