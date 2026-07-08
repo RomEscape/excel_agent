@@ -27,6 +27,7 @@ from office_claw_sidecar.services.excel_tool_agent import (
     run_excel_tool_turn,
 )
 from office_claw_sidecar.services.llm_service import (
+    LLMConfigError,
     LLMService,
     LLMToolsNotSupportedError,
     get_llm_service,
@@ -137,6 +138,38 @@ def _map_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=500, detail=f"Excel Live 오류: {exc}")
 
 
+def _map_llm_error(exc: Exception) -> HTTPException:
+    """LLM 호출 실패를 원인별로 구분한다 (연결/모델없음/미설정을 뭉뚱그리지 않는다)."""
+    # 모델 미설정 — 설정에서 모델을 고르면 해결.
+    if isinstance(exc, LLMConfigError):
+        return HTTPException(status_code=400, detail=str(exc))
+    # 도구 미지원 provider.
+    if isinstance(exc, LLMToolsNotSupportedError):
+        return HTTPException(status_code=400, detail=str(exc))
+    # 서버는 응답했으나 오류 — 대표적으로 모델 미설치(404).
+    if isinstance(exc, httpx.HTTPStatusError):
+        code = exc.response.status_code
+        if code == 404:
+            return HTTPException(
+                status_code=400,
+                detail=(
+                    "요청한 LLM 모델을 Ollama에서 찾을 수 없습니다. 설정에서 선택한 "
+                    "모델이 설치돼 있는지 확인해 주세요 (예: `ollama pull <model>`)."
+                ),
+            )
+        return HTTPException(
+            status_code=502,
+            detail=f"LLM 서버가 오류를 반환했습니다 (HTTP {code}).",
+        )
+    # 그 외 httpx 오류 = 진짜 연결 실패.
+    if isinstance(exc, httpx.HTTPError):
+        return HTTPException(
+            status_code=503,
+            detail=f"Ollama 서버에 연결할 수 없습니다. Ollama가 실행 중인지 확인해 주세요. ({exc})",
+        )
+    return HTTPException(status_code=500, detail=f"LLM 오류: {exc}")
+
+
 def _build_approval(action: str, params: dict[str, Any]) -> ApprovalRequest:
     approval_id = str(uuid.uuid4())
     summary = {
@@ -236,13 +269,8 @@ async def post_command(
             sheet_name=req.sheet_name,
             history=[t.model_dump() for t in req.history],
         )
-    except LLMToolsNotSupportedError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    except httpx.HTTPError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Ollama 서버에 연결할 수 없습니다. Ollama가 실행 중인지 확인해 주세요. ({exc})",
-        )
+    except (LLMConfigError, LLMToolsNotSupportedError, httpx.HTTPError) as exc:
+        raise _map_llm_error(exc)
 
     return _register_and_respond(turn, req.workbook_id)
 
@@ -282,13 +310,8 @@ async def post_approval(
                 sheet_name=pending.sheet_name,
                 llm_service=llm,
             )
-        except LLMToolsNotSupportedError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
-        except httpx.HTTPError as exc:
-            raise HTTPException(
-                status_code=503,
-                detail=f"Ollama 서버에 연결할 수 없습니다. Ollama가 실행 중인지 확인해 주세요. ({exc})",
-            )
+        except (LLMConfigError, LLMToolsNotSupportedError, httpx.HTTPError) as exc:
+            raise _map_llm_error(exc)
         return _register_and_respond(turn, pending.workbook_id)
 
     # 재개 상태 없음 (/action 직접 승인 경로) — 단순 실행.

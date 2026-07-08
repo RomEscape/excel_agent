@@ -53,9 +53,11 @@ class LLMConfigResponse(BaseModel):
 
 @router.get("/llm", response_model=LLMConfigResponse)
 async def get_llm_config() -> LLMConfigResponse:
-    """Return the currently saved LLM provider + model."""
+    """Return the currently saved LLM provider + model (model은 미설정 시 빈 문자열)."""
     cfg = load_llm_config()
-    return LLMConfigResponse(provider=cfg["provider"], model=cfg["model"])
+    return LLMConfigResponse(
+        provider=cfg.get("provider", "ollama"), model=cfg.get("model", "")
+    )
 
 
 @router.post("/llm", response_model=LLMConfigResponse)
