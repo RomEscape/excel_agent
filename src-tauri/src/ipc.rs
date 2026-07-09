@@ -486,7 +486,7 @@ pub async fn security_update_masking_settings(
 
 // ── Phase 3: Slack commands ──────────────────────────────────────────────────
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn slack_setup(
     state: State<'_, Mutex<SidecarState>>,
     bot_token: String,
@@ -550,7 +550,7 @@ pub async fn slack_stop(state: State<'_, Mutex<SidecarState>>) -> Result<String,
 
 // ── Phase 3: Discord commands ────────────────────────────────────────────────
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn discord_setup(
     state: State<'_, Mutex<SidecarState>>,
     token: String,
@@ -652,7 +652,7 @@ pub async fn permissions_update(
     .await
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn permissions_whitelist_add(
     state: State<'_, Mutex<SidecarState>>,
     command: String,
@@ -708,7 +708,7 @@ pub async fn security_get_pending_approvals(
 }
 
 /// 보안 승인 요청에 승인 또는 거부로 응답한다.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn security_respond_approval(
     state: State<'_, Mutex<SidecarState>>,
     approval_id: String,
@@ -941,7 +941,7 @@ pub async fn workspace_write_file(
 }
 
 /// 워크스페이스에 새 엑셀(.xlsx) 파일을 생성한다.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn workspace_create_excel_file(
     state: State<'_, Mutex<SidecarState>>,
     path: String,
@@ -967,7 +967,12 @@ pub async fn workspace_create_excel_file(
 ///   - 최종 경로는 ~/officeclaw/Workspace/{path} 고정
 ///
 /// 호출 측(Frontend)은 base64 표준 인코딩(RFC 4648) 문자열을 전달해야 한다.
-#[tauri::command]
+///
+/// NOTE: Tauri v2는 명령 인자 키를 기본 camelCase로 역직렬화한다. 이 명령은
+/// State를 받지 않고 인자를 Tauri가 직접 역직렬화하므로, api.js가 보내는
+/// snake_case(`content_base64`)를 받으려면 `rename_all = "snake_case"`가 필요하다.
+/// (없으면 `contentBase64`를 기대해 "missing required key contentBase64"로 실패.)
+#[tauri::command(rename_all = "snake_case")]
 pub async fn workspace_write_file_binary(
     path: String,
     content_base64: String,
@@ -1024,7 +1029,7 @@ pub async fn workspace_write_file_binary(
 }
 
 /// 텔레그램 봇 토큰을 설정하고 연결 테스트를 수행한다.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn telegram_setup(
     state: State<'_, Mutex<SidecarState>>,
     token: String,
@@ -1084,7 +1089,7 @@ pub async fn check_for_update(app: tauri::AppHandle) -> Result<String, String> {
 // ── Sprint 5: 채팅 세션 영속화 ────────────────────────────────────────────────
 
 /// 채팅 메시지를 영속 저장한다.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 #[allow(clippy::too_many_arguments)] // Tauri IPC 명령은 입력을 평면 인자로 받는 게 관례
 pub async fn chat_save_message(
     state: State<'_, Mutex<SidecarState>>,
@@ -1136,7 +1141,7 @@ pub async fn chat_list_sessions(
 }
 
 /// 세션의 전체 메시지를 반환한다.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn chat_get_messages(
     state: State<'_, Mutex<SidecarState>>,
     session_id: String,
@@ -1157,7 +1162,7 @@ pub async fn chat_get_messages(
 }
 
 /// 세션과 하위 메시지를 모두 삭제한다.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn chat_delete_session(
     state: State<'_, Mutex<SidecarState>>,
     session_id: String,
@@ -1191,7 +1196,7 @@ pub async fn backup_export(state: State<'_, Mutex<SidecarState>>) -> Result<Stri
 }
 
 /// 지정된 zip 파일로부터 데이터를 복원한다.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn backup_import(
     state: State<'_, Mutex<SidecarState>>,
     file_path: String,
