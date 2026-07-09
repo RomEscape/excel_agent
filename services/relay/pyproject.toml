@@ -1,0 +1,28 @@
+[project]
+name = "oc-relay"
+version = "0.1.0"
+description = "kimdaeri 중계 서버 — content-blind WebSocket 릴레이 (데스크톱 ↔ 모바일)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "oc-protocol",
+    "oc-shared",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[project.scripts]
+oc-relay = "oc_relay.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["oc_relay"]
+
+[tool.uv.sources]
+oc-protocol = { path = "../../packages/protocol/python", editable = true }
+oc-shared = { path = "../../packages/py-shared", editable = true }
