@@ -4,16 +4,15 @@ dist/
 .vite/
 
 # Rust / Tauri
-src-tauri/target/
-src-tauri/binaries/office-claw-sidecar-*
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/binaries/office-claw-sidecar-*
 
 # Python
-python-sidecar/__pycache__/
-python-sidecar/**/__pycache__/
-python-sidecar/*.egg-info/
-python-sidecar/dist/
-python-sidecar/build/
-python-sidecar/.eggs/
+**/__pycache__/
+**/*.egg-info/
+**/.eggs/
+services/sidecar/dist/
+services/sidecar/build/
 **/.pytest_cache/
 *.pyc
 *.pyo

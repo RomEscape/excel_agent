@@ -51,19 +51,22 @@
 
 ## 빌드/실행
 
-- `npm run tauri:dev` — 전체 앱 (Rust + Vite + Tauri webview). 개발 시 기본.
-- `npm run dev` — vite-only. UI 레이아웃만 빠르게 확인할 때.
+> **모노레포 구조 (2026-07 `feat/monorepo-relay`)**: 데스크톱 앱 = `apps/desktop/`(프론트엔드 + `src-tauri/`), Python 사이드카 = `services/sidecar/`, 중계 서버 = `services/relay/`, 공용 계약·코드 = `packages/`(`protocol`·`py-shared`). 경로 매핑: `src/`→`apps/desktop/src/`, `src-tauri/`→`apps/desktop/src-tauri/`, `python-sidecar/`→`services/sidecar/`. 아래 표의 파일 경로도 이 접두사 기준으로 읽는다.
+
+- `cd apps/desktop && npm run tauri:dev` — 전체 앱 (Rust + Vite + Tauri webview). 개발 시 기본.
+- `cd apps/desktop && npm run dev` — vite-only. UI 레이아웃만 빠르게 확인할 때.
   주의: `invoke()` 호출은 모두 실패한다 (Tauri runtime 없음 → "cannot read properties of undefined").
 - Rust 변경 후에는 `tauri:dev`를 재시작해야 새 IPC 명령이 등록된다.
+- (루트에서) `bash scripts/dev.sh` — 사이드카 + Vite + Tauri를 한 번에 기동.
 
 ## 커밋/푸시 전 체크 (CI 미러)
 
 `.github/workflows/pr-check.yml`에 정의된 3개 잡(`rust-check`, `python-check`, `frontend-check`)을 그대로 미러링한다. **커밋 전 영역별로 해당 명령을 직접 돌려 통과 확인.** 빠뜨리고 푸시하면 GitHub Actions에서 떨어진다.
 
-### Rust (`src-tauri/`)
+### Rust (`apps/desktop/src-tauri/`)
 
 ```bash
-cd src-tauri
+cd apps/desktop/src-tauri
 cargo fmt --check                          # 또는 자동 적용: cargo fmt
 cargo clippy --all-targets -- -D warnings  # -D warnings = 경고를 에러로 승격
 ```
@@ -72,10 +75,10 @@ cargo clippy --all-targets -- -D warnings  # -D warnings = 경고를 에러로 �
 - `cargo clippy --no-deps` 만 돌리면 안 됨 — CI는 `--all-targets -- -D warnings`라서 테스트 코드의 경고까지 잡힘.
 - (참고) CI는 `binaries/office-claw-sidecar-*` 더미 파일을 만들고 clippy를 돌린다. 로컬은 PyInstaller 산출물이 있으면 그걸 쓰고, 없으면 동일하게 더미를 만들거나 `cargo check`로 컴파일 가능 여부만 봐도 됨.
 
-### Python (`python-sidecar/`)
+### Python (`services/sidecar/`)
 
 ```bash
-cd python-sidecar
+cd services/sidecar
 uvx ruff check .                           # lint
 uv run pytest -q                           # unit tests
 ```
@@ -84,9 +87,10 @@ uv run pytest -q                           # unit tests
 - 의존성 변경 시 `uv sync --frozen --extra dev` 한 번 더 (CI는 lockfile 고정).
 - macOS 로컬은 OS Keychain 백엔드가 있어 keyring 호출이 실제 동작 — CI는 `PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring` 환경변수로 no-op 처리한다는 점이 다름. 테스트가 OS Keychain에 부수효과를 남기지 않는지 확인할 것.
 
-### Frontend (repo root)
+### Frontend (`apps/desktop`)
 
 ```bash
+cd apps/desktop
 npm ci                                     # CI와 동일하게 lockfile 고정 설치
 npm run lint --if-present                  # lint 스크립트 존재 시
 npm run test:unit --if-present             # 현재: node --test src/lib/*.test.js
@@ -100,9 +104,9 @@ npm run test:unit --if-present             # 현재: node --test src/lib/*.test.
 
 ```bash
 alias oc-precheck='cd /Users/skim/Desktop/project/office_claw && \
-  (cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings) && \
-  (cd python-sidecar && uvx ruff check . && uv run pytest -q) && \
-  npm run test:unit --if-present'
+  (cd apps/desktop/src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings) && \
+  (cd services/sidecar && uvx ruff check . && uv run pytest -q) && \
+  (cd apps/desktop && npm run test:unit --if-present)'
 ```
 
 PR 만들기 직전 `oc-precheck` 한 번 — 셋 다 통과하면 CI도 통과.
