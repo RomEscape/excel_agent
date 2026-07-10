@@ -8,7 +8,7 @@ analyze_and_guard() HITL 패턴은 각 어댑터에서 동일하게 적용된다
   process_message() — Slack/Discord 어댑터가 공유하는 단일 진입점.
   1. 코드 블록 감지 → analyze_and_guard()
   2. 자연어 워크스페이스 명령 → sandbox 파일 조작
-  3. 그 외 → Open-CLAW (ws://127.0.0.1:18789) 또는 Ollama fallback
+  3. 그 외 → Ollama(LLM) 에이전트 호출
 """
 
 from __future__ import annotations
@@ -162,34 +162,17 @@ async def _ws_write(filename: str, content: str) -> str:
 
 
 async def _call_agent(text: str) -> str:
+    """LLM(Ollama) 에이전트 호출.
+
+    구 Open-CLAW WebSocket(ws://127.0.0.1:18789) 경로는 제거됨 — Ollama 단일 경로.
     """
-    Open-CLAW WebSocket 에이전트 호출 (ws://127.0.0.1:18789).
-
-    실패 시 Ollama 직접 호출로 fallback한다.
-    """
-    # Open-CLAW 시도
-    try:
-        import asyncio
-        import json
-        import websockets  # type: ignore[import]
-
-        async with websockets.connect(
-            "ws://127.0.0.1:18789", open_timeout=3, close_timeout=3
-        ) as ws:
-            await ws.send(json.dumps({"type": "chat", "message": text}))
-            raw = await asyncio.wait_for(ws.recv(), timeout=30)
-            data = json.loads(raw)
-            return data.get("message") or data.get("content") or str(data)
-    except Exception as e:
-        logger.debug("[AgentPipeline] Open-CLAW 연결 실패, Ollama fallback: %s", e)
-
-    # Ollama fallback
     try:
         from office_claw_sidecar.services.llm_service import get_llm_service
+
         llm = get_llm_service()
         return await llm.chat([{"role": "user", "content": text}])
     except Exception as e:
-        logger.error("[AgentPipeline] Ollama fallback 실패: %s", e)
+        logger.error("[AgentPipeline] Ollama 호출 실패: %s", e)
         return f"에이전트 처리 중 오류가 발생했습니다: {e}"
 
 
@@ -215,7 +198,7 @@ class MessengerAdapter(ABC):
         처리 순서:
         1. 코드 블록 감지 → CommandAnalyzer 분석 → DENIED 차단 / CONFIRM HITL 요청
         2. 자연어 워크스페이스 명령 → 파일 목록/읽기/쓰기
-        3. 그 외 → Open-CLAW 에이전트 또는 Ollama fallback
+        3. 그 외 → Ollama(LLM) 에이전트 호출
 
         Parameters
         ----------
@@ -316,7 +299,7 @@ class MessengerAdapter(ABC):
                 return await _ws_write(filename, content)
             return "파일명과 내용을 모두 입력해주세요. 예: notes.txt 써줘: 내용"
 
-        # ── 3단계: Open-CLAW 에이전트 또는 Ollama fallback ──────────────────────
+        # ── 3단계: Ollama(LLM) 에이전트 호출 ──────────────────────────────────
         return await _call_agent(text)
 
     @abstractmethod

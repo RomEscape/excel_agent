@@ -2,7 +2,7 @@
 name = "oc-protocol"
 version = "0.1.0"
 description = "kimdaeri 와이어 프로토콜 SSOT — 데스크톱/릴레이/모바일 공용 프레임 계약"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = ["pydantic>=2.6"]
 
 [build-system]

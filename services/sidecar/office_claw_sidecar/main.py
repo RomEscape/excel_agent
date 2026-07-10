@@ -24,6 +24,7 @@ from office_claw_sidecar.routers import (
     llm,
     maintenance,
     permissions,
+    relay,
     security,
     settings,
     slack,
@@ -62,7 +63,15 @@ async def lifespan(app: FastAPI):
     # Phase 1: 저장된 봇 토큰이 있으면 텔레그램 봇 자동 시작
     await _auto_start_telegram()
 
+    # 모바일 릴레이: 페어링돼 있으면 relay로 아웃바운드 WS 클라이언트 자동 기동
+    await _auto_start_relay_client(app)
+
     yield
+
+    # ── shutdown ──
+    from office_claw_sidecar.services.relay_client import stop_relay_client
+
+    await stop_relay_client(app)
 
 
 async def _load_permissions_whitelist() -> None:
@@ -115,6 +124,22 @@ async def _auto_start_telegram() -> None:
         logger.warning("텔레그램 봇 자동 시작 실패 (무시됨): %s", exc)
 
 
+async def _auto_start_relay_client(app: FastAPI) -> None:
+    """앱 시작 시 relay 페어링 설정이 있으면 아웃바운드 WS 클라이언트를 자동 시작한다.
+
+    설정이 없거나 실패하면 조용히 무시 — 사용자가 온보딩에서 페어링 가능.
+    """
+    try:
+        from office_claw_sidecar.services.relay_client import start_relay_client
+
+        if await start_relay_client(app):
+            logger.info("relay 클라이언트 자동 시작 완료")
+        else:
+            logger.info("relay 미설정 — 자동 시작 건너뜀")
+    except Exception as exc:
+        logger.warning("relay 클라이언트 자동 시작 실패 (무시됨): %s", exc)
+
+
 app = FastAPI(title="Office Claw Sidecar", version="0.1.0", lifespan=lifespan)
 
 # Auth token set at startup
@@ -158,6 +183,9 @@ app.include_router(permissions.router, prefix="/permissions", dependencies=[Depe
 app.include_router(chat.router, prefix="/chat", dependencies=[Depends(verify_auth)])
 app.include_router(backup.router, prefix="/backup", dependencies=[Depends(verify_auth)])
 app.include_router(excel_live.router, prefix="/excel-live", dependencies=[Depends(verify_auth)])
+
+# ── 모바일 릴레이(중계 서버) 연동 ──────────────────────────────────────────────
+app.include_router(relay.router, prefix="/relay", dependencies=[Depends(verify_auth)])
 
 
 def main() -> None:
