@@ -2,6 +2,9 @@
 import { execSync } from "node:child_process";
 
 const portArg = Number(process.argv[2] || process.env.DEV_PORT || 1420);
+const RACE_CHECK_COUNT = 4;
+const RACE_CHECK_DELAY_MS = 250;
+
 function getPidsOnPortWindows(port) {
   const out = execSync(`netstat -ano -p tcp | findstr :${port}`, {
     encoding: "utf8",
@@ -53,6 +56,15 @@ function killPids(pids) {
   execSync(`kill -9 ${pids.join(" ")}`, { stdio: "ignore" });
 }
 
+async function detectRaceBinders(port) {
+  for (let i = 0; i < RACE_CHECK_COUNT; i += 1) {
+    await new Promise((r) => setTimeout(r, RACE_CHECK_DELAY_MS));
+    const pids = listPidsOnPort(port);
+    if (pids.length) return pids;
+  }
+  return [];
+}
+
 async function main() {
   if (!Number.isFinite(portArg) || portArg <= 0) {
     throw new Error(`유효하지 않은 포트: ${String(portArg)}`);
@@ -60,6 +72,16 @@ async function main() {
 
   const initialPids = listPidsOnPort(portArg);
   if (!initialPids.length) {
+    // tauri:dev를 여러 터미널에서 거의 동시에 실행하면
+    // 체크 직후 다른 프로세스가 포트를 선점해 vite가 즉시 실패할 수 있다.
+    // 짧은 구간 재확인으로 해당 레이스를 사용자 친화적인 오류로 바꾼다.
+    const racePids = await detectRaceBinders(portArg);
+    if (racePids.length) {
+      throw new Error(
+        `[dev-port] ${portArg} 포트를 다른 개발 서버가 선점했습니다. ` +
+          `중복 실행 중인 터미널을 종료해 주세요. pid=${racePids.join(",")}`
+      );
+    }
     console.log(`[dev-port] ${portArg} 포트 사용 가능`);
     return;
   }
@@ -73,6 +95,14 @@ async function main() {
   const remaining = listPidsOnPort(portArg);
   if (remaining.length) {
     throw new Error(`[dev-port] ${portArg} 포트 정리 실패`);
+  }
+
+  const racePids = await detectRaceBinders(portArg);
+  if (racePids.length) {
+    throw new Error(
+      `[dev-port] ${portArg} 포트를 다른 개발 서버가 선점했습니다. ` +
+        `중복 실행 중인 터미널을 종료해 주세요. pid=${racePids.join(",")}`
+    );
   }
   console.log(`[dev-port] ${portArg} 포트 정리 완료`);
 }

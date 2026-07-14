@@ -58,7 +58,9 @@ export default function Settings() {
       if (cfg?.provider) {
         const resolvedModel =
           cfg.model ??
-          (cfg.provider === "claude" ? "claude-sonnet-4-20250514" : "qwen3:4b");
+          (cfg.provider === "claude"
+            ? "claude-sonnet-4-20250514"
+            : "skt/A.X-4.0-Light:latest");
 
         setProvider(cfg.provider);
         setModel(resolvedModel);
@@ -200,7 +202,7 @@ export default function Settings() {
 
   // Auto-set default model when provider changes.
   // Ollama: 실제 설치된 모델 목록(중앙 statusStore)에서 첫 번째를 기본값으로.
-  // 없으면 sentinel "qwen3:4b"로 두고 picker가 "현재 설치 안 됨" 경고 표시.
+  // 없으면 sentinel "skt/A.X-4.0-Light:latest"로 두고 picker가 "현재 설치 안 됨" 경고 표시.
   const handleProviderChange = (val) => {
     setProvider(val);
     if (val === "claude") {
@@ -210,7 +212,7 @@ export default function Settings() {
       if (Array.isArray(installed) && installed.length > 0) {
         setModel(installed[0].name);
       } else {
-        setModel("qwen3:4b");
+        setModel("skt/A.X-4.0-Light:latest");
       }
     }
   };

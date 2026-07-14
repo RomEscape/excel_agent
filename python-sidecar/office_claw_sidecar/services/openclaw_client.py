@@ -482,7 +482,7 @@ class OpenClawClient:
             if normalized:
                 await queue.put(normalized)
                 state = normalized.get("_state")
-                if state in {"final", "aborted", "error"}:
+                if state in {"final", "aborted", "error", "completed", "complete", "done", "finished"}:
                     await queue.put(
                         {
                             "type": "sessions.done",
@@ -631,9 +631,28 @@ class OpenClawClient:
         text = ""
 
         if state == "delta":
-            text = str(payload.get("deltaText", "")).strip()
+            text = (
+                self._extract_text_from_message(payload.get("deltaText"))
+                or self._extract_text_from_message(payload.get("delta_text"))
+                or self._extract_text_from_message(payload.get("delta"))
+                or self._extract_text_from_message(payload.get("text"))
+                or self._extract_text_from_message(payload.get("outputText"))
+                or self._extract_text_from_message(payload.get("output_text"))
+            )
         else:
-            text = self._extract_text_from_message(payload.get("message"))
+            text = (
+                self._extract_text_from_message(payload.get("message"))
+                or self._extract_text_from_message(payload.get("response"))
+                or self._extract_text_from_message(payload.get("assistant"))
+                or self._extract_text_from_message(payload.get("output"))
+                or self._extract_text_from_message(payload.get("outputText"))
+                or self._extract_text_from_message(payload.get("output_text"))
+                or self._extract_text_from_message(payload.get("finalText"))
+                or self._extract_text_from_message(payload.get("final_text"))
+                or self._extract_text_from_message(payload.get("text"))
+            )
+            if not text:
+                text = self._extract_text_from_message(payload)
 
         frame: dict = {
             "sessionId": session_id,
@@ -661,25 +680,51 @@ class OpenClawClient:
         if isinstance(message, str):
             return message.strip()
 
+        if isinstance(message, list):
+            parts: list[str] = []
+            for item in message:
+                text = self._extract_text_from_message(item)
+                if text:
+                    parts.append(text)
+            return "\n".join(parts).strip()
+
         if not isinstance(message, dict):
             return ""
 
-        if isinstance(message.get("text"), str):
-            return str(message.get("text")).strip()
+        # 텍스트가 직접 들어오는 흔한 키들 우선 처리
+        for key in (
+            "text",
+            "output_text",
+            "outputText",
+            "final_text",
+            "finalText",
+            "assistant_text",
+            "assistantText",
+            "deltaText",
+            "delta_text",
+            "value",
+        ):
+            value = message.get(key)
+            if isinstance(value, str):
+                text = value.strip()
+                if text:
+                    return text
+
+        item_type = str(message.get("type", "")).strip().lower()
+        if item_type in {"text", "output_text", "input_text", "assistant_text", "markdown"}:
+            for key in ("text", "value", "content"):
+                value = message.get(key)
+                if isinstance(value, str):
+                    text = value.strip()
+                    if text:
+                        return text
 
         parts: list[str] = []
-        content = message.get("content")
-        if isinstance(content, list):
-            for item in content:
-                if isinstance(item, str):
-                    text = item.strip()
-                    if text:
-                        parts.append(text)
-                elif isinstance(item, dict):
-                    if item.get("type") == "text" and isinstance(item.get("text"), str):
-                        text = item["text"].strip()
-                        if text:
-                            parts.append(text)
+        for key in ("content", "parts", "items", "messages", "message", "response", "assistant", "output", "data"):
+            value = message.get(key)
+            text = self._extract_text_from_message(value)
+            if text:
+                parts.append(text)
 
         return "\n".join(parts).strip()
 

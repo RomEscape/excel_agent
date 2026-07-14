@@ -26,10 +26,7 @@ logger = logging.getLogger(__name__)
 # Config file lives next to audit.jsonl in the app data directory
 _CONFIG_FILENAME = "llm_config.json"
 
-# 최초 실행(설정 파일 없음) 기본값 — provider만 정한다.
-# 모델은 하드코딩 기본값을 두지 않는다: 저장된 설정(llm_config.json)이 유일한
-# 소스이며, 미설정 시 조용히 임의 모델을 부르지 않고 명확히 오류를 낸다.
-_DEFAULT_CONFIG: dict = {"provider": get_default_llm_config()["provider"]}
+_DEFAULT_CONFIG: dict = get_default_llm_config()
 
 
 # ── Config helpers ────────────────────────────────────────────────────────
@@ -65,14 +62,6 @@ def save_llm_config(config: dict) -> None:
 # ── Abstract provider ─────────────────────────────────────────────────────
 
 
-class LLMToolsNotSupportedError(RuntimeError):
-    """현재 provider가 OpenAI 호환 tools(function calling)를 지원하지 않음."""
-
-
-class LLMConfigError(RuntimeError):
-    """LLM 설정이 불완전함 (예: 사용할 모델이 선택되지 않음)."""
-
-
 class LLMProvider(ABC):
     """Common interface for all LLM backends."""
 
@@ -85,22 +74,6 @@ class LLMProvider(ABC):
           [{"role": "user", "content": "..."}, ...]
         """
         ...
-
-    async def chat_with_tools(
-        self,
-        messages: list[dict],
-        tools: list[dict],
-        model: str | None = None,
-    ) -> dict:
-        """
-        OpenAI 호환 tools 배열과 함께 대화를 전송한다.
-
-        반환: {"content": str, "tool_calls": list, "finish_reason": str}
-        지원하지 않는 provider는 LLMToolsNotSupportedError를 던진다.
-        """
-        raise LLMToolsNotSupportedError(
-            f"'{self.provider_name}' provider는 tools(function calling)를 지원하지 않습니다."
-        )
 
     @property
     @abstractmethod
@@ -115,50 +88,25 @@ class LLMProvider(ABC):
 class OllamaProvider(LLMProvider):
     """Delegates to the existing OllamaService."""
 
-    def __init__(self, model: str | None = None) -> None:
+    def __init__(self) -> None:
         self._svc = OllamaService()
-        # 저장된 설정에서 주입받은 모델. 없으면 호출 시 명확히 오류를 낸다
-        # (하드코딩 기본 모델로 조용히 대체하지 않는다).
-        self._model = (model or "").strip() or None
 
     @property
     def provider_name(self) -> str:
         return "ollama"
 
-    def _resolve_model(self, model: str | None) -> str:
-        chosen = (model or "").strip() or self._model
-        if not chosen:
-            raise LLMConfigError(
-                "LLM 모델이 설정되지 않았습니다. 설정에서 사용할 Ollama 모델을 선택해 주세요."
-            )
-        return chosen
-
     async def chat(self, messages: list[dict], model: str | None = None) -> str:
         # 전체 대화 히스토리를 그대로 Ollama에 전달 (멀티턴 지원)
-        return await self._svc.chat_messages(messages, model=self._resolve_model(model))
-
-    async def chat_with_tools(
-        self,
-        messages: list[dict],
-        tools: list[dict],
-        model: str | None = None,
-    ) -> dict:
-        # Ollama OpenAI 호환 API로 tools 포함 호출 (function calling)
-        return await self._svc.chat_completions(
-            messages,
-            model=self._resolve_model(model),
-            tools=tools,
-            # 함수 선택/인자 생성의 일관성을 위해 낮은 온도 고정
-            temperature=0.2,
-        )
+        cfg = load_llm_config()
+        default_model = str(cfg.get("model") or get_default_llm_config()["model"])
+        return await self._svc.chat_messages(messages, model=model or default_model)
 
 
 class ClaudeProvider(LLMProvider):
     """Delegates to the existing ClaudeService."""
 
-    def __init__(self, model: str | None = None) -> None:
+    def __init__(self) -> None:
         self._svc = ClaudeService()
-        self._model = (model or "").strip() or None
 
     @property
     def provider_name(self) -> str:
@@ -166,9 +114,7 @@ class ClaudeProvider(LLMProvider):
 
     async def chat(self, messages: list[dict], model: str | None = None) -> str:
         # 전체 대화 히스토리를 그대로 Claude에 전달 (멀티턴 지원)
-        # model이 없으면 ClaudeService 자체 기본 모델을 사용한다 (클라우드 모델은
-        # 로컬 설치 개념이 없어 '모델 없음' 문제가 없다).
-        return await self._svc.chat_messages(messages, model=model or self._model)
+        return await self._svc.chat_messages(messages, model=model)
 
 
 # ── LLM Service ───────────────────────────────────────────────────────────
@@ -178,11 +124,15 @@ class LLMService:
     """
     Holds the currently active LLM provider and delegates calls.
 
-    Provider 교체는 config 저장 후 reload_llm_service()로 싱글톤을 재생성한다.
+    Swap providers at runtime by calling set_provider().
     """
 
     def __init__(self, provider: LLMProvider) -> None:
         self._provider = provider
+
+    def set_provider(self, provider: LLMProvider) -> None:
+        self._provider = provider
+        logger.info("LLM provider switched to: %s", provider.provider_name)
 
     @property
     def current_provider(self) -> str:
@@ -191,15 +141,6 @@ class LLMService:
     async def chat(self, messages: list[dict], model: str | None = None) -> str:
         """Send messages to the active provider and return the reply."""
         return await self._provider.chat(messages, model=model)
-
-    async def chat_with_tools(
-        self,
-        messages: list[dict],
-        tools: list[dict],
-        model: str | None = None,
-    ) -> dict:
-        """tools(function calling) 포함 호출을 provider에 위임한다."""
-        return await self._provider.chat_with_tools(messages, tools, model=model)
 
 
 # ── Singleton factory ─────────────────────────────────────────────────────
@@ -217,16 +158,11 @@ def get_llm_service() -> LLMService:
     if _llm_service_instance is None:
         cfg = load_llm_config()
         provider_name = cfg.get("provider", "ollama")
-        model = cfg.get("model")
         provider: LLMProvider = (
-            ClaudeProvider(model=model)
-            if provider_name == "claude"
-            else OllamaProvider(model=model)
+            ClaudeProvider() if provider_name == "claude" else OllamaProvider()
         )
         _llm_service_instance = LLMService(provider)
-        logger.info(
-            "LLMService initialised with provider=%s model=%s", provider_name, model
-        )
+        logger.info("LLMService initialised with provider: %s", provider_name)
     return _llm_service_instance
 
 

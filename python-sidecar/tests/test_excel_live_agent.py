@@ -242,6 +242,26 @@ def test_parse_fill_range_without_threshold_uses_active_selection():
     assert parsed["params"]["fill_color"] == "#FFFF00"
 
 
+def test_parse_rule_based_list_sheets():
+    parsed = parse_command_rule_based("현재 시트 목록 보여줘")
+    assert parsed is not None
+    assert parsed["action"] == "excel_live.list_sheets"
+
+
+def test_parse_rule_based_select_sheet():
+    parsed = parse_command_rule_based("요약 시트로 이동해줘")
+    assert parsed is not None
+    assert parsed["action"] == "excel_live.select_sheet"
+    assert parsed["params"]["sheet_name"] == "요약"
+
+
+def test_parse_rule_based_create_sheet():
+    parsed = parse_command_rule_based("요약 시트 만들어줘")
+    assert parsed is not None
+    assert parsed["action"] == "excel_live.create_sheet"
+    assert parsed["params"]["sheet_name"] == "요약"
+
+
 def test_extract_create_table_slot_hints_with_size_and_headers():
     hints = extract_create_table_slot_hints("5*5크기로 금액, 장소, 날짜, 요건, 비고 표 만들어줘")
     assert hints["table_intent"] is True
@@ -257,12 +277,43 @@ def test_extract_create_table_slot_hints_detects_template_without_table_word():
     assert len(hints["template_headers"]) >= 4
 
 
+def test_extract_create_table_slot_hints_parses_multiline_tabular_values():
+    hints = extract_create_table_slot_hints(
+        "아래 내용으로 표 만들어줘\n"
+        "날짜\t사용 목적\t금액\n"
+        "26/02/24\t학기 초 회의\t320000\n"
+        "26/03/09\t개강 회의\t200000"
+    )
+    assert hints["table_intent"] is True
+    assert hints["rows"] == 3
+    assert hints["cols"] == 3
+    assert hints["headers"] == ["날짜", "사용 목적", "금액"]
+    assert hints["values_2d"][1] == ["26/02/24", "학기 초 회의", "320000"]
+
+
+def test_extract_create_table_slot_hints_parses_compact_expense_text():
+    hints = extract_create_table_slot_hints(
+        "날짜 사용 목적 사용처 법인카드 사용내역서 여부 금액 법인카드, 조교카드 이체 여부 비용 유형 "
+        "26/02/24 학기 초 회의 영화장 O 320,000 O 학과운영비(회의) "
+        "26/03/09 개강 회의 고흥집 O 200,000 O 국제화비용(회의)"
+    )
+    assert hints["table_intent"] is True
+    assert hints["rows"] >= 3
+    assert hints["cols"] == 7
+    assert hints["headers"][:3] == ["날짜", "사용 목적", "사용처"]
+    assert hints["values_2d"][1][0] == "26/02/24"
+    assert hints["values_2d"][2][0] == "26/03/09"
+
+
 class _FakeLLM:
     def __init__(self, response):
         self._response = response
         self._idx = 0
+        self.prompts = []
 
     async def chat(self, messages):
+        if messages and isinstance(messages[-1], dict):
+            self.prompts.append(str(messages[-1].get("content", "")))
         if isinstance(self._response, list):
             out = self._response[min(self._idx, len(self._response) - 1)]
             self._idx += 1
@@ -308,6 +359,45 @@ def test_parse_excel_live_command_passes_context_to_planner():
     )
     assert parsed["action_plan"][0]["action"] == "excel_live.fill_range"
     assert parsed["action_plan"][0]["params"]["target_range"] == "C3:E9"
+
+
+def test_parse_excel_live_command_includes_deep_reasoning_prompt():
+    llm = _FakeLLM(
+        '{"intent":"edit","action_plan":[{"action":"excel_live.set_formula","params":{"range_ref":"D2:D20","formula_a1":"=B2*C2"},"reason":"계산"}],"reason":"deep"}'
+    )
+    parsed = asyncio.run(
+        parse_excel_live_command(
+            "수량과 단가를 곱해서 계산해줘",
+            llm,
+            context={"reasoning_mode": "deep", "complexity_score": 5},
+        )
+    )
+    assert parsed["action_plan"][0]["action"] == "excel_live.set_formula"
+    prompt = llm.prompts[0]
+    assert "추가 지침(Deep reasoning)" in prompt
+    assert "복잡도 점수=5" in prompt
+
+
+def test_parse_excel_live_command_includes_reflection_prompt():
+    llm = _FakeLLM(
+        '{"intent":"edit","action_plan":[{"action":"excel_live.set_formula","params":{"range_ref":"D2:D20","formula_a1":"=B2*C2"},"reason":"교정"}],"reason":"reflect"}'
+    )
+    parsed = asyncio.run(
+        parse_excel_live_command(
+            "수량과 단가를 곱해서 계산해줘",
+            llm,
+            context={
+                "reasoning_mode": "reflect",
+                "reflection_note": "intent_unknown",
+                "previous_first_action": "excel_live.read_range",
+            },
+        )
+    )
+    assert parsed["action_plan"][0]["action"] == "excel_live.set_formula"
+    prompt = llm.prompts[0]
+    assert "추가 지침(Reflection 1회)" in prompt
+    assert "reflection_note=intent_unknown" in prompt
+    assert "previous_first_action=excel_live.read_range" in prompt
 
 
 def test_parse_excel_live_command_replans_when_edit_intent_misclassified():

@@ -133,6 +133,24 @@ TOOL_REGISTRY: list[ToolDef] = [
         example_triggers=["이 파일 선택", "워크북 선택", "작업 파일 지정"],
     ),
     ToolDef(
+        name="excel_live.list_sheets",
+        description="선택한 통합문서의 시트 목록과 활성 시트 조회",
+        permission=PermissionLevel.SAFE,
+        example_triggers=["시트 목록", "탭 목록", "현재 시트들 보여줘"],
+    ),
+    ToolDef(
+        name="excel_live.select_sheet",
+        description="작업 시트를 전환/활성화",
+        permission=PermissionLevel.SAFE,
+        example_triggers=["Sheet2로 이동", "요약 시트 선택", "시트 전환"],
+    ),
+    ToolDef(
+        name="excel_live.create_sheet",
+        description="새 시트를 생성하고 필요 시 활성화",
+        permission=PermissionLevel.SAFE,
+        example_triggers=["요약 시트 만들어줘", "새 탭 추가", "시트 생성"],
+    ),
+    ToolDef(
         name="excel_live.read_range",
         description="지정 시트/범위의 셀 값을 읽기",
         permission=PermissionLevel.SAFE,

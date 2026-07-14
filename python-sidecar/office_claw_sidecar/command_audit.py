@@ -7,7 +7,7 @@ command_audit.py — Phase 2 (Private-Claw) 명령 감사 로그.
 DB 위치: ~/PrivateClaw/audit.db
 테이블: command_log
   id               INTEGER PRIMARY KEY AUTOINCREMENT
-  timestamp        TEXT    NOT NULL  (ISO-8601 UTC)
+  timestamp        TEXT    NOT NULL  (ISO-8601 KST)
   grade            TEXT    NOT NULL  (SAFE | CONFIRM | DENIED)
   lang             TEXT              (python | shell)
   command          TEXT    NOT NULL  (코드 원문 앞 500자)
@@ -25,13 +25,14 @@ from __future__ import annotations
 
 import sqlite3
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
 from office_claw_sidecar.services.unified_log_service import append_unified_event
 
 logger = logging.getLogger(__name__)
+KST = timezone(timedelta(hours=9), name="KST")
 
 # DB 경로 — ~/PrivateClaw/ 디렉토리 사용
 _DB_PATH = Path.home() / "PrivateClaw" / "audit.db"
@@ -151,7 +152,7 @@ class CommandAuditLogger:
         tool_name:  호출된 스킬 이름 (예: gog.gmail.send) — Sprint 3
         session_id: OpenClaw 세션 ID — Sprint 3
         """
-        ts = datetime.now(timezone.utc).isoformat()
+        ts = datetime.now(KST).isoformat()
         cmd_short = (command or "")[:500]
         approved_int: Optional[int] = None
         if approved is True:

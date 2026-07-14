@@ -9,17 +9,18 @@ from __future__ import annotations
 import json
 import logging
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from office_claw_sidecar.config import get_unified_log_path
 
 logger = logging.getLogger(__name__)
 _LOCK = threading.Lock()
+KST = timezone(timedelta(hours=9), name="KST")
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(KST).isoformat()
 
 
 def append_unified_event(event_type: str, payload: dict[str, Any] | None = None) -> None:

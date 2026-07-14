@@ -18,6 +18,9 @@ from office_claw_sidecar.services.excel_live_table_presets import match_table_pr
 SUPPORTED_ACTIONS = {
     "excel_live.list_workbooks",
     "excel_live.select_workbook",
+    "excel_live.list_sheets",
+    "excel_live.select_sheet",
+    "excel_live.create_sheet",
     "excel_live.read_range",
     "excel_live.write_range",
     "excel_live.create_table",
@@ -252,6 +255,52 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
             "params": {},
             "reason": "열린 통합문서 목록 조회 요청",
         }
+
+    if any(
+        token in lowered
+        for token in [
+            "시트 목록",
+            "탭 목록",
+            "현재 시트",
+            "시트들",
+            "sheet list",
+            "list sheets",
+            "worksheet list",
+        ]
+    ):
+        return {
+            "action": "excel_live.list_sheets",
+            "params": {},
+            "reason": "시트 목록 조회 요청",
+        }
+
+    create_sheet_match = re.search(
+        r"([^\s,]+)\s*(?:시트|sheet)\s*(?:만들|생성|추가|create|add)",
+        text,
+        re.IGNORECASE,
+    )
+    if create_sheet_match:
+        sheet_name = str(create_sheet_match.group(1)).strip().strip("\"'")
+        if sheet_name:
+            return {
+                "action": "excel_live.create_sheet",
+                "params": {"sheet_name": sheet_name, "make_active": True},
+                "reason": "새 시트 생성 요청",
+            }
+
+    select_sheet_match = re.search(
+        r"([^\s,]+)\s*(?:시트|sheet)\s*(?:로|으로)?\s*(?:이동|전환|선택|활성화|switch|go)",
+        text,
+        re.IGNORECASE,
+    )
+    if select_sheet_match:
+        sheet_name = str(select_sheet_match.group(1)).strip().strip("\"'")
+        if sheet_name:
+            return {
+                "action": "excel_live.select_sheet",
+                "params": {"sheet_name": sheet_name},
+                "reason": "작업 시트 전환 요청",
+            }
 
     # 예: "워크북 text_1.xlsx 선택", "select workbook text_1.xlsx"
     select_match = re.search(
@@ -603,6 +652,9 @@ async def parse_command_with_llm(message: str, llm_service) -> dict[str, Any]:
         "허용 action:\n"
         "- excel_live.list_workbooks\n"
         "- excel_live.select_workbook\n"
+        "- excel_live.list_sheets\n"
+        "- excel_live.select_sheet\n"
+        "- excel_live.create_sheet\n"
         "- excel_live.read_range\n"
         "- excel_live.write_range\n"
         "- excel_live.create_table\n"
@@ -670,15 +722,45 @@ async def parse_command_plan_with_llm(
     context_range = str(context.get("context_range", "") or "").strip().upper()
     workbook_id = str(context.get("workbook_id", "") or "").strip()
     sheet_name = str(context.get("sheet_name", "") or "").strip()
+    reasoning_mode = str(context.get("reasoning_mode", "fast") or "").strip().lower()
+    if reasoning_mode not in {"fast", "deep", "reflect"}:
+        reasoning_mode = "fast"
+    complexity_score = context.get("complexity_score", 0)
+    try:
+        complexity_score_int = int(complexity_score)
+    except Exception:
+        complexity_score_int = 0
+    reflection_note = str(context.get("reflection_note", "") or "").strip()
+    previous_first_action = str(context.get("previous_first_action", "") or "").strip()
     context_line = (
         f"최근 컨텍스트: workbook_id={workbook_id or 'auto'}, sheet={sheet_name or 'auto'}, "
         f"context_range={context_range or 'none'}\n"
     )
+    if reasoning_mode == "deep":
+        reasoning_line = (
+            "추가 지침(Deep reasoning): 복잡 명령이다. 실행 전 내부적으로 단계/의존성을 점검하고 "
+            "누락 파라미터를 보수적으로 채운 뒤 JSON만 반환하라.\n"
+            f"복잡도 점수={complexity_score_int}\n"
+        )
+    elif reasoning_mode == "reflect":
+        reasoning_line = (
+            "추가 지침(Reflection 1회): 이전 저신뢰 계획을 교정하는 재해석 단계다. "
+            "원인(의도 불일치/수동 액션 과다)을 피해서 더 직접적인 실행 계획으로 수정하라.\n"
+            f"reflection_note={reflection_note or 'none'}, previous_first_action={previous_first_action or 'none'}\n"
+        )
+    else:
+        reasoning_line = (
+            "추가 지침(Fast path): 단순 명령 우선, 불필요한 단계 분해를 피하고 최소 단계로 계획하라.\n"
+            f"복잡도 점수={complexity_score_int}\n"
+        )
     prompt = (
         "너는 Excel Live 작업 플래너다. 사용자 메시지를 실행 계획 JSON으로만 반환해라.\n"
         "허용 action:\n"
         "- excel_live.list_workbooks\n"
         "- excel_live.select_workbook\n"
+        "- excel_live.list_sheets\n"
+        "- excel_live.select_sheet\n"
+        "- excel_live.create_sheet\n"
         "- excel_live.read_range\n"
         "- excel_live.write_range\n"
         "- excel_live.create_table\n"
@@ -710,6 +792,7 @@ async def parse_command_plan_with_llm(
         "   - slot_fill 예: {\"rows\":5,\"cols\":5,\"headers\":[\"금액\",\"장소\"]}\n"
         "   - follow_up_question 예: \"표 크기와 헤더를 알려주세요. 예: 5*5, 금액, 장소, 날짜\"\n\n"
         f"{context_line}"
+        f"{reasoning_line}"
         "출력 형식:\n"
         '{"intent":"edit","mutates_workbook":true,"action_plan":[{"action":"excel_live.fill_range","params":{"target_range":"__ACTIVE_SELECTION__","fill_color":"#FFFF00"},"reason":"범위 배경색 변경"}],"slot_fill":{},"partial_params":{},"follow_up_question":"","reason":"한 줄 한국어"}\n\n'
         f"사용자 메시지: {message}"
@@ -854,6 +937,179 @@ def _column_span(start_col: str, end_col: str) -> int:
     return max(1, end - start + 1)
 
 
+_DATE_TOKEN_PATTERN = re.compile(r"\b\d{2,4}[./-]\d{1,2}[./-]\d{1,2}\b")
+
+
+def _clean_table_cell(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _split_table_line(line: str, *, allow_comma: bool = False) -> list[str]:
+    raw = str(line or "").strip()
+    if not raw:
+        return []
+    parts: list[str] | None = None
+    if "\t" in raw:
+        parts = raw.split("\t")
+    elif "|" in raw:
+        parts = raw.split("|")
+    elif allow_comma and "," in raw:
+        parts = re.split(r"\s*,\s*", raw)
+    if parts is None:
+        return []
+    out: list[str] = []
+    for p in parts:
+        cell = _clean_table_cell(p)
+        if cell:
+            out.append(cell)
+    return out
+
+
+def _normalize_values_2d(rows: list[list[Any]]) -> list[list[str]]:
+    normalized: list[list[str]] = []
+    max_cols = 0
+    for raw_row in rows[:100]:
+        cells = [_clean_table_cell(v) for v in raw_row]
+        if not any(cells):
+            continue
+        normalized.append(cells)
+        max_cols = max(max_cols, len(cells))
+    if not normalized:
+        return []
+    max_cols = max(1, min(50, max_cols))
+    out: list[list[str]] = []
+    for row in normalized[:100]:
+        trimmed = row[:max_cols]
+        if len(trimmed) < max_cols:
+            trimmed.extend([""] * (max_cols - len(trimmed)))
+        out.append(trimmed)
+    return out
+
+
+def _detect_compact_expense_headers(header_text: str) -> list[str]:
+    compact = re.sub(r"\s+", " ", str(header_text or "")).strip()
+    if not compact:
+        return []
+    # 탭/구분자 없이 붙여넣은 법인카드 내역 문장을 7열 표로 복원한다.
+    must_tokens = ["날짜", "사용 목적", "사용처", "금액", "비용 유형"]
+    if all(token in compact for token in must_tokens):
+        return [
+            "날짜",
+            "사용 목적",
+            "사용처",
+            "법인카드 사용내역서 여부",
+            "금액",
+            "법인카드/조교카드 이체 여부",
+            "비용 유형",
+        ]
+    return []
+
+
+def _parse_compact_expense_row(segment: str) -> list[str] | None:
+    m = re.match(
+        r"^\s*(\d{2,4}[./-]\d{1,2}[./-]\d{1,2})\s+(.+?)\s+(O|X|-)\s+(-?\d[\d,]*(?:\.\d+)?)\s+(O|X|-)\s+(.+?)\s*$",
+        str(segment or ""),
+        re.IGNORECASE,
+    )
+    if not m:
+        return None
+    date = _clean_table_cell(m.group(1))
+    purpose_place = _clean_table_cell(m.group(2))
+    statement_flag = _clean_table_cell(m.group(3)).upper()
+    amount = _clean_table_cell(m.group(4))
+    transfer_flag = _clean_table_cell(m.group(5)).upper()
+    category = _clean_table_cell(m.group(6))
+
+    tokens = purpose_place.split()
+    if len(tokens) >= 2:
+        place = tokens[-1]
+        purpose = " ".join(tokens[:-1]).strip()
+    else:
+        purpose = purpose_place
+        place = ""
+    return [date, purpose, place, statement_flag, amount, transfer_flag, category]
+
+
+def _parse_compact_generic_row(segment: str, col_count: int) -> list[str] | None:
+    compact = re.sub(r"\s+", " ", str(segment or "")).strip()
+    if not compact:
+        return None
+    if col_count <= 1:
+        return [_clean_table_cell(compact)]
+    tokens = compact.split(" ")
+    if len(tokens) >= col_count:
+        row = tokens[: col_count - 1] + [" ".join(tokens[col_count - 1 :])]
+    else:
+        row = tokens + [""] * (col_count - len(tokens))
+    return [_clean_table_cell(v) for v in row[:col_count]]
+
+
+def _extract_inline_table_values_2d(text: str) -> list[list[str]]:
+    raw = str(text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not raw:
+        return []
+
+    # 1) 줄바꿈+구분자(탭/파이프/콤마) 기반 표 추출
+    lines = [line.strip() for line in raw.split("\n") if line.strip()]
+    if len(lines) >= 2:
+        header_idx = -1
+        header: list[str] = []
+        for idx, line in enumerate(lines):
+            parsed_header = _split_table_line(line, allow_comma=True)
+            if len(parsed_header) >= 2:
+                header_idx = idx
+                header = parsed_header
+                break
+        if header_idx >= 0 and len(header) >= 2:
+            body_rows: list[list[str]] = []
+            for line in lines[header_idx + 1 :]:
+                parsed = _split_table_line(line, allow_comma=False)
+                if not parsed and line.count(",") >= 2 and not re.search(r"\d{1,3},\d{3}", line):
+                    parsed = _split_table_line(line, allow_comma=True)
+                if parsed:
+                    body_rows.append(parsed)
+            if body_rows:
+                matrix = _normalize_values_2d([header, *body_rows])
+                if len(matrix) >= 2:
+                    return matrix
+
+    # 2) 날짜 토큰이 연속되는 압축 문장(공백 구분) 복원
+    date_matches = list(_DATE_TOKEN_PATTERN.finditer(raw))
+    if not date_matches:
+        return []
+    header_block = raw[: date_matches[0].start()].strip()
+    if not header_block:
+        return []
+    headers = _detect_compact_expense_headers(header_block)
+    if len(headers) < 2:
+        headers = _split_table_line(header_block, allow_comma=True)
+    if len(headers) < 2:
+        return []
+
+    rows: list[list[str]] = []
+    col_count = len(headers)
+    for idx, match in enumerate(date_matches):
+        seg_start = match.start()
+        seg_end = date_matches[idx + 1].start() if idx + 1 < len(date_matches) else len(raw)
+        segment = raw[seg_start:seg_end].strip()
+        if not segment:
+            continue
+        parsed_row: list[str] | None = None
+        if col_count == 7 and "금액" in headers and "비용 유형" in headers:
+            parsed_row = _parse_compact_expense_row(segment)
+        if parsed_row is None:
+            parsed_row = _parse_compact_generic_row(segment, col_count)
+        if parsed_row:
+            rows.append(parsed_row)
+    if not rows:
+        return []
+    matrix = _normalize_values_2d([headers, *rows])
+    return matrix if len(matrix) >= 2 else []
+
+
 def extract_create_table_slot_hints(message: str) -> dict[str, Any]:
     """
     create_table 멀티턴 슬롯필링용 힌트를 자연어에서 추출한다.
@@ -862,6 +1118,7 @@ def extract_create_table_slot_hints(message: str) -> dict[str, Any]:
     - rows: int | None
     - cols: int | None
     - headers: list[str]
+    - values_2d: list[list[str]]
     - start_cell: str | None
     - table_intent: bool
     """
@@ -910,10 +1167,24 @@ def extract_create_table_slot_hints(message: str) -> dict[str, Any]:
         if len(filtered) >= 2:
             headers = filtered
 
+    values_2d = _extract_inline_table_values_2d(text)
+    if values_2d:
+        table_intent = True
+        inferred_rows = len(values_2d)
+        inferred_cols = max((len(row) for row in values_2d), default=0)
+        if inferred_rows > 0:
+            rows = max(1, min(100, max(rows or 0, inferred_rows)))
+        if inferred_cols > 0:
+            cols = max(1, min(50, max(cols or 0, inferred_cols)))
+        parsed_headers = [str(v).strip() for v in values_2d[0] if str(v).strip()]
+        if parsed_headers:
+            headers = parsed_headers
+
     return {
         "rows": rows,
         "cols": cols,
         "headers": headers,
+        "values_2d": values_2d,
         "start_cell": start_cell,
         "table_intent": table_intent,
         "template_key": preset.key if preset else None,

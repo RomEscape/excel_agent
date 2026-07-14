@@ -883,7 +883,7 @@ export async function openclawEnsureRunning() {
  * OpenClaw config를 Ollama 프로바이더로 비인터랙티브 설정한다.
  * `models.providers.ollama.baseUrl` + `agents.defaults.model = ollama/<model>`을 set.
  *
- * @param {string} model — 예: "qwen3:4b", "qwen3:8b" (provider prefix 없이)
+ * @param {string} model — 예: "skt/A.X-4.0-Light:latest", "qwen3:8b" (provider prefix 없이)
  * @returns {Promise<{ ok: boolean, applied: Array, model: string }>}
  */
 export async function openclawUseOllama(model) {

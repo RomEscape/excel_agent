@@ -119,7 +119,8 @@ function shouldRouteToExcelLive(message) {
   const keywordHit = [
     "엑셀", "excel", "워크북", "workbook", "시트", "sheet",
     "셀", "cell", "수식", "formula", "조건부", "강조", "경계선", "테두리", "border",
-    "표", "테이블", "table", "배경색", "노란색", "노랑", "칠해",
+    "표", "테이블", "table", "배경색", "색도", "색을", "색깔",
+    "노란색", "노랑", "흰색", "하얀색", "하양", "white", "칠해",
   ].some((kw) => lower.includes(kw));
   if (keywordHit) return true;
 
@@ -133,6 +134,7 @@ function hasLikelyExcelActionIntent(message) {
   const lower = String(message || "").toLowerCase();
   return [
     "입력", "작성", "적용", "만들", "생성", "저장", "칠해", "채워", "강조", "테두리", "경계선",
+    "지워", "지우", "없애", "복구", "초기화", "기본값", "흰색", "하얀색", "색도", "색을",
     "수식", "읽어", "보여", "범위", "셀", "표", "엑셀", "excel",
   ].some((kw) => lower.includes(kw));
 }

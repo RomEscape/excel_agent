@@ -126,6 +126,83 @@ class ExcelLiveService:
     def get_selected_workbook_id(self) -> str | None:
         return self._selected_workbook_id
 
+    def list_sheets(self, workbook_id: str | None) -> dict[str, Any]:
+        """대상 통합문서의 시트 목록과 활성 시트를 반환한다."""
+        target_id = workbook_id or self._selected_workbook_id
+        if not target_id:
+            rows = self.list_workbooks()
+            if not rows:
+                raise WorkbookNotFoundError("열린 통합문서가 없습니다.")
+            target_id = rows[0]["workbook_id"]
+
+        wb = self._find_workbook(target_id)
+        sheet_names = [str(getattr(sheet, "name", "") or "") for sheet in wb.sheets]
+        return {
+            "sheets": sheet_names,
+            "count": len(sheet_names),
+            "active_sheet": self._active_sheet_name(wb),
+        }
+
+    def select_sheet(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+    ) -> dict[str, Any]:
+        """대상 통합문서에서 작업 시트를 전환한다."""
+        target_id = workbook_id or self._selected_workbook_id
+        if not target_id:
+            rows = self.list_workbooks()
+            if not rows:
+                raise WorkbookNotFoundError("열린 통합문서가 없습니다.")
+            target_id = rows[0]["workbook_id"]
+
+        wb = self._find_workbook(target_id)
+        sheet = self._find_sheet(wb, sheet_name)
+        try:
+            sheet.activate()
+        except Exception:
+            pass
+        return {
+            "selected": True,
+            "sheet_name": str(getattr(sheet, "name", "") or sheet_name),
+            "active_sheet": self._active_sheet_name(wb),
+        }
+
+    def create_sheet(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        make_active: bool = True,
+    ) -> dict[str, Any]:
+        """시트를 생성하고(이미 있으면 재사용) 필요 시 활성화한다."""
+        target_id = workbook_id or self._selected_workbook_id
+        if not target_id:
+            rows = self.list_workbooks()
+            if not rows:
+                raise WorkbookNotFoundError("열린 통합문서가 없습니다.")
+            target_id = rows[0]["workbook_id"]
+
+        wb = self._find_workbook(target_id)
+        target_name = self._sanitize_sheet_name(sheet_name)
+        created = False
+        try:
+            sheet = self._find_sheet(wb, target_name)
+        except WorksheetNotFoundError:
+            sheet = wb.sheets.add(name=target_name)
+            created = True
+
+        if make_active:
+            try:
+                sheet.activate()
+            except Exception:
+                pass
+
+        return {
+            "created": created,
+            "sheet_name": str(getattr(sheet, "name", "") or target_name),
+            "active_sheet": self._active_sheet_name(wb),
+        }
+
     def read_range(
         self,
         workbook_id: str | None,
@@ -365,7 +442,8 @@ class ExcelLiveService:
             raise ExcelLiveError("경계선을 적용할 수 없습니다. Excel API 객체를 찾지 못했습니다.")
 
         # Excel COM 상수 (late binding)
-        style_map = {"continuous": 1}
+        # -4142: xlLineStyleNone (경계선 제거)
+        style_map = {"continuous": 1, "none": -4142}
         weight_map = {"thin": 2, "medium": -4138, "thick": 4}
         line_style_value = style_map.get((line_style or "").strip().lower(), 1)
         weight_value = weight_map.get((weight or "").strip().lower(), 2)
@@ -375,8 +453,9 @@ class ExcelLiveService:
         for edge in edges:
             border = api_range.Borders(edge)
             border.LineStyle = line_style_value
-            border.Weight = weight_value
-            border.Color = border_color
+            if line_style_value != -4142:
+                border.Weight = weight_value
+                border.Color = border_color
 
         rows_obj = getattr(rng, "rows", None)
         cols_obj = getattr(rng, "columns", None)
@@ -1112,7 +1191,7 @@ class ExcelLiveService:
         target_id = workbook_id or self._selected_workbook_id
         if not target_id:
             raise WorkbookNotFoundError("workbook_id가 필요합니다.")
-        wb = self._find_workbook(target_id)
+        self._find_workbook(target_id)
         app = self._app()
         macro = str(macro_name or "").strip()
         if not macro:
@@ -1460,6 +1539,35 @@ class ExcelLiveService:
         except Exception:
             return "A1"
 
+    def get_used_range_ref(
+        self,
+        workbook_id: str | None,
+        sheet_name: str | None,
+    ) -> str:
+        """
+        현재 시트의 사용 영역(used_range)을 A1 표기 문자열로 반환한다.
+
+        - "전체 지우기/초기화"처럼 범위를 명시하지 않은 명령의 기본 타깃으로 사용.
+        - used_range를 얻지 못하면 A1로 폴백.
+        """
+        target_id = workbook_id or self._selected_workbook_id
+        if not target_id:
+            return "A1"
+
+        wb = self._find_workbook(target_id)
+        sheet = self._find_sheet(wb, sheet_name) if sheet_name else wb.sheets.active
+        try:
+            used = getattr(sheet, "used_range", None)
+            if used is None:
+                return "A1"
+            address = str(getattr(used, "address", "") or "")
+            cleaned = self._normalize_address_ref(address)
+            if cleaned:
+                return cleaned
+        except Exception:
+            pass
+        return "A1"
+
     def _find_workbook(self, workbook_id_or_name: str):
         candidate = (workbook_id_or_name or "").strip().lower()
         for wb in self._app().books:
@@ -1524,6 +1632,18 @@ class ExcelLiveService:
         if "," in text:
             text = text.split(",")[0].strip()
         return text or ""
+
+    @staticmethod
+    def _sanitize_sheet_name(sheet_name: str) -> str:
+        text = str(sheet_name or "").strip()
+        if not text:
+            raise ExcelLiveError("sheet_name이 비어 있습니다.")
+        # Excel 시트명 금지 문자: : \ / ? * [ ]
+        text = re.sub(r"[:\\/?*\[\]]", "_", text)
+        text = text[:31].strip()
+        if not text:
+            raise ExcelLiveError("유효한 sheet_name이 필요합니다.")
+        return text
 
     @staticmethod
     def _matches_condition(value: Any, operator: str, threshold: float) -> bool:

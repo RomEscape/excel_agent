@@ -128,7 +128,7 @@ function StepLLM({ onNext, onPrev }) {
 
   const handleProviderChange = (val) => {
     setProvider(val);
-    setModel(val === "claude" ? "claude-sonnet-4-20250514" : "qwen3:4b");
+    setModel(val === "claude" ? "claude-sonnet-4-20250514" : "skt/A.X-4.0-Light:latest");
     setOllamaModels([]);
     setOllamaStatus("unknown");
   };
@@ -296,12 +296,12 @@ function StepLLM({ onNext, onPrev }) {
               터미널에서 추천 모델을 받아주세요:
             </p>
             <div className="flex items-center gap-2 rounded bg-blue-100 dark:bg-blue-900/40 px-3 py-2">
-              <code className="flex-1 text-xs font-mono">ollama pull qwen3:4b</code>
+              <code className="flex-1 text-xs font-mono">ollama pull skt/A.X-4.0-Light:latest</code>
               <Button
                 size="sm"
                 variant="ghost"
                 className="h-6 px-2 text-xs"
-                onClick={() => navigator.clipboard.writeText("ollama pull qwen3:4b")}
+                onClick={() => navigator.clipboard.writeText("ollama pull skt/A.X-4.0-Light:latest")}
               >
                 <Copy className="h-3 w-3" />
               </Button>

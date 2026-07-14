@@ -13,6 +13,6 @@ def test_default_preset_is_qwen3_local():
     assert get_preset()["id"] == QWEN3_LOCAL["id"]
 
 
-def test_default_llm_config_matches_ollama_qwen3():
+def test_default_llm_config_matches_ollama_adot():
     cfg = get_default_llm_config()
-    assert cfg == {"provider": "ollama", "model": "qwen3:4b"}
+    assert cfg == {"provider": "ollama", "model": "skt/A.X-4.0-Light:latest"}

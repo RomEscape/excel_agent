@@ -166,6 +166,7 @@ class _FakeRangeApi:
 class _FakeSheet:
     def __init__(self, name: str):
         self.name = name
+        self._sheets = None
         self._values: dict[tuple[int, int], object] = {}
         self._colors: dict[tuple[int, int], tuple[int, int, int]] = {}
         self._formulas: dict[tuple[int, int], str] = {}
@@ -201,11 +202,34 @@ class _FakeSheet:
         min_col, max_col = min(cols), max(cols)
         return _FakeRange(self, min_row, min_col, max_row - min_row + 1, max_col - min_col + 1)
 
+    def activate(self):
+        if self._sheets is None:
+            return
+        try:
+            self._sheets._active_index = self._sheets.index(self)
+        except ValueError:
+            pass
+
 
 class _FakeSheets(list):
+    def __init__(self, sheets):
+        super().__init__(sheets)
+        self._active_index = 0
+        for sheet in self:
+            sheet._sheets = self
+
     @property
     def active(self):
-        return self[0] if self else None
+        if not self:
+            return None
+        return self[self._active_index]
+
+    def add(self, name: str):
+        sheet = _FakeSheet(name)
+        sheet._sheets = self
+        self.append(sheet)
+        self._active_index = len(self) - 1
+        return sheet
 
 
 class _FakeWorkbook:
@@ -269,6 +293,43 @@ def test_select_workbook_sets_selected_id():
 
     assert result == {"selected": True, "workbook_id": wb1.fullname}
     assert service.get_selected_workbook_id() == wb1.fullname
+
+
+def test_list_sheets_returns_sheet_names_and_active_sheet():
+    service, wb1, _ = _build_service()
+    service.select_workbook(wb1.fullname)
+
+    result = service.list_sheets(workbook_id=None)
+
+    assert result["count"] == 2
+    assert result["active_sheet"] == "Sheet1"
+    assert result["sheets"] == ["Sheet1", "Sheet2"]
+
+
+def test_select_sheet_switches_active_sheet():
+    service, wb1, _ = _build_service()
+    service.select_workbook(wb1.fullname)
+
+    result = service.select_sheet(workbook_id=None, sheet_name="Sheet2")
+
+    assert result["selected"] is True
+    assert result["active_sheet"] == "Sheet2"
+    rows = service.list_workbooks()
+    assert rows[0]["active_sheet"] == "Sheet2"
+
+
+def test_create_sheet_creates_and_reuses_existing_sheet():
+    service, wb1, _ = _build_service()
+    service.select_workbook(wb1.fullname)
+
+    created = service.create_sheet(workbook_id=None, sheet_name="요약", make_active=True)
+    assert created["created"] is True
+    assert created["sheet_name"] == "요약"
+    assert created["active_sheet"] == "요약"
+
+    reused = service.create_sheet(workbook_id=None, sheet_name="요약", make_active=False)
+    assert reused["created"] is False
+    assert reused["sheet_name"] == "요약"
 
 
 def test_read_range_uses_selected_workbook_when_id_missing():
@@ -439,6 +500,39 @@ def test_apply_border_sets_all_edges_and_inside_lines():
         assert border.LineStyle == 1
         assert border.Weight == 2
         assert border.Color is not None
+
+
+def test_apply_border_none_clears_existing_edges():
+    service, wb1, _ = _build_service()
+    service.write_range(
+        workbook_id=wb1.fullname,
+        sheet_name="Sheet1",
+        start_cell="B2",
+        values_2d=[[1, 2], [3, 4]],
+    )
+    service.apply_border(
+        workbook_id=wb1.fullname,
+        sheet_name="Sheet1",
+        target_range="B2:C3",
+        line_style="continuous",
+        weight="medium",
+        color="#000000",
+    )
+    result = service.apply_border(
+        workbook_id=wb1.fullname,
+        sheet_name="Sheet1",
+        target_range="B2:C3",
+        line_style="none",
+        weight="thin",
+        color="#D9D9D9",
+    )
+    assert result["changed_cells"] == 4
+    assert result["address"] == "B2:C3"
+
+    border_map = service._find_sheet(wb1, "Sheet1")._borders
+    for edge in (7, 8, 9, 10, 11, 12):
+        border = border_map[(2, 2, edge)]
+        assert border.LineStyle == -4142
 
 
 def test_fill_range_applies_color_to_entire_target_range():

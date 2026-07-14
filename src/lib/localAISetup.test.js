@@ -50,18 +50,18 @@ const fixtures = {
 // ── DEFAULT_MODEL / RECOMMENDED_MODELS ────────────────────────────────────
 
 describe("default model", () => {
-  it("Qwen 3 로컬 스택(qwen3:4b)을 기본값으로 한다", () => {
-    assert.equal(DEFAULT_MODEL, "qwen3:4b");
+  it("에이닷 로컬 스택(skt/A.X-4.0-Light:latest)을 기본값으로 한다", () => {
+    assert.equal(DEFAULT_MODEL, "skt/A.X-4.0-Light:latest");
   });
 
   it("RECOMMENDED_MODELS 첫 항목이 DEFAULT_MODEL과 일치한다 (사용자에게 첫 노출 = 권장)", () => {
     assert.equal(RECOMMENDED_MODELS[0].id, DEFAULT_MODEL);
   });
 
-  it("qwen3:4b 설명에 한국어/최신 계열 취지가 명시되어야 한다", () => {
-    const qwen = RECOMMENDED_MODELS.find((m) => m.id === "qwen3:4b");
-    assert.ok(qwen, "qwen3:4b가 추천 목록에 있어야 함");
-    assert.match(qwen.note, /Qwen|한국어|최신/);
+  it("에이닷 기본 모델 설명에 한국어/안정성 취지가 명시되어야 한다", () => {
+    const adot = RECOMMENDED_MODELS.find((m) => m.id === "skt/A.X-4.0-Light:latest");
+    assert.ok(adot, "skt/A.X-4.0-Light:latest가 추천 목록에 있어야 함");
+    assert.match(adot.note, /에이닷|한국어|안정성/);
   });
 });
 

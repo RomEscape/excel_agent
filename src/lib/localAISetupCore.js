@@ -28,7 +28,7 @@ export const DEFAULT_MODEL = DEFAULT_OLLAMA_MODEL;
 
 /**
  * Ollama 모델 목록에 해당 모델이 이미 받아져 있는지 확인.
- * Ollama는 `qwen3:4b` 또는 `qwen3:4b:latest` 형태로 표시될 수 있음.
+ * Ollama는 `skt/A.X-4.0-Light:latest`처럼 태그가 붙은 문자열을 사용한다.
  */
 export function hasModelInstalled(models, model) {
   const target = String(model || "").trim();
@@ -37,7 +37,7 @@ export function hasModelInstalled(models, model) {
   return (models || []).some((m) => {
     const name = String(m?.name || "");
     if (hasTag) {
-      // 태그를 지정한 경우(예: qwen3:8b)는 다른 태그(qwen3:4b)를 매치하면 안 된다.
+      // 태그를 지정한 경우(예: foo:8b)는 다른 태그(foo:4b)를 매치하면 안 된다.
       return name === target || name.startsWith(`${target}:`);
     }
     // 태그를 생략한 경우(예: qwen3)만 base prefix 매칭 허용.
