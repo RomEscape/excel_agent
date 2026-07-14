@@ -62,6 +62,8 @@ const DETECTION_DELAY_MS = 1000;
 /** 프롬프트 검증 시 보낼 핑 메시지 — 응답 형식·언어는 모델마다 다르므로 *비어있지 않은 응답*만 검사 */
 const PING_MESSAGE = QWEN3_OPENCLAW_PRESET.pingMessage;
 const PROMPT_TEST_TIMEOUT_MS = 120_000;
+const PROMPT_TEST_MAX_ATTEMPTS = 3;
+const PROMPT_TEST_RETRY_DELAY_MS = 1_800;
 
 function isGatewayUnavailableError(err) {
   const msg = String(err?.message ?? err ?? "");
@@ -369,10 +371,7 @@ export default function LocalAISetupWizard() {
                 ),
               ]);
 
-            let reply;
-            try {
-              reply = await askAgentWithTimeout();
-            } catch (err) {
+            const recoverForPromptTest = async (err) => {
               if (isTokenMismatchError(err)) {
                 pushLog(stepId, "info", "게이트웨이 인증 토큰 불일치가 감지되어 OpenClaw를 다시 시작합니다...");
                 const startResult = await STATUS_MODULES.openclaw.start();
@@ -380,29 +379,54 @@ export default function LocalAISetupWizard() {
                   throw new Error(startResult?.message || "OpenClaw 게이트웨이를 자동으로 다시 시작하지 못했어요.");
                 }
                 await new Promise((r) => setTimeout(r, 1200));
-                reply = await askAgentWithTimeout();
-              } else if (isSidecarUnavailableError(err)) {
+                return;
+              }
+              if (isSidecarUnavailableError(err)) {
                 pushLog(stepId, "info", "백그라운드 서비스가 아직 준비 중이라 잠시 후 다시 시도합니다...");
-                await new Promise((r) => setTimeout(r, 1800));
-                reply = await askAgentWithTimeout();
-              } else {
-                if (!isGatewayUnavailableError(err)) {
-                  throw err;
-                }
+                await new Promise((r) => setTimeout(r, PROMPT_TEST_RETRY_DELAY_MS));
+                return;
+              }
+              if (isGatewayUnavailableError(err)) {
                 pushLog(stepId, "info", "OpenClaw 게이트웨이가 꺼져 있어 자동으로 다시 시작합니다...");
                 const startResult = await STATUS_MODULES.openclaw.start();
                 if (startResult?.state !== "running") {
                   throw new Error(startResult?.message || "OpenClaw 게이트웨이를 자동으로 다시 시작하지 못했어요.");
                 }
-                // 게이트웨이 재기동 직후 초기화 시간을 짧게 준다.
                 await new Promise((r) => setTimeout(r, 1200));
                 pushLog(stepId, "info", "게이트웨이 재시작 완료. AI 대화 테스트를 다시 시도합니다.");
+                return;
+              }
+              // 명시적으로 분류되지 않은 일시 오류도 1~2회는 재시도해 1회 통과율을 높인다.
+              await new Promise((r) => setTimeout(r, PROMPT_TEST_RETRY_DELAY_MS));
+            };
+
+            let reply;
+            let lastError = null;
+            for (let attempt = 1; attempt <= PROMPT_TEST_MAX_ATTEMPTS; attempt += 1) {
+              try {
                 reply = await askAgentWithTimeout();
+                const text = String(reply?.response ?? "").trim();
+                if (!text) {
+                  throw new Error("AI가 응답하지 않았어요");
+                }
+                break;
+              } catch (err) {
+                lastError = err;
+                if (attempt >= PROMPT_TEST_MAX_ATTEMPTS) {
+                  throw err;
+                }
+                pushLog(
+                  stepId,
+                  "info",
+                  `AI 대화 테스트 ${attempt}차 시도에 실패해 자동 재시도합니다 (${attempt + 1}/${PROMPT_TEST_MAX_ATTEMPTS}).`
+                );
+                await recoverForPromptTest(err);
               }
             }
+
             const text = String(reply?.response ?? "").trim();
             if (!text) {
-              throw new Error("AI가 응답하지 않았어요");
+              throw lastError || new Error("AI가 응답하지 않았어요");
             }
             const preview = text.length > 200 ? `${text.slice(0, 200)}…` : text;
             pushLog(stepId, "out", `AI: ${preview}`);
@@ -835,7 +859,7 @@ function ModelPicker({ model, onChange }) {
             disabled={!custom}
             value={custom ? model : ""}
             onChange={(e) => onChange(e.target.value)}
-            placeholder="qwen3:8b"
+            placeholder="skt/A.X-4.0-Light:latest"
             className="flex-1 rounded border border-input bg-background px-2 py-0.5 font-mono text-[11px] disabled:opacity-50"
           />
         </label>

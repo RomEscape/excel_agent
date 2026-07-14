@@ -98,6 +98,7 @@ class PendingCreateTableSlots:
     rows: int | None = None
     cols: int | None = None
     headers: list[str] | None = None
+    values_2d: list[list[Any]] | None = None
     start_cell: str | None = None
     template_key: str | None = None
     template_follow_up_question: str | None = None
@@ -159,6 +160,27 @@ _COMMAND_PARSE_RETRY_BACKOFF_SECONDS = _env_float(
     0.5,
     0.0,
 )
+_COMMAND_DEEP_PARSE_TIMEOUT_SECONDS = _env_float(
+    "EXCEL_LIVE_DEEP_PARSE_TIMEOUT_SECONDS",
+    max(_COMMAND_PARSE_TIMEOUT_SECONDS + 4.0, 14.0),
+    _COMMAND_PARSE_TIMEOUT_SECONDS,
+)
+_COMMAND_DEEP_PARSE_MAX_ATTEMPTS = _env_int(
+    "EXCEL_LIVE_DEEP_PARSE_MAX_ATTEMPTS",
+    max(_COMMAND_PARSE_MAX_ATTEMPTS, 2),
+    1,
+)
+_COMMAND_DEEP_PARSE_RETRY_BACKOFF_SECONDS = _env_float(
+    "EXCEL_LIVE_DEEP_PARSE_RETRY_BACKOFF_SECONDS",
+    max(_COMMAND_PARSE_RETRY_BACKOFF_SECONDS, 0.7),
+    0.0,
+)
+_COMMAND_REFLECTION_TIMEOUT_SECONDS = _env_float(
+    "EXCEL_LIVE_REFLECTION_TIMEOUT_SECONDS",
+    _COMMAND_DEEP_PARSE_TIMEOUT_SECONDS,
+    3.0,
+)
+_COMMAND_REFLECTION_MAX_ATTEMPTS = _env_int("EXCEL_LIVE_REFLECTION_MAX_ATTEMPTS", 1, 1)
 _EXCEL_QUEUE_TIMEOUT_SECONDS = _env_float("EXCEL_LIVE_QUEUE_TIMEOUT_SECONDS", 180.0, 10.0)
 _EXCEL_QUEUE_LOCK = threading.RLock()
 _ROLLBACK_MAX_CELLS = 50000
@@ -175,6 +197,58 @@ _ROLLBACK_SNAPSHOT_ACTIONS = {
     "excel_live.sort_range",
     "excel_live.dedupe_rows",
     "excel_live.create_table",
+}
+_COMPLEX_REASONING_KEYWORDS = {
+    "피벗",
+    "pivot",
+    "차트",
+    "그래프",
+    "대시보드",
+    "검증",
+    "유효성",
+    "자동화",
+    "매크로",
+    "vba",
+    "power query",
+    "파워쿼리",
+    "비교",
+    "diff",
+    "예측",
+    "시뮬레이션",
+    "연결",
+    "링크",
+    "함수",
+    "수식",
+    "vlookup",
+    "countif",
+    "sumif",
+    "여러 시트",
+    "cross sheet",
+}
+_DEEP_REASONING_OPERATION_INTENTS = {
+    "formula",
+    "pivot",
+    "chart",
+    "protect",
+    "consolidate",
+    "automation",
+    "compare",
+    "forecast",
+    "print",
+    "general",
+}
+_EDIT_EXPECTED_OPERATION_INTENTS = {
+    "formula",
+    "sort",
+    "filter",
+    "dedupe",
+    "pivot",
+    "chart",
+    "protect",
+    "consolidate",
+    "automation",
+    "compare",
+    "forecast",
 }
 
 
@@ -295,6 +369,9 @@ def _resolve_runtime_range_ref(
     text = _normalize_range_text(raw_range)
     if not text:
         return ""
+    if text == "__USED_RANGE__":
+        used = _normalize_range_text(service.get_used_range_ref(workbook_id, sheet_name))
+        return _top_left_cell(used) if for_cell else used
     if text == "__ACTIVE_SELECTION__":
         selected = _normalize_range_text(service.get_active_selection_ref(workbook_id, sheet_name))
         return _top_left_cell(selected) if for_cell else selected
@@ -506,12 +583,14 @@ def _quick_color_hex(word: str) -> str:
         return "#4F8CFF"
     if token in {"초록색", "초록", "green"}:
         return "#6AC36A"
+    if token in {"흰색", "하얀색", "하양", "white", "화이트", "백색"}:
+        return "#FFFFFF"
     return "#FFFF00"
 
 
 def _quick_extract_colors(text: str) -> list[str]:
     matches = re.findall(
-        r"(노란색|노랑|yellow|빨간색|빨강|red|파란색|파랑|blue|초록색|초록|green)",
+        r"(노란색|노랑|yellow|빨간색|빨강|red|파란색|파랑|blue|초록색|초록|green|흰색|하얀색|하양|white|화이트|백색)",
         str(text or ""),
         re.IGNORECASE,
     )
@@ -580,69 +659,262 @@ def _is_color_format_request(lowered: str) -> bool:
             "초록색",
             "초록",
             "green",
+            "흰색",
+            "하얀색",
+            "하양",
+            "white",
+            "화이트",
+            "백색",
         ]
     )
     has_format_verb = any(
         token in lowered
-        for token in ["색칠", "칠해", "배경", "강조", "표시", "highlight", "구분"]
+        for token in ["색칠", "칠해", "배경", "강조", "표시", "highlight", "구분", "색을", "색깔", "바꿔", "만들어"]
     )
     return has_color and has_format_verb
 
 
+def _is_color_clear_request(lowered: str) -> bool:
+    text = str(lowered or "").strip().lower()
+    if not text:
+        return False
+    has_color_context = any(
+        token in text for token in ["색", "색깔", "배경색", "color", "컬러", "fill"]
+    )
+    if not has_color_context:
+        return False
+    if re.search(
+        r"(색|색깔|배경색|color).{0,12}(없애|제거|지우|삭제|비우|초기화|리셋|reset|clear|원래|기본)",
+        text,
+        re.IGNORECASE,
+    ):
+        return True
+    if re.search(
+        r"(없애|제거|지우|삭제|비우|초기화|리셋|reset|clear).{0,12}(색|색깔|배경색|color)",
+        text,
+        re.IGNORECASE,
+    ):
+        return True
+    return False
+
+
+def _is_whole_sheet_style_request(
+    lowered: str,
+    normalized_ctx: str,
+    explicit_range: str,
+) -> bool:
+    if normalized_ctx or explicit_range:
+        return False
+    text = str(lowered or "").strip().lower()
+    if not text:
+        return False
+    return any(
+        token in text
+        for token in [
+            "전체",
+            "모든",
+            "전부",
+            "시트 전체",
+            "전체 범위",
+            "엑셀 전체",
+            "엑셀 화면 전체",
+            "통째로",
+            "전반적으로",
+        ]
+    ) or bool(re.search(r"\b다\s*(색|테두리|경계선|보더)", text, re.IGNORECASE))
+
+
+def _is_clear_reset_request(lowered: str) -> bool:
+    text = str(lowered or "").strip().lower()
+    if not text:
+        return False
+    # "지우지 말고", "삭제 안 되게" 같은 금지/보호 문맥은 clear 의도에서 제외한다.
+    if re.search(r"(지우|삭제|비우).{0,8}(지\s*마|지\s*말|않|안\s*되|못\s*하)", text):
+        return False
+    has_clear_verb = bool(
+        re.search(
+            r"(지우|지워|지울|삭제|비우|비워|초기화|리셋|reset|clear|wipe|erase|밀어|싹)",
+            text,
+            re.IGNORECASE,
+        )
+    )
+    has_state_reset_phrase = any(
+        token in text
+        for token in [
+            "원래 상태",
+            "처음 상태",
+            "초기 상태",
+            "기본 상태",
+            "원상복구",
+            "처음으로",
+        ]
+    )
+    if has_state_reset_phrase and any(token in text for token in ["최근", "마지막", "백업", "되돌리", "undo"]):
+        return False
+    return has_clear_verb or has_state_reset_phrase
+
+
+def _is_whole_sheet_reset_request(
+    lowered: str,
+    normalized_ctx: str,
+    explicit_range: str,
+) -> bool:
+    if normalized_ctx or explicit_range:
+        return False
+    text = str(lowered or "").strip().lower()
+    if not text:
+        return False
+    return any(
+        token in text
+        for token in [
+            "전체",
+            "모든",
+            "전부",
+            "엑셀",
+            "시트 전체",
+            "화면",
+            "통째로",
+            "싹",
+            "깔끔하게",
+            "깨끗하게",
+            "원래 상태",
+            "처음 상태",
+            "초기 상태",
+            "기본 상태",
+        ]
+    ) or bool(re.search(r"\b다\s*(지우|비우|삭제)", text, re.IGNORECASE))
+
+
+def _normalized_message_views(message: str) -> tuple[str, str]:
+    lowered = str(message or "").strip().lower()
+    compact = re.sub(r"[\s\-_]+", "", lowered)
+    return lowered, compact
+
+
+def _contains_any_keyword(lowered: str, compact: str, keywords: list[str]) -> bool:
+    for keyword in keywords:
+        token = str(keyword or "").strip().lower()
+        if not token:
+            continue
+        if token in lowered:
+            return True
+        token_compact = re.sub(r"[\s\-_]+", "", token)
+        if token_compact and token_compact in compact:
+            return True
+    return False
+
+
+def _matches_any_pattern(lowered: str, patterns: list[str]) -> bool:
+    for pattern in patterns:
+        if re.search(pattern, lowered, re.IGNORECASE):
+            return True
+    return False
+
+
 def _detect_operation_intent(message: str) -> str:
-    lowered = str(message or "").lower()
+    lowered, compact = _normalized_message_views(message)
     color_format_request = _is_color_format_request(lowered)
     color_condition_request = color_format_request and (_quick_parse_condition(lowered) is not None)
-    if (not color_format_request) and any(
-        token in lowered
-        for token in [
-            "곱해서",
-            "곱한",
-            "세금 포함",
-            "부가세",
-            "목표 대비",
-            "부족한지",
-            "자동으로 계산",
-            "계산식",
-            "함수 적용",
-            "수식 넣",
-            "countif",
-            "vlookup",
-            "if(",
-            "건수",
-            "개수",
-            "찾아와",
-            "조회값",
-            "조건식",
-            "미만이면",
-            "수식 결과",
-            "결과 확인",
-            "달성률",
-            "사용률",
-            "증감률",
-            "마진",
-            "마진율",
-            "할인",
-            "자동으로 들어오",
-            "자동으로 나오",
-            "정보 나오게",
-            "상품명 나오게",
-            "진행률",
-            "합격",
-            "불합격",
-            "등급",
-        ]
+    if (not color_format_request) and (
+        _contains_any_keyword(
+            lowered,
+            compact,
+            [
+                "곱해서",
+                "곱한",
+                "곱해",
+                "나눠",
+                "나눗셈",
+                "합산",
+                "총합",
+                "세금 포함",
+                "부가세",
+                "목표 대비",
+                "부족한지",
+                "자동으로 계산",
+                "계산식",
+                "계산해",
+                "산출",
+                "함수 적용",
+                "수식 넣",
+                "countif",
+                "vlookup",
+                "sumif",
+                "if(",
+                "건수",
+                "개수",
+                "찾아와",
+                "찾아오",
+                "조회값",
+                "조건식",
+                "미만이면",
+                "수식 결과",
+                "결과 확인",
+                "달성률",
+                "사용률",
+                "증감률",
+                "마진",
+                "마진율",
+                "할인",
+                "자동으로 들어오",
+                "자동으로 나오",
+                "정보 나오게",
+                "상품명 나오게",
+                "진행률",
+                "합격",
+                "불합격",
+                "등급",
+            ],
+        )
+        or _matches_any_pattern(
+            lowered,
+            [
+                r"(수량|단가|금액).{0,18}(계산|산출|자동)",
+                r"(곱|더하|빼|나누).{0,8}(해|해서|하|되)",
+                r"(if|vlookup|countif|sumif|averageif)\s*\(",
+            ],
+        )
     ):
         return "formula"
-    if any(
-        token in lowered
-        for token in [
+    # 함수/필터/수식 오류는 단순 필터/검증보다 디버그 의도로 우선 분기한다.
+    if _contains_any_keyword(
+        lowered,
+        compact,
+        [
+            "#n/a",
+            "#value",
+            "#div/0",
+            "수식이 이상",
+            "합계가 이상",
+            "오류 고쳐",
+            "filter 함수가 안",
+            "필터함수가안",
+            "함수 오류",
+            "수식 오류",
+        ],
+    ) or _matches_any_pattern(
+        lowered,
+        [
+            r"(필터|수식|함수).{0,10}(안\s*돼|안돼|안\s*됨|먹통|오류|이상)",
+            r"(오류|에러).{0,8}(고쳐|수정|해결|잡아)",
+        ],
+    ):
+        return "debug"
+    if _contains_any_keyword(
+        lowered,
+        compact,
+        [
             "정렬",
             "높은 순",
             "낮은 순",
             "오름차순",
             "내림차순",
             "순으로",
+            "순서대로",
+            "순위대로",
+            "재배치",
+            "줄세워",
+            "줄 세워",
             "상위",
             "하위",
             "rank",
@@ -650,34 +922,67 @@ def _detect_operation_intent(message: str) -> str:
             "가장 큰",
             "제일 많이",
             "많이 했",
-        ]
+        ],
+    ) or _matches_any_pattern(
+        lowered,
+        [
+            r"(큰|높은|많은|작은|낮은|적은)\s*(값|순|순서)",
+            r"(정렬|배치|재배치|줄세우).{0,8}(해|해줘|하|해봐)",
+        ],
     ):
         return "sort"
-    if any(
-        token in lowered
-        for token in ["필터", "완료만", "완료", "만 보여", "조건", "골라줘", "추려", "따로 보고", "위험한", "상태 열"]
+    if _contains_any_keyword(
+        lowered,
+        compact,
+        [
+            "필터",
+            "완료만",
+            "완료",
+            "만 보여",
+            "골라줘",
+            "추려",
+            "걸러",
+            "남겨",
+            "따로 보고",
+            "위험한",
+            "상태 열",
+        ],
+    ) or _matches_any_pattern(
+        lowered,
+        [
+            r"(만)\s*(보여|남겨|추려|걸러)",
+            r"(조건|기준).{0,10}(필터|추리|걸러)",
+        ],
     ):
         return "filter"
-    if any(token in lowered for token in ["중복", "중복된", "중복 제거", "중복 없애"]):
+    if _contains_any_keyword(lowered, compact, ["중복", "중복된", "중복 제거", "중복 없애", "중복값", "겹친 값"]) or _matches_any_pattern(
+        lowered, [r"(중복|겹치).{0,8}(제거|삭제|없애|정리)"]
+    ):
         return "dedupe"
-    if any(
-        token in lowered
-        for token in ["피벗", "집계표", "월별", "부서별", "지역별", "담당자별", "카테고리별", "고객별"]
+    if _contains_any_keyword(
+        lowered,
+        compact,
+        ["피벗", "집계표", "월별", "부서별", "지역별", "담당자별", "카테고리별", "고객별"],
     ):
         return "pivot"
-    if any(
-        token in lowered
-        for token in ["차트", "그래프", "시각화", "비율로 보고", "한눈에", "추이", "발표용"]
-    ):
+    if _contains_any_keyword(
+        lowered,
+        compact,
+        ["차트", "그래프", "시각화", "도식화", "비율로 보고", "한눈에", "추이", "발표용"],
+    ) or _matches_any_pattern(lowered, [r"(차트|그래프|시각화|도식화).{0,8}(만들|생성|그려|표시)"]):
         return "chart"
-    if any(
-        token in lowered
-        for token in [
+    if _contains_any_keyword(
+        lowered,
+        compact,
+        [
             "검증",
             "이상한 값",
             "오류",
             "형식 이상",
             "점검",
+            "검토",
+            "진단",
+            "체크",
             "빠진 값",
             "형식 이상한",
             "계산이 맞는지",
@@ -685,15 +990,22 @@ def _detect_operation_intent(message: str) -> str:
             "문제",
             "검산",
             "틀린 값",
-        ]
+        ],
     ):
         return "validate"
-    if any(
-        token in lowered
-        for token in [
+    if _contains_any_keyword(
+        lowered,
+        compact,
+        [
             "보호",
             "잠금",
             "잠가",
+            "잠궈",
+            "잠궈줘",
+            "건들지",
+            "건들지 못",
+            "편집 막",
+            "수정 금지",
             "입력 제한",
             "드롭다운",
             "유효성",
@@ -703,25 +1015,25 @@ def _detect_operation_intent(message: str) -> str:
             "수정 못",
             "목록에서 고르게",
             "잘못 입력 못",
-        ]
+        ],
     ):
         return "protect"
-    if any(
-        token in lowered
-        for token in ["파일 여러", "시트 여러", "합쳐", "merge", "폴더", "원본 파일"]
+    if _contains_any_keyword(lowered, compact, ["파일 여러", "시트 여러", "합쳐", "merge", "폴더", "원본 파일"]) or _matches_any_pattern(
+        lowered, [r"(파일|시트).{0,10}(통합|합치|병합)"]
     ):
         return "consolidate"
-    if any(token in lowered for token in ["vba", "매크로", "power query", "refreshall", "새로고침"]):
+    if _contains_any_keyword(lowered, compact, ["vba", "매크로", "power query", "refreshall", "새로고침"]):
         return "automation"
-    if any(token in lowered for token in ["비교", "차이", "diff", "다른 값", "바뀐", "지난달", "전월", "전년"]):
+    if _contains_any_keyword(lowered, compact, ["비교", "차이", "diff", "다른 값", "바뀐", "지난달", "전월", "전년"]):
         return "compare"
-    if any(token in lowered for token in ["예측", "추세", "시뮬레이션", "다음 달", "연말", "forecast", "앞으로"]):
+    if _contains_any_keyword(lowered, compact, ["예측", "추세", "시뮬레이션", "다음 달", "연말", "forecast", "앞으로"]):
         return "forecast"
-    if any(token in lowered for token in ["a4", "인쇄", "pdf", "출력", "제출"]):
+    if _contains_any_keyword(lowered, compact, ["a4", "인쇄", "pdf", "출력", "제출"]):
         return "print"
-    if any(
-        token in lowered
-        for token in [
+    if _contains_any_keyword(
+        lowered,
+        compact,
+        [
             "읽기 전용",
             "보호된 보기",
             "편집이 안",
@@ -733,24 +1045,23 @@ def _detect_operation_intent(message: str) -> str:
             "권한",
             "되돌릴",
             "되돌려",
-        ]
+        ],
     ):
         return "safety"
-    if any(
-        token in lowered
-        for token in ["#n/a", "#value", "#div/0", "수식이 이상", "합계가 이상", "오류 고쳐", "filter 함수가 안"]
-    ):
-        return "debug"
-    if any(token in lowered for token in ["느려", "멈춰", "버벅", "업데이트가 안 돼"]):
+    if _contains_any_keyword(lowered, compact, ["느려", "멈춰", "버벅", "업데이트가 안 돼"]):
         return "performance"
-    if any(token in lowered for token in ["피벗이 뭐", "power query가 뭐", "뭐야", "설명해줘", "무슨 뜻"]):
+    if _contains_any_keyword(lowered, compact, ["피벗이 뭐", "power query가 뭐", "뭐야", "설명해줘", "무슨 뜻"]):
         return "explain"
-    if any(
-        token in lowered
-        for token in [
+    if _contains_any_keyword(
+        lowered,
+        compact,
+        [
             "정리해줘",
             "알아서",
             "보기 좋게",
+            "보기 편하게",
+            "다듬어줘",
+            "손봐줘",
             "보고용",
             "중요한 내용",
             "요약해줘",
@@ -764,7 +1075,9 @@ def _detect_operation_intent(message: str) -> str:
             "재고 언제",
             "예산 초과",
             "지출 내역",
-        ]
+            "포맷팅",
+            "형식 맞춰",
+        ],
     ) and (not color_condition_request):
         return "general"
     return ""
@@ -833,6 +1146,16 @@ def _next_column(col: str) -> str:
     return out
 
 
+def _quote_sheet_for_formula(sheet_name: str) -> str:
+    text = str(sheet_name or "").strip()
+    if not text:
+        return "Sheet1"
+    escaped = text.replace("'", "''")
+    if re.search(r"[^A-Z0-9_]", text, re.IGNORECASE):
+        return f"'{escaped}'"
+    return escaped
+
+
 def _build_quick_action_plan(message: str, context_range: str | None) -> list[dict[str, Any]] | None:
     text = str(message or "").strip()
     lowered = text.lower()
@@ -857,6 +1180,19 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
     ):
         return [{"action": "excel_live.list_workbooks", "params": {}, "reason": "빠른 규칙 기반 워크북 목록 조회"}]
 
+    if any(
+        token in lowered
+        for token in [
+            "시트 목록",
+            "탭 목록",
+            "현재 시트 목록",
+            "sheet list",
+            "list sheets",
+            "worksheet list",
+        ]
+    ):
+        return [{"action": "excel_live.list_sheets", "params": {}, "reason": "빠른 규칙 기반 시트 목록 조회"}]
+
     select_match = re.search(
         r"(?:워크북|통합문서|파일|workbook)\s+([^\s]+\.xlsx|[^\s]+)\s*(?:선택|전환|열어|열기|select|switch)",
         text,
@@ -873,6 +1209,90 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
                 }
             ]
 
+    create_sheet_match = re.search(
+        r"([^\s,]+)\s*(?:시트|sheet)\s*(?:만들|생성|추가|create|add)",
+        text,
+        re.IGNORECASE,
+    )
+    if create_sheet_match:
+        sheet_name = str(create_sheet_match.group(1)).strip().strip("\"'")
+        if sheet_name:
+            return [
+                {
+                    "action": "excel_live.create_sheet",
+                    "params": {"sheet_name": sheet_name, "make_active": True},
+                    "reason": "빠른 규칙 기반 시트 생성",
+                }
+            ]
+
+    select_sheet_match = re.search(
+        r"([^\s,]+)\s*(?:시트|sheet)\s*(?:로|으로)?\s*(?:이동|전환|선택|활성화|switch|go)",
+        text,
+        re.IGNORECASE,
+    )
+    if select_sheet_match:
+        sheet_name = str(select_sheet_match.group(1)).strip().strip("\"'")
+        if sheet_name:
+            return [
+                {
+                    "action": "excel_live.select_sheet",
+                    "params": {"sheet_name": sheet_name},
+                    "reason": "빠른 규칙 기반 시트 전환",
+                }
+            ]
+
+    # 시트 간 값 연결: "요약 시트 B2에 원본 시트 E2 값을 연결해줘"
+    if any(token in lowered for token in ["연결", "링크", "참조", "link", "가져오", "불러오"]):
+        target_match = re.search(
+            r"([^\s,]+)\s*(?:시트|sheet)\s*(?:의\s*)?([A-Z]+\d+)\s*(?:셀|칸)?\s*에",
+            text,
+            re.IGNORECASE,
+        )
+        sheet_refs = re.findall(
+            r"([^\s,]+)\s*(?:시트|sheet)\s*(?:의\s*)?([A-Z]+\d+(?::[A-Z]+\d+)?|[A-Z]+:[A-Z]+)\s*(?:셀|칸)?",
+            text,
+            re.IGNORECASE,
+        )
+        if target_match and sheet_refs:
+            target_sheet = str(target_match.group(1)).strip().strip("\"'")
+            target_cell = str(target_match.group(2)).strip().upper()
+            source_sheet = ""
+            source_ref = ""
+            for raw_sheet, raw_ref in sheet_refs:
+                candidate_sheet = str(raw_sheet).strip().strip("\"'")
+                candidate_ref = str(raw_ref).strip().upper()
+                if not candidate_sheet or not candidate_ref:
+                    continue
+                if candidate_sheet != target_sheet or candidate_ref != target_cell:
+                    source_sheet = candidate_sheet
+                    source_ref = candidate_ref
+            if not source_sheet or not source_ref:
+                first_sheet, first_ref = sheet_refs[0]
+                source_sheet = str(first_sheet).strip().strip("\"'")
+                source_ref = str(first_ref).strip().upper()
+            if target_sheet and source_sheet and target_cell and source_ref:
+                source_prefix = _quote_sheet_for_formula(source_sheet)
+                if any(token in lowered for token in ["합계", "sum"]):
+                    formula = f"=SUM({source_prefix}!{source_ref})"
+                elif any(token in lowered for token in ["평균", "average", "avg"]):
+                    formula = f"=AVERAGE({source_prefix}!{source_ref})"
+                elif any(token in lowered for token in ["개수", "count", "건수"]):
+                    formula = f"=COUNT({source_prefix}!{source_ref})"
+                else:
+                    formula = f"={source_prefix}!{source_ref}"
+                return [
+                    {
+                        "action": "excel_live.select_sheet",
+                        "params": {"sheet_name": target_sheet},
+                        "reason": "연결 대상 시트 전환",
+                    },
+                    {
+                        "action": "excel_live.set_formula",
+                        "params": {"range_ref": target_cell, "formula_a1": formula},
+                        "reason": "시트 간 참조 수식 연결",
+                    },
+                ]
+
     if (range_ref or col_range_ref) and any(
         token in lowered for token in ["읽어", "보여", "확인", "조회", "read", "show", "display"]
     ):
@@ -885,18 +1305,54 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
             }
         ]
 
+    normalized_ctx = _normalize_range_text(context_range)
+    explicit_range = range_ref or col_range_ref
+
+    if _is_color_clear_request(lowered):
+        whole_sheet_color_clear = _is_whole_sheet_style_request(
+            lowered=lowered,
+            normalized_ctx=normalized_ctx,
+            explicit_range=explicit_range,
+        )
+        target = normalized_ctx or explicit_range or ("__USED_RANGE__" if whole_sheet_color_clear else "__ACTIVE_SELECTION__")
+        return [
+            {
+                "action": "excel_live.fill_range",
+                "params": {"target_range": target, "fill_color": "#FFFFFF"},
+                "reason": "빠른 규칙 기반 배경색 제거",
+            }
+        ]
+
     if any(token in lowered for token in ["테두리", "경계선", "border"]):
-        target = _normalize_range_text(context_range) or range_ref or "__ACTIVE_SELECTION__"
+        whole_sheet_border = _is_whole_sheet_style_request(
+            lowered=lowered,
+            normalized_ctx=normalized_ctx,
+            explicit_range=explicit_range,
+        )
+        target = normalized_ctx or explicit_range or ("__USED_RANGE__" if whole_sheet_border else "__ACTIVE_SELECTION__")
+        border_reset = any(
+            token in lowered
+            for token in ["기본값", "기본 상태", "원래 상태", "초기 상태", "없애", "제거", "지워", "reset"]
+        )
+        border_remove = any(token in lowered for token in ["없애", "제거", "지워", "remove"])
+        line_style = "none" if border_remove else "continuous"
+        weight = "thin" if border_reset else "medium"
+        color = "#D9D9D9" if border_reset else "#000000"
+        reason = (
+            "빠른 규칙 기반 경계선 제거"
+            if border_remove
+            else ("빠른 규칙 기반 경계선 기본값 복구" if border_reset else "빠른 규칙 기반 테두리 적용")
+        )
         return [
             {
                 "action": "excel_live.apply_border",
                 "params": {
                     "target_range": target,
-                    "line_style": "continuous",
-                    "weight": "medium",
-                    "color": "#000000",
+                    "line_style": line_style,
+                    "weight": weight,
+                    "color": color,
                 },
-                "reason": "빠른 규칙 기반 테두리 적용",
+                "reason": reason,
             }
         ]
 
@@ -920,9 +1376,20 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
             "초록색",
             "초록",
             "green",
+            "흰색",
+            "하얀색",
+            "하양",
+            "white",
+            "화이트",
+            "백색",
         ]
     ):
-        target = _normalize_range_text(context_range) or range_ref or "__ACTIVE_SELECTION__"
+        whole_sheet_color = _is_whole_sheet_style_request(
+            lowered=lowered,
+            normalized_ctx=normalized_ctx,
+            explicit_range=explicit_range,
+        )
+        target = normalized_ctx or explicit_range or ("__USED_RANGE__" if whole_sheet_color else "__ACTIVE_SELECTION__")
         colors = _quick_extract_colors(lowered)
         primary = colors[0] if colors else "#FFFF00"
         condition = _quick_parse_condition(lowered)
@@ -967,11 +1434,15 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
             }
         ]
 
-    if any(
-        token in lowered
-        for token in ["내용 전부 지우", "전부 지워", "싹 지워", "비워", "깨끗하게", "clear", "wipe"]
-    ):
-        target = _normalize_range_text(context_range) or range_ref or "__ACTIVE_SELECTION__"
+    if _is_clear_reset_request(lowered):
+        normalized_ctx = _normalize_range_text(context_range)
+        explicit_range = range_ref or col_range_ref
+        whole_sheet_reset = _is_whole_sheet_reset_request(
+            lowered=lowered,
+            normalized_ctx=normalized_ctx,
+            explicit_range=explicit_range,
+        )
+        target = normalized_ctx or explicit_range or ("__USED_RANGE__" if whole_sheet_reset else "__ACTIVE_SELECTION__")
         return [
             {
                 "action": "excel_live.clear_range",
@@ -1104,6 +1575,168 @@ def _looks_like_excel_request(message: str) -> bool:
     if any(token in lowered for token in ["read", "show", "display", "workbook", "sheet", "formula"]):
         return True
     return False
+
+
+def _first_action_from_parsed(parsed: dict[str, Any] | None) -> str:
+    if not isinstance(parsed, dict):
+        return ""
+    action_plan = parsed.get("action_plan")
+    if isinstance(action_plan, list) and action_plan:
+        first = action_plan[0]
+        if isinstance(first, dict):
+            return str(first.get("action", "")).strip()
+    action = parsed.get("action")
+    if isinstance(action, str):
+        return str(action).strip()
+    return ""
+
+
+def _is_explicit_list_workbooks_intent(message: str) -> bool:
+    lowered = str(message or "").lower()
+    return any(
+        token in lowered
+        for token in [
+            "열린 통합문서",
+            "워크북 목록",
+            "열린 파일 목록",
+            "list workbooks",
+            "workbook list",
+        ]
+    )
+
+
+def _is_likely_edit_request(message: str, operation_hints: dict[str, Any]) -> bool:
+    lowered = str(message or "").lower()
+    hint_intent = str(operation_hints.get("intent") or "").strip()
+    if hint_intent in _EDIT_EXPECTED_OPERATION_INTENTS:
+        if hint_intent == "formula":
+            # "수식 결과 확인" 류는 조회 성격이므로 편집 강제 대상에서 제외한다.
+            if any(token in lowered for token in ["결과 확인", "검증", "맞는지", "검산"]):
+                return False
+        return True
+    if _is_color_format_request(lowered):
+        return True
+    return any(
+        token in lowered
+        for token in [
+            "적용",
+            "생성",
+            "만들어",
+            "채워",
+            "지워",
+            "정렬",
+            "필터",
+            "중복",
+            "피벗",
+            "차트",
+            "수식",
+            "계산",
+            "저장",
+        ]
+    )
+
+
+def _score_command_complexity(
+    *,
+    message: str,
+    operation_hints: dict[str, Any],
+    hints: dict[str, Any],
+    quick_plan: list[PlanStep],
+) -> int:
+    text = str(message or "")
+    lowered = text.lower()
+    score = 0
+
+    if len(text) >= 40:
+        score += 1
+    if len(text) >= 80:
+        score += 1
+    if "\n" in text or "\t" in text:
+        score += 2
+    if re.search(r"[A-Z]+\d+:[A-Z]+\d+", text, re.IGNORECASE):
+        score += 1
+    if any(token in lowered for token in _COMPLEX_REASONING_KEYWORDS):
+        score += 2
+
+    op_intent = str(operation_hints.get("intent") or "").strip()
+    if op_intent in _DEEP_REASONING_OPERATION_INTENTS:
+        score += 2
+    elif op_intent in {"safety", "debug", "performance", "explain"}:
+        score += 1
+
+    if hints.get("table_intent") and hints.get("values_2d"):
+        score += 2
+    if len(quick_plan) > 1:
+        score += 1
+    return score
+
+
+def _select_reasoning_mode(*, should_parse_with_llm: bool, complexity_score: int) -> str:
+    if not should_parse_with_llm:
+        return "rule"
+    if complexity_score >= 3:
+        return "deep"
+    return "fast"
+
+
+def _parse_budget_for_reasoning_mode(reasoning_mode: str) -> tuple[float, int, float]:
+    if reasoning_mode == "deep":
+        return (
+            _COMMAND_DEEP_PARSE_TIMEOUT_SECONDS,
+            _COMMAND_DEEP_PARSE_MAX_ATTEMPTS,
+            _COMMAND_DEEP_PARSE_RETRY_BACKOFF_SECONDS,
+        )
+    return (
+        _COMMAND_PARSE_TIMEOUT_SECONDS,
+        _COMMAND_PARSE_MAX_ATTEMPTS,
+        _COMMAND_PARSE_RETRY_BACKOFF_SECONDS,
+    )
+
+
+def _should_run_reflection_before_execute(
+    *,
+    parsed: dict[str, Any] | None,
+    message: str,
+    operation_hints: dict[str, Any],
+    reasoning_mode: str,
+) -> tuple[bool, str]:
+    first_action = _first_action_from_parsed(parsed)
+    if not first_action:
+        return False, ""
+
+    reasons: list[str] = []
+    if str((parsed or {}).get("intent", "")).strip().lower() in {"", "unknown"} and _looks_like_excel_request(message):
+        reasons.append("intent_unknown")
+    if first_action == "excel_live.list_workbooks" and not _is_explicit_list_workbooks_intent(message):
+        reasons.append("list_misclassify")
+
+    op_hint_intent = str(operation_hints.get("intent") or "").strip()
+    action_intent = _action_to_operation_intent(first_action)
+    if op_hint_intent and op_hint_intent not in {"general", "safety", "debug", "performance", "explain"}:
+        if action_intent and action_intent != op_hint_intent:
+            reasons.append(f"intent_mismatch:{op_hint_intent}->{action_intent}")
+        elif op_hint_intent in _EDIT_EXPECTED_OPERATION_INTENTS and first_action in {
+            "excel_live.read_range",
+            "excel_live.list_workbooks",
+        }:
+            reasons.append("passive_action_for_edit_intent")
+
+    if _is_likely_edit_request(message, operation_hints) and first_action in {
+        "excel_live.read_range",
+        "excel_live.list_workbooks",
+    }:
+        reasons.append("passive_action_for_edit_request")
+
+    if not reasons:
+        return False, ""
+
+    reason = ",".join(reasons[:2])
+    if reasoning_mode == "deep":
+        return True, reason
+    # fast 모드는 오분류가 명확한 경우에만 1회 reflection을 허용한다.
+    if any(item in {"intent_unknown", "list_misclassify"} for item in reasons):
+        return True, reason
+    return False, ""
 
 
 def _build_generic_excel_follow_up(message: str) -> str:
@@ -1368,21 +2001,45 @@ def _extract_operation_hints(message: str) -> dict[str, Any]:
         hints["params"].update(_extract_formula_common_params(text))
 
     if "sort" == hints["intent"]:
-        if any(token in lowered for token in ["높은", "내림", "내림차순", "큰 순"]):
+        if any(token in lowered for token in ["높은", "내림", "내림차순", "큰 순", "많은 순"]):
             hints["params"]["order"] = "desc"
-        elif any(token in lowered for token in ["낮은", "오름", "오름차순", "작은 순"]):
+        elif any(token in lowered for token in ["낮은", "오름", "오름차순", "작은 순", "적은 순"]):
+            hints["params"]["order"] = "asc"
+        elif re.search(r"(큰|높은|많은)\s*(값|순|순서)", lowered):
+            hints["params"]["order"] = "desc"
+        elif re.search(r"(작은|낮은|적은)\s*(값|순|순서)", lowered):
             hints["params"]["order"] = "asc"
         top_match = re.search(r"상위\s*(\d{1,3})", lowered)
         if top_match:
             hints["params"]["top_n"] = int(top_match.group(1))
-        if "매출" in lowered:
-            hints["params"]["key_column"] = "매출"
-        elif "수량" in lowered:
-            hints["params"]["key_column"] = "수량"
-        elif "점수" in lowered:
-            hints["params"]["key_column"] = "점수"
-        elif "비용" in lowered:
-            hints["params"]["key_column"] = "비용"
+        sort_col_match = re.search(
+            r"([A-Z])\s*열[^A-Z0-9]{0,8}(?:기준|정렬|순|순서|재배치)",
+            text,
+            re.IGNORECASE,
+        )
+        if sort_col_match is None:
+            sort_col_match = re.search(
+                r"(?:기준|정렬|순|순서|재배치)[^A-Z0-9]{0,8}([A-Z])\s*열",
+                text,
+                re.IGNORECASE,
+            )
+        if sort_col_match and sort_col_match.group(1):
+            hints["params"]["key_column"] = str(sort_col_match.group(1)).upper()
+        for token, key in [
+            ("매출", "매출"),
+            ("금액", "금액"),
+            ("가격", "가격"),
+            ("단가", "단가"),
+            ("수량", "수량"),
+            ("점수", "점수"),
+            ("비용", "비용"),
+            ("날짜", "날짜"),
+            ("이름", "이름"),
+            ("상태", "상태"),
+        ]:
+            if token in lowered:
+                hints["params"]["key_column"] = key
+                break
 
     if "filter" == hints["intent"]:
         if "완료" in lowered:
@@ -1397,6 +2054,16 @@ def _extract_operation_hints(message: str) -> dict[str, Any]:
             hints["params"]["column"] = hints["params"].get("column", "상태")
             hints["params"]["operator"] = hints["params"].get("operator", "!=")
             hints["params"]["value"] = hints["params"].get("value", "완료")
+        col_threshold_match = re.search(
+            r"([A-Z])\s*열[^\n]{0,20}?(\d+(?:\.\d+)?)\s*(이상|초과|이하|미만)",
+            text,
+            re.IGNORECASE,
+        )
+        if col_threshold_match:
+            op_map = {"이상": ">=", "초과": ">", "이하": "<=", "미만": "<"}
+            hints["params"]["column"] = str(col_threshold_match.group(1)).upper()
+            hints["params"]["operator"] = op_map.get(col_threshold_match.group(3), ">=")
+            hints["params"]["value"] = float(col_threshold_match.group(2))
         score_match = re.search(r"(\d+(?:\.\d+)?)\s*점?\s*(이상|초과|이하|미만)", lowered)
         if score_match:
             op_map = {"이상": ">=", "초과": ">", "이하": "<=", "미만": "<"}
@@ -1471,6 +2138,8 @@ def _extract_operation_hints(message: str) -> dict[str, Any]:
             hints["params"]["mode"] = "sheet_protect"
             if any(token in lowered for token in ["수식", "잠가", "잠금", "못 고치", "수정 못"]):
                 hints["params"]["lock_formula_cells"] = True
+            if any(token in lowered for token in ["잠궈", "잠궈줘", "건들지", "편집 막", "수정 금지"]):
+                hints["params"]["lock_formula_cells"] = True
             if (
                 any(token in lowered for token in ["입력칸", "입력 범위", "입력만"])
                 and hints["params"].get("target_range")
@@ -1542,6 +2211,8 @@ def _extract_operation_hints(message: str) -> dict[str, Any]:
             hints["params"]["error_code"] = "#VALUE!"
         elif "#div/0" in lowered:
             hints["params"]["error_code"] = "#DIV/0!"
+        if any(token in lowered for token in ["필터 함수", "필터함수"]):
+            hints["params"]["issue"] = "filter_function_error"
         if "합계" in lowered:
             hints["params"]["issue"] = "sum_mismatch"
 
@@ -2070,6 +2741,7 @@ def _merge_create_table_slots(
         rows = payload.get("rows")
         cols = payload.get("cols")
         headers = payload.get("headers")
+        values_2d = payload.get("values_2d")
         start_cell = payload.get("start_cell")
         allow_inferred_shape = from_user or not first_turn or user_shape_explicit or user_header_explicit
         if rows is not None and allow_inferred_shape:
@@ -2080,6 +2752,37 @@ def _merge_create_table_slots(
             normalized = [str(h).strip() for h in headers if str(h).strip()]
             if normalized:
                 slot.headers = normalized
+        if isinstance(values_2d, list):
+            normalized_rows: list[list[Any]] = []
+            inferred_cols = 0
+            for raw_row in values_2d[:100]:
+                row_cells: list[Any]
+                if isinstance(raw_row, list):
+                    row_cells = [str(v).strip() if v is not None else "" for v in raw_row]
+                else:
+                    row_cells = [str(raw_row).strip()]
+                if not any(str(v).strip() for v in row_cells):
+                    continue
+                normalized_rows.append(row_cells)
+                inferred_cols = max(inferred_cols, len(row_cells))
+            if normalized_rows and inferred_cols > 0:
+                inferred_cols = max(1, min(50, inferred_cols))
+                padded_rows: list[list[Any]] = []
+                for row in normalized_rows:
+                    trimmed = row[:inferred_cols]
+                    if len(trimmed) < inferred_cols:
+                        trimmed = [*trimmed, *([""] * (inferred_cols - len(trimmed)))]
+                    padded_rows.append(trimmed)
+                slot.values_2d = padded_rows
+                if allow_inferred_shape:
+                    current_rows = int(slot.rows or 0)
+                    current_cols = int(slot.cols or 0)
+                    slot.rows = max(1, min(100, max(current_rows, len(padded_rows))))
+                    slot.cols = max(1, min(50, max(current_cols, inferred_cols)))
+                if not slot.headers and padded_rows:
+                    normalized_header = [str(v).strip() for v in padded_rows[0] if str(v).strip()]
+                    if normalized_header:
+                        slot.headers = normalized_header
         if isinstance(start_cell, str) and start_cell.strip():
             slot.start_cell = _normalize_range_text(start_cell).split(":")[0] or slot.start_cell
 
@@ -2109,8 +2812,20 @@ def _build_table_follow_up(slot: PendingCreateTableSlots) -> str:
 
 
 def _build_create_table_steps(slot: PendingCreateTableSlots) -> list[dict[str, Any]]:
-    rows = max(1, min(100, int(slot.rows or 5)))
-    cols = max(1, min(50, int(slot.cols or 5)))
+    tabular_values: list[list[Any]] = []
+    if isinstance(slot.values_2d, list):
+        for raw_row in slot.values_2d[:100]:
+            if isinstance(raw_row, list):
+                row_cells = list(raw_row)
+            else:
+                row_cells = [raw_row]
+            if any(str(v).strip() for v in row_cells):
+                tabular_values.append(row_cells)
+
+    inferred_rows = len(tabular_values)
+    inferred_cols = max((len(row) for row in tabular_values), default=0)
+    rows = max(1, min(100, max(int(slot.rows or 5), inferred_rows)))
+    cols = max(1, min(50, max(int(slot.cols or 5), inferred_cols)))
     start_cell = _normalize_range_text(slot.start_cell) or "A1"
     steps: list[dict[str, Any]] = [
         {
@@ -2124,6 +2839,23 @@ def _build_create_table_steps(slot: PendingCreateTableSlots) -> list[dict[str, A
             "reason": "대화 슬롯 기반 표 생성",
         }
     ]
+
+    if tabular_values:
+        normalized_values: list[list[Any]] = []
+        for row in tabular_values[:rows]:
+            row_values = list(row[:cols])
+            if len(row_values) < cols:
+                row_values.extend([""] * (cols - len(row_values)))
+            normalized_values.append(row_values)
+        if normalized_values:
+            steps.append(
+                {
+                    "action": "excel_live.write_range",
+                    "params": {"start_cell": start_cell, "values_2d": normalized_values},
+                    "reason": "표 데이터 입력",
+                }
+            )
+            return steps
 
     headers = [str(h).strip() for h in (slot.headers or []) if str(h).strip()]
     if headers:
@@ -2174,6 +2906,31 @@ def _execute_action(
         if not isinstance(target, str) or not target.strip():
             raise WorkbookNotFoundError("select_workbook에는 workbook_id 또는 name이 필요합니다.")
         return service.select_workbook(target.strip())
+
+    if action == "excel_live.list_sheets":
+        resolved_wb = _resolve_workbook_id(service, workbook_id or str(params.get("workbook_id", "")).strip() or None)
+        return service.list_sheets(resolved_wb)
+
+    if action == "excel_live.select_sheet":
+        resolved_wb = _resolve_workbook_id(service, workbook_id or str(params.get("workbook_id", "")).strip() or None)
+        target_sheet = str(params.get("sheet_name") or params.get("name") or "").strip()
+        if not target_sheet:
+            raise WorksheetNotFoundError("select_sheet에는 sheet_name이 필요합니다.")
+        return service.select_sheet(
+            workbook_id=resolved_wb,
+            sheet_name=target_sheet,
+        )
+
+    if action == "excel_live.create_sheet":
+        resolved_wb = _resolve_workbook_id(service, workbook_id or str(params.get("workbook_id", "")).strip() or None)
+        target_sheet = str(params.get("sheet_name") or params.get("name") or "").strip()
+        if not target_sheet:
+            raise WorksheetNotFoundError("create_sheet에는 sheet_name이 필요합니다.")
+        return service.create_sheet(
+            workbook_id=resolved_wb,
+            sheet_name=target_sheet,
+            make_active=bool(params.get("make_active", True)),
+        )
 
     if action == "excel_live.read_range":
         resolved_wb = _resolve_workbook_id(service, workbook_id)
@@ -2240,7 +2997,9 @@ def _execute_action(
         resolved_wb = _resolve_workbook_id(service, workbook_id)
         resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
         target_range = str(params.get("target_range", "")).strip().upper()
-        if not target_range or target_range == "__ACTIVE_SELECTION__":
+        if target_range == "__USED_RANGE__":
+            target_range = service.get_used_range_ref(resolved_wb, resolved_sheet)
+        elif not target_range or target_range == "__ACTIVE_SELECTION__":
             target_range = service.get_active_selection_ref(resolved_wb, resolved_sheet)
         fill_color = str(params.get("fill_color", "#FFFF00"))
         return service.fill_range(
@@ -2254,7 +3013,9 @@ def _execute_action(
         resolved_wb = _resolve_workbook_id(service, workbook_id)
         resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
         target_range = str(params.get("target_range", "")).strip().upper()
-        if not target_range or target_range == "__ACTIVE_SELECTION__":
+        if target_range == "__USED_RANGE__":
+            target_range = service.get_used_range_ref(resolved_wb, resolved_sheet)
+        elif not target_range or target_range == "__ACTIVE_SELECTION__":
             target_range = service.get_active_selection_ref(resolved_wb, resolved_sheet)
         return service.clear_range(
             workbook_id=resolved_wb,
@@ -2266,7 +3027,9 @@ def _execute_action(
         resolved_wb = _resolve_workbook_id(service, workbook_id)
         resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
         target_range = str(params.get("target_range", "")).strip().upper()
-        if not target_range or target_range == "__ACTIVE_SELECTION__":
+        if target_range == "__USED_RANGE__":
+            target_range = service.get_used_range_ref(resolved_wb, resolved_sheet)
+        elif not target_range or target_range == "__ACTIVE_SELECTION__":
             target_range = service.get_active_selection_ref(resolved_wb, resolved_sheet)
         line_style = str(params.get("line_style", "continuous")).strip().lower()
         weight = str(params.get("weight", "medium")).strip().lower()
@@ -2282,7 +3045,8 @@ def _execute_action(
 
     if action == "excel_live.set_formula":
         resolved_wb = _resolve_workbook_id(service, workbook_id)
-        resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
+        sheet_hint = str(params.get("sheet_name") or "").strip() or sheet_name
+        resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_hint)
         range_ref = str(params.get("range_ref", "")).strip().upper()
         if not range_ref or range_ref == "__ACTIVE_SELECTION__":
             range_ref = service.get_active_selection_ref(resolved_wb, resolved_sheet)
@@ -2592,7 +3356,16 @@ def _verify_step_result(
     if action == "excel_live.read_range":
         return int(result.get("row_count", 0) or 0) >= 1 and int(result.get("col_count", 0) or 0) >= 1
 
-    if action in {"excel_live.save_workbook", "excel_live.list_workbooks", "excel_live.select_workbook"}:
+    if action == "excel_live.create_sheet":
+        return bool(str(result.get("sheet_name", "")).strip())
+
+    if action in {
+        "excel_live.save_workbook",
+        "excel_live.list_workbooks",
+        "excel_live.select_workbook",
+        "excel_live.list_sheets",
+        "excel_live.select_sheet",
+    }:
         return True
 
     return True
@@ -2807,6 +3580,14 @@ async def post_command(
         )
         if not has_explicit_formula:
             fallback_rule_step = None
+    elif (
+        fallback_rule_step
+        and str(fallback_rule_step.get("action", "")).strip() == "excel_live.read_range"
+        and operation_intent in _EDIT_EXPECTED_OPERATION_INTENTS
+    ):
+        # 편집 의도로 분류된 요청에서 read_range 폴백은 "보여줘" 같은 표현 때문에
+        # 오동작을 만들 수 있으므로 멀티턴 슬롯 경로를 우선한다.
+        fallback_rule_step = None
 
     def _normalize_plan_or_empty(raw_steps: Any) -> list[PlanStep]:
         prepared_steps = raw_steps
@@ -2833,27 +3614,10 @@ async def post_command(
             return normalize_plan_steps(prepared_steps)
         except Exception:
             return []
-    fast_operation_intents = {
-        "sort",
-        "filter",
-        "dedupe",
-        "pivot",
-        "validate",
-        "formula",
-        "protect",
-        "consolidate",
-        "automation",
-        "compare",
-        "forecast",
-        "print",
-        "safety",
-        "debug",
-        "performance",
-        "explain",
-        "general",
-    }
-
     parsed: dict[str, Any] | None = None
+    reflection_attempted = False
+    reflection_applied = False
+    reflection_reason = ""
     # 멀티턴 슬롯이 이미 잡혔거나, 규칙 기반 힌트로 충분히 분기 가능한 경우에는
     # LLM 파서를 생략해 첫 응답 지연을 줄인다.
     # 기본 전략: LLM 우선 해석, 룰은 실패/타임아웃 시 폴백.
@@ -2864,30 +3628,63 @@ async def post_command(
         or pending_operation is not None
         or hints.get("table_intent")
     )
+    quick_plan_for_parse = _normalize_plan_or_empty(quick_action_plan) if quick_action_plan else []
+    quick_first_action = quick_plan_for_parse[0].action if quick_plan_for_parse else ""
+    # "전체 지우기" 같은 고신뢰 퀵 액션은 LLM 변환 오차보다 규칙 우선이 안정적이다.
+    if quick_first_action in {
+        "excel_live.clear_range",
+        "excel_live.apply_border",
+        "excel_live.list_workbooks",
+        "excel_live.select_workbook",
+        "excel_live.list_sheets",
+        "excel_live.select_sheet",
+        "excel_live.create_sheet",
+        "excel_live.save_workbook",
+    }:
+        should_parse_with_llm = False
+    elif quick_first_action == "excel_live.fill_range":
+        # 단순 색 채우기 요청은 fast path로 즉시 실행하는 편이 안정적이다.
+        should_parse_with_llm = False
+    reasoning_complexity_score = _score_command_complexity(
+        message=req.message,
+        operation_hints=operation_hints,
+        hints=hints,
+        quick_plan=quick_plan_for_parse,
+    )
+    reasoning_mode = _select_reasoning_mode(
+        should_parse_with_llm=should_parse_with_llm,
+        complexity_score=reasoning_complexity_score,
+    )
+    parse_timeout_seconds, parse_max_attempts, parse_retry_backoff_seconds = _parse_budget_for_reasoning_mode(
+        reasoning_mode
+    )
+    parse_context_base = {
+        "context_range": req.context_range,
+        "workbook_id": req.workbook_id,
+        "sheet_name": req.sheet_name,
+        "reasoning_mode": reasoning_mode,
+        "complexity_score": reasoning_complexity_score,
+    }
     parse_error: Exception | None = None
     parse_timeout_count = 0
     if should_parse_with_llm:
-        for parse_attempt in range(_COMMAND_PARSE_MAX_ATTEMPTS):
+        for parse_attempt in range(parse_max_attempts):
             try:
                 parsed = await asyncio.wait_for(
                     parse_excel_live_command(
                         req.message,
                         llm_service=llm,
-                        context={
-                            "context_range": req.context_range,
-                            "workbook_id": req.workbook_id,
-                            "sheet_name": req.sheet_name,
-                        },
+                        context=dict(parse_context_base),
                     ),
-                    timeout=_COMMAND_PARSE_TIMEOUT_SECONDS,
+                    timeout=parse_timeout_seconds,
                 )
                 parse_error = None
                 break
             except asyncio.TimeoutError as exc:
                 parse_error = exc
                 parse_timeout_count += 1
-                if parse_attempt + 1 < _COMMAND_PARSE_MAX_ATTEMPTS:
-                    backoff = _COMMAND_PARSE_RETRY_BACKOFF_SECONDS * float(parse_attempt + 1)
+                if parse_attempt + 1 < parse_max_attempts:
+                    backoff = parse_retry_backoff_seconds * float(parse_attempt + 1)
                     if backoff > 0:
                         await asyncio.sleep(backoff)
                     continue
@@ -2914,6 +3711,8 @@ async def post_command(
                         "operation_intent": "clarify",
                         "parse_timeout": True,
                         "parse_attempts": max(1, parse_timeout_count),
+                        "reasoning_mode": reasoning_mode,
+                        "complexity_score": reasoning_complexity_score,
                     },
                 )
             if isinstance(parse_error, ValueError):
@@ -2930,6 +3729,41 @@ async def post_command(
                         },
                     )
                 raise HTTPException(status_code=400, detail=str(parse_error))
+
+    if should_parse_with_llm and parsed is not None:
+        should_reflect, reflection_reason = _should_run_reflection_before_execute(
+            parsed=parsed,
+            message=req.message,
+            operation_hints=operation_hints,
+            reasoning_mode=reasoning_mode,
+        )
+        if should_reflect:
+            reflection_attempted = True
+            reflection_context = dict(parse_context_base)
+            reflection_context["reasoning_mode"] = "reflect"
+            reflection_context["reflection_note"] = reflection_reason
+            reflection_context["previous_first_action"] = _first_action_from_parsed(parsed)
+            for reflection_try in range(_COMMAND_REFLECTION_MAX_ATTEMPTS):
+                try:
+                    reflected = await asyncio.wait_for(
+                        parse_excel_live_command(
+                            req.message,
+                            llm_service=llm,
+                            context=dict(reflection_context),
+                        ),
+                        timeout=_COMMAND_REFLECTION_TIMEOUT_SECONDS,
+                    )
+                    if reflected and reflected.get("action_plan"):
+                        parsed = reflected
+                        reflection_applied = True
+                    break
+                except (asyncio.TimeoutError, ValueError):
+                    if reflection_try + 1 < _COMMAND_REFLECTION_MAX_ATTEMPTS:
+                        backoff = _COMMAND_DEEP_PARSE_RETRY_BACKOFF_SECONDS * float(reflection_try + 1)
+                        if backoff > 0:
+                            await asyncio.sleep(backoff)
+                        continue
+                    break
 
     if parsed is None and quick_action_plan:
         action_plan = _normalize_plan_or_empty(quick_action_plan)
@@ -3300,6 +4134,15 @@ async def post_command(
             }
             for s in execution.steps
         ]
+    reasoning_profile = {
+        "mode": reasoning_mode,
+        "complexity_score": reasoning_complexity_score,
+        "reflection_attempted": reflection_attempted,
+        "reflection_applied": reflection_applied,
+    }
+    if reflection_reason:
+        reasoning_profile["reflection_reason"] = reflection_reason
+    last_result["reasoning_profile"] = reasoning_profile
 
     if last.error or not last.verified:
         failure_detail = last.error or last.verify_detail or "unknown_failure"
@@ -3315,6 +4158,7 @@ async def post_command(
                 "auto_rollbacks": list(rollback_events),
                 "recovery_backup": recovery_backup_info,
                 "queue_wait_ms": queue_wait_total_ms,
+                "reasoning_profile": reasoning_profile,
             },
         )
 
@@ -3359,6 +4203,7 @@ async def post_command(
                     retry_verify["auto_retry_applied"] = True
                     retry_verify["retry_formula"] = retry_formula
                     retry_verify["retry_set_result"] = retry_set
+                    retry_verify["reasoning_profile"] = reasoning_profile
                     if rollback_events:
                         retry_verify["auto_rollbacks"] = list(rollback_events)
                     if recovery_backup_info:
@@ -3387,6 +4232,7 @@ async def post_command(
                 "auto_rollbacks": list(rollback_events),
                 "recovery_backup": recovery_backup_info,
                 "queue_wait_ms": queue_wait_total_ms,
+                "reasoning_profile": reasoning_profile,
             },
         )
 

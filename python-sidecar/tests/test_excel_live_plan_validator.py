@@ -117,3 +117,20 @@ def test_validate_verify_formula_result_defaults_to_context_range():
     )
     assert out[0].params["range_ref"] == "D2:D20"
 
+
+def test_validate_select_sheet_requires_sheet_name():
+    out = validate_plan(
+        [PlanStep(action="excel_live.select_sheet", params={"sheet_name": "요약"}, reason="")],
+        context=ValidationContext(message="요약 시트로 이동"),
+    )
+    assert out[0].params["sheet_name"] == "요약"
+
+
+def test_validate_create_sheet_defaults_make_active_true():
+    out = validate_plan(
+        [PlanStep(action="excel_live.create_sheet", params={"sheet_name": "요약"}, reason="")],
+        context=ValidationContext(message="요약 시트 만들어줘"),
+    )
+    assert out[0].params["sheet_name"] == "요약"
+    assert out[0].params["make_active"] is True
+

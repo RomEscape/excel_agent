@@ -17,31 +17,62 @@ client = TestClient(app)
 class _FakeExcelService:
     def __init__(self):
         self._selected = r"C:\work\sales.xlsx"
+        self._active_sheet = "Sheet1"
+        self._sheet_names = ["Sheet1", "Sheet2"]
         self._workbooks = [
             {
                 "workbook_id": r"C:\work\sales.xlsx",
                 "name": "sales.xlsx",
                 "full_path": r"C:\work\sales.xlsx",
-                "active_sheet": "Sheet1",
+                "active_sheet": self._active_sheet,
             }
         ]
         self._last_snapshot = {"row_count": 5, "col_count": 5}
+        self._last_formula = {}
+        self._last_border = {}
 
     def is_available(self):
         return True
 
     def list_workbooks(self):
+        self._workbooks[0]["active_sheet"] = self._active_sheet
         return self._workbooks
 
     def select_workbook(self, workbook_id):
         self._selected = workbook_id
         return {"selected": True, "workbook_id": workbook_id}
 
+    def list_sheets(self, workbook_id):
+        return {
+            "sheets": list(self._sheet_names),
+            "count": len(self._sheet_names),
+            "active_sheet": self._active_sheet,
+        }
+
+    def select_sheet(self, workbook_id, sheet_name):
+        if sheet_name not in self._sheet_names:
+            self._sheet_names.append(sheet_name)
+        self._active_sheet = sheet_name
+        self._workbooks[0]["active_sheet"] = self._active_sheet
+        return {"selected": True, "sheet_name": sheet_name, "active_sheet": self._active_sheet}
+
+    def create_sheet(self, workbook_id, sheet_name, make_active=True):
+        created = sheet_name not in self._sheet_names
+        if created:
+            self._sheet_names.append(sheet_name)
+        if make_active:
+            self._active_sheet = sheet_name
+            self._workbooks[0]["active_sheet"] = self._active_sheet
+        return {"created": created, "sheet_name": sheet_name, "active_sheet": self._active_sheet}
+
     def get_selected_workbook_id(self):
         return self._selected
 
     def get_active_selection_ref(self, workbook_id, sheet_name):
         return "B2:C3"
+
+    def get_used_range_ref(self, workbook_id, sheet_name):
+        return "A1:C8"
 
     def read_range(self, workbook_id, sheet_name, range_ref):
         return {"values": [[1, 2]], "address": range_ref, "row_count": 1, "col_count": 2}
@@ -71,9 +102,23 @@ class _FakeExcelService:
         return {"cleared_cells": 12, "address": target_range}
 
     def apply_border(self, workbook_id, sheet_name, target_range, line_style, weight, color):
+        self._last_border = {
+            "workbook_id": workbook_id,
+            "sheet_name": sheet_name,
+            "target_range": target_range,
+            "line_style": line_style,
+            "weight": weight,
+            "color": color,
+        }
         return {"changed_cells": 4, "address": target_range}
 
     def set_formula(self, workbook_id, sheet_name, range_ref, formula_a1):
+        self._last_formula = {
+            "workbook_id": workbook_id,
+            "sheet_name": sheet_name,
+            "range_ref": range_ref,
+            "formula_a1": formula_a1,
+        }
         return {"formula_applied_cells": 5, "address": range_ref}
 
     def verify_formula_result(self, workbook_id, sheet_name, range_ref):
@@ -146,6 +191,33 @@ class _FakeExcelService:
             "address": target_range,
             "issues": [{"type": "empty", "count": 2, "samples": ["B3", "C7"]}],
             "total_issues": 2,
+        }
+
+    def protect_sheet(self, workbook_id, sheet_name, password, lock_formula_cells, unlock_range):
+        return {
+            "protected": True,
+            "sheet_name": sheet_name,
+            "lock_formula_cells": bool(lock_formula_cells),
+            "unlock_range": unlock_range,
+        }
+
+    def set_data_validation(
+        self,
+        workbook_id,
+        sheet_name,
+        target_range,
+        validation_type,
+        source,
+        minimum,
+        maximum,
+        allow_blank,
+        show_error,
+        error_message,
+    ):
+        return {
+            "applied": True,
+            "address": target_range,
+            "validation_type": validation_type,
         }
 
     def save_workbook(self, workbook_id):
@@ -387,6 +459,191 @@ def test_command_rule_based_fill_range(monkeypatch):
     assert body["approval_required"] is True
 
 
+def test_command_rule_based_list_sheets(monkeypatch):
+    fake = _FakeExcelService()
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: fake)
+
+    resp = client.post(
+        "/excel-live/command",
+        json={
+            "message": "현재 시트 목록 보여줘",
+            "workbook_id": r"C:\work\sales.xlsx",
+            "approve": True,
+        },
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["action"] == "excel_live.list_sheets"
+    assert body["ok"] is True
+    assert body["result"]["sheets"] == ["Sheet1", "Sheet2"]
+
+
+def test_command_rule_based_select_sheet(monkeypatch):
+    fake = _FakeExcelService()
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: fake)
+
+    resp = client.post(
+        "/excel-live/command",
+        json={
+            "message": "Sheet2 시트로 이동해줘",
+            "workbook_id": r"C:\work\sales.xlsx",
+            "approve": True,
+        },
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["action"] == "excel_live.select_sheet"
+    assert body["ok"] is True
+    assert body["result"]["active_sheet"] == "Sheet2"
+
+
+def test_command_rule_based_create_sheet(monkeypatch):
+    fake = _FakeExcelService()
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: fake)
+
+    resp = client.post(
+        "/excel-live/command",
+        json={
+            "message": "요약 시트 만들어줘",
+            "workbook_id": r"C:\work\sales.xlsx",
+            "approve": True,
+        },
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["action"] == "excel_live.create_sheet"
+    assert body["ok"] is True
+    assert body["result"]["sheet_name"] == "요약"
+
+
+def test_command_cross_sheet_link_formula(monkeypatch):
+    fake = _FakeExcelService()
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: fake)
+
+    resp = client.post(
+        "/excel-live/command",
+        json={
+            "message": "요약 시트 B2에 원본 시트 E2 값을 연결해줘",
+            "workbook_id": r"C:\work\sales.xlsx",
+            "approve": True,
+        },
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["action"] == "excel_live.set_formula"
+    assert body["result"]["executed_steps"] == 2
+    plan_actions = [step["action"] for step in body["result"]["plan"]]
+    assert plan_actions == ["excel_live.select_sheet", "excel_live.set_formula"]
+    assert fake._last_formula["sheet_name"] == "요약"
+    assert fake._last_formula["range_ref"] == "B2"
+    assert fake._last_formula["formula_a1"] == "='원본'!E2"
+
+
+def test_quick_extract_colors_supports_white_korean_and_english():
+    assert excel_live_router._quick_extract_colors("전체 셀을 흰색으로 바꿔줘") == ["#FFFFFF"]
+    assert excel_live_router._quick_extract_colors("make all cells white") == ["#FFFFFF"]
+
+
+def test_command_rule_based_fill_range_full_sheet_white_uses_used_range(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    excel_live_router._pending_operation_slots.clear()
+
+    resp = client.post(
+        "/excel-live/command",
+        json={
+            "message": "전체 모든 셀의 색을 다 흰색으로 만들어줘",
+            "workbook_id": r"C:\work\sales.xlsx",
+            "sheet_name": "Sheet1",
+            "approve": True,
+            "session_id": "sess-fill-full-white",
+        },
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["action"] == "excel_live.fill_range"
+    assert body["ok"] is True
+    assert body["result"]["address"] == "A1:C8"
+
+
+def test_command_rule_based_color_clear_with_border_reset_phrase_prefers_white_fill(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    excel_live_router._pending_operation_slots.clear()
+
+    resp = client.post(
+        "/excel-live/command",
+        json={
+            "message": "다른 셀들이랑 동일하게 액셀 색을 없애고 모든 경계선을 기본값으로 돌려줘",
+            "workbook_id": r"C:\work\sales.xlsx",
+            "sheet_name": "Sheet1",
+            "approve": True,
+            "session_id": "sess-color-clear-border-reset",
+        },
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["action"] == "excel_live.fill_range"
+    assert body["ok"] is True
+    assert body["result"]["address"] == "A1:C8"
+
+
+def test_command_rule_based_border_reset_phrase_uses_thin_gray_on_used_range(monkeypatch):
+    fake = _FakeExcelService()
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: fake)
+    excel_live_router._pending_operation_slots.clear()
+
+    resp = client.post(
+        "/excel-live/command",
+        json={
+            "message": "모든 경계선을 기본값으로 돌려줘",
+            "workbook_id": r"C:\work\sales.xlsx",
+            "sheet_name": "Sheet1",
+            "approve": True,
+            "session_id": "sess-border-reset-default",
+        },
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["action"] == "excel_live.apply_border"
+    assert body["ok"] is True
+    assert body["result"]["address"] == "A1:C8"
+    assert fake._last_border["target_range"] == "A1:C8"
+    assert fake._last_border["line_style"] == "continuous"
+    assert fake._last_border["weight"] == "thin"
+    assert fake._last_border["color"] == "#D9D9D9"
+
+
+def test_command_rule_based_border_remove_phrase_maps_to_none_line_style(monkeypatch):
+    fake = _FakeExcelService()
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: fake)
+    excel_live_router._pending_operation_slots.clear()
+
+    resp = client.post(
+        "/excel-live/command",
+        json={
+            "message": "B2:C3 경계선 없애줘",
+            "workbook_id": r"C:\work\sales.xlsx",
+            "sheet_name": "Sheet1",
+            "approve": True,
+            "session_id": "sess-border-remove",
+        },
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["action"] == "excel_live.apply_border"
+    assert body["ok"] is True
+    assert body["result"]["address"] == "B2:C3"
+    assert fake._last_border["line_style"] == "none"
+
+
 def test_command_two_color_condition_executes_fill_then_highlight(monkeypatch):
     monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
 
@@ -419,8 +676,48 @@ def test_detect_operation_intent_color_else_not_formula():
     assert intent != "formula"
 
 
+def test_detect_operation_intent_handles_paraphrases():
+    assert excel_live_router._detect_operation_intent("수량하고 단가 곱해 금액 자동 산출되게 해줘") == "formula"
+    assert excel_live_router._detect_operation_intent("금액 큰 순서대로 재배치해줘") == "sort"
+    assert excel_live_router._detect_operation_intent("완료된 건만 남겨서 보여줘") == "filter"
+    assert excel_live_router._detect_operation_intent("금액큰순서대로재배치해줘") == "sort"
+    assert excel_live_router._detect_operation_intent("표를 보기 편하게 다듬어줘") == "general"
+    assert excel_live_router._detect_operation_intent("시트 건들지 못하게 잠궈줘") == "protect"
+    assert excel_live_router._detect_operation_intent("필터함수가안먹어") == "debug"
+    assert excel_live_router._detect_operation_intent("수식 오류 좀 잡아줘") == "debug"
+
+
+def test_detect_operation_intent_robust_phrase_dataset():
+    cases = [
+        ("수량하고 단가 곱해 금액 자동 산출되게 해줘", "formula"),
+        ("코드 기준으로 가격 자동으로 찾아오게 해줘", "formula"),
+        ("금액 큰 순서대로 재배치해줘", "sort"),
+        ("날짜 기준으로 오름차순으로 줄세워줘", "sort"),
+        ("완료된 건만 남겨서 보여줘", "filter"),
+        ("상태가 지연인 행만 걸러줘", "filter"),
+        ("겹친 값들 정리해서 중복 없애줘", "dedupe"),
+        ("월별로 집계표 뽑아줘", "pivot"),
+        ("추이 그래프 하나 그려줘", "chart"),
+        ("이상한 값 있는지 진단해줘", "validate"),
+        ("시트 건들지 못하게 잠궈줘", "protect"),
+        ("파워쿼리 새로고침 돌려줘", "automation"),
+        ("지난달이랑 이번달 차이 비교해줘", "compare"),
+        ("다음달 매출 예측해줘", "forecast"),
+        ("A4로 pdf 출력해줘", "print"),
+        ("읽기전용이라편집안돼", "safety"),
+        ("필터함수가안먹어", "debug"),
+        ("수식 오류 좀 잡아줘", "debug"),
+        ("느려서 버벅거려", "performance"),
+        ("피벗이뭐야", "pivot"),
+        ("표를 보기 편하게 다듬어줘", "general"),
+    ]
+    for message, expected in cases:
+        assert excel_live_router._detect_operation_intent(message) == expected
+
+
 def test_command_rule_based_clear_range(monkeypatch):
     monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    excel_live_router._pending_operation_slots.clear()
 
     resp = client.post(
         "/excel-live/command",
@@ -436,6 +733,204 @@ def test_command_rule_based_clear_range(monkeypatch):
     body = resp.json()
     assert body["action"] == "excel_live.clear_range"
     assert body["approval_required"] is True
+
+
+def test_command_rule_based_clear_range_full_reset_uses_used_range(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    excel_live_router._pending_operation_slots.clear()
+
+    resp = client.post(
+        "/excel-live/command",
+        json={
+            "message": "엑셀을 전체 다 지워줘",
+            "workbook_id": r"C:\work\sales.xlsx",
+            "sheet_name": "Sheet1",
+            "approve": True,
+            "session_id": "sess-clear-full-reset",
+        },
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["action"] == "excel_live.clear_range"
+    assert body["ok"] is True
+    assert body["result"]["address"] == "A1:C8"
+
+
+def test_command_rule_based_clear_range_all_contents_phrase_uses_used_range(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    excel_live_router._pending_operation_slots.clear()
+
+    resp = client.post(
+        "/excel-live/command",
+        json={
+            "message": "지금 엑셀 화면의 모든 내용 지워줄래?",
+            "workbook_id": r"C:\work\sales.xlsx",
+            "sheet_name": "Sheet1",
+            "approve": True,
+            "session_id": "sess-clear-all-contents",
+        },
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["action"] == "excel_live.clear_range"
+    assert body["ok"] is True
+    assert body["result"]["address"] == "A1:C8"
+
+
+def test_command_rule_based_clear_range_colloquial_cleanup_phrase_uses_used_range(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    excel_live_router._pending_operation_slots.clear()
+
+    resp = client.post(
+        "/excel-live/command",
+        json={
+            "message": "지금 여기 엑셀을 깔끔하게 지워줄 수 있어?",
+            "workbook_id": r"C:\work\sales.xlsx",
+            "sheet_name": "Sheet1",
+            "approve": True,
+            "session_id": "sess-clear-colloquial-cleanup",
+        },
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["action"] == "excel_live.clear_range"
+    assert body["ok"] is True
+    assert body["result"]["address"] == "A1:C8"
+
+
+def test_command_rule_based_clear_range_restore_phrase_uses_used_range(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    excel_live_router._pending_operation_slots.clear()
+
+    resp = client.post(
+        "/excel-live/command",
+        json={
+            "message": "지금 엑셀에 있는 내용을 다 지우고 원래 상태로 복구해줘 이름 수량 금액 21 22 23",
+            "workbook_id": r"C:\work\sales.xlsx",
+            "sheet_name": "Sheet1",
+            "approve": True,
+            "session_id": "sess-clear-restore-phrase",
+        },
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["action"] == "excel_live.clear_range"
+    assert body["ok"] is True
+    assert body["result"]["address"] == "A1:C8"
+
+
+def test_command_rule_based_clear_range_restore_phrase_without_clear_verb(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    excel_live_router._pending_operation_slots.clear()
+
+    resp = client.post(
+        "/excel-live/command",
+        json={
+            "message": "엑셀을 원래 상태로 복구해줘",
+            "workbook_id": r"C:\work\sales.xlsx",
+            "sheet_name": "Sheet1",
+            "approve": True,
+            "session_id": "sess-clear-restore-only",
+        },
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["action"] == "excel_live.clear_range"
+    assert body["ok"] is True
+    assert body["result"]["address"] == "A1:C8"
+
+
+def test_command_sort_paraphrase_executes_without_fixed_phrase(monkeypatch):
+    fake = _FakeExcelService()
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: fake)
+    excel_live_router._pending_operation_slots.clear()
+
+    async def _raise_parse(_message, llm_service, context):
+        raise ValueError("LLM parse skipped")
+
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _raise_parse)
+
+    resp = client.post(
+        "/excel-live/command",
+        json={"message": "금액 큰 순서대로 재배치해줘", "session_id": "sess-sort-paraphrase", "approve": True},
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["action"] == "excel_live.sort_range"
+    assert body["result"]["order"] == "desc"
+
+
+def test_command_filter_paraphrase_executes_without_fixed_phrase(monkeypatch):
+    fake = _FakeExcelService()
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: fake)
+    excel_live_router._pending_operation_slots.clear()
+
+    async def _raise_parse(_message, llm_service, context):
+        raise ValueError("LLM parse skipped")
+
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _raise_parse)
+
+    resp = client.post(
+        "/excel-live/command",
+        json={"message": "완료된 건만 남겨서 보여줘", "session_id": "sess-filter-paraphrase", "approve": True},
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["action"] == "excel_live.filter_rows"
+    assert body["result"]["operator"] == "=="
+    assert body["result"]["value"] == "완료"
+
+
+def test_command_protect_colloquial_phrase_prompts_or_executes_protect_flow(monkeypatch):
+    fake = _FakeExcelService()
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: fake)
+    excel_live_router._pending_operation_slots.clear()
+
+    async def _raise_parse(_message, llm_service, context):
+        raise ValueError("LLM parse skipped")
+
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _raise_parse)
+
+    resp = client.post(
+        "/excel-live/command",
+        json={"message": "시트 건들지 못하게 잠궈줘", "session_id": "sess-protect-colloquial", "approve": True},
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["action"] in {"excel_live.protect", "excel_live.protect_sheet"}
+
+
+def test_command_debug_filter_function_error_prefers_debug_intent(monkeypatch):
+    fake = _FakeExcelService()
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: fake)
+    excel_live_router._pending_operation_slots.clear()
+
+    async def _raise_parse(_message, llm_service, context):
+        raise ValueError("LLM parse skipped")
+
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _raise_parse)
+
+    resp = client.post(
+        "/excel-live/command",
+        json={"message": "필터함수가안먹어", "session_id": "sess-debug-filter-fn", "approve": True},
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["action"] == "excel_live.debug"
+    assert body["result"]["ask_follow_up"] is True
 
 
 def test_command_parse_failure_returns_400_instead_of_list_fallback(monkeypatch):
@@ -695,6 +1190,88 @@ def test_command_passes_context_range_to_parser(monkeypatch):
     body = resp.json()
     assert body["ok"] is True
     assert body["action"] == "excel_live.read_range"
+
+
+def test_command_uses_deep_reasoning_profile_for_complex_request(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    observed = {"modes": [], "score": 0}
+
+    async def _plan_parse(_message, llm_service, context):
+        observed["modes"].append(str(context.get("reasoning_mode", "")))
+        observed["score"] = int(context.get("complexity_score", 0) or 0)
+        return {
+            "intent": "edit",
+            "action_plan": [
+                {
+                    "action": "excel_live.set_formula",
+                    "params": {"range_ref": "D2:D20", "formula_a1": "=B2*C2"},
+                    "reason": "복잡 계산식 적용",
+                }
+            ],
+            "reason": "deep planning",
+        }
+
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _plan_parse)
+
+    resp = client.post(
+        "/excel-live/command",
+        json={"message": "여러 시트를 비교해서 수량과 단가 계산 수식까지 자동으로 만들어줘", "approve": True},
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["action"] == "excel_live.set_formula"
+    assert observed["modes"][0] == "deep"
+    assert observed["score"] >= 3
+    assert body["result"]["reasoning_profile"]["mode"] == "deep"
+
+
+def test_command_runs_reflection_once_for_low_confidence_plan(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    seen_modes: list[str] = []
+
+    async def _plan_parse(_message, llm_service, context):
+        mode = str(context.get("reasoning_mode", "fast"))
+        seen_modes.append(mode)
+        if mode == "reflect":
+            return {
+                "intent": "edit",
+                "action_plan": [
+                    {
+                        "action": "excel_live.set_formula",
+                        "params": {"range_ref": "D2:D20", "formula_a1": "=B2*C2"},
+                        "reason": "reflection corrected",
+                    }
+                ],
+                "reason": "reflected",
+            }
+        return {
+            "intent": "unknown",
+            "action_plan": [
+                {
+                    "action": "excel_live.read_range",
+                    "params": {"range_ref": "A1:C20"},
+                    "reason": "저신뢰 계획",
+                }
+            ],
+            "reason": "low confidence",
+        }
+
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _plan_parse)
+
+    resp = client.post(
+        "/excel-live/command",
+        json={"message": "수량이랑 단가 곱해서 금액 계산하고 결과 검증까지 해줘", "approve": True},
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["action"] == "excel_live.set_formula"
+    assert seen_modes == ["deep", "reflect"]
+    assert body["result"]["reasoning_profile"]["reflection_attempted"] is True
+    assert body["result"]["reasoning_profile"]["reflection_applied"] is True
 
 
 def test_command_stabilizes_table_intent_when_llm_returns_invalid_write_range(monkeypatch):
@@ -1133,6 +1710,42 @@ def test_command_template_follow_up_then_affirmative_executes(monkeypatch):
     assert body2["ok"] is True
     assert body2["action"] == "excel_live.write_range"
     assert body2["result"]["executed_steps"] == 2
+
+
+def test_command_create_table_and_values_in_single_turn(monkeypatch):
+    fake = _FakeExcelService()
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: fake)
+    excel_live_router._pending_create_table_slots.clear()
+
+    async def _raise_parse(_message, llm_service, context):
+        raise ValueError("LLM parse skipped")
+
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _raise_parse)
+
+    msg = (
+        "아래 내용으로 표 만들어줘\n"
+        "날짜\t사용 목적\t금액\n"
+        "26/02/24\t학기 초 회의\t320000\n"
+        "26/03/09\t개강 회의\t200000"
+    )
+    resp = client.post(
+        "/excel-live/command",
+        json={
+            "message": msg,
+            "session_id": "sess-table-single-turn",
+            "approve": True,
+        },
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["action"] == "excel_live.write_range"
+    assert body["result"]["executed_steps"] == 2
+    plan_actions = [step["action"] for step in body["result"]["plan"]]
+    assert plan_actions == ["excel_live.create_table", "excel_live.write_range"]
+    assert body["result"]["plan"][0]["result"]["rows"] == 3
+    assert body["result"]["plan"][0]["result"]["cols"] == 3
 
 
 def test_command_sort_multiturn_followup_then_execute(monkeypatch):

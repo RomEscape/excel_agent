@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -18,8 +18,11 @@ from office_claw_sidecar.config import get_data_dir
 from office_claw_sidecar.services.unified_log_service import append_unified_event
 
 
+KST = timezone(timedelta(hours=9), name="KST")
+
+
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(KST).isoformat()
 
 
 def _safe_user_key(value: str | None) -> str:

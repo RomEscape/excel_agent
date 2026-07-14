@@ -311,7 +311,7 @@ npm run tauri:dev
 
 - Ollama가 없으면 Wizard가 `winget`으로 자동 설치를 시도
 - 설치 후 Ollama 프로세스를 자동 실행
-- 선택 모델(`qwen3:4b`, `qwen3:8b`)을 자동 pull
+- 선택 모델(`skt/A.X-4.0-Light:latest`, `qwen3:8b`)을 자동 pull
 - AI 대화 테스트에서 OpenClaw 게이트웨이 503 발생 시 자동 재기동 후 재시도
 - `npm run tauri:dev` 환경에서 sidecar가 꺼져 있으면 dev 포트(`19532`)에 자동 기동 후 재시도
 
@@ -427,9 +427,9 @@ npm run tauri:dev
 - `다음 달 매출 예측해줘`
   - -> 원본 범위 확인 -> 예측 기간(horizon) 확인 -> 출력 위치 확인 -> `forecast_linear`
 
-전체 173개 검증 입력 세트 + 확장 러프 스모크(최신 142 step)는 아래 파일/스크립트에서 확인 가능:
+Excel Live 테스트 세트는 간소화된 문서 + 러프 스모크 스크립트로 운영:
 
-- `TEST_INPUT_COMMANDS_EXCEL_LIVE.txt`
+- `TEST_INPUT_COMMANDS_EXCEL_LIVE.md`
 - `python-sidecar/scripts/smoke_excel_live_nl.py`
 
 최신 142-step 스모크 요약:
@@ -447,7 +447,7 @@ npm run tauri:dev
 
 - 질문 세트 관점:
   - 러프 명령 커버리지를 기능 나열 수준에서 멈추지 않고, 파일 상태/권한/복구/버전/성능/교육형 질문까지 확장
-  - `TEST_INPUT_COMMANDS_EXCEL_LIVE.txt`의 `150~173` 구간에서 해당 케이스를 별도로 관리
+  - `TEST_INPUT_COMMANDS_EXCEL_LIVE.md`의 `3) 안전/복구 스모크`, `4) 최근 이슈 재검증` 구간에서 해당 케이스를 관리
 - 시스템 설계 관점:
   - 권장 구조는 `라우터 + 전문 에이전트(도구형) + 검증기 + 승인 게이트`
   - 핵심 슬롯(`task_goal`, `target_sheet`, `target_range`, `key_column`, `value_column`, `output_location`, `safety_policy`, `version_constraint`)이 비어 있으면 실행 전 질문으로 수집

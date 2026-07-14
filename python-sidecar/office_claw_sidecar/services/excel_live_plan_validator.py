@@ -19,6 +19,9 @@ from office_claw_sidecar.services.excel_live_executor import PlanStep
 SUPPORTED_ACTIONS = {
     "excel_live.list_workbooks",
     "excel_live.select_workbook",
+    "excel_live.list_sheets",
+    "excel_live.select_sheet",
+    "excel_live.create_sheet",
     "excel_live.read_range",
     "excel_live.write_range",
     "excel_live.create_table",
@@ -46,6 +49,7 @@ SUPPORTED_ACTIONS = {
 }
 
 EDIT_ACTIONS = {
+    "excel_live.create_sheet",
     "excel_live.write_range",
     "excel_live.create_table",
     "excel_live.highlight_by_condition",
@@ -72,6 +76,8 @@ EDIT_ACTIONS = {
 PASSIVE_ACTIONS = {
     "excel_live.list_workbooks",
     "excel_live.select_workbook",
+    "excel_live.list_sheets",
+    "excel_live.select_sheet",
     "excel_live.read_range",
     "excel_live.verify_formula_result",
     "excel_live.validate_data",
@@ -146,6 +152,36 @@ def _validate_step(step: PlanStep, ctx: ValidationContext) -> PlanStep:
         if not workbook:
             raise ValueError("select_workbook에는 workbook_id가 필요합니다.")
         return PlanStep(action=action, params={"workbook_id": workbook}, reason=reason)
+
+    if action == "excel_live.list_sheets":
+        workbook = str(params.get("workbook_id") or "").strip() or None
+        out_params: dict[str, Any] = {}
+        if workbook:
+            out_params["workbook_id"] = workbook
+        return PlanStep(action=action, params=out_params, reason=reason)
+
+    if action == "excel_live.select_sheet":
+        sheet_name = str(params.get("sheet_name") or params.get("name") or "").strip()
+        if not sheet_name:
+            raise ValueError("select_sheet.sheet_name이 필요합니다.")
+        workbook = str(params.get("workbook_id") or "").strip() or None
+        out_params: dict[str, Any] = {"sheet_name": sheet_name}
+        if workbook:
+            out_params["workbook_id"] = workbook
+        return PlanStep(action=action, params=out_params, reason=reason)
+
+    if action == "excel_live.create_sheet":
+        sheet_name = str(params.get("sheet_name") or params.get("name") or "").strip()
+        if not sheet_name:
+            raise ValueError("create_sheet.sheet_name이 필요합니다.")
+        workbook = str(params.get("workbook_id") or "").strip() or None
+        out_params: dict[str, Any] = {
+            "sheet_name": sheet_name,
+            "make_active": bool(params.get("make_active", True)),
+        }
+        if workbook:
+            out_params["workbook_id"] = workbook
+        return PlanStep(action=action, params=out_params, reason=reason)
 
     if action == "excel_live.read_range":
         range_ref = _normalize_range_text(params.get("range_ref"))

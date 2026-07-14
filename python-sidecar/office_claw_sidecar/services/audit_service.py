@@ -16,6 +16,7 @@ from office_claw_sidecar.config import get_audit_log_path
 from office_claw_sidecar.services.unified_log_service import append_unified_event
 
 logger = logging.getLogger(__name__)
+KST = timezone(timedelta(hours=9), name="KST")
 
 
 class AuditService:
@@ -27,7 +28,7 @@ class AuditService:
     def log(self, action: str, target: str, detail: str = "") -> None:
         """Append an audit entry."""
         entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(KST).isoformat(),
             "action": action,
             "target": target,
             "detail": detail,
@@ -91,13 +92,16 @@ class AuditService:
             }
         """
         all_logs = self.get_all_logs()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(KST)
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         week_start = today_start - timedelta(days=7)
 
         def _parse_ts(ts: str) -> datetime | None:
             try:
-                return datetime.fromisoformat(ts)
+                parsed = datetime.fromisoformat(ts)
+                if parsed.tzinfo is None:
+                    return parsed.replace(tzinfo=KST)
+                return parsed
             except Exception:
                 return None
 
