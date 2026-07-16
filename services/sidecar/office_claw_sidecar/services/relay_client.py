@@ -141,6 +141,21 @@ class RelaySession:
     async def _status(self, state: AgentState) -> None:
         await self._send(AgentStatus(state=state))
 
+    def _make_token_sink(self, stream_id: str) -> tuple[Callable[[str], Awaitable[None]], dict]:
+        """스트리밍 토큰을 TokenDelta로 내보내는 on_token 콜백 + 상태(index/streamed)."""
+        state: dict[str, Any] = {"index": 0, "streamed": False}
+
+        async def on_token(text: str) -> None:
+            if not text:
+                return
+            await self._send(
+                TokenDelta(stream_id=stream_id, index=state["index"], text=text)
+            )
+            state["index"] += 1
+            state["streamed"] = True
+
+        return on_token, state
+
     async def handle_incoming(self, raw: str) -> None:
         """relay에서 온 raw 텍스트 1건 처리 (presence control 또는 Envelope 프레임)."""
         try:
@@ -171,6 +186,8 @@ class RelaySession:
 
     async def _on_chat(self, msg: ChatUserMsg) -> None:
         await self._status(AgentState.thinking)
+        stream_id = msg.client_msg_id
+        on_token, sink = self._make_token_sink(stream_id)
         history_snapshot = list(self._history)  # 현재 발화 제외한 이전 턴만 전달
         self._history.append({"role": "user", "content": msg.text})
         try:
@@ -180,12 +197,13 @@ class RelaySession:
                 workbook_id=self.workbook_id,
                 sheet_name=self.sheet_name,
                 history=history_snapshot,
+                on_token=on_token,
             )
         except Exception as exc:  # noqa: BLE001 - 에이전트 실패는 스트림 오류로 통지
             logger.exception("[relay] 에이전트 턴 실패")
-            await self._fail_stream(msg.client_msg_id, str(exc))
+            await self._fail_stream(stream_id, str(exc))
             return
-        await self._handle_turn(turn, stream_id=msg.client_msg_id)
+        await self._handle_turn(turn, stream_id=stream_id, streamed=sink["streamed"])
 
     async def _on_approval_response(self, resp: ApprovalResponse) -> None:
         pending = self._pending.pop(resp.request_id, None)
@@ -199,6 +217,7 @@ class RelaySession:
             await self._status(AgentState.idle)
             return
         await self._status(AgentState.remote_controlling)
+        on_token, sink = self._make_token_sink(pending.stream_id)
         try:
             turn = await resume_excel_tool_turn(
                 resume=pending.resume,
@@ -207,14 +226,19 @@ class RelaySession:
                 workbook_id=self.workbook_id,
                 sheet_name=pending.sheet_name,
                 llm_service=self._llm_service,
+                on_token=on_token,
             )
         except Exception as exc:  # noqa: BLE001
             logger.exception("[relay] 승인 재개 실패")
             await self._fail_stream(pending.stream_id, str(exc))
             return
-        await self._handle_turn(turn, stream_id=pending.stream_id)
+        await self._handle_turn(
+            turn, stream_id=pending.stream_id, streamed=sink["streamed"]
+        )
 
-    async def _handle_turn(self, turn: dict[str, Any], *, stream_id: str) -> None:
+    async def _handle_turn(
+        self, turn: dict[str, Any], *, stream_id: str, streamed: bool = False
+    ) -> None:
         if turn.get("type") == "approval":
             request_id = uuid.uuid4().hex
             self._pending[request_id] = PendingApproval(
@@ -236,10 +260,11 @@ class RelaySession:
             await self._status(AgentState.idle)
             return
 
-        # type == "chat": 완성 텍스트를 (MVP) TokenDelta 1개 + StreamEnd로 감싼다
+        # type == "chat": 스트리밍으로 이미 나갔으면 StreamEnd만, 아니면 통째로 1개(폴백)
         text = str(turn.get("assistant_text") or "")
         self._history.append({"role": "assistant", "content": text})
-        await self._send(TokenDelta(stream_id=stream_id, index=0, text=text))
+        if not streamed and text:
+            await self._send(TokenDelta(stream_id=stream_id, index=0, text=text))
         await self._send(StreamEnd(stream_id=stream_id, reason="complete"))
         await self._status(AgentState.idle)
 

@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from office_claw_sidecar.services.audit_service import AuditService
@@ -67,6 +68,77 @@ _SYSTEM_PROMPT_TEMPLATE = """당신은 사용자의 데스크톱에서 실행 �
 
 def _strip_think_blocks(text: str) -> str:
     return _THINK_BLOCK_RE.sub("", text or "").strip()
+
+
+def _partial_tag_suffix_len(s: str) -> int:
+    """s의 꼬리가 <think>/</think> 태그의 미완결 접두사이면 그 길이(보류 대상)를 반환."""
+    best = 0
+    for tag in ("<think>", "</think>"):
+        for k in range(min(len(s), len(tag) - 1), 0, -1):
+            if s.endswith(tag[:k]):
+                best = max(best, k)
+                break
+    return best
+
+
+class _ThinkStreamFilter:
+    """스트리밍 content에서 <think>...</think>를 제거하고 방출 가능한 델타만 반환한다.
+
+    thinking 모델(qwen3 등)의 사고 블록이 사용자에게 노출되지 않게 한다. 태그가 조각
+    사이에 걸쳐도 매 feed마다 전체 버퍼를 재-strip해 안전하게 처리한다.
+    """
+
+    def __init__(self) -> None:
+        self._raw = ""
+        self._emitted = 0
+
+    def feed(self, chunk: str) -> str:
+        self._raw += chunk
+        return self._recompute(hold_partial=True)
+
+    def flush(self) -> str:
+        return self._recompute(hold_partial=False)
+
+    def _recompute(self, *, hold_partial: bool) -> str:
+        clean = _THINK_BLOCK_RE.sub("", self._raw)  # 완결된 think 블록 제거
+        open_i = clean.find("<think>")  # 미완결 열린 think 이후는 전부 보류
+        if open_i != -1:
+            clean = clean[:open_i]
+        if hold_partial:
+            clean = clean[: len(clean) - _partial_tag_suffix_len(clean)]
+        delta = clean[self._emitted :]
+        self._emitted = len(clean)
+        return delta
+
+
+async def _stream_round(
+    llm_service: LLMService,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    on_token: Callable[[str], Awaitable[None]] | None,
+) -> dict[str, Any]:
+    """LLM 한 라운드 실행. on_token이 있으면 스트리밍(content를 think 필터 후 흘림).
+
+    on_token이 None이면 기존 비스트리밍 경로와 동일하며, 반환 dict는 두 경로가 같다.
+    tool_calls 라운드는 content가 없으므로 자연히 사용자에게 흐르지 않는다.
+    """
+    if on_token is None:
+        return await llm_service.chat_with_tools(messages, tools=tools)
+
+    filt = _ThinkStreamFilter()
+
+    async def _on_content(piece: str) -> None:
+        delta = filt.feed(piece)
+        if delta:
+            await on_token(delta)
+
+    reply = await llm_service.chat_with_tools_stream(
+        messages, tools=tools, on_content=_on_content
+    )
+    tail = filt.flush()
+    if tail:
+        await on_token(tail)
+    return reply
 
 
 def _build_excel_context() -> str:
@@ -122,6 +194,7 @@ async def _run_tool_loop(
     sheet_name: str | None,
     executed: list[dict[str, Any]],
     rounds_left: int,
+    on_token: Callable[[str], Awaitable[None]] | None = None,
 ) -> dict[str, Any]:
     """
     tool-calling 핵심 루프. messages 리스트를 in-place로 갱신하며 진행한다.
@@ -133,7 +206,7 @@ async def _run_tool_loop(
     tools = get_excel_tools()
 
     for _ in range(rounds_left):
-        reply = await llm_service.chat_with_tools(messages, tools=tools)
+        reply = await _stream_round(llm_service, messages, tools, on_token)
         tool_calls = reply.get("tool_calls") or []
 
         if not tool_calls:
@@ -264,6 +337,7 @@ async def run_excel_tool_turn(
     workbook_id: str | None = None,
     sheet_name: str | None = None,
     history: list[dict] | None = None,
+    on_token: Callable[[str], Awaitable[None]] | None = None,
 ) -> dict[str, Any]:
     """자연어 한 턴을 tool-calling 루프로 처리한다."""
     system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(context=_build_excel_context())
@@ -282,6 +356,7 @@ async def run_excel_tool_turn(
         sheet_name=sheet_name,
         executed=[],
         rounds_left=MAX_TOOL_ROUNDS,
+        on_token=on_token,
     )
 
 
@@ -293,6 +368,7 @@ async def resume_excel_tool_turn(
     workbook_id: str | None,
     sheet_name: str | None,
     llm_service: LLMService,
+    on_token: Callable[[str], Awaitable[None]] | None = None,
 ) -> dict[str, Any]:
     """
     승인된 CONFIRM 작업을 실행하고, 그 결과를 LLM에 재주입해 루프를 이어간다 (B안).
@@ -329,4 +405,5 @@ async def resume_excel_tool_turn(
         sheet_name=sheet_name,
         executed=executed,
         rounds_left=MAX_TOOL_ROUNDS,
+        on_token=on_token,
     )

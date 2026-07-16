@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable
 
 from office_claw_sidecar.config import get_data_dir
 from office_claw_sidecar.local_stack import get_default_llm_config
@@ -102,6 +103,16 @@ class LLMProvider(ABC):
             f"'{self.provider_name}' provider는 tools(function calling)를 지원하지 않습니다."
         )
 
+    async def chat_with_tools_stream(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        on_content: Callable[[str], Awaitable[None]] | None = None,
+        model: str | None = None,
+    ) -> dict:
+        """스트리밍 tool 호출 — 미지원 provider는 비스트리밍으로 처리(on_content 미호출)."""
+        return await self.chat_with_tools(messages, tools, model=model)
+
     @property
     @abstractmethod
     def provider_name(self) -> str:
@@ -152,6 +163,22 @@ class OllamaProvider(LLMProvider):
             temperature=0.2,
         )
 
+    async def chat_with_tools_stream(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        on_content: Callable[[str], Awaitable[None]] | None = None,
+        model: str | None = None,
+    ) -> dict:
+        # 스트리밍 function calling — content는 on_content로 흘리고 tool_calls는 누적
+        return await self._svc.chat_completions_stream(
+            messages,
+            model=self._resolve_model(model),
+            tools=tools,
+            temperature=0.2,
+            on_content=on_content,
+        )
+
 
 class ClaudeProvider(LLMProvider):
     """Delegates to the existing ClaudeService."""
@@ -200,6 +227,18 @@ class LLMService:
     ) -> dict:
         """tools(function calling) 포함 호출을 provider에 위임한다."""
         return await self._provider.chat_with_tools(messages, tools, model=model)
+
+    async def chat_with_tools_stream(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        on_content: Callable[[str], Awaitable[None]] | None = None,
+        model: str | None = None,
+    ) -> dict:
+        """스트리밍 tools 호출을 provider에 위임한다."""
+        return await self._provider.chat_with_tools_stream(
+            messages, tools, on_content=on_content, model=model
+        )
 
 
 # ── Singleton factory ─────────────────────────────────────────────────────
