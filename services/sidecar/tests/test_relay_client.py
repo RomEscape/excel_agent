@@ -167,3 +167,36 @@ def test_presence_control_ignored():
         sess.handle_incoming(json.dumps({"control": "peer_status", "state": "online"}))
     )
     assert col.raw == []  # presence는 응답 프레임을 만들지 않는다
+
+
+def test_chat_streams_incrementally(monkeypatch):
+    async def fake_run(**kwargs):
+        # 에이전트가 토큰을 조각조각 흘려보낸다
+        on_token = kwargs["on_token"]
+        await on_token("안녕")
+        await on_token("하세요")
+        return {"type": "chat", "assistant_text": "안녕하세요", "executed": []}
+
+    monkeypatch.setattr(rc, "run_excel_tool_turn", fake_run)
+
+    col = Collector()
+    sess = rc.RelaySession("p1", col, llm_service=object())
+    asyncio.run(
+        sess.handle_incoming(_incoming("p1", ChatUserMsg(client_msg_id="c1", text="hi")))
+    )
+
+    frames = _frames(col)
+    # thinking → TokenDelta("안녕",0) → TokenDelta("하세요",1) → StreamEnd → idle
+    assert _types(col) == [
+        "AgentStatus",
+        "TokenDelta",
+        "TokenDelta",
+        "StreamEnd",
+        "AgentStatus",
+    ]
+    assert frames[1].text == "안녕" and frames[1].index == 0
+    assert frames[2].text == "하세요" and frames[2].index == 1
+    assert frames[3].reason == "complete"
+    assert frames[4].state == AgentState.idle
+    # 스트리밍했으니 완성본 재전송(폴백) 없음 — TokenDelta는 정확히 2개
+    assert sum(1 for t in _types(col) if t == "TokenDelta") == 2
