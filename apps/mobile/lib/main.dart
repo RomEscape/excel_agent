@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'pairing/pairing_screen.dart';
+import 'pairing/pairing_service.dart';
 import 'protocol/protocol.dart';
 import 'store/chat_controller.dart';
 
@@ -49,6 +51,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     ref
         .read(chatControllerProvider.notifier)
         .connect(relayUrl: _relayCtrl.text.trim(), pairingId: pid);
+  }
+
+  Future<void> _scanQr() async {
+    final info = await Navigator.of(context).push<PairingInfo>(
+      MaterialPageRoute(builder: (_) => const PairingScreen()),
+    );
+    if (info == null) return;
+    try {
+      await completePairing(info);
+      if (!mounted) return;
+      ref
+          .read(chatControllerProvider.notifier)
+          .connect(relayUrl: info.relayUrl, pairingId: info.pairingId);
+    } on PairingException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    }
   }
 
   void _send() {
@@ -108,31 +130,45 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: Padding(
         padding: const EdgeInsets.all(8),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
-              flex: 3,
-              child: TextField(
-                controller: _relayCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'relay URL',
-                  isDense: true,
-                ),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _scanQr,
+                icon: const Icon(Icons.qr_code_scanner),
+                label: const Text('QR로 데스크톱 연결'),
               ),
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              flex: 4,
-              child: TextField(
-                controller: _pairingCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'pairing_id (수동)',
-                  isDense: true,
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: TextField(
+                    controller: _relayCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'relay',
+                      isDense: true,
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 6),
+                Expanded(
+                  flex: 4,
+                  child: TextField(
+                    controller: _pairingCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'pairing_id (수동)',
+                      isDense: true,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                OutlinedButton(onPressed: _connect, child: const Text('연결')),
+              ],
             ),
-            const SizedBox(width: 8),
-            FilledButton(onPressed: _connect, child: const Text('연결')),
           ],
         ),
       ),
