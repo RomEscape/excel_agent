@@ -19,7 +19,8 @@ import sys
 from pathlib import Path
 
 SIDECAR_DIR = Path(__file__).parent
-TAURI_BIN_DIR = SIDECAR_DIR.parent / "src-tauri" / "binaries"
+# 모노레포: services/sidecar → 레포 루트(parent.parent) → apps/desktop/src-tauri/binaries
+TAURI_BIN_DIR = SIDECAR_DIR.parent.parent / "apps" / "desktop" / "src-tauri" / "binaries"
 
 
 def build() -> None:

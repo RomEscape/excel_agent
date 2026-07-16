@@ -4,16 +4,15 @@ dist/
 .vite/
 
 # Rust / Tauri
-src-tauri/target/
-src-tauri/binaries/office-claw-sidecar-*
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/binaries/office-claw-sidecar-*
 
 # Python
-python-sidecar/__pycache__/
-python-sidecar/**/__pycache__/
-python-sidecar/*.egg-info/
-python-sidecar/dist/
-python-sidecar/build/
-python-sidecar/.eggs/
+**/__pycache__/
+**/*.egg-info/
+**/.eggs/
+services/sidecar/dist/
+services/sidecar/build/
 **/.pytest_cache/
 *.pyc
 *.pyo
@@ -47,3 +46,6 @@ text_1.xlsx
 
 # 개발 로그 (로컬 전용 — 버전관리 제외)
 개발일지.md
+
+# 기획/계획 문서 (로컬 전용 — 버전관리 제외)
+docs/product/

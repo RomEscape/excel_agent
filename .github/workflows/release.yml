@@ -40,7 +40,7 @@ jobs:
         run: uv python install 3.12
 
       - name: Python 의존성 설치 (uv venv)
-        working-directory: python-sidecar
+        working-directory: services/sidecar
         run: |
           uv sync
           uv pip install pyinstaller
@@ -49,7 +49,7 @@ jobs:
       #    출력 바이너리를 Tauri externalBin 규칙(binaries/{name}-{target})으로 저장
       - name: 사이드카 바이너리 빌드 (Unix)
         if: runner.os != 'Windows'
-        working-directory: python-sidecar
+        working-directory: services/sidecar
         run: |
           uv run pyinstaller \
             --onefile \
@@ -60,13 +60,13 @@ jobs:
             --hidden-import slack_bolt \
             --hidden-import discord \
             office_claw_sidecar/__main__.py
-          mkdir -p ../src-tauri/binaries
+          mkdir -p ../../apps/desktop/src-tauri/binaries
           cp dist/office-claw-sidecar \
-             "../src-tauri/binaries/office-claw-sidecar-${{ matrix.sidecar_suffix }}"
+             "../../apps/desktop/src-tauri/binaries/office-claw-sidecar-${{ matrix.sidecar_suffix }}"
 
       - name: 사이드카 바이너리 빌드 (Windows)
         if: runner.os == 'Windows'
-        working-directory: python-sidecar
+        working-directory: services/sidecar
         shell: pwsh
         run: |
           uv run pyinstaller `
@@ -78,20 +78,23 @@ jobs:
             --hidden-import slack_bolt `
             --hidden-import discord `
             office_claw_sidecar/__main__.py
-          New-Item -ItemType Directory -Force -Path ../src-tauri/binaries
+          New-Item -ItemType Directory -Force -Path ../../apps/desktop/src-tauri/binaries
           Copy-Item dist/office-claw-sidecar.exe `
-            "../src-tauri/binaries/office-claw-sidecar-${{ matrix.sidecar_suffix }}.exe"
+            "../../apps/desktop/src-tauri/binaries/office-claw-sidecar-${{ matrix.sidecar_suffix }}.exe"
 
       # 4. Node.js 설치 및 JS 빌드
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
+          cache-dependency-path: apps/desktop/package-lock.json
 
       - name: JS 의존성 설치
+        working-directory: apps/desktop
         run: npm ci
 
       - name: React 빌드
+        working-directory: apps/desktop
         run: npm run build
 
       # 5. Rust 설치
@@ -102,7 +105,7 @@ jobs:
       - name: Rust 캐시
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: 'src-tauri -> target'
+          workspaces: 'apps/desktop/src-tauri -> target'
 
       # 6. Tauri 빌드 및 GitHub Releases 업로드
       #    tauri-apps/tauri-action이 빌드 + 릴리즈 생성 + 아티팩트 업로드를 한 번에 처리
@@ -112,6 +115,7 @@ jobs:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
+          projectPath: apps/desktop
           tagName: ${{ github.ref_name }}
           releaseName: 'ajou-ai ${{ github.ref_name }}'
           releaseBody: |

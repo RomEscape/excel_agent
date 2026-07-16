@@ -13,25 +13,27 @@ pre-commit:
   parallel: true
   commands:
     rust-fmt:
-      glob: "src-tauri/**/*.rs"
-      root: "src-tauri/"
+      glob: "apps/desktop/src-tauri/**/*.rs"
+      root: "apps/desktop/src-tauri/"
       run: cargo fmt --check
     python-lint:
-      glob: "python-sidecar/**/*.py"
-      root: "python-sidecar/"
+      glob: "services/sidecar/**/*.py"
+      root: "services/sidecar/"
       run: uvx ruff check .
     frontend-lint:
-      glob: "src/**/*.{ts,tsx,js,jsx}"
+      glob: "apps/desktop/src/**/*.{ts,tsx,js,jsx}"
+      root: "apps/desktop/"
       run: npm run lint --if-present
 
 pre-push:
   parallel: true
   commands:
     rust-clippy:
-      root: "src-tauri/"
+      root: "apps/desktop/src-tauri/"
       run: cargo clippy --all-targets -- -D warnings
     python-test:
-      root: "python-sidecar/"
+      root: "services/sidecar/"
       run: uv run pytest -q
     frontend-test:
+      root: "apps/desktop/"
       run: npm run test:unit --if-present

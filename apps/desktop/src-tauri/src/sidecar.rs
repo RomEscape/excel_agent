@@ -146,16 +146,17 @@ async fn wait_for_ready(port: u16, auth_token: &str) -> Result<(), String> {
 }
 
 fn spawn_dev_sidecar_process(port: u16, auth_token: &str) -> Result<(), String> {
-    // tauri dev는 cargo run을 src-tauri/에서 실행하므로 상위 경로(../python-sidecar)도 함께 탐색한다.
+    // tauri dev는 cargo run을 apps/desktop/src-tauri/에서 실행한다.
+    // 사이드카는 모노레포에서 services/sidecar/로 이동했으므로 레포 루트 기준·크레이트 기준 후보를 모두 탐색한다.
     let dir_candidates = [
-        PathBuf::from("python-sidecar"),
-        PathBuf::from("../python-sidecar"),
+        PathBuf::from("services/sidecar"), // 레포 루트에서 실행되는 경우
+        PathBuf::from("../../../services/sidecar"), // apps/desktop/src-tauri에서 cargo run
     ];
     let python_sidecar_dir = dir_candidates
         .into_iter()
         .find(|p| p.exists())
         .ok_or_else(|| {
-            "Dev sidecar 자동 기동 실패: python-sidecar 디렉토리를 찾을 수 없습니다.".to_string()
+            "Dev sidecar 자동 기동 실패: services/sidecar 디렉토리를 찾을 수 없습니다.".to_string()
         })?;
 
     // venv 실행 파일도 위에서 찾은 디렉토리 기준으로 해석한다(cwd 의존 상대경로 제거).

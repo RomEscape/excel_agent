@@ -11,7 +11,8 @@ export NVM_DIR="$HOME/.nvm"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-SIDECAR_DIR="$PROJECT_DIR/python-sidecar"
+SIDECAR_DIR="$PROJECT_DIR/services/sidecar"
+APP_DIR="$PROJECT_DIR/apps/desktop"
 
 echo "=== Starting Office Claw Development ==="
 
@@ -21,9 +22,9 @@ cd "$SIDECAR_DIR"
 uv sync
 
 # 2. Install JS dependencies if node_modules missing
-if [ ! -d "$PROJECT_DIR/node_modules" ]; then
+if [ ! -d "$APP_DIR/node_modules" ]; then
     echo "Installing JS dependencies..."
-    cd "$PROJECT_DIR"
+    cd "$APP_DIR"
     npm install
 fi
 
@@ -36,7 +37,7 @@ echo "Sidecar PID: $SIDECAR_PID"
 
 # 4. Start Vite dev server in background
 echo "Starting Vite dev server..."
-cd "$PROJECT_DIR"
+cd "$APP_DIR"
 npm run dev &
 VITE_PID=$!
 echo "Vite PID: $VITE_PID"
@@ -63,7 +64,7 @@ done
 
 # 7. Start Tauri app
 echo "Starting Tauri app..."
-cd "$PROJECT_DIR"
+cd "$APP_DIR"
 cargo tauri dev
 
 # Cleanup on exit

@@ -1,0 +1,365 @@
+{
+  "$defs": {
+    "Ack": {
+      "description": "양방향: 수신 확인 — 상대편 replay 버퍼의 절단점.\n\n재연결 시 마지막 ack_seq 이후만 재전송하면 되므로 토큰 유실·중복을 막는다.",
+      "properties": {
+        "type": {
+          "const": "ack",
+          "default": "ack",
+          "title": "Type",
+          "type": "string"
+        },
+        "ack_seq": {
+          "description": "여기까지 연속 수신 완료한 최대 seq",
+          "title": "Ack Seq",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ack_seq"
+      ],
+      "title": "Ack",
+      "type": "object"
+    },
+    "AgentState": {
+      "description": "데스크톱 에이전트의 현재 상태 (모바일 상단 인디케이터용).",
+      "enum": [
+        "idle",
+        "thinking",
+        "remote_controlling",
+        "offline"
+      ],
+      "title": "AgentState",
+      "type": "string"
+    },
+    "AgentStatus": {
+      "description": "데스크톱 → 모바일: 에이전트 상태 동기화.",
+      "properties": {
+        "type": {
+          "const": "agent_status",
+          "default": "agent_status",
+          "title": "Type",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/AgentState"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "title": "AgentStatus",
+      "type": "object"
+    },
+    "ApprovalRequest": {
+      "description": "데스크톱 → 모바일: HITL 승인 요청 (CONFIRM 권한 동작).",
+      "properties": {
+        "type": {
+          "const": "approval_request",
+          "default": "approval_request",
+          "title": "Type",
+          "type": "string"
+        },
+        "request_id": {
+          "title": "Request Id",
+          "type": "string"
+        },
+        "command": {
+          "description": "승인 대상 동작 요약",
+          "title": "Command",
+          "type": "string"
+        },
+        "reason": {
+          "description": "왜 승인이 필요한지",
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id",
+        "command",
+        "reason"
+      ],
+      "title": "ApprovalRequest",
+      "type": "object"
+    },
+    "ApprovalResponse": {
+      "description": "모바일 → 데스크톱: 승인 응답.\n\n보안 주의: E2E 도입 시 이 프레임은 반드시 인증(MAC)되어야 한다.\n그래야 relay가 승인을 위조하거나 재전송(replay)해 CONFIRM 게이트를 우회하지 못한다.",
+      "properties": {
+        "type": {
+          "const": "approval_response",
+          "default": "approval_response",
+          "title": "Type",
+          "type": "string"
+        },
+        "request_id": {
+          "title": "Request Id",
+          "type": "string"
+        },
+        "approved": {
+          "title": "Approved",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "request_id",
+        "approved"
+      ],
+      "title": "ApprovalResponse",
+      "type": "object"
+    },
+    "ChatUserMsg": {
+      "description": "모바일 → 데스크톱: 사용자 입력.",
+      "properties": {
+        "type": {
+          "const": "chat_user_msg",
+          "default": "chat_user_msg",
+          "title": "Type",
+          "type": "string"
+        },
+        "client_msg_id": {
+          "description": "모바일이 생성한 멱등 키(재전송 중복 제거)",
+          "title": "Client Msg Id",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_msg_id",
+        "text"
+      ],
+      "title": "ChatUserMsg",
+      "type": "object"
+    },
+    "Direction": {
+      "description": "프레임의 논리적 진행 방향(라우팅 교차검증용).",
+      "enum": [
+        "to_desktop",
+        "to_mobile"
+      ],
+      "title": "Direction",
+      "type": "string"
+    },
+    "ErrorFrame": {
+      "description": "relay 또는 endpoint → : 오류 통지(예: 세션 없음, 버전 불일치).",
+      "properties": {
+        "type": {
+          "const": "error",
+          "default": "error",
+          "title": "Type",
+          "type": "string"
+        },
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "ErrorFrame",
+      "type": "object"
+    },
+    "Ping": {
+      "description": "양방향: 앱 레벨 liveness — half-open 소켓 탐지(NAT idle timeout 대응).",
+      "properties": {
+        "type": {
+          "const": "ping",
+          "default": "ping",
+          "title": "Type",
+          "type": "string"
+        },
+        "nonce": {
+          "title": "Nonce",
+          "type": "string"
+        }
+      },
+      "required": [
+        "nonce"
+      ],
+      "title": "Ping",
+      "type": "object"
+    },
+    "Pong": {
+      "properties": {
+        "type": {
+          "const": "pong",
+          "default": "pong",
+          "title": "Type",
+          "type": "string"
+        },
+        "nonce": {
+          "title": "Nonce",
+          "type": "string"
+        }
+      },
+      "required": [
+        "nonce"
+      ],
+      "title": "Pong",
+      "type": "object"
+    },
+    "StreamEnd": {
+      "description": "데스크톱 → 모바일: 스트림 종료/중단.\n\n잘린 스트림이 '손상된 최종 메시지'로 남지 않도록 명시적 종료 시맨틱을 준다.",
+      "properties": {
+        "type": {
+          "const": "stream_end",
+          "default": "stream_end",
+          "title": "Type",
+          "type": "string"
+        },
+        "stream_id": {
+          "title": "Stream Id",
+          "type": "string"
+        },
+        "reason": {
+          "default": "complete",
+          "enum": [
+            "complete",
+            "aborted",
+            "error"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        }
+      },
+      "required": [
+        "stream_id"
+      ],
+      "title": "StreamEnd",
+      "type": "object"
+    },
+    "TokenDelta": {
+      "description": "데스크톱 → 모바일: LLM 토큰 스트리밍 조각.",
+      "properties": {
+        "type": {
+          "const": "token_delta",
+          "default": "token_delta",
+          "title": "Type",
+          "type": "string"
+        },
+        "stream_id": {
+          "description": "하나의 assistant 응답을 식별",
+          "title": "Stream Id",
+          "type": "string"
+        },
+        "index": {
+          "description": "스트림 내 조각 순번(0-base) — 순서 복원/중복 제거",
+          "title": "Index",
+          "type": "integer"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stream_id",
+        "index",
+        "text"
+      ],
+      "title": "TokenDelta",
+      "type": "object"
+    }
+  },
+  "description": "endpoint용 전체 봉투 — payload(Frame)까지 검증.",
+  "properties": {
+    "v": {
+      "default": 1,
+      "description": "프로토콜 버전",
+      "title": "V",
+      "type": "integer"
+    },
+    "pairing_id": {
+      "description": "relay 라우팅 키 (1:1 바인딩된 세션)",
+      "title": "Pairing Id",
+      "type": "string"
+    },
+    "direction": {
+      "$ref": "#/$defs/Direction"
+    },
+    "seq": {
+      "description": "(pairing_id, direction)별 단조 증가 순번 — 재연결 재개",
+      "title": "Seq",
+      "type": "integer"
+    },
+    "payload": {
+      "discriminator": {
+        "mapping": {
+          "ack": "#/$defs/Ack",
+          "agent_status": "#/$defs/AgentStatus",
+          "approval_request": "#/$defs/ApprovalRequest",
+          "approval_response": "#/$defs/ApprovalResponse",
+          "chat_user_msg": "#/$defs/ChatUserMsg",
+          "error": "#/$defs/ErrorFrame",
+          "ping": "#/$defs/Ping",
+          "pong": "#/$defs/Pong",
+          "stream_end": "#/$defs/StreamEnd",
+          "token_delta": "#/$defs/TokenDelta"
+        },
+        "propertyName": "type"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ChatUserMsg"
+        },
+        {
+          "$ref": "#/$defs/TokenDelta"
+        },
+        {
+          "$ref": "#/$defs/StreamEnd"
+        },
+        {
+          "$ref": "#/$defs/AgentStatus"
+        },
+        {
+          "$ref": "#/$defs/ApprovalRequest"
+        },
+        {
+          "$ref": "#/$defs/ApprovalResponse"
+        },
+        {
+          "$ref": "#/$defs/Ack"
+        },
+        {
+          "$ref": "#/$defs/Ping"
+        },
+        {
+          "$ref": "#/$defs/Pong"
+        },
+        {
+          "$ref": "#/$defs/ErrorFrame"
+        }
+      ],
+      "title": "Payload"
+    }
+  },
+  "required": [
+    "pairing_id",
+    "direction",
+    "seq",
+    "payload"
+  ],
+  "title": "Envelope",
+  "type": "object"
+}

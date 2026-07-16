@@ -44,6 +44,14 @@ def get_whitelist_path() -> Path:
     return get_data_dir() / "skill_whitelist.json"
 
 
+def get_relay_config_path() -> Path:
+    """중계 서버(relay) 연동 설정 경로 — 비밀 아닌 값(relay_url, pairing_id 등).
+
+    페어링 시크릿 같은 비밀은 여기 두지 않는다(keyring 사용).
+    """
+    return get_data_dir() / "relay_config.json"
+
+
 def get_app_home_dir() -> Path:
     """사용자 가시 홈 디렉토리 (~/officeclaw) — Workspace와 audit.db의 부모.
 
