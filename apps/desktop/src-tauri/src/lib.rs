@@ -115,6 +115,10 @@ pub fn run() {
             ipc::backup_import,
             // Sprint 5: 자동 업데이트
             ipc::check_for_update,
+            // 모바일 릴레이(중계 서버) 연동 — QR 페어링
+            ipc::relay_pair,
+            ipc::relay_status,
+            ipc::relay_disconnect,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

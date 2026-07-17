@@ -1255,3 +1255,48 @@ pub async fn save_llm_settings(
     )
     .await
 }
+
+// ── 모바일 릴레이(중계 서버) 연동 — QR 페어링 ────────────────────────────────
+
+/// relay에 페어링을 개시하고 {pairing_id, code, relay_url}을 받는다 (QR 렌더용).
+#[tauri::command]
+pub async fn relay_pair(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
+    sidecar_request(
+        &state,
+        Method::POST,
+        "/relay/pair",
+        None,
+        // 사이드카가 relay 서버로 나가는 왕복이 있어 여유를 둔다
+        Some(Duration::from_secs(15)),
+        "릴레이 페어링 개시 실패",
+    )
+    .await
+}
+
+/// 릴레이 연동 상태 {enabled, relay_url, pairing_id, connected}.
+#[tauri::command]
+pub async fn relay_status(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
+    sidecar_request(
+        &state,
+        Method::GET,
+        "/relay/status",
+        None,
+        None,
+        "릴레이 상태 조회 실패",
+    )
+    .await
+}
+
+/// 릴레이 연동 중지(enabled=false) + 백그라운드 클라이언트 정리.
+#[tauri::command]
+pub async fn relay_disconnect(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
+    sidecar_request(
+        &state,
+        Method::POST,
+        "/relay/disconnect",
+        None,
+        None,
+        "릴레이 연결 해제 실패",
+    )
+    .await
+}
