@@ -15,7 +15,7 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     let tray = app.tray_by_id("main").unwrap_or_else(|| {
         tauri::tray::TrayIconBuilder::with_id("main")
             .menu(&menu)
-            .tooltip("Office Claw")
+            .tooltip("김대리")
             .build(app)
             .expect("Failed to build tray icon")
     });

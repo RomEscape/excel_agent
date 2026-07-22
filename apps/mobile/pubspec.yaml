@@ -38,6 +38,7 @@ dependencies:
   web_socket_channel: ^3.0.3
   mobile_scanner: ^7.2.1
   http: ^1.6.0
+  flutter_svg: ^2.0.10
 
 dev_dependencies:
   flutter_test:
@@ -60,6 +61,10 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # 브랜드 로고 워드마크(김대리) — AppBar 등에서 flutter_svg로 렌더링
+  assets:
+    - assets/brand-wordmark.svg
 
   # To add assets to your application, add an assets section, like this:
   # assets:
