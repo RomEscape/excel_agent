@@ -47,3 +47,11 @@ office-claw-sidecar = "office_claw_sidecar.main:main"
 [tool.uv.sources]
 oc-protocol = { path = "../../packages/protocol/python", editable = true }
 oc-shared = { path = "../../packages/py-shared", editable = true }
+
+# Ruff lint 규칙을 명시적으로 고정한다.
+# 이유: CI·로컬 모두 `uvx ruff check .`로 최신 ruff를 받는데(버전 미고정),
+# ruff 0.16.0이 기본 룰셋을 넓히면서 기존 코드가 무더기로 걸려 python-check가 나갔다.
+# select를 명시하면 룰셋이 ruff 버전 기본값에 의존하지 않아, 버전이 올라가도 흔들리지 않는다.
+# 값은 그동안 실효로 강제되던 ruff 기본 규칙(E4/E7/E9/F)과 동일하게 유지한다.
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
