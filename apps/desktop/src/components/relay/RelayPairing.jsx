@@ -17,6 +17,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   buildQrPayload,
   disconnect,
@@ -30,8 +32,10 @@ export default function RelayPairing() {
   const phase = useRelayStore((s) => s.phase);
   const pairing = useRelayStore((s) => s.pairing);
   const connected = useRelayStore((s) => s.connected);
+  const relayUrl = useRelayStore((s) => s.relayUrl);
   const lastError = useRelayStore((s) => s.lastError);
   const [busy, setBusy] = useState(false);
+  const [urlInput, setUrlInput] = useState("");
   const stopPoll = useRef(null);
 
   // 진입 시 현재 연동 상태 1회 조회, 이탈 시 폴링 정리
@@ -40,10 +44,15 @@ export default function RelayPairing() {
     return () => stopPoll.current?.();
   }, []);
 
+  // 저장된 relay 주소를 입력칸에 채운다 (사용자가 편집 중이면 덮지 않음)
+  useEffect(() => {
+    if (relayUrl && !urlInput) setUrlInput(relayUrl);
+  }, [relayUrl, urlInput]);
+
   const onPair = async () => {
     setBusy(true);
     try {
-      await startPairing();
+      await startPairing(urlInput.trim() || undefined);
       stopPoll.current?.();
       stopPoll.current = pollUntilConnected();
     } catch {
@@ -106,14 +115,30 @@ export default function RelayPairing() {
             </p>
           </div>
         ) : (
-          <Button onClick={onPair} disabled={busy || phase === "pairing"}>
-            {busy || phase === "pairing" ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Smartphone className="mr-2 h-4 w-4" />
-            )}
-            모바일 연결 시작
-          </Button>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="relay-url">중계 서버 주소</Label>
+              <Input
+                id="relay-url"
+                value={urlInput}
+                onChange={(e) => setUrlInput(e.target.value)}
+                placeholder="http://127.0.0.1:8787"
+              />
+              <p className="text-xs text-muted-foreground">
+                실제 폰으로 테스트하려면 이 데스크톱의 <b>LAN IP</b>를 넣으세요 (예:{" "}
+                <code>http://192.168.0.12:8787</code>). QR에 이 주소가 그대로 실리는데{" "}
+                <code>127.0.0.1</code>은 폰에겐 자기 자신이라 연결되지 않습니다.
+              </p>
+            </div>
+            <Button onClick={onPair} disabled={busy || phase === "pairing"}>
+              {busy || phase === "pairing" ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Smartphone className="mr-2 h-4 w-4" />
+              )}
+              모바일 연결 시작
+            </Button>
+          </div>
         )}
       </CardContent>
     </Card>

@@ -14,12 +14,13 @@ export { buildQrPayload, QR_PAYLOAD_VERSION } from "./relayQr";
 /**
  * 페어링 개시 → QR 정보 확보(phase=waiting).
  *
+ * @param {string} [relayUrl] 지정 시 relay 주소를 이 값으로 갱신하고 사용
  * @returns {Promise<{pairing_id: string, code: string, relay_url: string}>}
  */
-export async function startPairing() {
+export async function startPairing(relayUrl) {
   useRelayStore.getState().setPhase("pairing");
   try {
-    const info = await relayPair();
+    const info = await relayPair(relayUrl);
     useRelayStore.getState().setPairing(info);
     useRelayStore.getState().setPhase("waiting");
     return info;

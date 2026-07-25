@@ -1259,13 +1259,19 @@ pub async fn save_llm_settings(
 // ── 모바일 릴레이(중계 서버) 연동 — QR 페어링 ────────────────────────────────
 
 /// relay에 페어링을 개시하고 {pairing_id, code, relay_url}을 받는다 (QR 렌더용).
-#[tauri::command]
-pub async fn relay_pair(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
+///
+/// `relay_url`을 주면 사이드카 config가 그 주소로 갱신된다(실기기 테스트 시 LAN IP 등).
+#[tauri::command(rename_all = "snake_case")]
+pub async fn relay_pair(
+    state: State<'_, Mutex<SidecarState>>,
+    relay_url: Option<String>,
+) -> Result<String, String> {
+    let body = serde_json::json!({ "relay_url": relay_url });
     sidecar_request(
         &state,
         Method::POST,
         "/relay/pair",
-        None,
+        Some(body),
         // 사이드카가 relay 서버로 나가는 왕복이 있어 여유를 둔다
         Some(Duration::from_secs(15)),
         "릴레이 페어링 개시 실패",

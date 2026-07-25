@@ -24,6 +24,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+class PairStartRequest(BaseModel):
+    """페어링 개시 요청.
+
+    relay_url을 주면 그 주소를 config에 반영하고 사용한다. 미지정이면 저장값 → 기본값 순.
+    """
+
+    relay_url: str | None = None
+
+
 class PairStartResponse(BaseModel):
     pairing_id: str
     code: str  # 모바일이 스캔할 QR에 담을 일회성 코드
@@ -38,10 +47,17 @@ class RelayStatusResponse(BaseModel):
 
 
 @router.post("/pair", response_model=PairStartResponse)
-async def start_pairing(request: Request) -> PairStartResponse:
-    """relay에 페어링을 개시하고 pairing_id/code를 받아 저장한 뒤 클라이언트를 재기동한다."""
+async def start_pairing(
+    request: Request, body: PairStartRequest | None = None
+) -> PairStartResponse:
+    """relay에 페어링을 개시하고 pairing_id/code를 받아 저장한 뒤 클라이언트를 재기동한다.
+
+    body.relay_url이 오면 그 주소로 갱신한다 — 이 값이 QR에 그대로 실리므로, 실기기로
+    테스트할 땐 127.0.0.1이 아니라 데스크톱의 LAN IP를 넣어야 폰이 도달할 수 있다.
+    """
     cfg = load_relay_config()
-    relay_url = str(cfg.get("relay_url", DEFAULT_RELAY_URL)).rstrip("/")
+    override = (body.relay_url or "").strip() if body else ""
+    relay_url = (override or str(cfg.get("relay_url", DEFAULT_RELAY_URL))).rstrip("/")
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(f"{relay_url}/pair/start")

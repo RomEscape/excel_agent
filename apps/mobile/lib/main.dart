@@ -34,6 +34,7 @@ class ChatScreen extends ConsumerStatefulWidget {
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _relayCtrl = TextEditingController(text: 'http://127.0.0.1:8787');
   final _pairingCtrl = TextEditingController();
+  final _codeCtrl = TextEditingController();
   final _inputCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
 
@@ -41,17 +42,41 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void dispose() {
     _relayCtrl.dispose();
     _pairingCtrl.dispose();
+    _codeCtrl.dispose();
     _inputCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
   }
 
-  void _connect() {
+  /// 수동 페어링(개발용).
+  ///
+  /// code가 있으면 QR 스캔과 동일하게 `/pair/complete`로 **바인딩까지** 하고 연결한다.
+  /// (relay는 바인딩 안 된 pairing_id를 4401로 거부하므로 이 단계가 없으면 연결이 안 된다.)
+  /// code가 비어 있으면 이미 바인딩된 세션에 재연결하는 것으로 본다.
+  Future<void> _connect() async {
+    final relay = _relayCtrl.text.trim();
     final pid = _pairingCtrl.text.trim();
-    if (pid.isEmpty) return;
+    final code = _codeCtrl.text.trim();
+    if (relay.isEmpty || pid.isEmpty) return;
+
+    if (code.isNotEmpty) {
+      try {
+        await completePairing(
+          PairingInfo(relayUrl: relay, pairingId: pid, code: code),
+        );
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('페어링 실패: $e')));
+        }
+        return;
+      }
+    }
+    if (!mounted) return;
     ref
         .read(chatControllerProvider.notifier)
-        .connect(relayUrl: _relayCtrl.text.trim(), pairingId: pid);
+        .connect(relayUrl: relay, pairingId: pid);
   }
 
   Future<void> _scanQr() async {
@@ -150,7 +175,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             Row(
               children: [
                 Expanded(
-                  flex: 3,
+                  flex: 4,
                   child: TextField(
                     controller: _relayCtrl,
                     decoration: const InputDecoration(
@@ -165,7 +190,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   child: TextField(
                     controller: _pairingCtrl,
                     decoration: const InputDecoration(
-                      labelText: 'pairing_id (수동)',
+                      labelText: 'pairing_id',
+                      isDense: true,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  flex: 2,
+                  child: TextField(
+                    controller: _codeCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'code',
                       isDense: true,
                     ),
                   ),
@@ -173,6 +209,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 const SizedBox(width: 6),
                 OutlinedButton(onPressed: _connect, child: const Text('연결')),
               ],
+            ),
+            const Padding(
+              padding: EdgeInsets.only(top: 4),
+              child: Text(
+                '수동(개발용): 데스크톱 QR 화면의 pairing_id + code를 넣으면 페어링까지 됩니다.',
+                style: TextStyle(fontSize: 11),
+              ),
             ),
           ],
         ),
