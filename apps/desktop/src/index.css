@@ -3,6 +3,13 @@
 @tailwind utilities;
 
 @layer base {
+  /*
+   * 강조색은 김대리 브랜드 초록에서 온다.
+   * 원본은 src/assets/brand-logo-{light,dark}.svg 의 fill·stop-color:
+   *   코어 #2DB400 = 105 100% 35% · 다크 지면 #0C1909 = 109 47% 7%
+   * --primary 는 흰 전경(--primary-foreground)과 4.5:1을 넘겨야 해서
+   * 같은 색상/채도를 유지한 채 명도만 낮춘 105 100% 24% (#1F7A00, 5.2:1) 를 쓴다.
+   */
   :root {
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
@@ -10,7 +17,7 @@
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
+    --primary: 105 100% 24%;
     --primary-foreground: 210 40% 98%;
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
@@ -22,16 +29,17 @@
     --destructive-foreground: 210 40% 98%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --ring: 105 100% 24%;
     --radius: 0.5rem;
-    --sidebar-background: 222.2 84% 4.9%;
+    /* 사이드바는 다크 지면이라 코어 초록(35%)을 그대로 얹어도 대비가 6:1 넘는다. */
+    --sidebar-background: 109 47% 7%;
     --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 221.2 83.2% 53.3%;
+    --sidebar-primary: 105 100% 35%;
     --sidebar-primary-foreground: 210 40% 98%;
-    --sidebar-accent: 217.2 32.6% 17.5%;
+    --sidebar-accent: 109 25% 17%;
     --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 217.2 32.6% 17.5%;
-    --sidebar-ring: 221.2 83.2% 53.3%;
+    --sidebar-border: 109 25% 17%;
+    --sidebar-ring: 105 100% 35%;
   }
 }
 
