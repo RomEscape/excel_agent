@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import 'pairing/pairing_screen.dart';
 import 'pairing/pairing_service.dart';
@@ -16,7 +17,7 @@ class OfficeClawApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'officeclaw',
+      title: '김대리',
       theme: ThemeData(colorSchemeSeed: Colors.indigo, useMaterial3: true),
       home: const ChatScreen(),
     );
@@ -100,7 +101,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('officeclaw'),
+        title: SvgPicture.asset(
+          'assets/brand-wordmark.svg',
+          height: 26,
+          semanticsLabel: '김대리',
+        ),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),

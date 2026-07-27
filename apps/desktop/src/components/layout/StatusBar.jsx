@@ -325,7 +325,7 @@ export default function StatusBar() {
     window.dispatchEvent(new CustomEvent("officeclaw:open-cmdk"));
   };
 
-  const pageLabel = PAGE_LABELS[currentPage] ?? "officeclaw";
+  const pageLabel = PAGE_LABELS[currentPage] ?? "김대리";
 
   return (
     <header className="flex h-10 items-center justify-between gap-3 border-b bg-background px-4 text-xs">

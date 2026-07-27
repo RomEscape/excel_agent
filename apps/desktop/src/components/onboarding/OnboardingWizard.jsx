@@ -188,7 +188,7 @@ function StepLLM({ onNext, onPrev }) {
         </div>
         <h2 className="text-xl font-bold">AI 엔진 선택</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          officeclaw에서 사용할 AI 언어 모델을 선택하세요.
+          김대리에서 사용할 AI 언어 모델을 선택하세요.
         </p>
       </div>
 
@@ -412,7 +412,7 @@ function StepMessengerChoice({ onNext, onPrev }) {
         </div>
         <h2 className="text-xl font-bold">메신저 선택</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          어떤 메신저로 officeclaw를 제어하시겠어요?
+          어떤 메신저로 김대리를 제어하시겠어요?
         </p>
       </div>
 
@@ -611,7 +611,7 @@ function StepSlack({ onNext, onPrev }) {
         </div>
         <h2 className="text-xl font-bold">슬랙 봇 설정</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          슬랙 채널에서 officeclaw를 사용합니다.
+          슬랙 채널에서 김대리를 사용합니다.
         </p>
       </div>
 
@@ -727,7 +727,7 @@ function StepDiscord({ onNext, onPrev }) {
         </div>
         <h2 className="text-xl font-bold">디스코드 봇 설정</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Discord 서버에서 officeclaw를 사용합니다.
+          Discord 서버에서 김대리를 사용합니다.
         </p>
       </div>
 
@@ -936,7 +936,7 @@ function StepComplete({ onFinish, onPrev }) {
         </div>
         <h2 className="text-xl font-bold">준비 완료!</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          officeclaw를 사용할 준비가 되었습니다.
+          김대리를 사용할 준비가 되었습니다.
         </p>
       </div>
 
@@ -1035,7 +1035,7 @@ export default function OnboardingWizard() {
           <div className="mb-2 text-center">
             <span className="text-3xl select-none">🦞</span>
             <p className="mt-1 text-xs text-muted-foreground uppercase tracking-widest">
-              officeclaw 시작하기
+              김대리 시작하기
             </p>
           </div>
 

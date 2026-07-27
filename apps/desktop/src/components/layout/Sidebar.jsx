@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import appIcon from "@/assets/app-icon.png";
+import { BrandMark, BrandWordmark } from "@/components/ui/logo";
 import { version } from "../../../package.json";
 import {
   LayoutDashboard,
@@ -119,9 +119,10 @@ export default function Sidebar() {
           collapsed ? "justify-center px-2 py-4" : "gap-2 px-4 py-5"
         )}
       >
-        <img src={appIcon} alt="officeclaw" className="h-7 w-7 shrink-0 rounded-md" />
-        {!collapsed && (
-          <span className="font-bold text-base tracking-tight">officeclaw</span>
+        {collapsed ? (
+          <BrandMark className="h-7 w-7 shrink-0 rounded-md" />
+        ) : (
+          <BrandWordmark className="h-8 w-auto shrink-0" />
         )}
       </div>
 

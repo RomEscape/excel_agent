@@ -319,7 +319,7 @@ function GmailGuide() {
               Gmail 연동은 메신저 봇 명령으로 처리됩니다
             </p>
             <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">
-              officeclaw v3.0부터 Gmail 등 외부 연동은 앱이 직접 관리하지 않고
+              김대리 v3.0부터 Gmail 등 외부 연동은 앱이 직접 관리하지 않고
               메신저 봇 명령으로 처리됩니다. 메신저에서 "메일 확인해줘" 명령을
               보내면 자동으로 Gmail 작업이 수행됩니다.
             </p>
@@ -351,7 +351,7 @@ function ClaudeGuide({ onGoToCredentials, onGoToSettings }) {
         </Step>
         <Step number={2} title="API 키 발급">
           <p>왼쪽 메뉴에서 <strong>API Keys</strong>를 선택합니다.</p>
-          <p><strong>Create Key</strong> 버튼을 클릭하고 이름을 입력합니다. (예: <CodeBlock>officeclaw</CodeBlock>)</p>
+          <p><strong>Create Key</strong> 버튼을 클릭하고 이름을 입력합니다. (예: <CodeBlock>김대리</CodeBlock>)</p>
           <p>생성된 키를 복사합니다. 키는 이 화면에서 한 번만 표시되므로 바로 저장하세요.</p>
           <Note>API 키는 <CodeBlock>sk-ant-api03-</CodeBlock>로 시작합니다. 크레딧이 있어야 API를 사용할 수 있습니다.</Note>
         </Step>
