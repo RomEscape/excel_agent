@@ -728,4 +728,34 @@ export async function rustAuditLastBlockedAt() {
   return invoke("rust_audit_last_blocked_at");
 }
 
+// ── 모바일 릴레이(중계 서버) 연동 ─────────────────────────────────────────
+
+/**
+ * relay에 페어링을 개시하고 QR에 담을 정보를 받는다.
+ *
+ * @param {string} [relayUrl] 지정 시 사이드카 config의 relay 주소를 이 값으로 갱신
+ * @returns {Promise<{pairing_id: string, code: string, relay_url: string}>}
+ */
+export async function relayPair(relayUrl) {
+  // ipc.rs가 rename_all="snake_case" → 인자 키도 snake_case로 보낸다
+  const raw = await call("relay_pair", { relay_url: relayUrl ?? null });
+  return parseResponse(raw);
+}
+
+/**
+ * 릴레이 연동 상태.
+ *
+ * @returns {Promise<{enabled: boolean, relay_url: string, pairing_id: string|null, connected: boolean}>}
+ */
+export async function relayStatus() {
+  const raw = await call("relay_status");
+  return parseResponse(raw);
+}
+
+/** 릴레이 연동을 중지한다(모바일 연결 해제). */
+export async function relayDisconnect() {
+  const raw = await call("relay_disconnect");
+  return parseResponse(raw);
+}
+
 

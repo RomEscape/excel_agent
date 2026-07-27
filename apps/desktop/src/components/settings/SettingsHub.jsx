@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   ShieldAlert,
   MessagesSquare,
+  Smartphone,
   Bot,
   SlidersHorizontal,
   Loader2,
@@ -31,6 +32,7 @@ const AuditLog = lazy(() => import("@/components/audit/AuditLog"));
 const SecurityDashboard = lazy(() => import("@/components/security/SecurityDashboard"));
 const PermissionManager = lazy(() => import("@/components/permissions/PermissionManager"));
 const SetupGuide = lazy(() => import("@/components/guide/SetupGuide"));
+const RelayPairing = lazy(() => import("@/components/relay/RelayPairing"));
 
 const TABS = [
   {
@@ -43,6 +45,7 @@ const TABS = [
   },
   { id: "settings", label: "일반", icon: SlidersHorizontal, component: GeneralSettings },
   { id: "messenger_settings", label: "메신저", icon: MessagesSquare, component: MessengerSettings },
+  { id: "mobile_relay", label: "모바일 연결", icon: Smartphone, component: RelayPairing },
   { id: "credentials", label: "자격증명", icon: KeyRound, component: CredentialsManager },
   { id: "security", label: "보안", icon: ShieldCheck, component: SecurityDashboard },
   { id: "permissions", label: "에이전트 허용 범위", icon: ShieldAlert, component: PermissionManager },
