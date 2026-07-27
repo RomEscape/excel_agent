@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import 'pairing/pairing_screen.dart';
 import 'pairing/pairing_service.dart';
-import 'protocol/protocol.dart';
 import 'store/chat_controller.dart';
+import 'theme/brand_theme.dart';
+import 'widgets/agent_status_chip.dart';
+import 'widgets/brand_wordmark.dart';
 
 void main() {
   runApp(const ProviderScope(child: OfficeClawApp()));
@@ -18,7 +19,9 @@ class OfficeClawApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: '김대리',
-      theme: ThemeData(colorSchemeSeed: Colors.indigo, useMaterial3: true),
+      theme: brandLightTheme,
+      darkTheme: brandDarkTheme,
+      themeMode: ThemeMode.system,
       home: const ChatScreen(),
     );
   }
@@ -126,15 +129,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: SvgPicture.asset(
-          'assets/brand-wordmark.svg',
-          height: 26,
-          semanticsLabel: '김대리',
-        ),
+        title: const BrandWordmark(),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),
-            child: _StatusChip(connected: st.connected, agentState: st.agentState),
+            child: AgentStatusChip(
+              connected: st.connected,
+              agentState: st.agentState,
+            ),
           ),
         ],
       ),
@@ -271,29 +273,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _StatusChip extends StatelessWidget {
-  final bool connected;
-  final AgentState agentState;
-  const _StatusChip({required this.connected, required this.agentState});
-
-  @override
-  Widget build(BuildContext context) {
-    final (label, color) = switch (agentState) {
-      AgentState.thinking => ('생각 중', Colors.orange),
-      AgentState.remoteControlling => ('제어 중', Colors.blue),
-      AgentState.offline => ('오프라인', Colors.grey),
-      AgentState.idle => connected
-          ? ('연결됨', Colors.green)
-          : ('대기', Colors.grey),
-    };
-    return Chip(
-      avatar: CircleAvatar(backgroundColor: color, radius: 6),
-      label: Text(label),
-      visualDensity: VisualDensity.compact,
     );
   }
 }
