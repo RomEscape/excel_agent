@@ -113,3 +113,34 @@ jobs:
 
       - name: Clippy 린트
         run: cargo clippy --all-targets -- -D warnings
+
+  # 4. Flutter 모바일 앱 검증
+  #
+  # 빌드(APK/IPA)는 돌리지 않는다 — Android SDK/Xcode 준비에 수 분이 들고, PR 게이트가
+  # 잡아야 할 것은 대부분 analyze/test 단계에서 걸린다. 실기기 산출물은 release.yml 몫.
+  flutter-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Flutter SDK 설치
+        uses: subosito/flutter-action@v2
+        with:
+          # 버전 고정: ruff 0.16이 기본 룰셋을 넓히며 python-check가 통째로 나갔던 것과
+          # 같은 사고를 막는다. SDK가 로컬과 다르면 analyze 결과가 갈린다.
+          # 올릴 때는 로컬 `flutter --version`과 함께 올린다.
+          flutter-version: '3.44.6'
+          channel: stable
+          cache: true
+
+      - name: 의존성 설치 (lockfile 고정)
+        run: flutter pub get --enforce-lockfile
+
+      - name: 정적 분석
+        run: flutter analyze
+
+      - name: Unit Test 실행
+        run: flutter test
