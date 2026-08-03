@@ -4,6 +4,8 @@
 <dict>
 	<key>NSCameraUsageDescription</key>
 	<string>QR 페어링을 위해 카메라를 사용합니다.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>같은 네트워크에 있는 내 PC의 김대리와 직접 연결하기 위해 로컬 네트워크 접근이 필요합니다.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../protocol/protocol.dart';
+import 'relay_url.dart';
 
 /// relay로 아웃바운드 WS 연결. Envelope 프레임 송수신 + 간단 재연결(backoff).
 ///
@@ -26,24 +27,18 @@ class RelayTransport {
   Stream<bool> get connectionState => _connState.stream;
   bool get connected => _connected;
 
-  String get _wsUrl {
-    var base = relayHttpUrl.trim();
-    if (base.startsWith('https://')) {
-      base = 'wss://${base.substring(8)}';
-    } else if (base.startsWith('http://')) {
-      base = 'ws://${base.substring(7)}';
-    } else if (!base.startsWith('ws://') && !base.startsWith('wss://')) {
-      base = 'ws://$base';
-    }
-    return '$base/ws/mobile?pairing_id=$pairingId';
-  }
-
   /// 중단(dispose)될 때까지 연결을 유지하며 재연결한다.
+  ///
+  /// 주소 정책 위반([RelayUrlException])은 재시도해도 절대 풀리지 않으므로 루프에
+  /// 들어가기 전에 한 번만 검사하고 그대로 던진다 — 2초 backoff로 영원히 재시도하면
+  /// 사용자는 "그냥 안 붙네"로만 보인다.
   Future<void> connect() async {
+    final wsUrl = relayMobileWsUrl(relayHttpUrl, pairingId);
+
     _stopped = false;
     while (!_stopped) {
       try {
-        final ch = WebSocketChannel.connect(Uri.parse(_wsUrl));
+        final ch = WebSocketChannel.connect(Uri.parse(wsUrl));
         await ch.ready;
         _channel = ch;
         _setConnected(true);

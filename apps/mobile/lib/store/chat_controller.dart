@@ -75,7 +75,14 @@ class ChatController extends Notifier<ChatState> {
     _connSub = t.connectionState.listen(
       (c) => state = state.copyWith(connected: c),
     );
-    unawaited(t.connect());
+    // connect()가 던지는 건 재시도 불가능한 주소 정책 위반뿐이다(전송 오류는 내부에서
+    // backoff 재시도). 삼켜버리면 unhandled async error로 흘러 사용자는 이유를 못 보므로
+    // 채팅에 사유를 남긴다.
+    unawaited(
+      t.connect().catchError((Object e) {
+        _appendSystem('연결할 수 없습니다 — $e');
+      }),
+    );
   }
 
   void sendMessage(String text) {
