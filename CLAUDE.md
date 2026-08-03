@@ -67,7 +67,7 @@
 
 ## 커밋/푸시 전 체크 (CI 미러)
 
-`.github/workflows/pr-check.yml`에 정의된 3개 잡(`rust-check`, `python-check`, `frontend-check`)을 그대로 미러링한다. **커밋 전 영역별로 해당 명령을 직접 돌려 통과 확인.** 빠뜨리고 푸시하면 GitHub Actions에서 떨어진다.
+`.github/workflows/pr-check.yml`에 정의된 4개 잡(`rust-check`, `python-check`, `frontend-check`, `flutter-check`)을 그대로 미러링한다. **커밋 전 영역별로 해당 명령을 직접 돌려 통과 확인.** 빠뜨리고 푸시하면 GitHub Actions에서 떨어진다.
 
 ### Rust (`apps/desktop/src-tauri/`)
 
@@ -104,6 +104,19 @@ npm run test:unit --if-present             # 현재: node --test src/lib/*.test.
 
 - 빠른 확인이면 `npm run build`만 돌려도 import 경로 깨짐은 잡힘.
 
+### Flutter 모바일 (`apps/mobile`)
+
+```bash
+cd apps/mobile
+flutter pub get --enforce-lockfile         # CI와 동일하게 lockfile 고정 설치
+flutter analyze                            # 정적 분석 (경고도 실패로 잡힘)
+flutter test                               # unit tests
+```
+
+- CI는 Flutter **3.44.6**으로 고정돼 있다. 로컬 SDK가 다르면 analyze 결과가 갈릴 수 있으니 `flutter --version`으로 맞출 것. 올릴 때는 `pr-check.yml`의 `flutter-version`과 같이 올린다.
+- `dart format --set-exit-if-changed`는 **CI에 넣지 않았다** — 기존 파일 다수가 이미 미준수라 켜는 순간 전부 빨개진다. 넣으려면 먼저 `dart format .`으로 전체를 한 번 정리하는 별도 커밋이 필요하다. 그전까지는 새로 만드는 파일만 `dart format <파일>`로 맞춘다.
+- 빌드(APK/IPA)는 CI에서 돌리지 않는다. iOS 빌드는 macOS 러너가 필요하고 서명까지 얽혀서 PR 게이트에는 과하다.
+
 ### 한 번에 다 — 추천 alias
 
 `.zshrc` / `.bashrc`에:
@@ -112,10 +125,11 @@ npm run test:unit --if-present             # 현재: node --test src/lib/*.test.
 alias oc-precheck='cd /Users/skim/Desktop/project/office_claw && \
   (cd apps/desktop/src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings) && \
   (cd services/sidecar && uvx ruff check . && uv run pytest -q) && \
-  (cd apps/desktop && npm run test:unit --if-present)'
+  (cd apps/desktop && npm run test:unit --if-present) && \
+  (cd apps/mobile && flutter analyze && flutter test)'
 ```
 
-PR 만들기 직전 `oc-precheck` 한 번 — 셋 다 통과하면 CI도 통과.
+PR 만들기 직전 `oc-precheck` 한 번 — 넷 다 통과하면 CI도 통과.
 
 ## 한국어
 
