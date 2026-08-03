@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../transport/relay_url.dart';
+
 /// 데스크톱 QR이 전달하는 페어링 정보.
 ///
 /// QR 페이로드 계약(데스크톱이 이 형식으로 렌더):
@@ -44,16 +46,32 @@ PairingInfo parseQrPayload(String raw) {
       code.isEmpty) {
     throw PairingException('QR에 relay/pairing_id/code가 없습니다');
   }
-  return PairingInfo(relayUrl: relay, pairingId: pid, code: code);
+  // 스캔한 QR의 주소도 평문 정책을 통과해야 한다 — QR은 신뢰 경계 밖의 입력이다.
+  return PairingInfo(
+    relayUrl: _checkedRelayUrl(relay),
+    pairingId: pid,
+    code: code,
+  );
+}
+
+/// relay 주소 정책 적용. 위반은 이 모듈의 예외 계약([PairingException])으로 바꿔 던진다.
+String _checkedRelayUrl(String raw) {
+  try {
+    return normalizeRelayBaseUrl(raw);
+  } on RelayUrlException catch (e) {
+    throw PairingException(e.message);
+  }
 }
 
 /// relay에 /pair/complete를 호출해 1:1 바인딩을 확정한다(모바일 측 페어링 완료).
 Future<void> completePairing(PairingInfo info, {http.Client? client}) async {
+  // 수동 입력 경로는 parseQrPayload를 거치지 않으므로 여기서도 정책을 적용한다.
+  final base = _checkedRelayUrl(info.relayUrl);
   final c = client ?? http.Client();
   try {
     final resp = await c
         .post(
-          Uri.parse('${info.relayUrl}/pair/complete'),
+          Uri.parse('$base/pair/complete'),
           headers: {'content-type': 'application/json'},
           body: jsonEncode({'code': info.code}),
         )

@@ -1,4 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- relay(중계 서버)로 아웃바운드 WebSocket을 열어야 하므로 릴리스 빌드에도 필요하다.
+         debug/profile 소스셋에도 같은 권한이 있지만 그건 Flutter 툴 통신용이라
+         릴리스 APK에는 병합되지 않는다 — 여기 없으면 배포판이 네트워크를 아예 못 쓴다.
+
+         카메라(QR 스캔) 권한은 mobile_scanner 플러그인 매니페스트에서 병합되므로 선언하지 않는다. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="김대리"
         android:name="${applicationName}"
