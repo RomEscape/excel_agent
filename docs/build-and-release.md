@@ -1,6 +1,6 @@
 # 빌드 & 배포 가이드
 
-officeclaw 데스크톱 앱의 **개발용 실행 환경 셋업**(Dev)과 **배포용 단일 설치파일 생성**(Release)을 다룬다. 플랫폼별 차이, 특히 **윈도우 네이티브** 셋업을 포함한다.
+kimdaeri(김대리) 데스크톱 앱의 **개발용 실행 환경 셋업**(Dev)과 **배포용 단일 설치파일 생성**(Release)을 다룬다. 플랫폼별 차이, 특히 **윈도우 네이티브** 셋업을 포함한다.
 
 > 모노레포 경로: 데스크톱 앱 = `apps/desktop/`(프론트 + `src-tauri/`), 사이드카 = `services/sidecar/`. (자세한 구조는 `CLAUDE.md`)
 
@@ -121,6 +121,12 @@ CI 없이 직접 만들려면 (윈도우 예시):
    ```
    → `src-tauri\target\release\bundle\` 에 `.msi`/`.exe` 생성.
 
+### 산출물 이름 규칙
+
+- `release.yml`의 `releaseName`은 **`kimdaeri <태그>`** (구 `ajou-ai`에서 정리됨).
+- 번들 파일명 접두사는 `tauri.conf.json`의 **`productName`**(현재 `김대리`)에서 나온다 — 즉 실제 산출물은 `김대리_0.1.0_aarch64.dmg` 형태다. 그래서 릴리스 노트는 접두사 없이 `..._aarch64.dmg` 같은 **접미사**로 안내한다.
+- 실행 바이너리 이름은 `mainBinaryName: "officeclaw"`로 **ASCII 고정**(내부 식별자 계열이라 유지).
+
 ### 알려진 이슈
 
-- `release.yml`의 `releaseName`과 산출물 이름이 아직 **`ajou-ai`** 로 남아 있다 — 앱 표시명 **officeclaw**와 불일치. 브랜딩 정리 시 함께 수정 필요.
+- 산출물 파일명이 한글로 시작한다(위 참고). ASCII `kimdaeri_...`로 통일하려면 `productName`을 바꿔야 하는데, 그러면 macOS `.app` 이름·Windows 설치 폴더/시작메뉴 표시도 함께 바뀌므로 별도 결정 사항이다.
