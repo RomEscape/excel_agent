@@ -24,6 +24,10 @@ pre-commit:
       glob: "apps/desktop/src/**/*.{ts,tsx,js,jsx}"
       root: "apps/desktop/"
       run: npm run lint --if-present
+    mobile-analyze:
+      glob: "apps/mobile/**/*.dart"
+      root: "apps/mobile/"
+      run: flutter analyze
 
 pre-push:
   parallel: true
@@ -37,3 +41,6 @@ pre-push:
     frontend-test:
       root: "apps/desktop/"
       run: npm run test:unit --if-present
+    mobile-test:
+      root: "apps/mobile/"
+      run: flutter test

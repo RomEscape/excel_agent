@@ -1,8 +1,8 @@
-# Office Claw
+# kimdaeri
 
 개인정보 보호 중심의 로컬 AI 업무 에이전트. 모든 처리가 사용자 머신 안에서 끝나며, 외부 중계 서버가 없다.  
 **Tauri 데스크탑 앱 + Python FastAPI 사이드카 + 로컬 LLM(Ollama)** 3계층 구성.
-앱 표시명은 **officeclaw**로 사용한다.
+앱 표시명은 **김대리**(영문 표기 `kimdaeri`)로 사용한다. 내부 식별자·경로·번들 ID는 `officeclaw` 계열을 유지한다.
 
 LLM 연동은 Ollama의 **OpenAI 호환 API(`/v1/chat/completions`) + `tools` 파라미터(function calling)** 기반이다.
 Excel 기능은 JSON Schema 함수 명세로 미리 정의돼 있고, LLM이 자연어에서 직접 함수·인자를 선택해 호출한다.
@@ -209,8 +209,8 @@ python-sidecar/
 
 비개발자에게는 소스코드 실행보다 **릴리스 EXE 배포**가 가장 안전하고 쉽다.
 
-1. GitHub Releases에서 최신 Windows 패키지(`officeclaw`) 다운로드
-2. 압축 해제 후 `officeclaw.exe` 실행
+1. GitHub Releases에서 최신 Windows 패키지(`kimdaeri`) 다운로드
+2. 설치 후 `officeclaw.exe` 실행 (실행 바이너리명은 ASCII로 고정)
 3. 첫 실행 시 `LocalAISetupWizard`에서 Ollama 설치·기동·모델 pull 자동 점검
 4. 워크스페이스에서 Excel 파일 열고 채팅으로 바로 작업
 
