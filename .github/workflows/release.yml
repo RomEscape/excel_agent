@@ -117,15 +117,16 @@ jobs:
         with:
           projectPath: apps/desktop
           tagName: ${{ github.ref_name }}
-          releaseName: 'ajou-ai ${{ github.ref_name }}'
+          releaseName: 'kimdaeri ${{ github.ref_name }}'
           releaseBody: |
             ## 변경사항
             이 릴리즈의 변경사항은 커밋 히스토리를 참고하세요.
 
             ## 설치 방법
-            - **macOS (Apple Silicon / M1·M2)**: `ajou-ai_aarch64.dmg` 다운로드 후 설치
-            - **macOS (Intel)**: `ajou-ai_x64.dmg` 다운로드 후 설치
-            - **Windows**: `ajou-ai_x64_en-US.msi` 또는 `.exe` 다운로드 후 설치
+            아래 파일을 다운로드해 설치하세요. (파일명 앞부분은 앱 표시명 `김대리`)
+            - **macOS (Apple Silicon / M1·M2)**: `..._aarch64.dmg`
+            - **macOS (Intel)**: `..._x64.dmg`
+            - **Windows**: `..._x64_en-US.msi` 또는 `..._x64-setup.exe`
 
             ## 시스템 요구사항
             - macOS 12 Monterey 이상 / Windows 10 이상
