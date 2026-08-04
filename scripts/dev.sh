@@ -15,6 +15,9 @@ SIDECAR_DIR="$PROJECT_DIR/services/sidecar"
 APP_DIR="$PROJECT_DIR/apps/desktop"
 
 echo "=== Starting Office Claw Development ==="
+mkdir -p "$(dirname "$SIDECAR_VENV_PATH")"
+export UV_PROJECT_ENVIRONMENT="$SIDECAR_VENV_PATH"
+echo "Python venv path: $UV_PROJECT_ENVIRONMENT"
 
 # 1. Sync Python dependencies via uv
 echo "Syncing Python dependencies..."

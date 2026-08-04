@@ -8,9 +8,10 @@ from office_claw_sidecar.local_stack import (
 )
 
 
-def test_default_preset_is_qwen3_local():
-    assert DEFAULT_PRESET_ID == "qwen3-local"
-    assert get_preset()["id"] == QWEN3_LOCAL["id"]
+def test_default_preset_is_the_openclaw_stack():
+    # QWEN3_LOCAL은 예전 이름의 별칭이다. 둘이 같은 프리셋을 가리켜야 기존 설정이 깨지지 않는다.
+    assert DEFAULT_PRESET_ID == "qwen3-openclaw"
+    assert get_preset()["id"] == QWEN3_LOCAL["id"] == DEFAULT_PRESET_ID
 
 
 def test_default_llm_config_matches_ollama_adot():

@@ -310,10 +310,12 @@ class _FakeLLM:
         self._response = response
         self._idx = 0
         self.prompts = []
+        self.models = []
 
-    async def chat(self, messages):
+    async def chat(self, messages, model=None, temperature=None):
         if messages and isinstance(messages[-1], dict):
             self.prompts.append(str(messages[-1].get("content", "")))
+        self.models.append(str(model or ""))
         if isinstance(self._response, list):
             out = self._response[min(self._idx, len(self._response) - 1)]
             self._idx += 1
@@ -398,6 +400,41 @@ def test_parse_excel_live_command_includes_reflection_prompt():
     assert "추가 지침(Reflection 1회)" in prompt
     assert "reflection_note=intent_unknown" in prompt
     assert "previous_first_action=excel_live.read_range" in prompt
+
+
+def test_parse_excel_live_command_includes_personalization_prompt():
+    llm = _FakeLLM(
+        '{"intent":"edit","action_plan":[{"action":"excel_live.apply_border","params":{"target_range":"B2:D5","line_style":"continuous","weight":"thin","color":"#D9D9D9"},"reason":"개인화 반영"}],"reason":"persona"}'
+    )
+    parsed = asyncio.run(
+        parse_excel_live_command(
+            "여기 경계를 기본으로 맞춰줘",
+            llm,
+            context={
+                "personalization_hint": "개인화 힌트:\n- 실패 표현: \"경계 기본\" -> 기대 액션 `excel_live.apply_border`",
+            },
+        )
+    )
+    assert parsed["action_plan"][0]["action"] == "excel_live.apply_border"
+    prompt = llm.prompts[0]
+    assert "추가 지침(Persona memory)" in prompt
+    assert "기대 액션 `excel_live.apply_border`" in prompt
+
+
+def test_parse_excel_live_command_uses_context_planner_model():
+    llm = _FakeLLM(
+        '{"intent":"edit","action_plan":[{"action":"excel_live.fill_range","params":{"target_range":"A:A","fill_color":"#FFFF00"},"reason":"ok"}],"reason":"planner_model"}'
+    )
+    parsed = asyncio.run(
+        parse_excel_live_command(
+            "A열 노랑으로 칠해줘",
+            llm,
+            context={"planner_model": "officeclaw-ax7b-planner:latest"},
+        )
+    )
+    assert parsed["action_plan"][0]["action"] == "excel_live.fill_range"
+    assert llm.models
+    assert llm.models[0] == "officeclaw-ax7b-planner:latest"
 
 
 def test_parse_excel_live_command_replans_when_edit_intent_misclassified():

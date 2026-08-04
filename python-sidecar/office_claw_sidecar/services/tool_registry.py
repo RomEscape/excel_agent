@@ -197,6 +197,24 @@ TOOL_REGISTRY: list[ToolDef] = [
         example_triggers=["중복 제거", "전화번호 중복 지워줘"],
     ),
     ToolDef(
+        name="excel_live.find_duplicates",
+        description="중복 값을 제거하지 않고 어디에 몇 건 있는지 찾아 보고",
+        permission=PermissionLevel.SAFE,
+        example_triggers=["중복 주문번호 찾아줘", "겹치는 값 있는지 확인", "중복 점검"],
+    ),
+    ToolDef(
+        name="excel_live.recalculate",
+        description="수식 캐시를 무효화해 다음 열람 시 전체 재계산되도록 표시",
+        permission=PermissionLevel.SAFE,
+        example_triggers=["대시보드 갱신", "수식 새로고침", "최신 데이터로 업데이트"],
+    ),
+    ToolDef(
+        name="excel_live.export_pdf",
+        description="시트 또는 통합문서를 PDF로 내보내기 (Windows + Excel 필요)",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["PDF로 저장해줘", "요약 시트 인쇄용으로 뽑아줘"],
+    ),
+    ToolDef(
         name="excel_live.pivot_table",
         description="행/값 기준 집계표(피벗 형태 요약표) 생성",
         permission=PermissionLevel.CONFIRM,
@@ -316,6 +334,72 @@ TOOL_REGISTRY: list[ToolDef] = [
         permission=PermissionLevel.SAFE,
         example_triggers=["지역별 매출 합계", "그룹별 평균", "카테고리별 개수"],
     ),
+    ToolDef(
+        name="excel_live.find_replace",
+        description="지정 범위에서 텍스트를 찾아 다른 텍스트로 바꾸기",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["찾아바꿔줘", "OO를 XX로 바꿔줘", "일괄 치환"],
+    ),
+    ToolDef(
+        name="excel_live.merge_cells",
+        description="지정 범위의 셀을 하나로 병합",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["셀 병합해줘", "합쳐줘", "merge"],
+    ),
+    ToolDef(
+        name="excel_live.unmerge_cells",
+        description="병합된 셀을 다시 원래 셀로 해제",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["병합 풀어줘", "병합 해제", "unmerge"],
+    ),
+    ToolDef(
+        name="excel_live.freeze_panes",
+        description="머리글 행/열이 스크롤해도 고정되도록 틀 고정",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["첫 행 고정해줘", "틀 고정", "머리글 안 움직이게"],
+    ),
+    ToolDef(
+        name="excel_live.autofit_columns",
+        description="열 너비를 내용 길이에 맞게 자동 조정",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["열 너비 자동으로", "칸 좀 넓게 보이게", "autofit"],
+    ),
+    ToolDef(
+        name="excel_live.define_named_range",
+        description="지정 범위에 이름(정의된 이름)을 붙여 수식에서 참조 가능하게 함",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["이 범위에 이름 붙여줘", "이름 정의", "named range"],
+    ),
+    ToolDef(
+        name="excel_live.set_print_area",
+        description="인쇄 영역/용지 방향/페이지 맞춤(fit to page) 설정",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["인쇄 영역 설정", "가로로 인쇄", "한 장에 맞춰줘"],
+    ),
+    ToolDef(
+        name="excel_live.add_cell_comment",
+        description="지정 셀에 메모(코멘트) 추가",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["메모 남겨줘", "코멘트 추가", "이 셀에 설명 달아줘"],
+    ),
+    ToolDef(
+        name="excel_live.apply_color_scale",
+        description="지정 범위에 값 크기에 따른 색조(그라디언트) 조건부 서식 적용",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["색조로 표시해줘", "값 크기대로 색깔 진하게", "color scale"],
+    ),
+    ToolDef(
+        name="excel_live.apply_data_bar",
+        description="지정 범위에 값 크기를 시각화하는 데이터 막대 조건부 서식 적용",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["데이터 막대로 보여줘", "막대 그래프처럼 셀에", "data bar"],
+    ),
+    ToolDef(
+        name="excel_live.set_number_format",
+        description="지정 범위의 표시 형식(숫자/퍼센트/통화/날짜 등) 변경",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["퍼센트로 보여줘", "천단위 구분기호", "날짜 형식으로"],
+    ),
     # ── 명시적 거부 목록 — 어떤 경우에도 실행 불가 ──────────────────────────
     ToolDef(
         name="DENIED.file_delete",
@@ -361,6 +445,9 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "excel_live.filter_rows": "Excel 행 필터 적용",
     "excel_live.dedupe_rows": "Excel 중복 행 제거",
     "excel_live.pivot_table": "Excel 피벗 집계표 생성",
+    "excel_live.find_duplicates": "Excel 중복 값 점검",
+    "excel_live.recalculate": "Excel 수식 재계산 표시",
+    "excel_live.export_pdf": "Excel PDF 내보내기",
     "excel_live.create_chart": "Excel 차트 생성",
     "excel_live.validate_data": "Excel 데이터 검증",
     "excel_live.protect_sheet": "Excel 시트 보호/잠금",
@@ -378,6 +465,17 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "excel_live.drop_column": "Excel 열 삭제",
     "excel_live.rename_column": "Excel 열 이름 변경",
     "excel_live.add_column": "Excel 열 추가",
+    "excel_live.find_replace": "Excel 텍스트 찾아바꾸기",
+    "excel_live.merge_cells": "Excel 셀 병합",
+    "excel_live.unmerge_cells": "Excel 셀 병합 해제",
+    "excel_live.freeze_panes": "Excel 틀 고정",
+    "excel_live.autofit_columns": "Excel 열 너비 자동 조정",
+    "excel_live.define_named_range": "Excel 이름 정의",
+    "excel_live.set_print_area": "Excel 인쇄 설정",
+    "excel_live.add_cell_comment": "Excel 셀 메모 추가",
+    "excel_live.apply_color_scale": "Excel 색조 조건부 서식",
+    "excel_live.apply_data_bar": "Excel 데이터 막대 조건부 서식",
+    "excel_live.set_number_format": "Excel 표시 형식 변경",
 }
 
 # ── 화이트리스트 오버라이드 (런타임에 사용자가 변경 가능) ─────────────────────
@@ -422,8 +520,9 @@ def save_whitelist(overrides: dict[str, str]) -> None:
 
     임시 파일 → rename 패턴으로 파일 손상을 방지한다.
     """
-    import tempfile
     import shutil
+    import tempfile
+
     from office_claw_sidecar.config import get_whitelist_path
 
     path = get_whitelist_path()

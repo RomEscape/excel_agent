@@ -1,0 +1,8 @@
+{
+  "min_parse_gain_pp": 10.0,
+  "min_hard_e2e_rate": 0.95,
+  "max_p95_latency_ratio": 1.25,
+  "min_complex_pass_rate": 0.95,
+  "max_complex_critical_failures": 0,
+  "min_complex_scenarios": 30
+}

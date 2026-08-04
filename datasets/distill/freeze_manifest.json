@@ -1,0 +1,22 @@
+{
+  "at": "2026-07-21T00:49:37.253187+09:00",
+  "output_dir": "..\\datasets\\distill",
+  "sources": [
+    "..\\logs\\all_events.jsonl"
+  ],
+  "total_rows": 204,
+  "hard_case_rows": 15,
+  "splits": {
+    "train": 163,
+    "valid": 20,
+    "test": 21
+  },
+  "locale_distribution": {
+    "ko": 162,
+    "en": 6,
+    "mixed": 36
+  },
+  "label_status_distribution": {
+    "log_observed": 204
+  }
+}

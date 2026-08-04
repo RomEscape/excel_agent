@@ -1,0 +1,547 @@
+{
+  "schema_version": "excel_complex_scenarios.v1",
+  "title": "AI_Excel_Automation_Demo 확장 난이도 검증팩",
+  "note": "기본팩(v1)이 다루지 않는 도구와 거친 구어체 표현을 덮는다. 기대값은 describe_demo_workbook.py 실측값이다.",
+  "defaults": {
+    "sheet_name": "Sales_Data",
+    "seed_template": "복잡한 엑셀 작업을 위한 자료/AI_Excel_Automation_Demo.xlsx",
+    "approve": true
+  },
+  "scenarios": [
+    {
+      "id": "hard-001-drop-cancelled",
+      "title": "취소 주문 제거 (구어체 필터)",
+      "category": "filter",
+      "difficulty": "hard",
+      "severity": "critical",
+      "turns": [
+        {
+          "message": "취소된 주문은 빼고 나머지만 남겨줘"
+        }
+      ],
+      "oracle": {
+        "execution": {
+          "must_include_actions": [
+            "excel_live.filter_rows"
+          ],
+          "forbid_actions": [
+            "excel_live.clear_range"
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "row_count_between",
+              "sheet": "Sales_Data",
+              "range": "A1:A200",
+              "min_rows": 154,
+              "max_rows": 154
+            },
+            {
+              "type": "column_values_all_in",
+              "sheet": "Sales_Data",
+              "range": "P2:P200",
+              "allowed": [
+                "배송완료",
+                "배송중",
+                "처리중"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "hard-002-total-sales-question",
+      "title": "총 매출 조회 (읽기 전용 질문)",
+      "category": "aggregate-read",
+      "difficulty": "hard",
+      "severity": "critical",
+      "turns": [
+        {
+          "message": "매출 다 합치면 얼마나 돼?"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200,
+              "action_in": [
+                "excel_live.calculate_column_stat",
+                "excel_live.read_range"
+              ],
+              "ask_follow_up": false
+            }
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "range_sum_equals",
+              "sheet": "Sales_Data",
+              "range": "I2:I181",
+              "expected": 773,
+              "tolerance": 0.5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "hard-003-rename-column",
+      "title": "열 이름 변경",
+      "category": "column-edit",
+      "difficulty": "hard",
+      "severity": "major",
+      "turns": [
+        {
+          "message": "Profit_Margin 열 이름을 마진율로 바꿔줘"
+        }
+      ],
+      "oracle": {
+        "execution": {
+          "must_include_actions": [
+            "excel_live.rename_column"
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "header_equals",
+              "sheet": "Sales_Data",
+              "cell": "O1",
+              "expected": "마진율"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "hard-004-drop-column",
+      "title": "필요 없는 열 삭제",
+      "category": "column-edit",
+      "difficulty": "hard",
+      "severity": "major",
+      "turns": [
+        {
+          "message": "Discount 열은 이제 안 쓰니까 지워줘"
+        }
+      ],
+      "oracle": {
+        "execution": {
+          "must_include_actions": [
+            "excel_live.drop_column"
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "header_absent",
+              "sheet": "Sales_Data",
+              "name": "Discount"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "hard-005-category-pivot-rough",
+      "title": "카테고리별 매출 (거친 표현)",
+      "category": "aggregate",
+      "difficulty": "very-hard",
+      "severity": "critical",
+      "turns": [
+        {
+          "message": "제품 분류마다 매출이 얼마나 나오는지 Cat_Sum 시트로 뽑아줘"
+        }
+      ],
+      "oracle": {
+        "result": {
+          "assertions": [
+            {
+              "type": "sheet_exists",
+              "sheet": "Cat_Sum"
+            },
+            {
+              "type": "range_sum_equals",
+              "sheet": "Cat_Sum",
+              "range": "B2:B20",
+              "expected": 733223910,
+              "tolerance": 1
+            },
+            {
+              "type": "row_count_between",
+              "sheet": "Cat_Sum",
+              "range": "A2:A20",
+              "min_rows": 5,
+              "max_rows": 5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "hard-006-inventory-restock",
+      "title": "재고 발주 대상 강조 (다른 시트)",
+      "category": "format",
+      "difficulty": "very-hard",
+      "severity": "critical",
+      "turns": [
+        {
+          "message": "재고 시트에서 재고가 재주문점보다 적거나 같은 줄은 주황색으로 칠해줘"
+        }
+      ],
+      "oracle": {
+        "execution": {
+          "must_include_actions": [
+            "excel_live.highlight_by_condition"
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "filled_cell_count_equals",
+              "sheet": "Inventory",
+              "range": "E2:E11",
+              "expected": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "hard-007-cross-sheet-total",
+      "title": "다른 시트 합계를 수식으로 참조",
+      "category": "formula",
+      "difficulty": "very-hard",
+      "severity": "critical",
+      "turns": [
+        {
+          "message": "Summary 시트 만들어서 A1에 총매출이라고 쓰고 B1에 Sales_Data 매출 합계 수식 넣어줘"
+        }
+      ],
+      "oracle": {
+        "result": {
+          "assertions": [
+            {
+              "type": "sheet_exists",
+              "sheet": "Summary"
+            },
+            {
+              "type": "cell_formula_startswith",
+              "sheet": "Summary",
+              "cell": "B1",
+              "prefix": "="
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "hard-008-dropdown-validation",
+      "title": "입력 제한 드롭다운",
+      "category": "validation",
+      "difficulty": "very-hard",
+      "severity": "major",
+      "turns": [
+        {
+          "message": "Region 열에는 서울, 경기, 충청, 영남, 호남, 강원만 입력되게 막아줘"
+        }
+      ],
+      "oracle": {
+        "execution": {
+          "must_include_actions": [
+            "excel_live.set_data_validation"
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "data_validation_exists",
+              "sheet": "Sales_Data",
+              "target_range": "D2:D181"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "hard-009-protect-sheet",
+      "title": "시트 잠금",
+      "category": "protection",
+      "difficulty": "hard",
+      "severity": "major",
+      "turns": [
+        {
+          "message": "Lookup 시트는 아무도 못 고치게 잠가줘"
+        }
+      ],
+      "oracle": {
+        "execution": {
+          "must_include_actions": [
+            "excel_live.protect_sheet"
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "sheet_protected",
+              "sheet": "Lookup",
+              "expected": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "hard-010-late-tasks",
+      "title": "지연 업무만 남기기",
+      "category": "filter",
+      "difficulty": "very-hard",
+      "severity": "major",
+      "turns": [
+        {
+          "message": "프로젝트 계획에서 상태가 완료인 것들은 다 빼줘"
+        }
+      ],
+      "oracle": {
+        "execution": {
+          "must_include_actions": [
+            "excel_live.filter_rows"
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "row_count_between",
+              "sheet": "Project_Plan",
+              "range": "A1:A30",
+              "min_rows": 15,
+              "max_rows": 15
+            },
+            {
+              "type": "column_values_all_in",
+              "sheet": "Project_Plan",
+              "range": "H2:H30",
+              "allowed": [
+                "진행중",
+                "보류",
+                "검토중",
+                "미착수"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "hard-011-sort-desc-rough",
+      "title": "많이 팔린 순 정렬 (구어체)",
+      "category": "sort",
+      "difficulty": "hard",
+      "severity": "critical",
+      "turns": [
+        {
+          "message": "제일 많이 팔린 순서대로 위에서부터 보이게 해줘"
+        }
+      ],
+      "oracle": {
+        "execution": {
+          "must_include_actions": [
+            "excel_live.sort_range"
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "column_sorted",
+              "sheet": "Sales_Data",
+              "range": "I2:I181",
+              "descending": true
+            },
+            {
+              "type": "range_sum_equals",
+              "sheet": "Sales_Data",
+              "range": "I2:I181",
+              "expected": 773,
+              "tolerance": 0.5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "hard-012-filter-then-aggregate",
+      "title": "필터 후 집계 (2턴 연쇄)",
+      "category": "pipeline",
+      "difficulty": "very-hard",
+      "severity": "critical",
+      "turns": [
+        {
+          "message": "취소된 건은 지워줘"
+        },
+        {
+          "message": "그리고 지역별 매출 합계를 Live_Sum 시트에 정리해줘"
+        }
+      ],
+      "oracle": {
+        "result": {
+          "assertions": [
+            {
+              "type": "row_count_between",
+              "sheet": "Sales_Data",
+              "range": "A1:A200",
+              "min_rows": 154,
+              "max_rows": 154
+            },
+            {
+              "type": "sheet_exists",
+              "sheet": "Live_Sum"
+            },
+            {
+              "type": "row_count_between",
+              "sheet": "Live_Sum",
+              "range": "A2:A20",
+              "min_rows": 6,
+              "max_rows": 6
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "hard-013-add-column-formula",
+      "title": "새 열 추가 후 수식 채우기",
+      "category": "formula",
+      "difficulty": "very-hard",
+      "severity": "major",
+      "turns": [
+        {
+          "message": "맨 뒤에 원가총액 열 하나 추가해줘"
+        },
+        {
+          "message": "거기에 수량 곱하기 단위원가 수식 넣어줘"
+        }
+      ],
+      "oracle": {
+        "result": {
+          "assertions": [
+            {
+              "type": "header_equals",
+              "sheet": "Sales_Data",
+              "cell": "R1",
+              "expected": "원가총액"
+            },
+            {
+              "type": "cell_formula_startswith",
+              "sheet": "Sales_Data",
+              "cell": "R2",
+              "prefix": "="
+            },
+            {
+              "type": "range_non_empty_at_least",
+              "sheet": "Sales_Data",
+              "range": "R2:R181",
+              "min_count": 180
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "hard-014-salesperson-chart",
+      "title": "담당자 실적 집계 후 차트 (2턴)",
+      "category": "pipeline",
+      "difficulty": "very-hard",
+      "severity": "major",
+      "turns": [
+        {
+          "message": "누가 얼마나 팔았는지 Rep_Chart 시트에 정리해줘"
+        },
+        {
+          "message": "이걸로 막대 그래프 하나 그려줘"
+        }
+      ],
+      "oracle": {
+        "result": {
+          "assertions": [
+            {
+              "type": "sheet_exists",
+              "sheet": "Rep_Chart"
+            },
+            {
+              "type": "range_sum_equals",
+              "sheet": "Rep_Chart",
+              "range": "B2:B20",
+              "expected": 733223910,
+              "tolerance": 1
+            },
+            {
+              "type": "row_count_between",
+              "sheet": "Rep_Chart",
+              "range": "A2:A20",
+              "min_rows": 6,
+              "max_rows": 6
+            },
+            {
+              "type": "chart_count_at_least",
+              "sheet": "Rep_Chart",
+              "min_charts": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "hard-015-vague-request-asks-back",
+      "title": "막연한 요청은 되물어야 한다",
+      "category": "clarify",
+      "difficulty": "hard",
+      "severity": "critical",
+      "turns": [
+        {
+          "message": "이거 좀 보기 좋게 정리해줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200,
+              "ask_follow_up": true
+            }
+          ]
+        },
+        "execution": {
+          "forbid_actions": [
+            "excel_live.clear_range",
+            "excel_live.filter_rows",
+            "excel_live.dedupe_rows",
+            "excel_live.drop_column"
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "row_count_between",
+              "sheet": "Sales_Data",
+              "range": "A1:A200",
+              "min_rows": 181,
+              "max_rows": 181
+            },
+            {
+              "type": "range_sum_equals",
+              "sheet": "Sales_Data",
+              "range": "I2:I181",
+              "expected": 773,
+              "tolerance": 0.5
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

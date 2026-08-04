@@ -131,8 +131,11 @@ python-sidecar/
 │   │   ├── llm_service.py / ollama_service.py / claude_service.py
 │   │   ├── openclaw_client.py      # OpenClaw WebSocket 클라이언트
 │   │   ├── tool_registry.py        # 도구 권한 레지스트리 (SAFE/CONFIRM/DENIED)
-│   │   ├── excel_live_service.py   # xlwings 기반 Excel 제어 (Windows COM / macOS appscript)
-│   │   ├── excel_live_agent.py     # 자연어 → Excel 명령 파싱
+│   │   ├── excel_live_service.py   # Excel 엔진 선택기(file/xlwings)
+│   │   ├── excel_live_file_service.py # 기본 엔진(openpyxl, 파일 기반 편집)
+│   │   ├── excel_live_executor.py  # Planner 단계 실행/검증/재시도 오케스트레이션
+│   │   ├── excel_live_plan_validator.py / excel_live_plan_critic.py
+│   │   ├── excel_live_agent.py     # 자연어 → Excel 명령 파싱(quick-action + LLM)
 │   │   ├── telegram_service.py     # 텔레그램 봇
 │   │   ├── gmail_service.py        # Gmail OAuth (텔레그램 봇에서 사용)
 │   │   ├── excel_service.py        # openpyxl 파일 분석 (텔레그램 봇에서 사용)
@@ -208,7 +211,28 @@ python-sidecar/
 | `EXCEL_LIVE_AGENT_MVP.md` | Excel Live 에이전트 MVP 명세 |
 | `EXCEL_LIVE_ROUTER_DATASET_SCHEMA.md` | 라우터 의도/슬롯 데이터셋 스키마 |
 | `EXCEL_LIVE_ROUTER_DATASET_SAMPLE.json` | 멀티턴 평가용 샘플 데이터셋 |
+| `EXCEL_COMPLEX_ORACLE_SCHEMA.md` | 복잡 작업 오라클(대화/실행/결과) 스키마 |
 | `local-stack/GEMMA4_OPENCLAW.md` | Gemma4 로컬 스택 상세 |
+
+---
+
+## 포함 기술 스택 (현재 운영)
+
+- 데스크톱: `Tauri v2` + `Rust`
+- 프론트: `React` + `Vite` + `Zustand` + `Tailwind`
+- 사이드카 API: `FastAPI` + `Pydantic` + `Uvicorn`
+- Excel 엔진:
+  - 기본(`EXCEL_LIVE_ENGINE=file`): `openpyxl` 파일 직접 편집. Excel이 설치돼 있지 않아도 동작한다.
+  - 보조(`EXCEL_LIVE_ENGINE=xlwings`): Windows COM / macOS appscript로 실행 중인 Excel 제어
+- LLM/에이전트:
+  - 로컬 추론: `Ollama`
+  - 게이트웨이: `OpenClaw`
+  - 플래너: quick-action 규칙 + LLM 파서 하이브리드
+  - 실행 안정화: Planner/Executor/Validator/Critic + 승인 게이트
+- 품질/학습 루프:
+  - 통합 로그: `logs/all_events.jsonl`
+  - 하네스: 사용자 피드백 수집 + 실패 리플레이
+  - distillation: `excel_distill.v1` 포맷 + A.X 7B QLoRA 파이프라인
 
 ---
 
@@ -429,25 +453,60 @@ npm run tauri:dev
 
 Excel Live 테스트 세트는 간소화된 문서 + 러프 스모크 스크립트로 운영:
 
-- `TEST_INPUT_COMMANDS_EXCEL_LIVE.md`
+- `엑셀 작업 예시.md`
 - `python-sidecar/scripts/smoke_excel_live_nl.py`
+- `python-sidecar/scripts/smoke_excel_ko_hard_tasks.py` (한국어 고난도 작업 E2E/엔진 점검)
+- `datasets/excel_complex_scenarios_v1.json` (복잡 작업 30시나리오 팩)
+- `python-sidecar/scripts/verify_excel_complex_scenarios.py` (오라클 기반 자동 검증)
 
-최신 142-step 스모크 요약:
-- `http_200=141/142`
-- `network_or_timeout=1`
-- `ask_follow_up=112`
-- `approval_required=24`
-- `slow_ge_4000ms=17`
-- `latency_p50=2ms`, `latency_p95=6010ms`
+한국어 입력 우선 distillation 샘플 생성 예시:
 
-남은 관측 이슈:
-- `저장해줘` 1건은 `save_workbook` 단계에서 8초 타임아웃(네트워크/파일 잠금 환경 영향 가능)으로 기록됨
+```bash
+cd python-sidecar
+uv run python scripts/build_excel_distill_jsonl.py \
+  --all-events ../logs/all_events.jsonl \
+  --preferred-locale ko \
+  --drop-non-preferred-locale \
+  --output ../logs/excel_distill_ko_only_sample.jsonl \
+  --limit-per-source 200 \
+  --stats
+```
+
+최근 한국어 고난도 스모크 결과(2026-07-21):
+- `korean_command_e2e_hard_tasks`: `7/7` 성공
+- `execution_hard_tasks`: `9/9` 성공
+
+최신 종합 재검증(2026-07-21, 로컬 앱 실행 + 회귀 기준):
+- `pytest` 핵심 회귀: `127 passed`
+- 프론트 단위: `22 passed`
+- 리셋 포함 E2E(`smoke_excel_live_reset_cycle.py`): `40/42` 성공 (95.2%)
+- 광범위 자연어 142-step(`smoke_excel_live_nl.py`): `128/142` HTTP 200 (90.1%)
+
+복잡 작업 검증 범위(실제 실행 확인):
+- `pivot_table` (피벗 생성/집계)
+- `compare_ranges` (두 시트 범위 diff 생성)
+- `forecast_linear` (선형 예측)
+- `set_data_validation` (입력 제한 규칙)
+- `set_formula` + `verify_formula_result` (수식 적용 + 값 검증)
+- `consolidate_sheets` (멀티시트 통합)
+
+현재 관측 이슈(복잡/러프 명령 안정화 대상):
+- 일부 러프 문장에서 슬롯 누락 시 `500` 응답(`filter_rows.value` 누락, `set_formula` 형식 누락) 발생
+- 긴 추론 케이스에서 `ReadTimeout`(8초) 빈도 존재
+
+### 복잡 작업 100% 로드맵 (다음 단계)
+
+- 라우터 보강: `filter/if/count` 계열 필수 슬롯 강제 채움 + 누락 시 `clarify` 고정
+- 시간 예산 보강: parse/execute timeout 상향 + 재시도 백오프 정책 기본값 상향
+- 검증기 보강: 실행 후 타입/범위/행수 검증 실패 시 자동 재계획 1회
+- 회귀 자동화: 142-step + reset-cycle + hard-task를 릴리즈 게이트에 묶어 상시 측정
+- 승격 기준: `hard 100%`, `reset-cycle >= 98%`, `broad NL >= 95%` 달성 시 기본 플래너 승격
 
 ### 질문 세트 관점 vs 시스템 설계 관점 (2026-07-07 보강)
 
 - 질문 세트 관점:
   - 러프 명령 커버리지를 기능 나열 수준에서 멈추지 않고, 파일 상태/권한/복구/버전/성능/교육형 질문까지 확장
-  - `TEST_INPUT_COMMANDS_EXCEL_LIVE.md`의 `3) 안전/복구 스모크`, `4) 최근 이슈 재검증` 구간에서 해당 케이스를 관리
+  - `엑셀 작업 예시.md`의 `3) 안전/복구 스모크`, `4) 최근 이슈 재검증` 구간에서 해당 케이스를 관리
 - 시스템 설계 관점:
   - 권장 구조는 `라우터 + 전문 에이전트(도구형) + 검증기 + 승인 게이트`
   - 핵심 슬롯(`task_goal`, `target_sheet`, `target_range`, `key_column`, `value_column`, `output_location`, `safety_policy`, `version_constraint`)이 비어 있으면 실행 전 질문으로 수집

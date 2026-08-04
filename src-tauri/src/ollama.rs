@@ -209,6 +209,55 @@ pub async fn get_ollama_status() -> serde_json::Value {
     })
 }
 
+/// OpenClaw 설정을 Ollama provider 기준으로 맞춘다.
+///
+/// 적용 항목:
+/// - models.providers.ollama.api
+/// - models.providers.ollama.baseUrl
+/// - models.providers.ollama.apiKey
+/// - agents.defaults.model
+pub async fn configure_openclaw_ollama(model: &str) -> Result<serde_json::Value, String> {
+    validate_model_name(model)?;
+    let model_name = model.trim();
+    let full_model = if model_name.starts_with("ollama/") {
+        model_name.to_string()
+    } else {
+        format!("ollama/{}", model_name)
+    };
+
+    let commands = vec![
+        "openclaw configure set models.providers.ollama.api ollama".to_string(),
+        "openclaw configure set models.providers.ollama.baseUrl http://127.0.0.1:11434".to_string(),
+        "openclaw configure set models.providers.ollama.apiKey ollama-local".to_string(),
+        format!(
+            "openclaw configure set agents.defaults.model {}",
+            full_model
+        ),
+    ];
+
+    let mut applied: Vec<String> = Vec::new();
+    for cmd in commands {
+        let out = crate::shell::run_login_shell(&cmd)
+            .map_err(|e| format!("OpenClaw 설정 명령 실행 실패: {}", e))?;
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            let msg = if stderr.is_empty() {
+                format!("OpenClaw 설정 명령 실패: {}", cmd)
+            } else {
+                format!("OpenClaw 설정 명령 실패: {} ({})", cmd, stderr)
+            };
+            return Err(msg);
+        }
+        applied.push(cmd);
+    }
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "model": full_model,
+        "applied": applied,
+    }))
+}
+
 /// 모델명에 셸 메타문자가 들어있지 않은지 검증.
 ///
 /// `phi3.5`, `llama3.2:latest`, `qwen2.5:7b-instruct` 같은 합법적인 Ollama 태그는 허용하고,

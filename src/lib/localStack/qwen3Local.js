@@ -19,3 +19,6 @@ export const QWEN3_OPENCLAW_PRESET = Object.freeze({
   /** LocalAISetupWizard PROMPT_TEST용 — 응답만 비어 있지 않으면 통과 */
   pingMessage: "안녕! 한 단어로 'OK'라고만 답해줘.",
 });
+
+// 이전 import 경로/이름과의 하위 호환 별칭
+export const QWEN3_LOCAL_PRESET = QWEN3_OPENCLAW_PRESET;

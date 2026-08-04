@@ -1,5 +1,6 @@
 export {
   QWEN3_LOCAL_PRESET,
+  QWEN3_OPENCLAW_PRESET,
 } from "./qwen3Local.js";
 export {
   LOCAL_STACK_PRESETS,

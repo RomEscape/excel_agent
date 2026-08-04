@@ -13,7 +13,11 @@ import re
 from typing import Any
 
 from office_claw_sidecar.services.excel_live_table_presets import match_table_preset
+from office_claw_sidecar.services.llm_service import get_planner_model_name
 
+# 계획 수립은 창작이 아니다. 기본 샘플링(0.8)에서는 "Profit_Margin 열 이름을 마진율로 바꿔줘"가
+# 실행할 때마다 rename_column이 되기도 하고 노란색 칠하기가 되기도 한다.
+PLAN_TEMPERATURE = 0.0
 
 SUPPORTED_ACTIONS = {
     "excel_live.list_workbooks",
@@ -32,11 +36,59 @@ SUPPORTED_ACTIONS = {
     "excel_live.sort_range",
     "excel_live.filter_rows",
     "excel_live.dedupe_rows",
+    "excel_live.find_duplicates",
     "excel_live.pivot_table",
     "excel_live.create_chart",
     "excel_live.validate_data",
+    "excel_live.recalculate",
+    "excel_live.export_pdf",
     "excel_live.save_workbook",
+    # 아래는 나중에 추가된 도구들. 레지스트리에는 오래전부터 있었지만 이 목록에 없어서
+    # 플래너가 골라도 전부 반려됐다. "열 이름 바꿔줘"가 400으로 떨어지던 이유다.
+    "excel_live.protect_sheet",
+    "excel_live.set_data_validation",
+    "excel_live.calculate_column_stat",
+    "excel_live.sort_rows",
+    "excel_live.drop_column",
+    "excel_live.rename_column",
+    "excel_live.add_column",
+    "excel_live.group_by_aggregate",
+    "excel_live.find_replace",
+    "excel_live.merge_cells",
+    "excel_live.unmerge_cells",
+    "excel_live.freeze_panes",
+    "excel_live.autofit_columns",
+    "excel_live.define_named_range",
+    "excel_live.set_print_area",
+    "excel_live.add_cell_comment",
+    "excel_live.apply_color_scale",
+    "excel_live.apply_data_bar",
+    "excel_live.set_number_format",
 }
+
+# 프롬프트에 붙일 설명. 이름만 나열하면 소형 모델이 highlight_by_condition과 헷갈린다.
+_LATER_TOOL_LINES = (
+    "- excel_live.calculate_column_stat (한 열의 합계/평균/최대 등을 '계산해서 알려주기'. 시트 수정 없음)\n"
+    "- excel_live.group_by_aggregate (그룹별 집계를 '알려주기'만. 새 시트에 쓰려면 pivot_table)\n"
+    "- excel_live.sort_rows (머리글 이름 기준 정렬)\n"
+    "- excel_live.drop_column (열 통째로 삭제. '이 열 지워줘'는 clear_range가 아니라 이것)\n"
+    "- excel_live.rename_column (열 머리글 이름만 변경)\n"
+    "- excel_live.add_column (맨 뒤 또는 지정 위치에 새 열 추가)\n"
+    "- excel_live.set_data_validation (입력 값 제한/드롭다운 목록)\n"
+    "- excel_live.protect_sheet (시트 잠금/보호)\n"
+    "- excel_live.find_replace (텍스트 찾아서 다른 텍스트로 바꾸기, 일괄 치환)\n"
+    "- excel_live.merge_cells (지정 범위 셀 병합)\n"
+    "- excel_live.unmerge_cells (병합된 셀 해제)\n"
+    "- excel_live.freeze_panes (머리글 행/열 틀 고정. freeze_at은 고정선 바로 아래/오른쪽 셀, 예: 첫 행 고정=\"A2\")\n"
+    "- excel_live.autofit_columns (열 너비를 내용에 맞게 자동 조정)\n"
+    "- excel_live.define_named_range (지정 범위에 이름 정의, name은 영문 식별자)\n"
+    "- excel_live.set_print_area (인쇄 영역/용지 방향/한 페이지 맞춤 설정)\n"
+    "- excel_live.add_cell_comment (셀 하나에 메모/코멘트 추가)\n"
+    "- excel_live.apply_color_scale (값 크기에 따라 색을 점진적으로 칠하는 색조 조건부 서식)\n"
+    "- excel_live.apply_data_bar (값 크기를 셀 안 막대로 시각화하는 데이터 막대 조건부 서식)\n"
+    "- excel_live.set_number_format (표시 형식 변경. format_code는 'percent'/'comma'/'currency'/'date'"
+    " 같은 개념어 또는 실제 Excel 서식 코드)\n"
+)
 
 
 def _has_likely_edit_intent(message: str) -> bool:
@@ -92,15 +144,21 @@ def _has_likely_edit_intent(message: str) -> bool:
     return has_numeric_condition and has_cell_target
 
 
+# 범위 추출에 \b를 쓰면 안 된다.
+# 파이썬 \w는 한글을 포함하므로 "A1:E9에"의 9와 '에' 사이에 경계가 없고,
+# 그 결과 A1:E9 대신 짧은 대안인 A1만 매칭돼 한 칸에만 작업이 적용된다.
+RANGE_REF_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9])"
+    r"([A-Za-z]{1,3}\d{1,7}:[A-Za-z]{1,3}\d{1,7}|[A-Za-z]{1,3}:[A-Za-z]{1,3}|[A-Za-z]{1,3}\d{1,7})"
+    r"(?![A-Za-z0-9:])"
+)
+
+# "C열", "C 열을"처럼 조사가 붙어도 열 문자를 인식한다.
+COLUMN_LETTER_PATTERN = re.compile(r"(?<![A-Za-z0-9])([A-Za-z])\s*열")
+
+
 def _extract_range_ref(text: str) -> str | None:
-    match = re.search(r"\b([a-z]+\d+:[a-z]+\d+|[a-z]:[a-z]|[a-z]+\d+)\b", text, re.IGNORECASE)
-    if not match:
-        # 한국어 조사(에/을/를/은/는/으로/에서)가 붙은 경우도 범위를 인식한다.
-        match = re.search(
-            r"([a-z]+\d+:[a-z]+\d+|[a-z]:[a-z]|[a-z]+\d+)\s*(?:에|을|를|은|는|으로|에서)",
-            text,
-            re.IGNORECASE,
-        )
+    match = RANGE_REF_PATTERN.search(str(text or ""))
     if not match:
         return None
     return match.group(1).upper()
@@ -110,7 +168,7 @@ def _extract_target_range_from_text(text: str) -> str | None:
     explicit = _extract_range_ref(text)
     if explicit:
         return explicit
-    col_match = re.search(r"\b([a-z])\s*열\b", text, re.IGNORECASE)
+    col_match = COLUMN_LETTER_PATTERN.search(str(text or ""))
     if col_match:
         col = col_match.group(1).upper()
         return f"{col}:{col}"
@@ -669,7 +727,8 @@ async def parse_command_with_llm(message: str, llm_service) -> dict[str, Any]:
         "- excel_live.dedupe_rows\n"
         "- excel_live.pivot_table\n"
         "- excel_live.create_chart\n"
-        "- excel_live.validate_data\n\n"
+        "- excel_live.validate_data\n"
+        f"{_LATER_TOOL_LINES}\n"
         "규칙:\n"
         "1) JSON 외 텍스트 금지\n"
         "2) action은 허용 목록 중 하나\n"
@@ -679,7 +738,7 @@ async def parse_command_with_llm(message: str, llm_service) -> dict[str, Any]:
         '{"action":"excel_live.read_range","params":{"range_ref":"A1:B10"},"reason":"한 줄 한국어"}\n\n'
         f"사용자 메시지: {message}"
     )
-    raw = await llm_service.chat([{"role": "user", "content": prompt}])
+    raw = await llm_service.chat([{"role": "user", "content": prompt}], temperature=PLAN_TEMPERATURE)
     match = re.search(r"\{.*\}", raw, re.DOTALL)
     if not match:
         raise ValueError("LLM JSON 파싱 실패")
@@ -702,6 +761,23 @@ def _ensure_action_step(step: dict[str, Any]) -> dict[str, Any]:
         params = {}
     reason = str(step.get("reason", "")).strip()
     return {"action": action, "params": params, "reason": reason}
+
+
+def _assert_action_plan_contract(action_plan: list[dict[str, Any]]) -> None:
+    if not action_plan:
+        raise ValueError("LLM action_plan이 비어 있습니다.")
+    if len(action_plan) > 4:
+        raise ValueError("LLM action_plan 단계 수가 제한(4)을 초과했습니다.")
+    for idx, step in enumerate(action_plan, start=1):
+        action = str(step.get("action", "")).strip()
+        params = step.get("params")
+        reason = str(step.get("reason", "")).strip()
+        if not action.startswith("excel_live."):
+            raise ValueError(f"step[{idx}] action 형식이 잘못되었습니다: {action}")
+        if not isinstance(params, dict):
+            raise ValueError(f"step[{idx}] params는 dict여야 합니다.")
+        if len(reason) > 240:
+            raise ValueError(f"step[{idx}] reason 길이가 너무 깁니다.")
 
 
 async def parse_command_plan_with_llm(
@@ -732,10 +808,20 @@ async def parse_command_plan_with_llm(
         complexity_score_int = 0
     reflection_note = str(context.get("reflection_note", "") or "").strip()
     previous_first_action = str(context.get("previous_first_action", "") or "").strip()
+    personalization_hint = str(context.get("personalization_hint", "") or "").strip()
+    planner_model = str(context.get("planner_model", "") or "").strip() or get_planner_model_name()
     context_line = (
         f"최근 컨텍스트: workbook_id={workbook_id or 'auto'}, sheet={sheet_name or 'auto'}, "
         f"context_range={context_range or 'none'}\n"
     )
+    digest_line = str(context.get("workbook_digest_text") or "")
+    personalization_line = ""
+    if personalization_hint:
+        personalization_line = (
+            "추가 지침(Persona memory): 아래 사용자 개인화 힌트를 우선 참고하되, "
+            "안전하지 않거나 모호한 경우에는 follow_up_question으로 되물어라.\n"
+            f"{personalization_hint[:1200]}\n"
+        )
     if reasoning_mode == "deep":
         reasoning_line = (
             "추가 지침(Deep reasoning): 복잡 명령이다. 실행 전 내부적으로 단계/의존성을 점검하고 "
@@ -772,10 +858,14 @@ async def parse_command_plan_with_llm(
         "- excel_live.verify_formula_result\n\n"
         "- excel_live.sort_range\n"
         "- excel_live.filter_rows\n"
-        "- excel_live.dedupe_rows\n"
+        "- excel_live.dedupe_rows (중복 '제거')\n"
+        "- excel_live.find_duplicates (중복을 지우지 않고 '찾기/확인')\n"
         "- excel_live.pivot_table\n"
         "- excel_live.create_chart\n"
-        "- excel_live.validate_data\n\n"
+        "- excel_live.validate_data\n"
+        "- excel_live.recalculate (수식 갱신/새로고침)\n"
+        "- excel_live.export_pdf\n"
+        f"{_LATER_TOOL_LINES}\n"
         "규칙:\n"
         "1) JSON 외 텍스트 금지\n"
         "2) action_plan은 1~4개 단계\n"
@@ -784,20 +874,33 @@ async def parse_command_plan_with_llm(
         "4-1) context_range가 주어졌고 사용자가 '이 범위/여기/전반적으로'처럼 모호하게 말하면 context_range를 우선 사용\n"
         "5) plan 상위에 intent를 반드시 포함한다: edit | read | navigate\n"
         "6) intent=edit이면 첫 단계는 편집 action이어야 한다\n"
-        "   (write_range/create_table/highlight_by_condition/fill_range/apply_border/set_formula/sort_range/filter_rows/dedupe_rows/pivot_table/create_chart/save_workbook)\n"
+        "   (write_range/create_table/highlight_by_condition/fill_range/apply_border/set_formula/sort_range/sort_rows/filter_rows/dedupe_rows/pivot_table/create_chart/drop_column/rename_column/add_column/set_data_validation/protect_sheet/save_workbook/find_replace/merge_cells/unmerge_cells/freeze_panes/autofit_columns/define_named_range/set_print_area/add_cell_comment/apply_color_scale/apply_data_bar/set_number_format)\n"
         f"6) forbid_list_action={str(bool(forbid_list_action)).lower()} 일 때 첫 단계를 excel_live.list_workbooks로 반환하면 안 된다\n\n"
         f"7) require_edit_action={str(bool(require_edit_action)).lower()} 일 때 첫 단계는 반드시 편집 액션이어야 한다\n"
-        "   (편집 액션: write_range/create_table/highlight_by_condition/fill_range/apply_border/set_formula/sort_range/filter_rows/dedupe_rows/pivot_table/create_chart/save_workbook)\n\n"
+        "   (편집 액션: write_range/create_table/highlight_by_condition/fill_range/apply_border/set_formula/sort_range/sort_rows/filter_rows/dedupe_rows/pivot_table/create_chart/drop_column/rename_column/add_column/set_data_validation/protect_sheet/save_workbook/find_replace/merge_cells/unmerge_cells/freeze_panes/autofit_columns/define_named_range/set_print_area/add_cell_comment/apply_color_scale/apply_data_bar/set_number_format)\n\n"
         "8) create_table 정보가 부족하면 slot_fill/partial_params/follow_up_question를 함께 넣을 수 있다\n"
         "   - slot_fill 예: {\"rows\":5,\"cols\":5,\"headers\":[\"금액\",\"장소\"]}\n"
         "   - follow_up_question 예: \"표 크기와 헤더를 알려주세요. 예: 5*5, 금액, 장소, 날짜\"\n\n"
+        f"9) 현재 planner 모델 힌트: {planner_model}\n"
+        "10) 아래 '통합문서 상태'에 실제 시트명과 머리글이 있다. 열은 반드시 그 머리글 이름\n"
+        "    (예: key_column=\"금액\")으로 지정하고, 시트명을 열 이름으로 쓰지 마라.\n"
+        "11) 결과를 새로 써 넣는 액션(pivot_table/forecast_linear/compare_ranges/consolidate)의\n"
+        "    output_sheet는 원본 시트와 달라야 한다. 원본을 덮어쓰면 데이터가 사라진다.\n"
+        "12) 범위를 특정할 수 있으면 __ACTIVE_SELECTION__ 대신 실제 사용범위를 써라.\n"
+        "13) 사용자가 말하지 않은 편집(테두리·색칠·정렬·표 생성)을 임의로 덧붙이지 마라.\n"
+        "14) 머리글이 영문이어도 사용자는 한국어로 부른다. '지역'→Region, '매출'→Sales처럼\n"
+        "    통합문서 상태의 실제 머리글로 바꿔서 params에 넣어라.\n\n"
+        f"{digest_line}"
         f"{context_line}"
+        f"{personalization_line}"
         f"{reasoning_line}"
         "출력 형식:\n"
         '{"intent":"edit","mutates_workbook":true,"action_plan":[{"action":"excel_live.fill_range","params":{"target_range":"__ACTIVE_SELECTION__","fill_color":"#FFFF00"},"reason":"범위 배경색 변경"}],"slot_fill":{},"partial_params":{},"follow_up_question":"","reason":"한 줄 한국어"}\n\n'
         f"사용자 메시지: {message}"
     )
-    raw = await llm_service.chat([{"role": "user", "content": prompt}])
+    raw = await llm_service.chat(
+        [{"role": "user", "content": prompt}], model=planner_model, temperature=PLAN_TEMPERATURE
+    )
     match = re.search(r"\{.*\}", raw, re.DOTALL)
     if not match:
         raise ValueError("LLM 계획 JSON 파싱 실패")
@@ -809,8 +912,7 @@ async def parse_command_plan_with_llm(
         for raw_step in steps_raw[:4]:
             if isinstance(raw_step, dict):
                 action_plan.append(_ensure_action_step(raw_step))
-        if not action_plan:
-            raise ValueError("LLM action_plan이 비어 있습니다.")
+        _assert_action_plan_contract(action_plan)
         intent = str(parsed.get("intent", "")).strip().lower()
         if intent not in {"edit", "read", "navigate"}:
             intent = "unknown"
@@ -828,6 +930,7 @@ async def parse_command_plan_with_llm(
 
     # 하위 호환: action/params 단일 형태도 수용
     single = _ensure_action_step(parsed)
+    _assert_action_plan_contract([single])
     intent = str(parsed.get("intent", "")).strip().lower()
     if intent not in {"edit", "read", "navigate"}:
         intent = "unknown"

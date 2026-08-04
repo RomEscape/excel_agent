@@ -53,6 +53,18 @@ class _FakeExcelService:
     def get_selected_workbook_id(self):
         return self._selected
 
+    def list_sheets(self, workbook_id=None):
+        return {"sheets": ["Sheet1", "Sheet2"], "count": 2, "active_sheet": "Sheet1"}
+
+    def select_sheet(self, workbook_id, sheet_name):
+        return {"selected": True, "sheet_name": sheet_name}
+
+    def get_active_selection_ref(self, workbook_id, sheet_name):
+        return "A1:D10"
+
+    def get_used_range_ref(self, workbook_id, sheet_name):
+        return "A1:D10"
+
     def read_range(self, workbook_id, sheet_name, range_ref):
         return {"values": [[1, 2]], "address": range_ref, "row_count": 1, "col_count": 2}
 

@@ -388,6 +388,66 @@ export async function excelLiveRestoreLastBackup(workbookId = null, backupPath =
   return parseResponse(raw);
 }
 
+// ── Harness feedback/replay ───────────────────────────────────────────────
+
+/**
+ * 사용자 피드백(좋아요/아쉬워요)을 하네스에 저장한다.
+ */
+export async function harnessFeedback({
+  userId = null,
+  sessionId = null,
+  route = "/excel-live/command",
+  message = "",
+  rating,
+  reason = "",
+  expectedAction = "",
+  expectedBehavior = "",
+}) {
+  const raw = await call("harness_feedback", {
+    userId,
+    sessionId,
+    route,
+    message,
+    rating,
+    reason,
+    expectedAction,
+    expectedBehavior,
+  });
+  return parseResponse(raw);
+}
+
+/**
+ * 실패 케이스 리플레이(학습 루프)를 수동 실행한다.
+ */
+export async function harnessReplayFailures({
+  userId = null,
+  sessionId = null,
+  route = "/excel-live/command",
+  limit = 20,
+  parseTimeoutSeconds = 10,
+  minGateCases = 5,
+  minGatePassRate = 0.7,
+} = {}) {
+  const raw = await call("harness_replay_failures", {
+    userId,
+    sessionId,
+    route,
+    limit,
+    parseTimeoutSeconds,
+    minGateCases,
+    minGatePassRate,
+  });
+  return parseResponse(raw);
+}
+
+/**
+ * 현재 개인화 스냅샷(활성 프롬프트/통계)을 조회한다.
+ */
+export async function harnessPersonalization(userId = null, sessionId = null) {
+  const raw = await call("harness_personalization", { userId, sessionId });
+  return parseResponse(raw);
+}
+
 // ── Document AI ───────────────────────────────────────────────────────────
 
 /**

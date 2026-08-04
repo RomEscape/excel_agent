@@ -13,34 +13,27 @@ pre-commit:
   parallel: true
   commands:
     rust-fmt:
-      glob: "apps/desktop/src-tauri/**/*.rs"
-      root: "apps/desktop/src-tauri/"
+      glob: "src-tauri/**/*.rs"
+      root: "src-tauri/"
       run: cargo fmt --check
     python-lint:
-      glob: "services/sidecar/**/*.py"
-      root: "services/sidecar/"
+      glob: "python-sidecar/**/*.py"
+      root: "python-sidecar/"
       run: uvx ruff check .
     frontend-lint:
-      glob: "apps/desktop/src/**/*.{ts,tsx,js,jsx}"
-      root: "apps/desktop/"
+      glob: "src/**/*.{ts,tsx,js,jsx}"
       run: npm run lint --if-present
-    mobile-analyze:
-      glob: "apps/mobile/**/*.dart"
-      root: "apps/mobile/"
-      run: flutter analyze
+    devlog-guard:
+      run: cd python-sidecar && uv run python scripts/append_devlog_from_reports.py --devlog ../개발일지.md --complex-report ../logs/excel_complex_verify_report.json --release-gate ../logs/eval_release_gate.json --from-staged --skip-if-devlog-staged && node ../scripts/check-devlog-update.mjs --staged
 
 pre-push:
   parallel: true
   commands:
     rust-clippy:
-      root: "apps/desktop/src-tauri/"
+      root: "src-tauri/"
       run: cargo clippy --all-targets -- -D warnings
     python-test:
-      root: "services/sidecar/"
+      root: "python-sidecar/"
       run: uv run pytest -q
     frontend-test:
-      root: "apps/desktop/"
       run: npm run test:unit --if-present
-    mobile-test:
-      root: "apps/mobile/"
-      run: flutter test

@@ -1,0 +1,950 @@
+{
+  "schema_version": "excel_complex_scenarios.v1",
+  "version": "v1.0.0",
+  "defaults": {
+    "approve": true,
+    "seed_profile": "sales_core",
+    "sheet_name": "매출"
+  },
+  "scenarios": [
+    {
+      "id": "complex-001-sort-followup-desc",
+      "title": "정렬 멀티턴 슬롯 채움(내림차순)",
+      "category": "sort",
+      "difficulty": "hard",
+      "severity": "critical",
+      "turns": [
+        { "message": "정렬해줘" },
+        { "message": "금액 열 기준 내림차순으로 정렬해줘" }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200,
+              "action_in": ["excel_live.sort", "excel_live.clarify"],
+              "ask_follow_up": true
+            },
+            {
+              "turn_index": 1,
+              "status_code": 200,
+              "action": "excel_live.sort_range"
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.sort_range"],
+          "forbid_actions": ["excel_live.clear_range"]
+        },
+        "result": {
+          "assertions": [
+            { "type": "cell_equals", "sheet": "매출", "cell": "E2", "expected": 1440 }
+          ]
+        }
+      }
+    },
+    {
+      "id": "complex-002-sort-direct-asc",
+      "title": "정렬 직접 지시(오름차순)",
+      "category": "sort",
+      "difficulty": "hard",
+      "severity": "critical",
+      "turns": [
+        { "message": "매출 시트 A1:H9 범위를 금액 열 기준 오름차순 정렬해줘" }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            { "turn_index": 0, "status_code": 200, "action": "excel_live.sort_range" }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.sort_range"]
+        },
+        "result": {
+          "assertions": [
+            { "type": "cell_equals", "sheet": "매출", "cell": "E2", "expected": 840 }
+          ]
+        }
+      }
+    },
+    {
+      "id": "complex-003-filter-status-complete",
+      "title": "상태 기준 필터(완료)",
+      "category": "filter",
+      "difficulty": "hard",
+      "severity": "critical",
+      "turns": [
+        { "message": "완료된 건만 보여줘" }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200,
+              "action": "excel_live.filter_rows",
+              "result_numeric_gte": { "filtered_rows": 1 }
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.filter_rows"]
+        },
+        "result": { "assertions": [] }
+      }
+    },
+    {
+      "id": "complex-004-filter-followup-amount",
+      "title": "금액 조건 필터 멀티턴",
+      "category": "filter",
+      "difficulty": "hard",
+      "severity": "critical",
+      "turns": [
+        { "message": "조건에 맞는 것만 보여줘" },
+        { "message": "금액이 1000 이상인 행만 남겨줘" }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200,
+              "action_in": ["excel_live.filter", "excel_live.clarify"],
+              "ask_follow_up": true
+            },
+            {
+              "turn_index": 1,
+              "status_code": 200,
+              "action": "excel_live.filter_rows",
+              "result_numeric_gte": { "filtered_rows": 1 }
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.filter_rows"]
+        },
+        "result": { "assertions": [] }
+      }
+    },
+    {
+      "id": "complex-005-dedupe-direct-code",
+      "title": "코드 기준 중복 제거",
+      "category": "dedupe",
+      "difficulty": "hard",
+      "severity": "critical",
+      "turns": [
+        { "message": "코드 열 기준으로 중복 제거해줘" }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200,
+              "action": "excel_live.dedupe_rows",
+              "result_numeric_gte": { "removed_rows": 1 }
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.dedupe_rows"]
+        },
+        "result": { "assertions": [] }
+      }
+    },
+    {
+      "id": "complex-006-dedupe-followup",
+      "title": "중복 제거 멀티턴 슬롯 채움",
+      "category": "dedupe",
+      "difficulty": "hard",
+      "severity": "critical",
+      "turns": [
+        { "message": "중복 없애줘" },
+        { "message": "코드 기준으로 정리해줘" }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200,
+              "action_in": ["excel_live.dedupe", "excel_live.clarify"],
+              "ask_follow_up": true
+            },
+            {
+              "turn_index": 1,
+              "status_code": 200,
+              "action": "excel_live.dedupe_rows",
+              "result_numeric_gte": { "removed_rows": 1 }
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.dedupe_rows"]
+        },
+        "result": { "assertions": [] }
+      }
+    },
+    {
+      "id": "complex-007-create-table-singleturn-values",
+      "title": "표 생성 + 내용 채우기 단일턴",
+      "category": "table",
+      "difficulty": "hard",
+      "severity": "critical",
+      "turns": [
+        {
+          "message": "B2부터 3행 3열 표 만들고 헤더는 항목,수량,금액으로 채워줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200,
+              "action_in": ["excel_live.write_range", "excel_live.create_table"]
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.create_table"],
+          "forbid_actions": ["excel_live.clear_range"]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "range_non_empty_at_least",
+              "sheet": "매출",
+              "range": "B2:D2",
+              "min_count": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "complex-008-create-table-template-followup",
+      "title": "템플릿 표 생성 멀티턴",
+      "category": "table",
+      "difficulty": "hard",
+      "severity": "critical",
+      "turns": [
+        { "message": "회의록 표 만들어줘" },
+        { "message": "6행 5열로 날짜,참석자,안건,결정사항,담당자 헤더 넣어줘" }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200,
+              "action": "excel_live.create_table",
+              "ask_follow_up": true
+            },
+            {
+              "turn_index": 1,
+              "status_code": 200,
+              "action_in": ["excel_live.write_range", "excel_live.create_table"]
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.create_table"]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "range_non_empty_at_least",
+              "sheet": "매출",
+              "range": "A1:E1",
+              "min_count": 5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "complex-009-formula-multiply-followup",
+      "title": "곱셈 수식 멀티턴 + 결과 검증",
+      "category": "formula",
+      "difficulty": "hard",
+      "severity": "critical",
+      "turns": [
+        { "message": "수량이랑 단가 곱해서 금액 계산해줘" },
+        { "message": "수량은 C열, 단가는 D열, 결과는 E열이야" }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200,
+              "action_in": ["excel_live.formula", "excel_live.clarify"],
+              "ask_follow_up": true
+            },
+            {
+              "turn_index": 1,
+              "status_code": 200,
+              "action_in": ["excel_live.verify_formula_result", "excel_live.set_formula"],
+              "result_numeric_gte": { "numeric_cells": 1 }
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.set_formula"],
+          "forbid_actions": ["excel_live.clear_range"]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "cell_formula_startswith",
+              "sheet": "매출",
+              "cell": "E2",
+              "prefix": "=C2*D2"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "complex-010-formula-if-followup",
+      "title": "조건 수식(IF) 멀티턴",
+      "category": "formula",
+      "difficulty": "hard",
+      "severity": "critical",
+      "sheet_name": "평가",
+      "turns": [
+        { "message": "점수 기준으로 합격/불합격 나오게 해줘" },
+        { "message": "점수는 B열이고 70 미만이면 미달, 아니면 통과야" }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200,
+              "action_in": ["excel_live.formula", "excel_live.clarify"],
+              "ask_follow_up": true
+            },
+            {
+              "turn_index": 1,
+              "status_code": 200,
+              "action_in": ["excel_live.verify_formula_result", "excel_live.set_formula"]
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.set_formula"]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "cell_formula_startswith",
+              "sheet": "평가",
+              "cell": "C2",
+              "prefix": "=IF("
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "complex-011-formula-vlookup-followup",
+      "title": "조회 수식(VLOOKUP/XLOOKUP) 멀티턴",
+      "category": "formula",
+      "difficulty": "very-hard",
+      "severity": "critical",
+      "sheet_name": "주문",
+      "turns": [
+        { "message": "코드 기준으로 단가 찾아와" },
+        { "message": "조회값은 A열, 참조표는 조회표 시트 A:B, 반환 2열, 결과는 B열이야" }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200,
+              "action_in": ["excel_live.formula", "excel_live.clarify"],
+              "ask_follow_up": true
+            },
+            {
+              "turn_index": 1,
+              "status_code": 200,
+              "action_in": ["excel_live.verify_formula_result", "excel_live.set_formula"]
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.set_formula"]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "cell_formula_startswith",
+              "sheet": "주문",
+              "cell": "B2",
+              "prefix": "="
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "complex-012-set-and-verify-formula-explicit",
+      "title": "명시 수식 적용 후 검증",
+      "category": "formula",
+      "difficulty": "hard",
+      "severity": "critical",
+      "sheet_name": "평가",
+      "turns": [
+        { "message": "평가 시트 C2:C8에 =IF(B2>=70,\"통과\",\"미달\") 수식 넣어줘" },
+        { "message": "평가 시트 C2:C8 수식 결과 확인해줘" }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            { "turn_index": 0, "status_code": 200, "action": "excel_live.set_formula" },
+            {
+              "turn_index": 1,
+              "status_code": 200,
+              "action": "excel_live.verify_formula_result",
+              "result_numeric_gte": { "non_empty_cells": 1 }
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.set_formula", "excel_live.verify_formula_result"]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "cell_formula_startswith",
+              "sheet": "평가",
+              "cell": "C2",
+              "prefix": "=IF("
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "complex-013-pivot-month-category",
+      "title": "월/카테고리 피벗 생성",
+      "category": "pivot",
+      "difficulty": "very-hard",
+      "severity": "critical",
+      "turns": [
+        {
+          "message": "매출 시트 A1:E9에서 월을 행으로, 카테고리를 열로, 금액 합계 피벗을 피벗1 시트 A1에 만들어줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            { "turn_index": 0, "status_code": 200, "action": "excel_live.pivot_table" }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.pivot_table"]
+        },
+        "result": {
+          "assertions": [
+            { "type": "sheet_exists", "sheet": "피벗1" },
+            { "type": "range_non_empty_at_least", "sheet": "피벗1", "range": "A1:C5", "min_count": 6 }
+          ]
+        }
+      }
+    },
+    {
+      "id": "complex-014-pivot-owner-status",
+      "title": "담당자/상태 기준 피벗",
+      "category": "pivot",
+      "difficulty": "very-hard",
+      "severity": "critical",
+      "turns": [
+        {
+          "message": "매출 시트 A1:H9에서 담당자를 행으로, 상태를 열로, 금액 합계 피벗을 피벗2 시트 A1에 만들어줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            { "turn_index": 0, "status_code": 200, "action": "excel_live.pivot_table" }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.pivot_table"]
+        },
+        "result": {
+          "assertions": [
+            { "type": "sheet_exists", "sheet": "피벗2" },
+            { "type": "range_non_empty_at_least", "sheet": "피벗2", "range": "A1:D8", "min_count": 6 }
+          ]
+        }
+      }
+    },
+    {
+      "id": "complex-015-chart-followup-line",
+      "title": "차트 생성 멀티턴(선 그래프)",
+      "category": "chart",
+      "difficulty": "hard",
+      "severity": "critical",
+      "turns": [
+        { "message": "매출 시트 A1:E9 데이터를 차트로 만들어줘" },
+        { "message": "선 그래프로 만들어줘" }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200,
+              "action_in": ["excel_live.chart", "excel_live.clarify", "excel_live.create_chart"],
+              "ask_follow_up": true
+            },
+            {
+              "turn_index": 1,
+              "status_code": 200,
+              "action": "excel_live.create_chart"
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.create_chart"]
+        },
+        "result": {
+          "assertions": []
+        }
+      }
+    },
+    {
+      "id": "complex-016-compare-ranges-sales-prev",
+      "title": "매출 vs 전월 범위 비교",
+      "category": "compare",
+      "difficulty": "very-hard",
+      "severity": "critical",
+      "turns": [
+        {
+          "message": "매출 시트 A1:E9이랑 전월 시트 A1:E9을 비교해서 비교결과1 시트에 차이 써줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            { "turn_index": 0, "status_code": 200, "action": "excel_live.compare_ranges" }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.compare_ranges"]
+        },
+        "result": {
+          "assertions": [
+            { "type": "sheet_exists", "sheet": "비교결과1" },
+            { "type": "range_non_empty_at_least", "sheet": "비교결과1", "range": "A1:D20", "min_count": 4 }
+          ]
+        }
+      }
+    },
+    {
+      "id": "complex-017-compare-ranges-sales-compare",
+      "title": "매출 vs 비교 시트 diff 생성",
+      "category": "compare",
+      "difficulty": "very-hard",
+      "severity": "critical",
+      "turns": [
+        {
+          "message": "매출 시트 A1:E9과 비교 시트 A1:E9 차이를 비교결과2 시트 A1부터 정리해줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            { "turn_index": 0, "status_code": 200, "action": "excel_live.compare_ranges" }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.compare_ranges"]
+        },
+        "result": {
+          "assertions": [
+            { "type": "sheet_exists", "sheet": "비교결과2" },
+            { "type": "range_non_empty_at_least", "sheet": "비교결과2", "range": "A1:D20", "min_count": 4 }
+          ]
+        }
+      }
+    },
+    {
+      "id": "complex-018-forecast-4",
+      "title": "4개월 선형 예측",
+      "category": "forecast",
+      "difficulty": "very-hard",
+      "severity": "critical",
+      "turns": [
+        {
+          "message": "매출 시트 C2:C9 기준으로 앞으로 4개월 예측해서 예측1 시트 A1에 써줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            { "turn_index": 0, "status_code": 200, "action": "excel_live.forecast_linear" }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.forecast_linear"]
+        },
+        "result": {
+          "assertions": [
+            { "type": "sheet_exists", "sheet": "예측1" },
+            { "type": "range_non_empty_at_least", "sheet": "예측1", "range": "A1:B5", "min_count": 4 }
+          ]
+        }
+      }
+    },
+    {
+      "id": "complex-019-forecast-6",
+      "title": "6개월 선형 예측",
+      "category": "forecast",
+      "difficulty": "very-hard",
+      "severity": "critical",
+      "turns": [
+        {
+          "message": "매출 시트 C2:C9 기반으로 6개월 예측해서 예측2 시트 A1부터 작성해줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            { "turn_index": 0, "status_code": 200, "action": "excel_live.forecast_linear" }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.forecast_linear"]
+        },
+        "result": {
+          "assertions": [
+            { "type": "sheet_exists", "sheet": "예측2" },
+            { "type": "range_non_empty_at_least", "sheet": "예측2", "range": "A1:B7", "min_count": 6 }
+          ]
+        }
+      }
+    },
+    {
+      "id": "complex-020-validation-numeric",
+      "title": "숫자 범위 입력 제한",
+      "category": "validation",
+      "difficulty": "hard",
+      "severity": "critical",
+      "sheet_name": "입력",
+      "turns": [
+        { "message": "입력 시트 E2:E200은 0부터 100000 사이 숫자만 입력되게 해줘" }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            { "turn_index": 0, "status_code": 200, "action": "excel_live.set_data_validation" }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.set_data_validation"]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "data_validation_exists",
+              "sheet": "입력",
+              "target_range": "E2:E200"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "complex-021-validation-list",
+      "title": "상태 드롭다운 입력 제한",
+      "category": "validation",
+      "difficulty": "hard",
+      "severity": "critical",
+      "sheet_name": "입력",
+      "turns": [
+        {
+          "message": "입력 시트 F2:F200은 완료,진행중,지연만 선택되도록 드롭다운으로 제한해줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            { "turn_index": 0, "status_code": 200, "action": "excel_live.set_data_validation" }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.set_data_validation"]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "data_validation_exists",
+              "sheet": "입력",
+              "target_range": "F2:F200"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "complex-022-protect-sheet",
+      "title": "시트 보호(수정 제한)",
+      "category": "protection",
+      "difficulty": "hard",
+      "severity": "critical",
+      "sheet_name": "평가",
+      "turns": [
+        { "message": "평가 시트 수식 칸은 잠그고 시트 보호해줘" }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            { "turn_index": 0, "status_code": 200, "action": "excel_live.protect_sheet" }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.protect_sheet"]
+        },
+        "result": {
+          "assertions": [
+            { "type": "sheet_protected", "sheet": "평가", "expected": true }
+          ]
+        }
+      }
+    },
+    {
+      "id": "complex-023-consolidate-sheets",
+      "title": "여러 시트 통합",
+      "category": "consolidate",
+      "difficulty": "very-hard",
+      "severity": "critical",
+      "turns": [
+        { "message": "1분기,2분기,3분기 시트를 통합1 시트로 합쳐줘" }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            { "turn_index": 0, "status_code": 200, "action": "excel_live.consolidate_sheets" }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.consolidate_sheets"]
+        },
+        "result": {
+          "assertions": [
+            { "type": "sheet_exists", "sheet": "통합1" },
+            { "type": "range_non_empty_at_least", "sheet": "통합1", "range": "A1:F20", "min_count": 8 }
+          ]
+        }
+      }
+    },
+    {
+      "id": "complex-024-highlight-condition",
+      "title": "조건 강조 서식 적용",
+      "category": "format",
+      "difficulty": "hard",
+      "severity": "critical",
+      "turns": [
+        { "message": "매출 시트 E열에서 1100 이상은 빨간색으로 표시해줘" }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            { "turn_index": 0, "status_code": 200, "action": "excel_live.highlight_by_condition" }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.highlight_by_condition"]
+        },
+        "result": {
+          "assertions": [
+            { "type": "cell_has_fill", "sheet": "매출", "cell": "E6" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "complex-025-fill-range-header",
+      "title": "헤더 색 채우기",
+      "category": "format",
+      "difficulty": "hard",
+      "severity": "major",
+      "turns": [
+        { "message": "매출 시트 A1:E1 헤더를 연노랑으로 칠해줘" }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            { "turn_index": 0, "status_code": 200, "action": "excel_live.fill_range" }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.fill_range"]
+        },
+        "result": {
+          "assertions": [
+            { "type": "cell_has_fill", "sheet": "매출", "cell": "A1" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "complex-026-border-thin-range",
+      "title": "범위 테두리 적용",
+      "category": "format",
+      "difficulty": "hard",
+      "severity": "major",
+      "turns": [
+        { "message": "매출 시트 A1:E9에 얇은 테두리 넣어줘" }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            { "turn_index": 0, "status_code": 200, "action": "excel_live.apply_border" }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.apply_border"]
+        },
+        "result": {
+          "assertions": [
+            { "type": "cell_has_border", "sheet": "매출", "cell": "B2" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "complex-027-clear-range-explicit",
+      "title": "범위 내용 초기화(명시)",
+      "category": "cleanup",
+      "difficulty": "hard",
+      "severity": "major",
+      "turns": [
+        { "message": "매출 시트 A2:E9 내용 전부 지워줘" }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            { "turn_index": 0, "status_code": 200, "action": "excel_live.clear_range" }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.clear_range"]
+        },
+        "result": {
+          "assertions": [
+            { "type": "cell_equals", "sheet": "매출", "cell": "A2", "expected": null }
+          ]
+        }
+      }
+    },
+    {
+      "id": "complex-028-clear-range-colloquial",
+      "title": "전체 초기화(구어체)",
+      "category": "cleanup",
+      "difficulty": "hard",
+      "severity": "major",
+      "turns": [
+        { "message": "안에 내용 전부 지우고 깨끗하게 만들어줘" }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200,
+              "action_in": ["excel_live.clear_range", "excel_live.clarify"]
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.clear_range"]
+        },
+        "result": {
+          "assertions": [
+            { "type": "cell_equals", "sheet": "매출", "cell": "A2", "expected": null }
+          ]
+        }
+      }
+    },
+    {
+      "id": "complex-029-pipeline-filter-pivot-chart",
+      "title": "연쇄 작업(필터->피벗->차트) 복합 지시",
+      "category": "pipeline",
+      "difficulty": "very-hard",
+      "severity": "major",
+      "turns": [
+        {
+          "message": "완료된 행만 남기고 담당자별 합계를 피벗으로 만들고 차트까지 만들어줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200,
+              "action_in": [
+                "excel_live.filter_rows",
+                "excel_live.pivot_table",
+                "excel_live.create_chart",
+                "excel_live.clarify"
+              ]
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.pivot_table"],
+          "forbid_actions": ["excel_live.clear_range"]
+        },
+        "result": {
+          "assertions": []
+        }
+      }
+    },
+    {
+      "id": "complex-030-pipeline-formula-validate",
+      "title": "연쇄 작업(수식->검증->입력제한) 복합 지시",
+      "category": "pipeline",
+      "difficulty": "very-hard",
+      "severity": "major",
+      "turns": [
+        {
+          "message": "금액 자동 계산하고 결과 검증한 다음 입력값 범위 제한까지 한 번에 설정해줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200,
+              "action_in": [
+                "excel_live.formula",
+                "excel_live.set_formula",
+                "excel_live.verify_formula_result",
+                "excel_live.set_data_validation",
+                "excel_live.clarify"
+              ]
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": ["excel_live.set_formula"],
+          "forbid_actions": ["excel_live.clear_range"]
+        },
+        "result": {
+          "assertions": []
+        }
+      }
+    }
+  ]
+}

@@ -18,10 +18,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 import math
+import os
 from pathlib import Path
 import re
 import shutil
 from typing import Any
+
+from office_claw_sidecar.services.excel_header_lexicon import resolve_header
 
 
 class ExcelLiveError(Exception):
@@ -62,6 +65,8 @@ class WorkbookInfo:
 
 class ExcelLiveService:
     """실행 중인 Excel 제어 서비스(xlwings 기반)."""
+
+    engine = "xlwings"
 
     def __init__(self, xw_module: Any | None = None) -> None:
         self._xw = xw_module
@@ -318,8 +323,13 @@ class ExcelLiveService:
         operator: str,
         threshold: float,
         fill_color: str = "#FFFF00",
+        compare_column: str | None = None,
     ) -> dict[str, Any]:
-        """조건에 맞는 셀 배경색을 변경한다."""
+        """조건에 맞는 셀 배경색을 변경한다.
+
+        compare_column을 주면 고정 기준값 대신 같은 행의 그 열 값과 비교한다
+        ("현재고가 재주문점 이하").
+        """
         target_id = workbook_id or self._selected_workbook_id
         if not target_id:
             raise WorkbookNotFoundError("workbook_id가 필요합니다.")
@@ -329,6 +339,7 @@ class ExcelLiveService:
         rng = self._resolve_target_range(sheet, target_range)
         values = self._normalize_values(rng.options(ndim=2).value)
         rgb = self._hex_to_rgb(fill_color)
+        compare_letter = str(compare_column or "").strip().upper() or None
 
         start_row = int(getattr(rng, "row", 1))
         start_col = int(getattr(rng, "column", 1))
@@ -337,9 +348,15 @@ class ExcelLiveService:
         changed = 0
         for r_idx, row in enumerate(values):
             for c_idx, cell_value in enumerate(row):
-                if self._matches_condition(cell_value, operator, threshold):
+                absolute_row = start_row + r_idx
+                limit = threshold
+                if compare_letter:
+                    other = sheet.range(f"{compare_letter}{absolute_row}").value
+                    if not isinstance(other, (int, float)) or isinstance(other, bool):
+                        continue
+                    limit = float(other)
+                if self._matches_condition(cell_value, operator, limit):
                     matched += 1
-                    absolute_row = start_row + r_idx
                     absolute_col = start_col + c_idx
                     cell_ref = f"{self._idx_to_col(absolute_col)}{absolute_row}"
                     cell = sheet.range(cell_ref)
@@ -661,6 +678,96 @@ class ExcelLiveService:
             "operator": op,
             "value": value,
         }
+
+    def read_computed_range(self, workbook_id: str | None, sheet_name: str, range_ref: str) -> dict[str, Any]:
+        """계산된 값 읽기. xlwings는 Excel이 이미 계산한 값을 주므로 일반 읽기와 같다."""
+        return self.read_range(workbook_id, sheet_name, range_ref)
+
+    def find_duplicates(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        target_range: str,
+        key_columns: list[str | int] | None = None,
+        has_header: bool = True,
+        output_sheet: str | None = None,
+    ) -> dict[str, Any]:
+        """중복을 제거하지 않고 어디에 몇 건 있는지만 보고한다."""
+        payload = self.read_range(workbook_id, sheet_name, target_range)
+        values = payload.get("values", []) if isinstance(payload, dict) else []
+        address = str(payload.get("address", target_range)) if isinstance(payload, dict) else target_range
+        if not values:
+            return {"duplicate_groups": 0, "duplicate_rows": 0, "address": address, "samples": []}
+        col_count = max(len(row) for row in values)
+        header_row = values[0] if has_header else None
+        body = values[1:] if has_header else values
+        if key_columns:
+            indexes = [
+                self._resolve_column_selector(col, 1, col_count, header_row) for col in key_columns
+            ]
+        else:
+            indexes = list(range(col_count))
+        seen: dict[tuple, list[int]] = {}
+        for offset, row in enumerate(body):
+            key = tuple(str(row[i]) if i < len(row) else "" for i in indexes)
+            seen.setdefault(key, []).append(offset + (2 if has_header else 1))
+        samples = [
+            {"value": " / ".join(key), "count": len(rows), "rows": rows[:10]}
+            for key, rows in seen.items()
+            if len(rows) > 1
+        ]
+        return {
+            "duplicate_groups": len(samples),
+            "duplicate_rows": sum(int(s["count"]) for s in samples),
+            "address": address,
+            "samples": samples[:20],
+        }
+
+    def recalculate(self, workbook_id: str | None, sheet_name: str | None = None) -> dict[str, Any]:
+        """Excel에 전체 재계산과 연결 새로고침을 요청한다."""
+        target_id = workbook_id or self._selected_workbook_id
+        wb = self._find_workbook(target_id) if target_id else None
+        if wb is None:
+            raise WorkbookNotFoundError("workbook_id가 필요합니다.")
+        app = getattr(wb, "app", None)
+        if app is not None:
+            app.calculate()
+        api = getattr(wb, "api", None)
+        if api is not None:
+            try:
+                api.RefreshAll()
+            except Exception:  # pragma: no cover - COM 환경 의존
+                pass
+        return {"recalculated": True, "workbook_id": str(target_id), "sheets": [sheet_name or ""]}
+
+    def export_pdf(
+        self,
+        workbook_id: str | None,
+        sheet_name: str | None = None,
+        output_path: str | None = None,
+    ) -> dict[str, Any]:
+        """Excel 네이티브 기능으로 PDF를 내보낸다."""
+        target_id = workbook_id or self._selected_workbook_id
+        wb = self._find_workbook(target_id) if target_id else None
+        if wb is None:
+            raise WorkbookNotFoundError("workbook_id가 필요합니다.")
+        source = self._find_sheet(wb, sheet_name) if sheet_name else wb
+        target = str(output_path or "").strip() or None
+        if target:
+            # 플래너가 폴더 없는 이름을 지어내면 프로세스 작업 폴더에 떨어진다. 통합문서 옆에 둔다.
+            requested = Path(target)
+            if not requested.is_absolute():
+                book_path = Path(str(getattr(wb, "fullname", "") or ""))
+                if book_path.parent.exists():
+                    target = str(book_path.parent / requested.name)
+        try:
+            if target:
+                source.to_pdf(target)
+            else:
+                target = str(source.to_pdf())
+        except Exception as exc:  # pragma: no cover - COM 환경 의존
+            raise ExcelLiveError(f"PDF 내보내기에 실패했습니다: {exc}") from exc
+        return {"exported": True, "pdf_path": target, "sheet_name": sheet_name or "(전체)"}
 
     def dedupe_rows(
         self,
@@ -1735,21 +1842,28 @@ class ExcelLiveService:
             raw = selector
         else:
             text = str(selector or "").strip()
+            headers = [str(h or "").strip() for h in (header_row or [])]
             if not text:
                 raw = 1
             elif re.fullmatch(r"\d+", text):
                 raw = int(text)
-            elif re.fullmatch(r"[A-Z]+", text.upper()):
-                abs_idx = cls._col_to_idx(text.upper())
-                raw = abs_idx - start_col_idx + 1
             else:
                 raw = 0
-                if header_row:
-                    lowered = text.lower()
-                    for idx, header in enumerate(header_row, start=1):
-                        if str(header or "").strip().lower() == lowered:
-                            raw = idx
-                            break
+                lowered = text.lower()
+                for idx, header in enumerate(headers, start=1):
+                    if header.lower() == lowered:
+                        raw = idx
+                        break
+                if raw == 0 and headers:
+                    # "매출"→Sales 처럼 한국어 개념어로 부른 열을 잇는다.
+                    mapped = resolve_header(text, [h for h in headers if h])
+                    if mapped:
+                        raw = headers.index(mapped) + 1
+                if raw == 0 and re.fullmatch(r"[A-Z]{1,3}", text.upper()):
+                    # 열 문자 해석은 마지막이다. 'Sales' 같은 영문 머리글을 열 문자로 읽으면
+                    # 범위 끝 열로 잘려 엉뚱한 열이 집계된다.
+                    abs_idx = cls._col_to_idx(text.upper())
+                    raw = abs_idx - start_col_idx + 1
                 if raw == 0:
                     raw = 1
         raw = max(1, min(col_count, int(raw)))
@@ -1954,12 +2068,33 @@ class ExcelLiveService:
 
 
 _excel_live_service: ExcelLiveService | None = None
+_excel_live_service_engine: str | None = None
 
 
 def get_excel_live_service() -> ExcelLiveService:
-    """ExcelLiveService 싱글톤 반환."""
-    global _excel_live_service
-    if _excel_live_service is None:
-        _excel_live_service = ExcelLiveService()
+    """
+    Excel Live 서비스 싱글톤 반환.
+
+    환경변수:
+    - EXCEL_LIVE_ENGINE=file (기본): openpyxl로 파일을 직접 편집. Excel 앱이 없어도 된다.
+    - EXCEL_LIVE_ENGINE=xlwings: 실행 중인 Excel 앱을 제어. 피벗·매크로 등 앱 기능이 필요할 때.
+
+    예전 설정 파일이 쓰던 "pandas"는 "file"과 같은 뜻으로 받는다.
+    """
+    global _excel_live_service, _excel_live_service_engine
+    engine = str(os.getenv("EXCEL_LIVE_ENGINE", "file") or "file").strip().lower()
+    if engine == "pandas":
+        engine = "file"
+    if engine not in {"xlwings", "file"}:
+        engine = "file"
+
+    if _excel_live_service is None or _excel_live_service_engine != engine:
+        if engine == "file":
+            from office_claw_sidecar.services.excel_live_file_service import FileExcelLiveService
+
+            _excel_live_service = FileExcelLiveService()
+        else:
+            _excel_live_service = ExcelLiveService()
+        _excel_live_service_engine = engine
     return _excel_live_service
 

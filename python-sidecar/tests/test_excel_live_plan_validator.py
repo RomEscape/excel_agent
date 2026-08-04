@@ -80,6 +80,24 @@ def test_validate_highlight_alias_params_are_normalized():
     assert out[0].params["fill_color"] == "yellow"
 
 
+def _highlight_operator(params):
+    out = validate_plan(
+        [PlanStep(action="excel_live.highlight_by_condition", params={"target_range": "E:E", **params}, reason="")],
+        context=ValidationContext(message="E열 1100 이상 빨간색"),
+    )
+    return out[0].params["operator"], out[0].params["threshold"]
+
+
+def test_validate_highlight_accepts_verbose_english_operator():
+    assert _highlight_operator({"operator": "greater_than", "threshold": 1100}) == (">", 1100.0)
+    assert _highlight_operator({"operator": "greater than or equal", "threshold": 1100}) == (">=", 1100.0)
+
+
+def test_validate_highlight_unwraps_operator_object():
+    params = {"operator": {"comparator": "gte", "value": 1100}}
+    assert _highlight_operator(params) == (">=", 1100.0)
+
+
 def test_validate_formula_requires_equals_prefix():
     try:
         validate_plan(

@@ -15,6 +15,7 @@ OPENCLAW_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
 CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
 RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"
 NPM_CONFIG_PREFIX="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
+SIDECAR_VENV_PATH="${UV_PROJECT_ENVIRONMENT:-$HOME/.cache/officeclaw/venvs/python-sidecar}"
 
 detect_os() {
   local uname_out
@@ -154,11 +155,14 @@ ensure_dir "$OPENCLAW_HOME"
 ensure_dir "$CARGO_HOME"
 ensure_dir "$RUSTUP_HOME"
 ensure_dir "$NPM_CONFIG_PREFIX"
+ensure_dir "$(dirname "$SIDECAR_VENV_PATH")"
 
 export OPENCLAW_HOME
 export CARGO_HOME
 export RUSTUP_HOME
 export NPM_CONFIG_PREFIX
+export UV_PROJECT_ENVIRONMENT="$SIDECAR_VENV_PATH"
+echo "Python venv path: $UV_PROJECT_ENVIRONMENT"
 
 hydrate_path
 auto_install_node_if_missing
@@ -204,6 +208,7 @@ echo "=== 통합 설치 완료 ==="
 echo "OPENCLAW_HOME=$OPENCLAW_HOME"
 echo "CARGO_HOME=$CARGO_HOME"
 echo "NPM_CONFIG_PREFIX=$NPM_CONFIG_PREFIX"
+echo "UV_PROJECT_ENVIRONMENT=$UV_PROJECT_ENVIRONMENT"
 if command -v openclaw >/dev/null 2>&1; then
   echo "OPENCLAW_CLI=detected"
 else
