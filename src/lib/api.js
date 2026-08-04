@@ -649,6 +649,46 @@ export async function securityRespondApproval(approvalId, approved) {
   return parseResponse(raw);
 }
 
+// ── Phase 3: Permissions ─────────────────────────────────────────────────────
+
+/** 에이전트 허용 범위(폴더/앱/화이트리스트) 조회 */
+export async function permissionsGet() {
+  const raw = await call("permissions_get");
+  return parseResponse(raw);
+}
+
+/** 에이전트 허용 범위 일괄 저장 */
+export async function permissionsUpdate({
+  allowedFolders = [],
+  allowedApps = [],
+  shellCommandWhitelist = [],
+  pythonModuleWhitelist = [],
+}) {
+  const raw = await call("permissions_update", {
+    allowed_folders: allowedFolders,
+    allowed_apps: allowedApps,
+    shell_command_whitelist: shellCommandWhitelist,
+    python_module_whitelist: pythonModuleWhitelist,
+  });
+  return parseResponse(raw);
+}
+
+/** 셸/Python 화이트리스트 항목 추가 */
+export async function permissionsWhitelistAdd(command, commandType, reason = "") {
+  const raw = await call("permissions_whitelist_add", {
+    command,
+    command_type: commandType,
+    reason,
+  });
+  return parseResponse(raw);
+}
+
+/** 셸/Python 화이트리스트 항목 제거 */
+export async function permissionsWhitelistRemove(command) {
+  const raw = await call("permissions_whitelist_remove", { command });
+  return parseResponse(raw);
+}
+
 // ── Phase 1: Private-Claw — Workspace ────────────────────────────────────────
 
 /**
