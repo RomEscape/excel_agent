@@ -8,8 +8,8 @@
 //!
 //! dev 모드에서는 이미 외부에서 실행 중인 게이트웨이를 그대로 사용한다.
 
-use std::process::{Child, Command};
 use std::path::PathBuf;
+use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -219,7 +219,11 @@ fn load_gateway_token_from_openclaw_config() -> Option<String> {
         .unwrap_or("")
         .trim()
         .to_string();
-    if token.is_empty() { None } else { Some(token) }
+    if token.is_empty() {
+        None
+    } else {
+        Some(token)
+    }
 }
 
 /// 게이트웨이 HTTP health 엔드포인트를 최대 30초간 폴링한다.
@@ -358,7 +362,12 @@ fn windows_openclaw_cmd_candidates() -> Vec<PathBuf> {
     if let Ok(userprofile) = std::env::var("USERPROFILE") {
         let user_home = PathBuf::from(userprofile);
         out.push(user_home.join(".npm-global").join("openclaw.cmd"));
-        out.push(user_home.join(".npm-global").join("bin").join("openclaw.cmd"));
+        out.push(
+            user_home
+                .join(".npm-global")
+                .join("bin")
+                .join("openclaw.cmd"),
+        );
     }
 
     // 순서 유지 + 중복 제거

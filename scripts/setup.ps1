@@ -14,6 +14,16 @@ $OpenClawHome = Join-Path $env:USERPROFILE ".openclaw"
 $CargoHome = Join-Path $env:USERPROFILE ".cargo"
 $RustupHome = Join-Path $env:USERPROFILE ".rustup"
 $NpmGlobalPrefix = Join-Path $env:USERPROFILE ".npm-global"
+$LocalAppDataRoot = if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+    Join-Path $env:USERPROFILE "AppData\Local"
+} else {
+    $env:LOCALAPPDATA
+}
+$SidecarVenvPath = if (-not [string]::IsNullOrWhiteSpace($env:UV_PROJECT_ENVIRONMENT)) {
+    $env:UV_PROJECT_ENVIRONMENT.Trim()
+} else {
+    Join-Path $LocalAppDataRoot "officeclaw\venvs\python-sidecar"
+}
 
 # 콘솔 UTF-8 강제 (한글 경로/로그 깨짐 방지)
 [Console]::InputEncoding = [System.Text.UTF8Encoding]::new()
@@ -146,6 +156,12 @@ function Ensure-WindowsCppToolchain {
 
 Write-Host "=== Team 503 AI 통합 설치 시작 ===" -ForegroundColor Green
 Write-Host "프로젝트 경로: $ProjectDir"
+$SidecarVenvParent = Split-Path -Parent $SidecarVenvPath
+if ($SidecarVenvParent) {
+    Ensure-Directory -PathValue $SidecarVenvParent
+}
+$env:UV_PROJECT_ENVIRONMENT = $SidecarVenvPath
+Write-Host "Python venv path: $SidecarVenvPath"
 Initialize-ToolHomes
 Initialize-ToolPaths
 Install-CommandIfMissing -Name "node" -WingetId "OpenJS.NodeJS.LTS" -Title "Node.js 자동 설치 (winget)"
@@ -202,6 +218,7 @@ Write-Host "=== 통합 설치 완료 ===" -ForegroundColor Green
 Write-Host "OPENCLAW_HOME=$env:OPENCLAW_HOME"
 Write-Host "CARGO_HOME=$env:CARGO_HOME"
 Write-Host "NPM_CONFIG_PREFIX=$env:NPM_CONFIG_PREFIX"
+Write-Host "UV_PROJECT_ENVIRONMENT=$env:UV_PROJECT_ENVIRONMENT"
 if (Get-Command openclaw -ErrorAction SilentlyContinue) {
     Write-Host "OPENCLAW_CLI=detected"
 } else {

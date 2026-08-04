@@ -12,8 +12,12 @@ export NVM_DIR="$HOME/.nvm"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 SIDECAR_DIR="$PROJECT_DIR/python-sidecar"
+SIDECAR_VENV_PATH="${UV_PROJECT_ENVIRONMENT:-$HOME/.cache/officeclaw/venvs/python-sidecar}"
 
 echo "=== Starting Office Claw Development ==="
+mkdir -p "$(dirname "$SIDECAR_VENV_PATH")"
+export UV_PROJECT_ENVIRONMENT="$SIDECAR_VENV_PATH"
+echo "Python venv path: $UV_PROJECT_ENVIRONMENT"
 
 # 1. Sync Python dependencies via uv
 echo "Syncing Python dependencies..."

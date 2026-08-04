@@ -23,10 +23,10 @@ class OllamaService:
         )
 
     async def chat_messages(
-        self, messages: list[dict], model: str = "llama3.2"
+        self, messages: list[dict], model: str = "llama3.2", temperature: float | None = None
     ) -> str:
         """Send a full conversation history to Ollama and return the reply text."""
-        reply = await self.chat_completions(messages, model=model)
+        reply = await self.chat_completions(messages, model=model, temperature=temperature)
         return reply.get("content") or ""
 
     async def chat_completions(

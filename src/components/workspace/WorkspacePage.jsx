@@ -35,6 +35,8 @@ import {
   Trash2,
   Save,
   RotateCcw,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -59,6 +61,7 @@ import {
   excelLiveSaveWorkbook,
   excelLiveListBackups,
   excelLiveRestoreLastBackup,
+  harnessFeedback,
   telegramStatus,
   chatSaveMessage,
   chatListSessions,
@@ -82,7 +85,7 @@ const VERIFIED_EXCEL_EXAMPLES = Object.freeze([
 ]);
 
 const ACCEPT_ATTR =
-  ".txt,.md,.csv,.json,.py,.js,.ts,.jsx,.tsx,.yaml,.yml,.toml,.sh,.html,.css,.log,.xml,.xlsx,.pdf,.docx,.pptx,.png,.jpg,.jpeg";
+  ".txt,.md,.csv,.json,.py,.js,.ts,.jsx,.tsx,.yaml,.yml,.toml,.sh,.html,.css,.log,.xml,.xlsx,.pdf,.docx,.pptx,.png,.jpg,.jpeg,.zip";
 
 const EXCEL_EXT = new Set(["xlsx", "xls", "xlsm", "xlsb"]);
 
@@ -119,7 +122,7 @@ function shouldRouteToExcelLive(message) {
   const keywordHit = [
     "엑셀", "excel", "워크북", "workbook", "시트", "sheet",
     "셀", "cell", "수식", "formula", "조건부", "강조", "경계선", "테두리", "border",
-    "표", "테이블", "table", "배경색", "색도", "색을", "색깔",
+    "표", "테이블", "table", "헤더", "항목", "표 형태", "배경색", "색도", "색을", "색깔",
     "노란색", "노랑", "흰색", "하얀색", "하양", "white", "칠해",
   ].some((kw) => lower.includes(kw));
   if (keywordHit) return true;
@@ -136,6 +139,7 @@ function hasLikelyExcelActionIntent(message) {
     "입력", "작성", "적용", "만들", "생성", "저장", "칠해", "채워", "강조", "테두리", "경계선",
     "지워", "지우", "없애", "복구", "초기화", "기본값", "흰색", "하얀색", "색도", "색을",
     "수식", "읽어", "보여", "범위", "셀", "표", "엑셀", "excel",
+    "헤더", "항목", "표 형태", "열 제목", "행 제목", "넣어줘",
   ].some((kw) => lower.includes(kw));
 }
 
@@ -150,6 +154,33 @@ function isTransientAgentError(err) {
     msg.includes("요청 타임아웃") ||
     msg.includes("응답 읽기 실패")
   );
+}
+
+function isTransientUploadError(err) {
+  const msg = String(err?.message ?? err ?? "").toLowerCase();
+  return (
+    msg.includes("connection refused") ||
+    msg.includes("error sending request") ||
+    msg.includes("failed to fetch") ||
+    msg.includes("econnrefused") ||
+    msg.includes("timed out") ||
+    msg.includes("timeout") ||
+    msg.includes("요청 타임아웃") ||
+    msg.includes("응답 읽기 실패")
+  );
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function toUploadUserMessage(err) {
+  const mapped = toUserMessage(err);
+  const raw = String(err?.message ?? err ?? "").trim();
+  if (mapped === "오류가 발생했습니다. 다시 시도해 주세요." && raw) {
+    return raw;
+  }
+  return mapped;
 }
 
 function withTimeout(promiseFactory, timeoutMs, label) {
@@ -544,6 +575,8 @@ function ChatSidePanel({ openclawState }) {
   const [pendingTaskLabel, setPendingTaskLabel] = useState("");
   const [pendingExcelComposite, setPendingExcelComposite] = useState(null);
   const [lastExcelRangeRef, setLastExcelRangeRef] = useState(null);
+  const [messageFeedback, setMessageFeedback] = useState({});
+  const [feedbackBusyKey, setFeedbackBusyKey] = useState("");
   const pendingUserMsgRef = useRef(null); // session 발급 전 첫 user msg 임시 보관
 
   const runWithRetry = useCallback(async (fn, label, timeoutMs = 45000) => {
@@ -559,6 +592,80 @@ function ChatSidePanel({ openclawState }) {
       return runOnce();
     }
   }, []);
+
+  const buildFeedbackKey = useCallback(
+    (idx, msg) => {
+      const sessionKey = activeSessionId || "no_session";
+      const routeKey = String(msg?.sourceRoute || "");
+      return `${sessionKey}:${idx}:${routeKey}`;
+    },
+    [activeSessionId]
+  );
+
+  const findPreviousUserText = useCallback(
+    (idx) => {
+      for (let i = idx - 1; i >= 0; i -= 1) {
+        if (agentMessages[i]?.role === "user") {
+          return String(agentMessages[i]?.text || "").trim();
+        }
+      }
+      return "";
+    },
+    [agentMessages]
+  );
+
+  const handleMessageFeedback = useCallback(
+    async (idx, rating) => {
+      const msg = agentMessages[idx];
+      if (!msg || msg.role !== "agent") return;
+
+      const key = buildFeedbackKey(idx, msg);
+      if (feedbackBusyKey === key) return;
+
+      let reason = "";
+      if (rating === "bad") {
+        const typed = window.prompt("아쉬운 점을 짧게 남겨주세요. (선택)", "");
+        if (typed === null) return; // 취소
+        reason = String(typed || "").trim();
+      }
+
+      const route =
+        String(msg.sourceRoute || "").trim() ||
+        (msg.toolCalls?.length ? "/agent/chat" : "/excel-live/command");
+      const userMessage = findPreviousUserText(idx);
+      const targetMessage = userMessage || String(msg.text || "").trim();
+
+      setFeedbackBusyKey(key);
+      try {
+        await harnessFeedback({
+          sessionId: activeSessionId,
+          route,
+          message: targetMessage,
+          rating,
+          reason:
+            reason ||
+            (rating === "good"
+              ? "workspace_like_button"
+              : "workspace_dislike_button"),
+        });
+        setMessageFeedback((prev) => ({
+          ...prev,
+          [key]: rating,
+        }));
+      } catch {
+        // 피드백 저장 실패는 사용자 작업 흐름을 막지 않는다.
+      } finally {
+        setFeedbackBusyKey("");
+      }
+    },
+    [
+      activeSessionId,
+      agentMessages,
+      buildFeedbackKey,
+      feedbackBusyKey,
+      findPreviousUserText,
+    ]
+  );
 
   // textarea auto-grow: 1행 ~ 5행 (최대 ~120px)
   useEffect(() => {
@@ -610,6 +717,11 @@ function ChatSidePanel({ openclawState }) {
         maskedCount: m.masked_count,
         maskedTypes: m.masked_types,
         error: m.error_text || undefined,
+        sourceRoute:
+          m.source_route ||
+          (Array.isArray(m.tool_calls) && m.tool_calls.length > 0
+            ? "/agent/chat"
+            : "/excel-live/command"),
       }));
       setAgentMessages(normalized);
       setActiveSessionId(sid);
@@ -689,7 +801,7 @@ function ChatSidePanel({ openclawState }) {
                 excelResult?.reason ||
                 "작업을 진행하려면 추가 정보가 필요합니다."
             ).trim();
-            addAgentMessage({ role: "agent", text: followText });
+            addAgentMessage({ role: "agent", text: followText, sourceRoute: "/excel-live/command" });
             if (activeSessionId) persistMessageSilent(activeSessionId, "agent", followText);
             break;
           }
@@ -701,6 +813,7 @@ function ChatSidePanel({ openclawState }) {
             });
             addAgentMessage({
               role: "agent",
+              sourceRoute: "/excel-live/command",
               text:
                 commands.length > 1
                   ? `복합 작업 ${i + 1}/${commands.length} 단계는 승인 후 실행됩니다.`
@@ -713,7 +826,7 @@ function ChatSidePanel({ openclawState }) {
 
           const answer = formatExcelLiveResult(excelResult?.action, excelResult?.result);
           const text = commands.length > 1 ? `[${i + 1}/${commands.length}] ${answer}` : answer;
-          addAgentMessage({ role: "agent", text });
+          addAgentMessage({ role: "agent", text, sourceRoute: "/excel-live/command" });
           if (activeSessionId) persistMessageSilent(activeSessionId, "agent", text);
         }
 
@@ -734,6 +847,7 @@ function ChatSidePanel({ openclawState }) {
           toolCalls: result.tool_calls,
           maskedCount: result.masked_count,
           maskedTypes: result.masked_types,
+          sourceRoute: "/agent/chat",
         });
         if (newSessionId) setActiveSessionId(newSessionId);
 
@@ -783,6 +897,7 @@ function ChatSidePanel({ openclawState }) {
         : approvalStepText;
       addAgentMessage({
         role: "agent",
+        sourceRoute: "/excel-live/command",
         text: approvalStepLabel,
       });
       if (activeSessionId) {
@@ -808,7 +923,7 @@ function ChatSidePanel({ openclawState }) {
                 excelResult?.reason ||
                 "작업을 진행하려면 추가 정보가 필요합니다."
             ).trim();
-            addAgentMessage({ role: "agent", text: followText });
+            addAgentMessage({ role: "agent", text: followText, sourceRoute: "/excel-live/command" });
             if (activeSessionId) {
               persistMessageSilent(activeSessionId, "agent", followText);
             }
@@ -819,6 +934,7 @@ function ChatSidePanel({ openclawState }) {
             setPendingExcelComposite({ commands, currentIndex: i });
             addAgentMessage({
               role: "agent",
+              sourceRoute: "/excel-live/command",
               text: `복합 작업 ${i + 1}/${commands.length} 단계는 승인 후 실행됩니다.`,
             });
             hasNextPendingApproval = true;
@@ -830,7 +946,7 @@ function ChatSidePanel({ openclawState }) {
             excelResult?.action,
             excelResult?.result,
           )}`;
-          addAgentMessage({ role: "agent", text });
+          addAgentMessage({ role: "agent", text, sourceRoute: "/excel-live/command" });
           if (activeSessionId) {
             persistMessageSilent(activeSessionId, "agent", text);
           }
@@ -1245,6 +1361,9 @@ function ChatSidePanel({ openclawState }) {
                 );
               }
               const hasMasking = msg.role === "agent" && msg.maskedCount > 0;
+              const feedbackKey = buildFeedbackKey(idx, msg);
+              const feedbackValue = messageFeedback[feedbackKey];
+              const feedbackBusy = feedbackBusyKey === feedbackKey;
               return (
                 <div
                   key={idx}
@@ -1275,6 +1394,40 @@ function ChatSidePanel({ openclawState }) {
                     <div className="mt-1 text-[11px] text-muted-foreground">
                       <Zap className="mr-1 inline h-3 w-3" />
                       {msg.toolCalls.length}개 도구 실행됨
+                    </div>
+                  )}
+                  {msg.role === "agent" && msg.text && !msg.error && (
+                    <div className="mt-1 flex items-center gap-1.5 text-[11px]">
+                      <button
+                        type="button"
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded border px-2 py-0.5 transition-colors",
+                          feedbackValue === "good"
+                            ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:border-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300"
+                            : "border-border bg-background text-muted-foreground hover:bg-muted"
+                        )}
+                        disabled={feedbackBusy}
+                        onClick={() => handleMessageFeedback(idx, "good")}
+                        title="좋은 응답으로 피드백 보내기"
+                      >
+                        <ThumbsUp className="h-3 w-3" />
+                        좋아요
+                      </button>
+                      <button
+                        type="button"
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded border px-2 py-0.5 transition-colors",
+                          feedbackValue === "bad"
+                            ? "border-amber-400 bg-amber-50 text-amber-700 dark:border-amber-600 dark:bg-amber-950/40 dark:text-amber-300"
+                            : "border-border bg-background text-muted-foreground hover:bg-muted"
+                        )}
+                        disabled={feedbackBusy}
+                        onClick={() => handleMessageFeedback(idx, "bad")}
+                        title="아쉬운 응답으로 피드백 보내기"
+                      >
+                        <ThumbsDown className="h-3 w-3" />
+                        아쉬워요
+                      </button>
                     </div>
                   )}
                 </div>
@@ -1487,10 +1640,29 @@ export default function WorkspacePage() {
   const uploadOneFile = useCallback(async (file, targetPath) => {
     const ext = getExt(file.name);
     const isText = TEXT_EXT.has(ext);
+    const runWithRetry = async (task) => {
+      let lastError = null;
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+          return await task();
+        } catch (err) {
+          lastError = err;
+          if (attempt >= 3 || !isTransientUploadError(err)) {
+            throw err;
+          }
+          await sleep(350 * attempt);
+        }
+      }
+      throw lastError || new Error("업로드 재시도 중 알 수 없는 오류가 발생했습니다.");
+    };
 
     if (isText) {
-      const text = await file.text();
-      await workspaceWriteFile(targetPath, text);
+      try {
+        const text = await file.text();
+        await runWithRetry(() => workspaceWriteFile(targetPath, text));
+      } catch (err) {
+        throw new Error(`${file.name} — 업로드 실패: ${toUploadUserMessage(err)}`);
+      }
       return;
     }
 
@@ -1499,7 +1671,7 @@ export default function WorkspacePage() {
     const buf = await file.arrayBuffer();
     const b64 = arrayBufferToBase64(buf);
     try {
-      await workspaceWriteFileBinary(targetPath, b64);
+      await runWithRetry(() => workspaceWriteFileBinary(targetPath, b64));
     } catch (err) {
       const rawMsg = String(err?.message ?? err);
       const msg = toUserMessage(err);
@@ -1513,8 +1685,11 @@ export default function WorkspacePage() {
         // 개발 모드에서는 dev.sh 재실행, 프로덕션에서는 앱 종료 후 재실행으로 안내.
         // import.meta.env.DEV로 분기해 각 사용자에게 의미있는 액션만 보여준다.
         const isDev = import.meta.env?.DEV;
+        const isWindows = typeof navigator !== "undefined" && /win/i.test(String(navigator.platform || ""));
         const restartHint = isDev
-          ? "개발 모드에서는 ./dev.sh를 다시 실행해 주세요"
+          ? (isWindows
+              ? "개발 모드에서는 npm run tauri:dev를 다시 실행해 주세요"
+              : "개발 모드에서는 ./dev.sh를 다시 실행해 주세요")
           : "앱을 완전히 종료한 뒤 다시 실행해 주세요";
         throw new Error(`${file.name} — 이 형식의 파일을 처리하려면 앱을 다시 시작해 주세요. (${restartHint}. 임시 우회: "폴더 열기"로 직접 복사)`);
       }
@@ -1525,7 +1700,21 @@ export default function WorkspacePage() {
   const handleFileSelected = useCallback(async (e) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
-    const files = Array.from(fileList);
+    const selectedFiles = Array.from(fileList);
+    const skippedLockFiles = selectedFiles.filter((file) => isOfficeLockTempFile(file?.name));
+    const files = selectedFiles.filter((file) => !isOfficeLockTempFile(file?.name));
+
+    if (files.length === 0) {
+      e.target.value = "";
+      setUploadProgress(null);
+      setUploadMessage(
+        skippedLockFiles.length > 0
+          ? `${skippedLockFiles.length}개 건너뜀 — 엑셀 임시 잠금 파일(~$...)은 업로드하지 않습니다.`
+          : "업로드 가능한 파일이 없습니다."
+      );
+      await loadFiles(currentPath);
+      return;
+    }
 
     setUploading(true);
     setUploadMessage("");
@@ -1538,7 +1727,8 @@ export default function WorkspacePage() {
       try {
         await uploadOneFile(file, targetPath);
       } catch (err) {
-        failures.push(toUserMessage(err));
+        console.error("[workspace-upload] file upload failed:", file.name, err);
+        failures.push(toUploadUserMessage(err));
       }
     }
 
@@ -1550,6 +1740,7 @@ export default function WorkspacePage() {
     const parts = [];
     if (success > 0) parts.push(`${success}개 업로드 완료`);
     if (failures.length > 0) parts.push(`${failures.length}개 실패 — ${failures[0]}${failures.length > 1 ? ` 외 ${failures.length - 1}건` : ""}`);
+    if (skippedLockFiles.length > 0) parts.push(`${skippedLockFiles.length}개 건너뜀 (엑셀 임시 잠금 파일)`);
     setUploadMessage(parts.join(" · ") || "업로드 결과 없음");
 
     await loadFiles(currentPath);

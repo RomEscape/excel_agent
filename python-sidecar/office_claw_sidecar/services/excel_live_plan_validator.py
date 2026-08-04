@@ -15,7 +15,6 @@ from typing import Any
 
 from office_claw_sidecar.services.excel_live_executor import PlanStep
 
-
 SUPPORTED_ACTIONS = {
     "excel_live.list_workbooks",
     "excel_live.select_workbook",
@@ -34,6 +33,9 @@ SUPPORTED_ACTIONS = {
     "excel_live.sort_range",
     "excel_live.filter_rows",
     "excel_live.dedupe_rows",
+    "excel_live.find_duplicates",
+    "excel_live.recalculate",
+    "excel_live.export_pdf",
     "excel_live.pivot_table",
     "excel_live.create_chart",
     "excel_live.validate_data",
@@ -45,10 +47,32 @@ SUPPORTED_ACTIONS = {
     "excel_live.run_vba_macro",
     "excel_live.compare_ranges",
     "excel_live.forecast_linear",
+    # 나중에 추가된 열/집계 도구. 여기 없으면 플래너가 골라도 실행 전에 반려된다.
+    "excel_live.calculate_column_stat",
+    "excel_live.group_by_aggregate",
+    "excel_live.sort_rows",
+    "excel_live.drop_column",
+    "excel_live.rename_column",
+    "excel_live.add_column",
     "excel_live.save_workbook",
+    # 셀 병합/찾아바꾸기/틀고정/열너비/이름정의 — "아직 없는 도구" 보강.
+    "excel_live.find_replace",
+    "excel_live.merge_cells",
+    "excel_live.unmerge_cells",
+    "excel_live.freeze_panes",
+    "excel_live.autofit_columns",
+    "excel_live.define_named_range",
+    # 인쇄 설정/셀 메모/색조·데이터 막대/숫자 서식 — 2차 보강.
+    "excel_live.set_print_area",
+    "excel_live.add_cell_comment",
+    "excel_live.apply_color_scale",
+    "excel_live.apply_data_bar",
+    "excel_live.set_number_format",
 }
 
 EDIT_ACTIONS = {
+    "excel_live.recalculate",
+    "excel_live.export_pdf",
     "excel_live.create_sheet",
     "excel_live.write_range",
     "excel_live.create_table",
@@ -70,7 +94,22 @@ EDIT_ACTIONS = {
     "excel_live.run_vba_macro",
     "excel_live.compare_ranges",
     "excel_live.forecast_linear",
+    "excel_live.sort_rows",
+    "excel_live.drop_column",
+    "excel_live.rename_column",
+    "excel_live.add_column",
     "excel_live.save_workbook",
+    "excel_live.find_replace",
+    "excel_live.merge_cells",
+    "excel_live.unmerge_cells",
+    "excel_live.freeze_panes",
+    "excel_live.autofit_columns",
+    "excel_live.define_named_range",
+    "excel_live.set_print_area",
+    "excel_live.add_cell_comment",
+    "excel_live.apply_color_scale",
+    "excel_live.apply_data_bar",
+    "excel_live.set_number_format",
 }
 
 PASSIVE_ACTIONS = {
@@ -82,6 +121,9 @@ PASSIVE_ACTIONS = {
     "excel_live.verify_formula_result",
     "excel_live.validate_data",
     "excel_live.compare_ranges",
+    "excel_live.find_duplicates",
+    "excel_live.calculate_column_stat",
+    "excel_live.group_by_aggregate",
 }
 
 
@@ -96,6 +138,41 @@ class ValidationContext:
 
 def _normalize_range_text(value: Any) -> str:
     return str(value or "").strip().upper().replace("$", "")
+
+
+# 소형 모델은 Excel 서식 코드 문법(#,##0 등)을 모르고 "퍼센트로", "천단위로" 같은
+# 개념어만 내놓는 경우가 많다. 개념어 → 실제 서식 코드 매핑을 여기서 흡수한다.
+_NUMBER_FORMAT_ALIASES: dict[str, str] = {
+    "percent": "0.00%",
+    "percentage": "0.00%",
+    "퍼센트": "0.00%",
+    "백분율": "0.00%",
+    "comma": "#,##0",
+    "천단위": "#,##0",
+    "천단위구분": "#,##0",
+    "숫자": "#,##0",
+    "currency": "#,##0",
+    "통화": "#,##0",
+    "원": '#,##0"원"',
+    "date": "yyyy-mm-dd",
+    "날짜": "yyyy-mm-dd",
+    "text": "@",
+    "텍스트": "@",
+    "일반": "General",
+    "general": "General",
+}
+# 이미 Excel 서식 코드 문법으로 보이는 문자(#, 0, %, y/m/d, @, General)를 하나라도
+# 포함하면 alias 매핑을 건너뛰고 그대로 사용한다 — 모델이 정확한 코드를 직접 준 경우다.
+_LOOKS_LIKE_FORMAT_CODE = re.compile(r"[#0%@]|yyyy|mm|dd|General", re.IGNORECASE)
+
+
+def _normalize_number_format(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if _LOOKS_LIKE_FORMAT_CODE.search(text):
+        return text
+    return _NUMBER_FORMAT_ALIASES.get(text.lower(), _NUMBER_FORMAT_ALIASES.get(text, text))
 
 
 def _extract_table_shape(message: str) -> tuple[int, int] | None:
@@ -114,8 +191,26 @@ def _preferred_range(ctx: ValidationContext) -> str:
     return _normalize_range_text(ctx.context_range) or _normalize_range_text(ctx.recent_range)
 
 
+def _unwrap_operator_payload(op: Any) -> Any:
+    """플래너가 operator에 {'operator': '>=', 'value': 1100} 같은 객체를 넣는 경우를 편다."""
+    if isinstance(op, dict):
+        for key in ("operator", "op", "comparator", "comparison", "condition", "type"):
+            if op.get(key) is not None:
+                return op.get(key)
+    return op
+
+
+def _operator_payload_value(op: Any) -> Any:
+    """operator 객체 안에 같이 들어온 기준값을 꺼낸다."""
+    if isinstance(op, dict):
+        for key in ("value", "threshold", "number", "criteria"):
+            if op.get(key) is not None:
+                return op.get(key)
+    return None
+
+
 def _coerce_operator(op: Any) -> str:
-    raw = str(op or "").strip()
+    raw = str(_unwrap_operator_payload(op) or "").strip()
     aliases = {
         ">": ">",
         ">=": ">=",
@@ -129,13 +224,138 @@ def _coerce_operator(op: Any) -> str:
         "gte": ">=",
         "lt": "<",
         "lte": "<=",
+        "이상": ">=",
+        "초과": ">",
+        "이하": "<=",
+        "미만": "<",
+        "같음": "==",
+        "다름": "!=",
+        "greater than or equal": ">=",
+        "greater than or equal to": ">=",
+        "greater than": ">",
+        "less than or equal": "<=",
+        "less than or equal to": "<=",
+        "less than": "<",
+        "equal": "==",
+        "equals": "==",
+        "not equal": "!=",
+        "at least": ">=",
+        "at most": "<=",
     }
-    return aliases.get(raw.lower(), raw)
+    # greater_than / GREATER THAN / greater-than 을 모두 같은 키로 본다.
+    normalized = re.sub(r"[\s_\-]+", " ", raw.lower()).strip()
+    resolved = aliases.get(normalized)
+    if resolved:
+        return resolved
+    # LLM이 ">=1100"처럼 연산자와 기준값을 붙여서 내보내는 경우가 있다.
+    merged = re.match(r"^(>=|<=|==|!=|>|<)\s*-?\d", raw)
+    if merged:
+        return merged.group(1)
+    return raw
 
 
 def _validate_action(action: str) -> None:
     if action not in SUPPORTED_ACTIONS:
         raise ValueError(f"지원하지 않는 action: {action}")
+
+
+# 열 단위 도구는 기준 열을 `column`으로 받는다. 플래너는 같은 뜻으로 column_name·key_column·
+# 열이름을 번갈아 쓴다. 여기서 하나로 모아두지 않으면 열 이름이 빈 문자열로 내려가
+# "첫 번째 열"이 조용히 선택된다.
+_COLUMN_TOOL_ACTIONS = frozenset(
+    {
+        "excel_live.sort_rows",
+        "excel_live.drop_column",
+        "excel_live.rename_column",
+        "excel_live.add_column",
+        "excel_live.group_by_aggregate",
+        "excel_live.calculate_column_stat",
+    }
+)
+_COLUMN_ALIASES = (
+    "column",
+    "column_name",
+    "key_column",
+    "group_column",
+    "target_column",
+    "열",
+    "열이름",
+)
+_NEW_NAME_ALIASES = ("new_name", "new_column_name", "rename_to", "to", "new_header")
+_ADD_NAME_ALIASES = ("name", "column_name", "new_name", "header", "column")
+
+
+def _first_text(params: dict[str, Any], keys: tuple[str, ...]) -> str:
+    for key in keys:
+        text = str(params.get(key) or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _normalize_column_tool_step(action: str, params: dict[str, Any], reason: str) -> PlanStep:
+    sheet_name = str(params.get("sheet_name") or "").strip() or None
+
+    if action == "excel_live.add_column":
+        name = _first_text(params, _ADD_NAME_ALIASES)
+        if not name:
+            raise ValueError("add_column에는 새 열 이름이 필요합니다.")
+        formula = str(params.get("formula_a1") or params.get("formula") or "").strip()
+        out = {"name": name, "formula_a1": formula or None, "sheet_name": sheet_name}
+        return PlanStep(action=action, params=out, reason=reason)
+
+    column = _first_text(params, _COLUMN_ALIASES)
+    if not column:
+        raise ValueError(f"{action}에는 기준 열(column)이 필요합니다.")
+
+    if action == "excel_live.rename_column":
+        new_name = _first_text(params, _NEW_NAME_ALIASES)
+        if not new_name:
+            raise ValueError("rename_column에는 new_name이 필요합니다.")
+        out = {"column": column, "new_name": new_name, "sheet_name": sheet_name}
+    elif action == "excel_live.sort_rows":
+        order = str(params.get("order") or "asc").strip().lower()
+        descending = order.startswith("desc") or order in {"내림차순", "내림"}
+        out = {"column": column, "order": "desc" if descending else "asc", "sheet_name": sheet_name}
+    elif action == "excel_live.group_by_aggregate":
+        value = _first_text(params, ("value_column", "value_field", "value"))
+        out = {
+            "group_column": column,
+            "agg": str(params.get("agg") or "sum").strip().lower(),
+            "value_column": value or None,
+            "sheet_name": sheet_name,
+        }
+    elif action == "excel_live.calculate_column_stat":
+        out = {
+            "column": column,
+            "stat": str(params.get("stat") or params.get("agg") or "sum").strip().lower(),
+            "sheet_name": sheet_name,
+        }
+    else:  # drop_column
+        out = {"column": column, "sheet_name": sheet_name}
+    return PlanStep(action=action, params=out, reason=reason)
+
+
+_SHEET_TARGETABLE_ACTIONS = frozenset(
+    {
+        "excel_live.write_range",
+        "excel_live.create_table",
+        "excel_live.fill_range",
+        "excel_live.apply_border",
+        "excel_live.set_formula",
+        "excel_live.find_replace",
+        "excel_live.merge_cells",
+        "excel_live.unmerge_cells",
+        "excel_live.freeze_panes",
+        "excel_live.autofit_columns",
+        "excel_live.define_named_range",
+        "excel_live.set_print_area",
+        "excel_live.add_cell_comment",
+        "excel_live.apply_color_scale",
+        "excel_live.apply_data_bar",
+        "excel_live.set_number_format",
+    }
+)
 
 
 def _validate_step(step: PlanStep, ctx: ValidationContext) -> PlanStep:
@@ -146,6 +366,30 @@ def _validate_step(step: PlanStep, ctx: ValidationContext) -> PlanStep:
 
     preferred_range = _preferred_range(ctx)
     lowered = str(ctx.message or "").lower()
+    incoming_sheet_name = str(params.get("sheet_name") or "").strip()
+
+    validated = _validate_step_body(action, params, reason, ctx, preferred_range, lowered)
+
+    # write_range/set_formula 등의 분기는 params를 새로 지어 반환하면서 sheet_name을 빠뜨린다.
+    # 바인더가 "방금 만든 시트로 이어서 써라"고 정한 값이 여기서 조용히 사라지면
+    # 실행은 활성 시트(대개 원본)에 떨어진다. 원래 있던 값을 그대로 되살린다.
+    if (
+        incoming_sheet_name
+        and action in _SHEET_TARGETABLE_ACTIONS
+        and "sheet_name" not in validated.params
+    ):
+        validated.params["sheet_name"] = incoming_sheet_name
+    return validated
+
+
+def _validate_step_body(
+    action: str,
+    params: dict[str, Any],
+    reason: str,
+    ctx: ValidationContext,
+    preferred_range: str | None,
+    lowered: str,
+) -> PlanStep:
 
     if action == "excel_live.select_workbook":
         workbook = str(params.get("workbook_id") or params.get("name") or "").strip()
@@ -253,23 +497,34 @@ def _validate_step(step: PlanStep, ctx: ValidationContext) -> PlanStep:
         )
         if not target_range or target_range == "__ACTIVE_SELECTION__":
             target_range = preferred_range or "A:Z"
-        operator = _coerce_operator(params.get("operator") or params.get("condition") or ">=")
-        threshold_raw = params.get("threshold", params.get("value", 0))
+        operator_raw = params.get("operator") or params.get("condition") or ">="
+        operator = _coerce_operator(operator_raw)
+        threshold_raw = params.get("threshold", params.get("value", None))
+        if threshold_raw is None:
+            # operator가 객체로 온 경우 그 안의 value를 먼저 본다.
+            threshold_raw = _operator_payload_value(operator_raw)
+        if threshold_raw is None:
+            # ">=1100"처럼 연산자에 붙어 온 기준값을 회수한다.
+            embedded = re.search(r"-?\d+(?:\.\d+)?", str(operator_raw))
+            threshold_raw = embedded.group(0) if embedded else 0
         try:
             threshold = float(threshold_raw)
         except Exception as exc:
             raise ValueError("highlight_by_condition.threshold는 숫자여야 합니다.") from exc
         fill_color = str(params.get("fill_color") or params.get("color") or "#FFFF00").strip()
-        return PlanStep(
-            action=action,
-            params={
-                "target_range": target_range,
-                "operator": operator,
-                "threshold": threshold,
-                "fill_color": fill_color,
-            },
-            reason=reason,
-        )
+        # 기준이 같은 행의 다른 열이면(재고 ≤ 재주문점) 열 문자로만 받는다.
+        compare_column = str(params.get("compare_column") or "").strip().upper()
+        if compare_column and not re.fullmatch(r"[A-Z]{1,3}", compare_column):
+            raise ValueError("highlight_by_condition.compare_column은 열 문자여야 합니다.")
+        step_params: dict[str, Any] = {
+            "target_range": target_range,
+            "operator": operator,
+            "threshold": threshold,
+            "fill_color": fill_color,
+        }
+        if compare_column:
+            step_params["compare_column"] = compare_column
+        return PlanStep(action=action, params=step_params, reason=reason)
 
     if action == "excel_live.fill_range":
         target_range = _normalize_range_text(params.get("target_range"))
@@ -331,6 +586,89 @@ def _validate_step(step: PlanStep, ctx: ValidationContext) -> PlanStep:
             reason=reason,
         )
 
+    if action == "excel_live.find_replace":
+        find_text = str(params.get("find_text") or params.get("find") or "").strip()
+        if not find_text:
+            raise ValueError("find_replace.find_text가 필요합니다.")
+        replace_text = str(params.get("replace_text") or params.get("replace") or "")
+        target_range = _normalize_range_text(params.get("target_range")) or preferred_range or "__USED_RANGE__"
+        return PlanStep(
+            action=action,
+            params={
+                "target_range": target_range,
+                "find_text": find_text,
+                "replace_text": replace_text,
+                "match_case": bool(params.get("match_case", False)),
+                "whole_cell": bool(params.get("whole_cell", False)),
+            },
+            reason=reason,
+        )
+
+    if action in {"excel_live.merge_cells", "excel_live.unmerge_cells"}:
+        target_range = _normalize_range_text(params.get("target_range"))
+        if not target_range or target_range == "__ACTIVE_SELECTION__":
+            target_range = preferred_range or "__ACTIVE_SELECTION__"
+        return PlanStep(action=action, params={"target_range": target_range}, reason=reason)
+
+    if action == "excel_live.freeze_panes":
+        freeze_at = _normalize_range_text(params.get("freeze_at") or params.get("cell_ref")) or "A2"
+        return PlanStep(action=action, params={"freeze_at": freeze_at}, reason=reason)
+
+    if action == "excel_live.autofit_columns":
+        target_range = _normalize_range_text(params.get("target_range")) or "__USED_RANGE__"
+        return PlanStep(action=action, params={"target_range": target_range}, reason=reason)
+
+    if action == "excel_live.set_print_area":
+        print_area = _normalize_range_text(params.get("print_area") or params.get("target_range")) or None
+        orientation = str(params.get("orientation") or "").strip().lower() or None
+        fit_to_page = bool(params.get("fit_to_page", False))
+        return PlanStep(
+            action=action,
+            params={"print_area": print_area, "orientation": orientation, "fit_to_page": fit_to_page},
+            reason=reason,
+        )
+
+    if action == "excel_live.add_cell_comment":
+        text = str(params.get("text") or params.get("comment") or "").strip()
+        if not text:
+            raise ValueError("add_cell_comment.text가 필요합니다.")
+        target_range = _normalize_range_text(params.get("target_range")) or preferred_range or "__ACTIVE_CELL__"
+        author = str(params.get("author") or "OfficeClaw AI").strip() or "OfficeClaw AI"
+        return PlanStep(
+            action=action,
+            params={"target_range": target_range, "text": text, "author": author},
+            reason=reason,
+        )
+
+    if action in {"excel_live.apply_color_scale", "excel_live.apply_data_bar"}:
+        target_range = _normalize_range_text(params.get("target_range")) or preferred_range or "__ACTIVE_SELECTION__"
+        out: dict[str, Any] = {"target_range": target_range}
+        if action == "excel_live.apply_color_scale":
+            out["min_color"] = str(params.get("min_color") or "#F8696B")
+            out["mid_color"] = str(params.get("mid_color") or "#FFEB84")
+            out["max_color"] = str(params.get("max_color") or "#63BE7B")
+        else:
+            out["color"] = str(params.get("color") or "#638EC6")
+        return PlanStep(action=action, params=out, reason=reason)
+
+    if action == "excel_live.set_number_format":
+        target_range = _normalize_range_text(params.get("target_range")) or preferred_range or "__ACTIVE_SELECTION__"
+        format_code = _normalize_number_format(params.get("format_code") or params.get("format") or "")
+        if not format_code:
+            raise ValueError("set_number_format.format_code가 필요합니다.")
+        return PlanStep(action=action, params={"target_range": target_range, "format_code": format_code}, reason=reason)
+
+    if action == "excel_live.define_named_range":
+        name = str(params.get("name") or "").strip()
+        if not name:
+            raise ValueError("define_named_range.name이 필요합니다.")
+        target_range = _normalize_range_text(params.get("target_range")) or preferred_range or "__ACTIVE_SELECTION__"
+        return PlanStep(
+            action=action,
+            params={"name": name, "target_range": target_range},
+            reason=reason,
+        )
+
     if action == "excel_live.sort_range":
         target_range = _normalize_range_text(params.get("target_range")) or preferred_range or "__ACTIVE_SELECTION__"
         key_column = params.get("key_column", params.get("column", 1))
@@ -359,6 +697,7 @@ def _validate_step(step: PlanStep, ctx: ValidationContext) -> PlanStep:
         if value is None:
             raise ValueError("filter_rows.value는 필수입니다.")
         has_header = bool(params.get("has_header", True))
+        mode = str(params.get("mode") or "keep").strip().lower()
         return PlanStep(
             action=action,
             params={
@@ -367,6 +706,7 @@ def _validate_step(step: PlanStep, ctx: ValidationContext) -> PlanStep:
                 "operator": operator,
                 "value": value,
                 "has_header": has_header,
+                "mode": "remove" if mode in {"remove", "exclude", "drop"} else "keep",
             },
             reason=reason,
         )
@@ -384,6 +724,32 @@ def _validate_step(step: PlanStep, ctx: ValidationContext) -> PlanStep:
                 "key_columns": key_columns,
                 "has_header": has_header,
             },
+            reason=reason,
+        )
+
+    if action == "excel_live.find_duplicates":
+        target_range = _normalize_range_text(params.get("target_range")) or preferred_range or "__ACTIVE_SELECTION__"
+        key_columns = params.get("key_columns", params.get("columns", []))
+        if not isinstance(key_columns, list):
+            key_columns = [key_columns] if key_columns else []
+        return PlanStep(
+            action=action,
+            params={
+                "target_range": target_range,
+                "key_columns": key_columns,
+                "has_header": bool(params.get("has_header", True)),
+                "output_sheet": str(params.get("output_sheet") or "").strip() or None,
+            },
+            reason=reason,
+        )
+
+    if action == "excel_live.recalculate":
+        return PlanStep(action=action, params={}, reason=reason)
+
+    if action == "excel_live.export_pdf":
+        return PlanStep(
+            action=action,
+            params={"output_path": str(params.get("output_path") or "").strip() or None},
             reason=reason,
         )
 
@@ -408,6 +774,8 @@ def _validate_step(step: PlanStep, ctx: ValidationContext) -> PlanStep:
                 "value_field": value_field,
                 "column_field": column_field,
                 "agg": agg,
+                # 결과 시트를 먼저 만드는 계획에서 활성 시트가 바뀌어도 원본을 잃지 않도록 남긴다.
+                "source_sheet": str(params.get("source_sheet") or "").strip() or None,
                 "output_sheet": output_sheet,
                 "output_start": output_start,
                 "has_header": has_header,
@@ -494,6 +862,9 @@ def _validate_step(step: PlanStep, ctx: ValidationContext) -> PlanStep:
             },
             reason=reason,
         )
+
+    if action in _COLUMN_TOOL_ACTIONS:
+        return _normalize_column_tool_step(action, params, reason)
 
     if action == "excel_live.consolidate_sheets":
         source_sheets = params.get("source_sheets")

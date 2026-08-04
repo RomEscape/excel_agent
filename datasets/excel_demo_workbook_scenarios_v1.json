@@ -1,0 +1,705 @@
+{
+  "schema_version": "excel_complex_scenarios.v1",
+  "title": "AI_Excel_Automation_Demo 워크북 실무 명령 검증팩",
+  "note": "영문 머리글 + 한국어 명령 조합. 가이드 문서의 자연어 명령 12종을 그대로 옮겼다.",
+  "defaults": {
+    "sheet_name": "Sales_Data",
+    "seed_template": "복잡한 엑셀 작업을 위한 자료/AI_Excel_Automation_Demo.xlsx",
+    "approve": true
+  },
+  "scenarios": [
+    {
+      "id": "demo-001-sort-by-date",
+      "title": "매출 데이터를 날짜 오름차순 정렬",
+      "category": "sort",
+      "difficulty": "hard",
+      "severity": "critical",
+      "turns": [
+        {
+          "message": "매출 데이터를 주문일자 오름차순으로 정렬해줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200,
+              "action": "excel_live.sort_range"
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": [
+            "excel_live.sort_range"
+          ],
+          "forbid_actions": [
+            "excel_live.clear_range"
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "column_sorted",
+              "sheet": "Sales_Data",
+              "range": "B2:B181"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "demo-002-highlight-low-sales",
+      "title": "100만 원 미만 매출 빨간색 표시",
+      "category": "format",
+      "difficulty": "hard",
+      "severity": "critical",
+      "turns": [
+        {
+          "message": "매출이 100만 원 미만인 건은 빨간색으로 표시해줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200,
+              "action": "excel_live.highlight_by_condition"
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": [
+            "excel_live.highlight_by_condition"
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "filled_cell_count_equals",
+              "sheet": "Sales_Data",
+              "range": "L2:L181",
+              "expected": 81
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "demo-003-profit-margin-formula",
+      "title": "이익률 열 수식 채우기",
+      "category": "formula",
+      "difficulty": "hard",
+      "severity": "critical",
+      "turns": [
+        {
+          "message": "이익률 열에 매출이익 나누기 매출 수식을 넣어줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200,
+              "action_in": [
+                "excel_live.set_formula",
+                "excel_live.formula",
+                "excel_live.verify_formula_result"
+              ]
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": [
+            "excel_live.set_formula"
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "cell_formula_startswith",
+              "sheet": "Sales_Data",
+              "cell": "O2",
+              "prefix": "="
+            },
+            {
+              "type": "range_non_empty_at_least",
+              "sheet": "Sales_Data",
+              "range": "O2:O181",
+              "min_count": 180
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "demo-004-regional-report",
+      "title": "지역별 매출·이익 집계표",
+      "category": "pivot",
+      "difficulty": "very-hard",
+      "severity": "critical",
+      "turns": [
+        {
+          "message": "지역별 매출 합계를 집계해서 Regional_Report 시트에 만들어줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": [
+            "excel_live.pivot_table"
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "sheet_exists",
+              "sheet": "Regional_Report"
+            },
+            {
+              "type": "range_non_empty_at_least",
+              "sheet": "Regional_Report",
+              "range": "A1:B3",
+              "min_count": 4
+            },
+            {
+              "type": "range_sum_equals",
+              "sheet": "Regional_Report",
+              "range": "B2:B20",
+              "expected": 733223910,
+              "tolerance": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "demo-005-channel-category-pivot",
+      "title": "채널별·카테고리별 피벗",
+      "category": "pivot",
+      "difficulty": "very-hard",
+      "severity": "critical",
+      "turns": [
+        {
+          "message": "채널을 행으로 카테고리를 열로 해서 매출 합계 피벗을 Pivot_Report 시트에 만들어줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": [
+            "excel_live.pivot_table"
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "sheet_exists",
+              "sheet": "Pivot_Report"
+            },
+            {
+              "type": "range_non_empty_at_least",
+              "sheet": "Pivot_Report",
+              "range": "A1:C3",
+              "min_count": 4
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "demo-006-salesperson-ranking",
+      "title": "영업담당자별 실적 집계",
+      "category": "pivot",
+      "difficulty": "very-hard",
+      "severity": "major",
+      "turns": [
+        {
+          "message": "영업담당자별 매출 합계를 구해서 Sales_Rank 시트에 정리해줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": [
+            "excel_live.pivot_table"
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "sheet_exists",
+              "sheet": "Sales_Rank"
+            },
+            {
+              "type": "range_sum_equals",
+              "sheet": "Sales_Rank",
+              "range": "B2:B40",
+              "expected": 733223910,
+              "tolerance": 1
+            },
+            {
+              "type": "row_count_between",
+              "sheet": "Sales_Rank",
+              "range": "A2:A40",
+              "min_rows": 3,
+              "max_rows": 20
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "demo-007-duplicate-order-id",
+      "title": "중복 주문번호 찾기",
+      "category": "quality",
+      "difficulty": "very-hard",
+      "severity": "critical",
+      "turns": [
+        {
+          "message": "주문번호가 중복된 건이 있는지 찾아서 알려줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": [
+            "excel_live.find_duplicates"
+          ],
+          "forbid_actions": [
+            "excel_live.dedupe_rows",
+            "excel_live.clear_range"
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "row_count_between",
+              "sheet": "Sales_Data",
+              "range": "A1:A181",
+              "min_rows": 181,
+              "max_rows": 181
+            },
+            {
+              "type": "range_sum_equals",
+              "sheet": "Sales_Data",
+              "range": "I2:I181",
+              "expected": 773,
+              "tolerance": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "demo-008-reorder-needed",
+      "title": "재고가 재주문점 이하인 제품 찾기",
+      "category": "filter",
+      "difficulty": "very-hard",
+      "severity": "critical",
+      "sheet_name": "Inventory",
+      "turns": [
+        {
+          "message": "현재고가 재주문점 이하인 제품만 표시해줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": [
+            "excel_live.highlight_by_condition"
+          ],
+          "forbid_actions": [
+            "excel_live.clear_range"
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "filled_cell_count_equals",
+              "sheet": "Inventory",
+              "range": "E2:E11",
+              "expected": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "demo-009-recommended-order-qty",
+      "title": "권장 발주수량 수식",
+      "category": "formula",
+      "difficulty": "hard",
+      "severity": "major",
+      "sheet_name": "Inventory",
+      "turns": [
+        {
+          "message": "권장 발주수량 열에 재주문점 두 배에서 현재고를 뺀 값을 계산하는 수식을 넣어줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": [
+            "excel_live.set_formula"
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "cell_formula_startswith",
+              "sheet": "Inventory",
+              "cell": "I2",
+              "prefix": "="
+            },
+            {
+              "type": "range_non_empty_at_least",
+              "sheet": "Inventory",
+              "range": "I2:I11",
+              "min_count": 10
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "demo-010-project-risk",
+      "title": "마감 임박 + 진행률 미달 업무 표시",
+      "category": "format",
+      "difficulty": "very-hard",
+      "severity": "major",
+      "sheet_name": "Project_Plan",
+      "turns": [
+        {
+          "message": "진행률이 80% 미만인 업무를 노란색으로 표시해줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200,
+              "action": "excel_live.highlight_by_condition"
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": [
+            "excel_live.highlight_by_condition"
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "filled_cell_count_equals",
+              "sheet": "Project_Plan",
+              "range": "I2:I21",
+              "expected": 11
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "demo-011-region-chart",
+      "title": "지역별 집계 후 막대차트",
+      "category": "pipeline",
+      "difficulty": "very-hard",
+      "severity": "major",
+      "turns": [
+        {
+          "message": "지역별 매출 합계를 Region_Chart 시트에 집계해줘"
+        },
+        {
+          "message": "그 결과로 막대 그래프도 만들어줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": [
+            "excel_live.pivot_table",
+            "excel_live.create_chart"
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "sheet_exists",
+              "sheet": "Region_Chart"
+            },
+            {
+              "type": "range_sum_equals",
+              "sheet": "Region_Chart",
+              "range": "B2:B20",
+              "expected": 733223910,
+              "tolerance": 1000
+            },
+            {
+              "type": "row_count_between",
+              "sheet": "Region_Chart",
+              "range": "A2:A30",
+              "min_rows": 3,
+              "max_rows": 12
+            },
+            {
+              "type": "chart_count_at_least",
+              "sheet": "Region_Chart",
+              "min_charts": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "demo-012-export-pdf",
+      "title": "요약 시트 PDF 저장",
+      "category": "export",
+      "difficulty": "very-hard",
+      "severity": "major",
+      "sheet_name": "Dashboard",
+      "turns": [
+        {
+          "message": "대시보드 시트를 PDF로 저장해줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": [
+            "excel_live.export_pdf"
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "sibling_file_exists",
+              "glob": "*.pdf"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "demo-013-sort-then-aggregate",
+      "title": "정렬한 뒤 지역별 합계 — 편집 후에도 수식 값이 살아 있는지",
+      "category": "pipeline",
+      "difficulty": "very-hard",
+      "severity": "critical",
+      "turns": [
+        {
+          "message": "매출 데이터를 날짜 오름차순으로 정렬해줘"
+        },
+        {
+          "message": "지역별 매출 합계를 Region_Sum 시트에 집계해줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": [
+            "excel_live.sort_range",
+            "excel_live.pivot_table"
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "column_sorted",
+              "sheet": "Sales_Data",
+              "range": "B2:B181"
+            },
+            {
+              "type": "sheet_exists",
+              "sheet": "Region_Sum"
+            },
+            {
+              "type": "range_sum_equals",
+              "sheet": "Region_Sum",
+              "range": "B2:B20",
+              "expected": 733223910,
+              "tolerance": 1000
+            },
+            {
+              "type": "row_count_between",
+              "sheet": "Region_Sum",
+              "range": "A2:A30",
+              "min_rows": 3,
+              "max_rows": 12
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "demo-014-highlight-then-pivot",
+      "title": "서식 적용 후 채널별 집계 — 서식 저장이 계산값을 지우지 않는지",
+      "category": "pipeline",
+      "difficulty": "hard",
+      "severity": "critical",
+      "turns": [
+        {
+          "message": "100만 원 미만 매출은 빨간색으로 표시해줘"
+        },
+        {
+          "message": "채널별 매출 합계를 Channel_Sum 시트에 만들어줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": [
+            "excel_live.pivot_table"
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "sheet_exists",
+              "sheet": "Channel_Sum"
+            },
+            {
+              "type": "range_sum_equals",
+              "sheet": "Channel_Sum",
+              "range": "B2:B20",
+              "expected": 733223910,
+              "tolerance": 1000
+            },
+            {
+              "type": "row_count_between",
+              "sheet": "Channel_Sum",
+              "range": "A2:A30",
+              "min_rows": 2,
+              "max_rows": 10
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "demo-015-dedupe-then-aggregate",
+      "title": "중복 확인 후 담당자별 집계",
+      "category": "pipeline",
+      "difficulty": "hard",
+      "severity": "major",
+      "turns": [
+        {
+          "message": "중복 주문번호가 있는지 찾아줘"
+        },
+        {
+          "message": "영업담당자별 매출 합계를 Rep_Sum 시트에 정리해줘"
+        }
+      ],
+      "oracle": {
+        "conversation": {
+          "turn_expectations": [
+            {
+              "turn_index": 0,
+              "status_code": 200
+            }
+          ]
+        },
+        "execution": {
+          "must_include_actions": [
+            "excel_live.pivot_table"
+          ]
+        },
+        "result": {
+          "assertions": [
+            {
+              "type": "sheet_exists",
+              "sheet": "Rep_Sum"
+            },
+            {
+              "type": "range_sum_equals",
+              "sheet": "Rep_Sum",
+              "range": "B2:B40",
+              "expected": 733223910,
+              "tolerance": 1000
+            },
+            {
+              "type": "row_count_between",
+              "sheet": "Rep_Sum",
+              "range": "A2:A60",
+              "min_rows": 2,
+              "max_rows": 30
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

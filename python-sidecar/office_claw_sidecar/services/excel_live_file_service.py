@@ -1,0 +1,2603 @@
+"""
+OpenPyXL 기반 파일 편집 Excel 서비스.
+
+정렬·중복제거·필터·집계는 순수 파이썬으로 처리한다. 표 하나가 수백 행 규모라
+데이터프레임을 얹을 이유가 없고, 무엇보다 셀 하나하나의 원본 값·수식·서식을
+그대로 들고 다녀야 해서 중간에 다른 표현으로 갈아타면 잃는 것이 더 많다.
+"""
+
+from __future__ import annotations
+
+import re
+import shutil
+from datetime import date, datetime, time
+from pathlib import Path
+from typing import Any
+
+from openpyxl import load_workbook
+from openpyxl.chart import BarChart, LineChart, PieChart, Reference
+from openpyxl.comments import Comment
+from openpyxl.formatting.rule import ColorScaleRule, DataBarRule
+from openpyxl.formula.translate import Translator
+from openpyxl.styles import Border, PatternFill, Side
+from openpyxl.utils import column_index_from_string, get_column_letter
+from openpyxl.utils.cell import range_boundaries
+from openpyxl.workbook.defined_name import DefinedName
+from openpyxl.workbook.properties import CalcProperties
+from openpyxl.worksheet.cell_range import CellRange
+from openpyxl.worksheet.datavalidation import DataValidation
+
+from office_claw_sidecar.sandbox import WORKSPACE_ROOT
+from office_claw_sidecar.services import excel_formula_cache as formula_cache
+from office_claw_sidecar.services.excel_formula_eval import (
+    FormulaError,
+    WorkbookEvaluator,
+)
+from office_claw_sidecar.services.excel_header_lexicon import resolve_header
+from office_claw_sidecar.services.excel_live_service import (
+    ExcelLiveError,
+    ExcelLiveService,
+    WorkbookNotFoundError,
+    WorksheetNotFoundError,
+)
+
+
+def _as_number(value: Any) -> float | None:
+    """셀 값을 비교 가능한 숫자로 바꾼다. 숫자로 볼 수 없으면 None.
+
+    "1,200"이나 "85%"처럼 사람이 보기 좋게 적어 둔 값도 정렬·집계에서는 숫자여야 한다.
+    날짜는 타임스탬프로 바꿔 문자열 정렬이 아니라 실제 시간 순서로 놓는다.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, datetime):
+        return value.timestamp()
+    if isinstance(value, date):
+        return datetime(value.year, value.month, value.day).timestamp()
+    if isinstance(value, time):
+        return value.hour * 3600.0 + value.minute * 60.0 + value.second
+    text = str(value).strip().replace(",", "")
+    if not text:
+        return None
+    percent = text.endswith("%")
+    if percent:
+        text = text[:-1].strip()
+    try:
+        number = float(text)
+    except ValueError:
+        return None
+    return number / 100.0 if percent else number
+
+
+def _text_key(value: Any) -> str:
+    return "" if value is None else str(value).strip().lower()
+
+
+def _group_key(row: list[Any], columns: list[int]) -> tuple:
+    """중복 판정·그룹핑에 쓰는 키. 빈 셀은 모두 같은 값으로 본다."""
+    return tuple(_text_key(row[i]) if i < len(row) else "" for i in columns)
+
+
+def _sorted_group_keys(keys: list[tuple]) -> list[tuple]:
+    """그룹 머리글을 사람이 기대하는 순서로 놓는다 — 숫자 먼저, 그다음 사전순."""
+    numeric = [k for k in keys if all(_as_number(part) is not None for part in k)]
+    others = sorted(set(keys) - set(numeric), key=lambda k: tuple(str(p) for p in k))
+    numeric.sort(key=lambda k: tuple(_as_number(p) or 0.0 for p in k))
+    return numeric + others
+
+
+class FileExcelLiveService(ExcelLiveService):
+    """파일 기반(openpyxl) Excel 편집 서비스. Excel 앱이 없어도 동작한다."""
+
+    engine = "file"
+
+    def __init__(self, workspace_root: Path | None = None) -> None:
+        super().__init__(xw_module=None)
+        self._workspace_root = Path(workspace_root or WORKSPACE_ROOT).resolve()
+        self._workspace_root.mkdir(parents=True, exist_ok=True)
+        self._selected_sheet_by_workbook: dict[str, str] = {}
+        # 우리가 마지막으로 저장한 파일의 지문. 이 상태면 수식 캐시가 비어 있음을 알고 다시 열지 않는다.
+        self._saved_stamp: dict[str, tuple[int, int] | None] = {}
+
+    # ---- 공통 유틸 ----
+
+    def _candidate_roots(self) -> list[Path]:
+        roots: list[Path] = []
+        for base in [self._workspace_root, Path.cwd()]:
+            try:
+                resolved = Path(base).expanduser().resolve()
+            except Exception:
+                continue
+            if resolved not in roots:
+                roots.append(resolved)
+        return roots
+
+    @staticmethod
+    def _is_excel_file(path: Path) -> bool:
+        return path.suffix.lower() in {".xlsx", ".xlsm", ".xltx", ".xltm"}
+
+    def _list_workspace_workbooks(self, limit: int = 200) -> list[Path]:
+        rows: dict[str, Path] = {}
+        for root in self._candidate_roots():
+            if not root.exists():
+                continue
+            try:
+                for fp in root.rglob("*.xls*"):
+                    if not fp.is_file():
+                        continue
+                    if fp.name.startswith("~$"):
+                        continue
+                    if not self._is_excel_file(fp):
+                        continue
+                    rows[str(fp.resolve())] = fp.resolve()
+            except Exception:
+                continue
+        files = list(rows.values())
+        files.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0.0, reverse=True)
+        return files[: max(1, min(1000, int(limit)))]
+
+    def _resolve_workbook_path(self, workbook_id_or_name: str | None) -> Path:
+        raw = str(workbook_id_or_name or "").strip()
+        if raw:
+            candidate = Path(raw).expanduser()
+            if candidate.is_absolute() and candidate.exists() and candidate.is_file() and self._is_excel_file(candidate):
+                return candidate.resolve()
+            for root in self._candidate_roots():
+                joined = (root / candidate).resolve()
+                if joined.exists() and joined.is_file() and self._is_excel_file(joined):
+                    return joined
+            lowered = raw.lower()
+            for fp in self._list_workspace_workbooks(limit=500):
+                if fp.name.lower() == lowered:
+                    return fp
+        selected = str(self._selected_workbook_id or "").strip()
+        if selected:
+            selected_path = Path(selected).expanduser()
+            if selected_path.exists() and selected_path.is_file():
+                return selected_path.resolve()
+        files = self._list_workspace_workbooks(limit=1)
+        if files:
+            return files[0]
+        raise WorkbookNotFoundError(
+            "대상 통합문서를 찾지 못했습니다. workbook_id를 지정하거나 워크스페이스에 .xlsx 파일을 준비해 주세요."
+        )
+
+    @staticmethod
+    def _load_wb(path: Path, *, data_only: bool = False):
+        try:
+            keep_vba = path.suffix.lower() == ".xlsm"
+            return load_workbook(filename=str(path), data_only=data_only, keep_vba=keep_vba)
+        except Exception as exc:
+            raise ExcelLiveError(f"통합문서를 열 수 없습니다: {path}") from exc
+
+    def _make_evaluator(self, path: Path, wb_formula: Any, wb_data: Any, default_sheet: str) -> Any:
+        """수식 계산기를 워크북에 물린다.
+
+        값을 찾는 순서는 파일 캐시 → 우리 스냅샷 → 직접 계산이다. 앞의 둘로 해결되면
+        계산기는 손도 대지 않으므로, Excel이 저장한 파일에서는 기존 경로 그대로 동작한다.
+        """
+
+        def raw(sheet: str, row: int, col: int) -> Any:
+            ws = wb_formula[sheet] if sheet in wb_formula.sheetnames else None
+            return None if ws is None else ws.cell(row=row, column=col).value
+
+        def cached(sheet: str, row: int, col: int) -> Any:
+            if sheet in wb_data.sheetnames:
+                value = wb_data[sheet].cell(row=row, column=col).value
+                if value is not None:
+                    return value
+            return formula_cache.lookup(path, sheet, row, col)
+
+        def bounds(sheet: str) -> tuple[int, int]:
+            ws = wb_formula[sheet] if sheet in wb_formula.sheetnames else None
+            return (0, 0) if ws is None else (ws.max_row, ws.max_column)
+
+        return WorkbookEvaluator(
+            raw,
+            cached_lookup=cached,
+            default_sheet=default_sheet,
+            sheet_bounds=bounds,
+        )
+
+    @staticmethod
+    def _evaluated(evaluator: Any, sheet: str, row: int, col: int, fallback: Any) -> Any:
+        """계산에 실패하면 원본(수식 문자열)을 그대로 돌려준다.
+
+        호출자는 문자열이 온 걸 보고 "이 셀은 값을 모른다"고 판단할 수 있다.
+        조용히 0으로 바꾸면 틀린 집계·조건 판정으로 이어진다.
+        """
+        try:
+            value = evaluator.value(sheet, row, col)
+        except FormulaError:
+            return fallback
+        return fallback if value is None else value
+
+    def _file_stamp(self, path: Path) -> tuple[int, int] | None:
+        try:
+            stat = path.stat()
+        except OSError:
+            return None
+        return (stat.st_mtime_ns, stat.st_size)
+
+    def _capture_formula_values(self, path: Path) -> None:
+        """저장 직전, 디스크에 남아 있는 수식 계산값을 스냅샷으로 떠 둔다.
+
+        openpyxl로 저장하면 그 캐시가 사라져 다음 턴의 집계가 "=I2*J2" 문자열을 보게 된다.
+        우리가 마지막으로 저장한 파일 그대로면 캐시는 이미 비어 있으므로 다시 열지 않는다.
+        """
+        stamp = self._file_stamp(path)
+        if stamp is None or self._saved_stamp.get(str(path)) == stamp:
+            return
+        try:
+            wb_data = self._load_wb(path, data_only=True)
+        except ExcelLiveError:
+            return
+        wb_formula = None
+        try:
+            wb_formula = self._load_wb(path)
+            formula_cache.capture(path, wb_data, wb_formula)
+        except ExcelLiveError:
+            return
+        finally:
+            wb_data.close()
+            if wb_formula is not None:
+                wb_formula.close()
+
+    def _save_wb(
+        self,
+        wb: Any,
+        path: Path,
+        *,
+        value_changed_sheet: str | None = None,
+        changed_rows: set[int] | list[int] | None = None,
+    ) -> None:
+        """편집 저장 공통 경로. 수식 계산값을 보존하고, 값이 바뀐 범위만 스냅샷에서 뺀다.
+
+        `value_changed_sheet`를 주면 그 시트의 해당 행(없으면 시트 전체)과 다른 시트 스냅샷을
+        버린다. 다른 시트의 합계 수식이 이 시트를 참조할 수 있어서다. 오래된 숫자로 답하느니
+        "값을 모른다"고 말하는 편이 낫다.
+        """
+        self._capture_formula_values(path)
+        self._mark_full_recalc(wb)
+        self._sync_table_headers(wb)
+        wb.save(str(path))
+        self._saved_stamp[str(path)] = self._file_stamp(path)
+        if value_changed_sheet:
+            if changed_rows:
+                formula_cache.invalidate_rows(path, value_changed_sheet, changed_rows)
+            else:
+                formula_cache.invalidate_sheet(path, value_changed_sheet)
+            formula_cache.invalidate_other_sheets(path, value_changed_sheet)
+
+    @staticmethod
+    def _sync_table_headers(wb: Any) -> None:
+        """표(ListObject) 정의의 열 이름을 실제 머리글 셀과 맞춘다.
+
+        머리글 셀을 고쳐도 표 정의는 옛 이름을 들고 있다. Excel은 둘이 어긋나면
+        파일 자체를 열지 못한다("Workbooks 클래스 중 Open 메서드에 오류"). openpyxl로는
+        계속 읽히기 때문에 PDF 내보내기처럼 Excel을 거칠 때에야 드러난다.
+        """
+        for ws in wb.worksheets:
+            for table in getattr(ws, "tables", {}).values():
+                try:
+                    min_col, min_row, max_col, _max_row = range_boundaries(table.ref)
+                except Exception:  # noqa: BLE001 - 표 참조가 깨졌으면 건드리지 않는다
+                    continue
+                if not getattr(table, "headerRowCount", 1):
+                    continue
+                used: set[str] = set()
+                for column in table.tableColumns:
+                    index = min_col + table.tableColumns.index(column)
+                    if index > max_col:
+                        break
+                    value = ws.cell(row=min_row, column=index).value
+                    name = str(value).strip() if value is not None else ""
+                    # 빈 머리글이나 이름 충돌은 표 정의를 깨뜨린다. 기존 이름을 지킨다.
+                    if not name or name in used:
+                        used.add(column.name)
+                        continue
+                    column.name = name
+                    used.add(name)
+
+    @staticmethod
+    def _mark_full_recalc(wb: Any) -> None:
+        """파일을 열 때 Excel이 수식을 전부 다시 계산하도록 표시한다.
+
+        openpyxl로 만들었거나 calcPr이 없는 워크북은 `wb.calculation`이 None이라
+        속성만 대입하면 AttributeError가 난다. 없으면 만들어서 붙인다.
+        """
+        if wb.calculation is None:
+            wb.calculation = CalcProperties()
+        wb.calculation.fullCalcOnLoad = True
+
+    @staticmethod
+    def _sanitize_sheet_name(sheet_name: str) -> str:
+        text = str(sheet_name or "").strip()
+        if not text:
+            raise ExcelLiveError("sheet_name이 비어 있습니다.")
+        text = re.sub(r"[:\\/?*\[\]]", "_", text)
+        text = text[:31].strip()
+        if not text:
+            raise ExcelLiveError("유효한 sheet_name이 필요합니다.")
+        return text
+
+    @staticmethod
+    def _sheet_or_raise(wb: Any, sheet_name: str):
+        name = str(sheet_name or "").strip()
+        if name in wb.sheetnames:
+            return wb[name]
+        for cand in wb.sheetnames:
+            if cand.lower() == name.lower():
+                return wb[cand]
+        raise WorksheetNotFoundError(f"시트를 찾을 수 없습니다: {sheet_name}")
+
+    def _used_bounds(self, ws: Any) -> tuple[int, int]:
+        """실제 값이 들어 있는 마지막 행/열을 반환한다.
+
+        openpyxl의 max_row/max_column은 서식만 적용된 셀도 포함해 부풀려지므로,
+        값 기준으로 다시 좁혀야 범위 미지정 명령이 빈 영역까지 건드리지 않는다.
+        """
+        raw_row = max(1, int(getattr(ws, "max_row", 1) or 1))
+        raw_col = max(1, int(getattr(ws, "max_column", 1) or 1))
+        last_row = 0
+        last_col = 0
+        for r_idx, row in enumerate(
+            ws.iter_rows(min_row=1, max_row=raw_row, min_col=1, max_col=raw_col, values_only=True),
+            start=1,
+        ):
+            for c_idx, value in enumerate(row, start=1):
+                if value is None:
+                    continue
+                if isinstance(value, str) and not value.strip():
+                    continue
+                last_row = r_idx
+                if c_idx > last_col:
+                    last_col = c_idx
+        if last_row == 0 or last_col == 0:
+            return 1, 1
+        return last_row, last_col
+
+    def _range_bounds(self, ws: Any, range_ref: str) -> tuple[int, int, int, int]:
+        text = str(range_ref or "A1").strip().upper()
+        col_match = re.fullmatch(r"([A-Z]+):([A-Z]+)", text)
+        if col_match:
+            left, right = col_match.groups()
+            start_col = self._col_to_idx(left)
+            end_col = self._col_to_idx(right)
+            max_row, _ = self._used_bounds(ws)
+            return (1, min(start_col, end_col), max_row, max(start_col, end_col))
+        try:
+            min_col, min_row, max_col, max_row = range_boundaries(text)
+        except Exception:
+            min_col, min_row, max_col, max_row = range_boundaries("A1")
+        return (min_row, min_col, max_row, max_col)
+
+    @classmethod
+    def _address_from_bounds(cls, bounds: tuple[int, int, int, int]) -> str:
+        min_row, min_col, max_row, max_col = bounds
+        left = f"{cls._idx_to_col(min_col)}{min_row}"
+        right = f"{cls._idx_to_col(max_col)}{max_row}"
+        return left if left == right else f"{left}:{right}"
+
+    @staticmethod
+    def _to_argb(color: str) -> str:
+        hex6 = str(color or "#000000").strip().lstrip("#")
+        if len(hex6) != 6:
+            hex6 = "000000"
+        return f"FF{hex6.upper()}"
+
+    # ---- 기본 상태/목록 ----
+
+    def is_available(self) -> bool:
+        return True
+
+    def list_workbooks(self) -> list[dict[str, str]]:
+        rows: list[dict[str, str]] = []
+        for fp in self._list_workspace_workbooks(limit=200):
+            active_sheet = self._selected_sheet_by_workbook.get(str(fp), "")
+            if not active_sheet:
+                wb = self._load_wb(fp)
+                try:
+                    active_sheet = wb.active.title if wb.sheetnames else ""
+                finally:
+                    wb.close()
+            rows.append(
+                {
+                    "workbook_id": str(fp),
+                    "name": fp.name,
+                    "full_path": str(fp),
+                    "active_sheet": active_sheet,
+                }
+            )
+        return rows
+
+    def select_workbook(self, workbook_id_or_name: str) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id_or_name)
+        self._selected_workbook_id = str(path)
+        wb = self._load_wb(path)
+        try:
+            self._selected_sheet_by_workbook[str(path)] = wb.active.title if wb.sheetnames else ""
+        finally:
+            wb.close()
+        return {"selected": True, "workbook_id": str(path)}
+
+    def list_sheets(self, workbook_id: str | None) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            sheets = list(wb.sheetnames)
+            active = self._selected_sheet_by_workbook.get(str(path), wb.active.title if sheets else "")
+            if active not in sheets and sheets:
+                active = sheets[0]
+            self._selected_sheet_by_workbook[str(path)] = active
+            return {
+                "sheets": sheets,
+                "count": len(sheets),
+                "active_sheet": active,
+            }
+        finally:
+            wb.close()
+
+    def select_sheet(self, workbook_id: str | None, sheet_name: str) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            self._selected_sheet_by_workbook[str(path)] = ws.title
+            wb.active = wb.sheetnames.index(ws.title)
+            self._save_wb(wb, path)
+            return {
+                "selected": True,
+                "sheet_name": ws.title,
+                "active_sheet": ws.title,
+            }
+        finally:
+            wb.close()
+
+    def create_sheet(self, workbook_id: str | None, sheet_name: str, make_active: bool = True) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        target_name = self._sanitize_sheet_name(sheet_name)
+        wb = self._load_wb(path)
+        try:
+            created = target_name not in wb.sheetnames
+            ws = wb.create_sheet(target_name) if created else wb[target_name]
+            if make_active:
+                wb.active = wb.sheetnames.index(ws.title)
+                self._selected_sheet_by_workbook[str(path)] = ws.title
+            self._save_wb(wb, path)
+            return {
+                "created": created,
+                "sheet_name": ws.title,
+                "active_sheet": self._selected_sheet_by_workbook.get(str(path), ws.title),
+            }
+        finally:
+            wb.close()
+
+    # ---- 범위 I/O ----
+
+    def read_range(self, workbook_id: str | None, sheet_name: str, range_ref: str) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            bounds = self._range_bounds(ws, range_ref)
+            min_row, min_col, max_row, max_col = bounds
+            values: list[list[Any]] = []
+            for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
+                values.append([cell.value for cell in row])
+            if not values:
+                values = [[None]]
+            row_count = len(values)
+            col_count = len(values[0]) if values else 0
+            return {
+                "values": values,
+                "address": self._address_from_bounds(bounds),
+                "row_count": row_count,
+                "col_count": col_count,
+            }
+        finally:
+            wb.close()
+
+    def read_computed_range(self, workbook_id: str | None, sheet_name: str, range_ref: str) -> dict[str, Any]:
+        """집계·정렬·필터용으로 수식 대신 계산된 값을 읽는다.
+
+        실무 파일의 매출·이익 열은 대부분 수식이라 그대로 읽으면 "=I2*J2" 문자열이 들어온다.
+        값을 찾는 순서는 파일 캐시 → 우리 스냅샷 → 직접 계산이다. 셋 다 실패하면
+        `unresolved_formulas`에 좌표를 담아 호출자가 조용히 집계하지 않도록 알린다.
+        """
+        path = self._resolve_workbook_path(workbook_id)
+        wb_data = self._load_wb(path, data_only=True)
+        wb_formula = self._load_wb(path, data_only=False)
+        try:
+            ws_formula = self._sheet_or_raise(wb_formula, sheet_name)
+            evaluator = self._make_evaluator(path, wb_formula, wb_data, ws_formula.title)
+            bounds = self._range_bounds(ws_formula, range_ref)
+            min_row, min_col, max_row, max_col = bounds
+            values: list[list[Any]] = []
+            unresolved: list[tuple[int, int]] = []
+            for r in range(min_row, max_row + 1):
+                row_values: list[Any] = []
+                for c in range(min_col, max_col + 1):
+                    raw = ws_formula.cell(row=r, column=c).value
+                    value = self._evaluated(evaluator, ws_formula.title, r, c, raw)
+                    if isinstance(value, str) and value.startswith("="):
+                        unresolved.append((r - min_row, c - min_col))
+                    row_values.append(value)
+                values.append(row_values)
+            if not values:
+                values = [[None]]
+            return {
+                "values": values,
+                "address": self._address_from_bounds(bounds),
+                "row_count": len(values),
+                "col_count": len(values[0]) if values else 0,
+                # 범위 기준 상대 좌표. 계산값을 끝내 못 구한 수식 셀.
+                "unresolved_formulas": unresolved,
+            }
+        finally:
+            wb_data.close()
+            wb_formula.close()
+
+    def get_range_snapshot(self, workbook_id: str | None, sheet_name: str | None, range_ref: str) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            target_sheet = sheet_name or self._selected_sheet_by_workbook.get(str(path)) or wb.active.title
+            data = self.read_range(str(path), target_sheet, range_ref)
+            values = data.get("values", [])
+            filled = 0
+            for row in values:
+                for v in row:
+                    if v is None:
+                        continue
+                    if isinstance(v, str) and not v.strip():
+                        continue
+                    filled += 1
+            return {
+                "address": data.get("address", range_ref),
+                "row_count": int(data.get("row_count", 0) or 0),
+                "col_count": int(data.get("col_count", 0) or 0),
+                "filled_cells": filled,
+            }
+        finally:
+            wb.close()
+
+    def write_range(self, workbook_id: str | None, sheet_name: str, start_cell: str, values_2d: list[list[Any]]) -> dict[str, Any]:
+        if not values_2d:
+            return {"written_cells": 0, "address": str(start_cell)}
+        rows = len(values_2d)
+        cols = max(len(r) for r in values_2d)
+        normalized = [row + [None] * (cols - len(row)) for row in values_2d]
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            try:
+                ws = self._sheet_or_raise(wb, sheet_name)
+            except WorksheetNotFoundError:
+                ws = wb.create_sheet(self._sanitize_sheet_name(sheet_name))
+            min_row, min_col, _, _ = self._range_bounds(ws, start_cell)
+            for r_idx, row in enumerate(normalized):
+                for c_idx, value in enumerate(row):
+                    ws.cell(row=min_row + r_idx, column=min_col + c_idx, value=value)
+            max_row = min_row + rows - 1
+            max_col = min_col + cols - 1
+            self._save_wb(
+                wb,
+                path,
+                value_changed_sheet=ws.title,
+                changed_rows=set(range(min_row, max_row + 1)),
+            )
+            return {
+                "written_cells": rows * cols,
+                "address": self._address_from_bounds((min_row, min_col, max_row, max_col)),
+            }
+        finally:
+            wb.close()
+
+    def clear_range(self, workbook_id: str | None, sheet_name: str, target_range: str) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            bounds = self._range_bounds(ws, target_range)
+            min_row, min_col, max_row, max_col = bounds
+            cleared = 0
+            for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
+                for cell in row:
+                    cell.value = None
+                    cleared += 1
+            self._save_wb(
+                wb,
+                path,
+                value_changed_sheet=ws.title,
+                changed_rows=set(range(min_row, max_row + 1)),
+            )
+            return {"cleared_cells": cleared, "address": self._address_from_bounds(bounds)}
+        finally:
+            wb.close()
+
+    def fill_range(self, workbook_id: str | None, sheet_name: str, target_range: str, fill_color: str = "#FFFF00") -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            bounds = self._range_bounds(ws, target_range)
+            min_row, min_col, max_row, max_col = bounds
+            fill = PatternFill(fill_type="solid", fgColor=self._to_argb(fill_color), bgColor=self._to_argb(fill_color))
+            changed = 0
+            for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
+                for cell in row:
+                    cell.fill = fill
+                    changed += 1
+            self._save_wb(wb, path)
+            return {"changed_cells": changed, "address": self._address_from_bounds(bounds)}
+        finally:
+            wb.close()
+
+    _CONDITION_EXPRESSION = re.compile(r"^\s*=?\s*(.+?)\s*(<=|>=|<>|!=|<|>|==?)\s*(.+?)\s*$")
+    _KNOWN_OPERATORS = frozenset({">", ">=", "<", "<=", "==", "!=", "<>", "="})
+
+    def _unpack_condition(
+        self, ws: Any, operator: str, compare_column: str | None, threshold: float
+    ) -> tuple[str, str | None, float]:
+        """`=E2<F2` 나 `Current_Stock < Reorder_Point` 처럼 통째로 온 조건식을 푼다.
+
+        플래너는 비교 대상을 operator 안에 넣어 답할 때가 있다. 그대로 두면
+        "지원하지 않는 연산자"로 죽으므로, 오른쪽이 같은 행의 다른 열이면 열 비교로,
+        숫자면 임계값으로 바꾼다. 열 이름은 이 시트의 머리글 행에서 직접 찾는다.
+        """
+        text = str(operator or "").strip()
+        if text in self._KNOWN_OPERATORS:
+            return text, compare_column, threshold
+        match = self._CONDITION_EXPRESSION.match(text)
+        if not match:
+            return text, compare_column, threshold
+        _left, symbol, right = match.group(1), match.group(2), match.group(3)
+        symbol = {"=": "==", "!=": "<>"}.get(symbol, symbol)
+
+        letter = self._column_letter_for(ws, right)
+        if letter:
+            return symbol, letter, threshold
+        try:
+            return symbol, compare_column, float(str(right).replace(",", "").replace("%", ""))
+        except ValueError:
+            return symbol, compare_column, threshold
+
+    @staticmethod
+    def _column_letter_for(ws: Any, token: str) -> str:
+        """`F2`·`$F$2`·`Reorder_Point` 를 이 시트의 열 문자로 바꾼다."""
+        text = str(token or "").strip().strip("'\"`[]")
+        cell = re.fullmatch(r"\$?([A-Za-z]{1,3})\$?\d*", text)
+        if cell:
+            return cell.group(1).upper()
+        headers = [(str(c.value or "").strip(), c.column_letter) for c in ws[1]]
+        for header, column_letter in headers:
+            if header and header.casefold() == text.casefold():
+                return column_letter
+        resolved = resolve_header(text, [header for header, _ in headers if header])
+        for header, column_letter in headers:
+            if resolved and header == resolved:
+                return column_letter
+        return ""
+
+    def highlight_by_condition(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        target_range: str,
+        operator: str,
+        threshold: float,
+        fill_color: str = "#FFFF00",
+        compare_column: str | None = None,
+    ) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        # "현재고가 재주문점 이하" — 기준이 고정 숫자가 아니라 같은 행의 다른 열일 수 있다.
+        compare_letter = str(compare_column or "").strip().upper() or None
+        # 매출·이익 같은 실무 열은 대부분 수식이다. 수식 문자열을 숫자와 비교하면
+        # 어떤 임계값을 줘도 0건이 되어 "조건에 맞는 셀이 없다"고 잘못 답한다.
+        values = self._load_wb(path, data_only=True)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            self._sheet_or_raise(values, sheet_name)
+            operator, compare_letter, threshold = self._unpack_condition(
+                ws, operator, compare_letter, threshold
+            )
+            bounds = self._range_bounds(ws, target_range)
+            min_row, min_col, max_row, max_col = bounds
+            fill = PatternFill(fill_type="solid", fgColor=self._to_argb(fill_color), bgColor=self._to_argb(fill_color))
+            matched = 0
+            changed = 0
+            evaluator = self._make_evaluator(path, wb, values, ws.title)
+
+            def computed(row_idx: int, col_idx: int, fallback: Any) -> Any:
+                """파일 캐시 → 우리 스냅샷 → 직접 계산 순으로 실제 값을 찾는다."""
+                return self._evaluated(evaluator, ws.title, row_idx, col_idx, fallback)
+
+            for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
+                for cell in row:
+                    left = computed(cell.row, cell.column, cell.value)
+                    if compare_letter:
+                        limit_cell = ws[f"{compare_letter}{cell.row}"]
+                        limit = computed(limit_cell.row, limit_cell.column, limit_cell.value)
+                        if not isinstance(limit, (int, float)) or isinstance(limit, bool):
+                            continue
+                        if not self._matches_condition(left, operator, float(limit)):
+                            continue
+                    elif not self._matches_condition(left, operator, threshold):
+                        continue
+                    matched += 1
+                    cell.fill = fill
+                    changed += 1
+            self._save_wb(wb, path)
+            return {
+                "matched_cells": matched,
+                "changed_cells": changed,
+                "address": self._address_from_bounds(bounds),
+            }
+        finally:
+            wb.close()
+            values.close()
+
+    def apply_border(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        target_range: str,
+        line_style: str = "continuous",
+        weight: str = "medium",
+        color: str = "#000000",
+    ) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            bounds = self._range_bounds(ws, target_range)
+            min_row, min_col, max_row, max_col = bounds
+            style = str(line_style or "continuous").strip().lower()
+            if style == "none":
+                border = Border()
+            else:
+                width_map = {"thin": "thin", "medium": "medium", "thick": "thick"}
+                side = Side(style=width_map.get(str(weight or "thin").strip().lower(), "thin"), color=self._to_argb(color))
+                border = Border(left=side, right=side, top=side, bottom=side)
+            changed = 0
+            for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
+                for cell in row:
+                    cell.border = border
+                    changed += 1
+            self._save_wb(wb, path)
+            return {"changed_cells": changed, "address": self._address_from_bounds(bounds)}
+        finally:
+            wb.close()
+
+    def set_formula(self, workbook_id: str | None, sheet_name: str, range_ref: str, formula_a1: str) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            bounds = self._range_bounds(ws, range_ref)
+            min_row, min_col, max_row, max_col = bounds
+            applied = 0
+            origin = f"{get_column_letter(min_col)}{min_row}"
+            is_formula = str(formula_a1 or "").startswith("=")
+            for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
+                for cell in row:
+                    if is_formula and (cell.row != min_row or cell.column != min_col):
+                        # 같은 문자열을 그대로 복사하면 모든 행이 첫 행만 참조한다.
+                        cell.value = Translator(formula_a1, origin=origin).translate_formula(
+                            f"{get_column_letter(cell.column)}{cell.row}"
+                        )
+                    else:
+                        cell.value = formula_a1
+                    applied += 1
+            self._save_wb(
+                wb,
+                path,
+                value_changed_sheet=ws.title,
+                changed_rows=set(range(min_row, max_row + 1)),
+            )
+            return {"formula_applied_cells": applied, "address": self._address_from_bounds(bounds)}
+        finally:
+            wb.close()
+
+    def verify_formula_result(self, workbook_id: str | None, sheet_name: str, range_ref: str) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        wb_data = self._load_wb(path, data_only=True)
+        wb_formula = self._load_wb(path, data_only=False)
+        try:
+            ws_data = self._sheet_or_raise(wb_data, sheet_name)
+            ws_formula = self._sheet_or_raise(wb_formula, sheet_name)
+            bounds = self._range_bounds(ws_formula, range_ref)
+            min_row, min_col, max_row, max_col = bounds
+            non_empty = 0
+            numeric_values: list[float] = []
+            samples: list[Any] = []
+            formula_cells = 0
+            for r in range(min_row, max_row + 1):
+                for c in range(min_col, max_col + 1):
+                    value = ws_data.cell(row=r, column=c).value
+                    formula_raw = ws_formula.cell(row=r, column=c).value
+                    if isinstance(formula_raw, str) and formula_raw.startswith("="):
+                        formula_cells += 1
+                    if value is None or (isinstance(value, str) and not value.strip()):
+                        continue
+                    non_empty += 1
+                    if len(samples) < 10:
+                        samples.append(value)
+                    num = self._as_float(value)
+                    if num is not None:
+                        numeric_values.append(num)
+            if non_empty == 0 and formula_cells > 0:
+                non_empty = formula_cells
+            numeric_count = len(numeric_values)
+            if numeric_count == 0 and formula_cells > 0:
+                numeric_count = formula_cells
+            total = sum(numeric_values) if numeric_values else 0.0
+            avg = (total / len(numeric_values)) if numeric_values else 0.0
+            return {
+                "address": self._address_from_bounds(bounds),
+                "non_empty_cells": non_empty,
+                "numeric_cells": numeric_count,
+                "sum": total,
+                "average": avg,
+                "sample_values": samples,
+            }
+        finally:
+            wb_data.close()
+            wb_formula.close()
+
+    # ---- 표 단위 작업 ----
+
+    def create_table(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        start_cell: str,
+        rows: int,
+        cols: int,
+        with_border: bool = True,
+    ) -> dict[str, Any]:
+        row_count = max(1, min(100, int(rows)))
+        col_count = max(1, min(50, int(cols)))
+        result = self.write_range(
+            workbook_id=workbook_id,
+            sheet_name=sheet_name,
+            start_cell=start_cell,
+            values_2d=[["" for _ in range(col_count)] for _ in range(row_count)],
+        )
+        if with_border:
+            self.apply_border(
+                workbook_id=workbook_id,
+                sheet_name=sheet_name,
+                target_range=result.get("address", start_cell),
+                line_style="continuous",
+                weight="thin",
+                color="#000000",
+            )
+        return {
+            "created": True,
+            "address": result.get("address", start_cell),
+            "rows": row_count,
+            "cols": col_count,
+        }
+
+    @staticmethod
+    def _require_computed_values(
+        payload: dict[str, Any],
+        column_indexes: list[int | None],
+        header: list[Any],
+        purpose: str,
+    ) -> None:
+        """계산값을 못 구한 수식 열로는 집계하지 않는다. 틀린 숫자를 내놓는 대신 멈춘다.
+
+        우리가 파일을 저장하면 Excel이 넣어 둔 계산값 캐시가 사라진다. 스냅샷도 없으면
+        매출 열이 "=I2*J2" 문자열이라, 그대로 두면 그 열을 비숫자로 보고 엉뚱한 열을
+        더하거나 0을 답한다. 실제로 날짜를 더해 4.8e16이 나온 적이 있다.
+        """
+        unresolved = payload.get("unresolved_formulas") or []
+        if not unresolved:
+            return
+        targets = {int(idx) for idx in column_indexes if idx is not None}
+        broken = sorted({col for _row, col in unresolved if col in targets})
+        if not broken:
+            return
+        names = ", ".join(str(header[idx]) if idx < len(header) else f"{idx + 1}열" for idx in broken)
+        raise ExcelLiveError(
+            f"'{names}' 열은 수식이고 계산된 값이 파일에 없어 {purpose}할 수 없습니다. "
+            "Excel에서 해당 파일을 한 번 열어 저장하면 계산값이 채워집니다."
+        )
+
+    def _reinstall_relocated_values(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        *,
+        raw_body: list[list[Any]],
+        computed_body: list[list[Any]],
+        order: list[int],
+        min_col: int,
+        body_start_row: int,
+    ) -> None:
+        """행을 재배치한 뒤, 수식 셀의 계산값을 새 좌표에 다시 심는다.
+
+        정렬·중복제거는 clear+write로 진행되므로 그 과정에서 스냅샷이 비워진다. 여기서
+        다시 심어 두지 않으면 "정렬한 다음 지역별 합계" 같은 두 번째 요청이 값을 잃는다.
+        """
+        if len(computed_body) != len(raw_body):
+            return
+        cells: dict[tuple[int, int], Any] = {}
+        for dest_offset, source_idx in enumerate(order):
+            dest_row = body_start_row + dest_offset
+            for col_offset, raw in enumerate(raw_body[source_idx]):
+                if not (isinstance(raw, str) and raw.startswith("=")):
+                    continue
+                value = computed_body[source_idx][col_offset]
+                if value is None or (isinstance(value, str) and value.startswith("=")):
+                    continue
+                cells[(dest_row, min_col + col_offset)] = value
+        if not cells:
+            return
+        try:
+            path = self._resolve_workbook_path(workbook_id)
+        except ExcelLiveError:
+            return
+        formula_cache.install_cells(path, sheet_name, cells)
+
+    @staticmethod
+    def _relocate_rows(
+        raw_body: list[list[Any]],
+        order: list[int],
+        *,
+        min_col: int,
+        body_start_row: int,
+    ) -> list[list[Any]]:
+        """행 순서를 바꿔 쓰되 수식은 새 행 기준으로 다시 계산되게 옮긴다.
+
+        `=I2*J2` 를 문자열 그대로 5행에 쓰면 5행 매출이 2행 값을 가리킨다.
+        정렬·중복 제거는 실무 표에서 늘 수식 열을 끼고 있으므로 여기서 반드시 번역해야 한다.
+        """
+        relocated: list[list[Any]] = []
+        for dest_offset, source_idx in enumerate(order):
+            source_row_no = body_start_row + source_idx
+            dest_row_no = body_start_row + dest_offset
+            row_out: list[Any] = []
+            for col_offset, value in enumerate(raw_body[source_idx]):
+                if isinstance(value, str) and value.startswith("=") and source_row_no != dest_row_no:
+                    letter = get_column_letter(min_col + col_offset)
+                    try:
+                        value = Translator(value, origin=f"{letter}{source_row_no}").translate_formula(
+                            f"{letter}{dest_row_no}"
+                        )
+                    except Exception:
+                        pass
+                row_out.append(value)
+            relocated.append(row_out)
+        return relocated
+
+    def sort_range(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        target_range: str,
+        key_column: str | int = 1,
+        order: str = "asc",
+        has_header: bool = True,
+    ) -> dict[str, Any]:
+        payload = self.read_range(workbook_id, sheet_name, target_range)
+        computed = self.read_computed_range(workbook_id, sheet_name, target_range)
+        values = payload.get("values", [])
+        if not values:
+            return {"sorted_rows": 0, "address": payload.get("address", target_range)}
+        col_count = max(len(row) for row in values)
+        normalized = [list(row) + [None] * (col_count - len(row)) for row in values]
+        computed_rows = computed.get("values", []) or normalized
+        computed_norm = [list(row) + [None] * (col_count - len(row)) for row in computed_rows]
+        header = normalized[0] if has_header else None
+        body = normalized[1:] if has_header else normalized
+        computed_body = computed_norm[1:] if has_header else computed_norm
+        if not body:
+            return {"sorted_rows": 0, "address": payload.get("address", target_range)}
+        # 수식 열을 기준으로 정렬할 때 문자열("=I2*J2")로 줄을 세우면 뒤죽박죽이 된다.
+        sort_source = computed_body if len(computed_body) == len(body) else body
+        address = str(payload.get("address", target_range))
+        min_col, min_row, max_col, max_row = range_boundaries(address)
+        key_idx = self._resolve_column_selector(
+            selector=key_column,
+            start_col_idx=min_col,
+            col_count=col_count,
+            header_row=header,
+        )
+        reverse = str(order or "asc").strip().lower() in {"desc", "descending", "내림차순"}
+        # 숫자로 읽히는 행이 먼저, 나머지는 뒤에 사전순. 섞어서 비교하면 타입 오류가 난다.
+        numbered: list[tuple[float, str, int]] = []
+        lettered: list[tuple[str, int]] = []
+        for index, row in enumerate(sort_source):
+            cell = row[key_idx] if key_idx < len(row) else None
+            number = _as_number(cell)
+            if number is None:
+                lettered.append((_text_key(cell), index))
+            else:
+                numbered.append((number, _text_key(cell), index))
+        numbered.sort(key=lambda item: (item[0], item[1]), reverse=reverse)
+        lettered.sort(key=lambda item: item[0], reverse=reverse)
+        sort_order = [index for *_rest, index in numbered] + [index for _key, index in lettered]
+        body_start_row = min_row + (1 if has_header else 0)
+        out_values = self._relocate_rows(
+            body,
+            sort_order,
+            min_col=min_col,
+            body_start_row=body_start_row,
+        )
+        final_values = [header, *out_values] if has_header and header is not None else out_values
+        self.clear_range(workbook_id, sheet_name, address)
+        self.write_range(
+            workbook_id=workbook_id,
+            sheet_name=sheet_name,
+            start_cell=f"{self._idx_to_col(min_col)}{min_row}",
+            values_2d=final_values,
+        )
+        self._reinstall_relocated_values(
+            workbook_id,
+            sheet_name,
+            raw_body=body,
+            computed_body=computed_body,
+            order=sort_order,
+            min_col=min_col,
+            body_start_row=body_start_row,
+        )
+        return {
+            "sorted_rows": len(out_values),
+            "address": self._address_from_bounds((min_row, min_col, max_row, max_col)),
+            "key_column_index": key_idx + 1,
+            "order": "desc" if reverse else "asc",
+        }
+
+    def dedupe_rows(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        target_range: str | None = None,
+        key_columns: list[str | int] | None = None,
+        has_header: bool = True,
+        columns: list[str | int] | None = None,
+    ) -> dict[str, Any]:
+        # 범위를 말하지 않은 "중복 지워줘"는 시트 전체가 대상이다.
+        target_range = target_range or self.get_used_range_ref(workbook_id, sheet_name)
+        key_columns = key_columns or columns
+        payload = self.read_range(workbook_id, sheet_name, target_range)
+        computed = self.read_computed_range(workbook_id, sheet_name, target_range)
+        values = payload.get("values", [])
+        if not values:
+            return {"removed_rows": 0, "remaining_rows": 0, "address": payload.get("address", target_range)}
+        col_count = max(len(row) for row in values)
+        normalized = [list(row) + [None] * (col_count - len(row)) for row in values]
+        computed_norm = [
+            list(row) + [None] * (col_count - len(row)) for row in (computed.get("values") or normalized)
+        ]
+        header = normalized[0] if has_header else None
+        body = normalized[1:] if has_header else normalized
+        computed_body = computed_norm[1:] if has_header else computed_norm
+        if not body:
+            return {"removed_rows": 0, "remaining_rows": 0, "address": payload.get("address", target_range)}
+        start_col = 1
+        if key_columns:
+            subset = [
+                self._resolve_column_selector(col, start_col, col_count, header)
+                for col in key_columns
+            ]
+        else:
+            subset = list(range(col_count))
+        before = len(body)
+        # 먼저 나온 행을 남긴다. 사용자는 보통 위쪽 행을 원본으로 여긴다.
+        seen: set[tuple] = set()
+        keep_order: list[int] = []
+        for index, row in enumerate(body):
+            key = _group_key(row, subset)
+            if key in seen:
+                continue
+            seen.add(key)
+            keep_order.append(index)
+        after = len(keep_order)
+        address = str(payload.get("address", target_range))
+        min_col, min_row, max_col, max_row = range_boundaries(address)
+        body_start_row = min_row + (1 if has_header else 0)
+        out = self._relocate_rows(
+            body,
+            keep_order,
+            min_col=min_col,
+            body_start_row=body_start_row,
+        )
+        final_values = [header, *out] if has_header and header is not None else out
+        self.clear_range(workbook_id, sheet_name, address)
+        self.write_range(
+            workbook_id=workbook_id,
+            sheet_name=sheet_name,
+            start_cell=f"{self._idx_to_col(min_col)}{min_row}",
+            values_2d=final_values,
+        )
+        self._reinstall_relocated_values(
+            workbook_id,
+            sheet_name,
+            raw_body=body,
+            computed_body=computed_body,
+            order=keep_order,
+            min_col=min_col,
+            body_start_row=body_start_row,
+        )
+        return {
+            "removed_rows": max(0, before - after),
+            "removed_duplicates": max(0, before - after),
+            "remaining_rows": after,
+            "kept_rows": after,
+            "address": self._address_from_bounds((min_row, min_col, max_row, max_col)),
+            "key_columns": [idx + 1 for idx in subset],
+        }
+
+    @staticmethod
+    def _row_matches(cell: Any, operator: str, value: Any) -> bool:
+        """한 셀이 필터 조건을 만족하는지. 숫자 비교가 불가능하면 문자열 같음으로 되돌린다."""
+        op = str(operator or "==").strip()
+        if op == "contains":
+            return str(value) in str(cell if cell is not None else "")
+        if op in {"=", "=="}:
+            return str(cell) == str(value)
+        if op == "!=":
+            return str(cell) != str(value)
+        compare = {
+            ">": lambda a, b: a > b,
+            ">=": lambda a, b: a >= b,
+            "<": lambda a, b: a < b,
+            "<=": lambda a, b: a <= b,
+        }.get(op)
+        threshold = _as_number(value)
+        number = _as_number(cell)
+        if compare is None or threshold is None:
+            return str(cell) == str(value)
+        return number is not None and compare(number, threshold)
+
+    def filter_rows(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        target_range: str | None = None,
+        column: str | int = 1,
+        operator: str = "==",
+        value: Any = None,
+        has_header: bool = True,
+        mode: str = "keep",
+    ) -> dict[str, Any]:
+        """조건에 맞는 행만 남기고 나머지를 시트에서 지운다.
+
+        `mode="remove"`면 반대로 조건에 맞는 행을 지운다 — "취소된 주문은 빼줘"처럼
+        제외를 요청한 문장용이다. 세는 것만으로는 사용자가 요청한 편집이 일어나지 않는데도
+        성공으로 보고돼, 화면은 그대로인 채 "처리했습니다"라는 답만 남는다.
+
+        수식 열도 조건 대상이 되도록 계산값으로 비교하고, 남길 행은 dedupe와 같은
+        재배치 경로를 태워 행 이동에 따른 수식 참조를 함께 옮긴다.
+        """
+        target_range = target_range or self.get_used_range_ref(workbook_id, sheet_name)
+        payload = self.read_range(workbook_id, sheet_name, target_range)
+        computed = self.read_computed_range(workbook_id, sheet_name, target_range)
+        values = payload.get("values", [])
+        address = str(payload.get("address", target_range))
+        if not values:
+            return {"filtered_rows": 0, "removed_rows": 0, "remaining_rows": 0, "address": address}
+
+        col_count = max(len(row) for row in values)
+        normalized = [list(row) + [None] * (col_count - len(row)) for row in values]
+        computed_norm = [
+            list(row) + [None] * (col_count - len(row)) for row in (computed.get("values") or normalized)
+        ]
+        header = normalized[0] if has_header else None
+        body = normalized[1:] if has_header else normalized
+        computed_body = computed_norm[1:] if has_header else computed_norm
+        if not body:
+            return {"filtered_rows": 0, "removed_rows": 0, "remaining_rows": 0, "address": address}
+
+        col_idx = self._resolve_column_selector(column, 1, col_count, header)
+        op = str(operator or "==").strip()
+        exclude = str(mode or "keep").strip().lower() in {"remove", "exclude", "drop"}
+        keep_order: list[int] = []
+        matched = 0
+        for index, row in enumerate(body):
+            source = computed_body[index] if index < len(computed_body) else row
+            cell = source[col_idx] if col_idx < len(source) else None
+            if cell is None and col_idx < len(row):
+                cell = row[col_idx]
+            hit = self._row_matches(cell, op, value)
+            matched += 1 if hit else 0
+            if hit != exclude:
+                keep_order.append(index)
+
+        before = len(body)
+        after = len(keep_order)
+        if after == before:
+            return {
+                "filtered_rows": matched,
+                "matched_rows": matched,
+                "removed_rows": 0,
+                "remaining_rows": after,
+                "address": address,
+                "column_index": col_idx + 1,
+                "operator": op,
+                "value": value,
+                "mode": "remove" if exclude else "keep",
+            }
+
+        min_col, min_row, max_col, max_row = range_boundaries(address)
+        body_start_row = min_row + (1 if has_header else 0)
+        out = self._relocate_rows(body, keep_order, min_col=min_col, body_start_row=body_start_row)
+        final_values = [header, *out] if has_header and header is not None else out
+        self.clear_range(workbook_id, sheet_name, address)
+        self.write_range(
+            workbook_id=workbook_id,
+            sheet_name=sheet_name,
+            start_cell=f"{self._idx_to_col(min_col)}{min_row}",
+            values_2d=final_values,
+        )
+        self._reinstall_relocated_values(
+            workbook_id,
+            sheet_name,
+            raw_body=body,
+            computed_body=computed_body,
+            order=keep_order,
+            min_col=min_col,
+            body_start_row=body_start_row,
+        )
+        return {
+            "filtered_rows": matched,
+            "matched_rows": matched,
+            "removed_rows": max(0, before - after),
+            "remaining_rows": after,
+            "address": self._address_from_bounds((min_row, min_col, max_row, max_col)),
+            "column_index": col_idx + 1,
+            "operator": op,
+            "value": value,
+            "mode": "remove" if exclude else "keep",
+        }
+
+    # ---- 표 단위 작업 (열 이름 기준) ----
+
+    def _table_grid(self, workbook_id: str | None, sheet_name: str) -> tuple[list[Any], list[list[Any]], int]:
+        """사용 범위를 머리글 한 줄과 본문으로 나눠 준다. 열 이름 기반 작업의 공통 진입점."""
+        ref = self.get_used_range_ref(workbook_id, sheet_name)
+        payload = self.read_computed_range(workbook_id, sheet_name, ref)
+        rows = payload.get("values") or []
+        if not rows:
+            raise ExcelLiveError(f"'{sheet_name}' 시트에 읽을 데이터가 없습니다.")
+        width = max(len(row) for row in rows)
+        grid = [list(row) + [None] * (width - len(row)) for row in rows]
+        return grid[0], grid[1:], width
+
+    @staticmethod
+    def _pick_column(selector: str | int, header: list[Any], width: int) -> tuple[int, str | None]:
+        """머리글 이름·한국어 개념어·열 문자를 열 번호로 바꾼다.
+
+        못 찾으면 1열로 넘어가지 않고 실패한다. 엉뚱한 열을 조용히 지우거나 더하는 것보다
+        어떤 열이 있는지 알려주고 멈추는 편이 낫다.
+        """
+        if isinstance(selector, int):
+            index = selector - 1
+            if not 0 <= index < width:
+                raise ExcelLiveError(f"{selector}번째 열이 범위를 벗어났습니다. (열 개수 {width})")
+            return index, None
+        text = str(selector or "").strip()
+        if not text:
+            raise ExcelLiveError("대상 열을 지정해 주세요.")
+        names = [str(cell or "").strip() for cell in header]
+        for index, name in enumerate(names):
+            if name and name.lower() == text.lower():
+                return index, name
+        mapped = resolve_header(text, [name for name in names if name])
+        if mapped:
+            return names.index(mapped), mapped
+        if re.fullmatch(r"[A-Za-z]{1,3}", text):
+            index = column_index_from_string(text.upper()) - 1
+            if 0 <= index < width:
+                return index, None
+        available = ", ".join(name for name in names if name)
+        raise ExcelLiveError(f"'{text}' 열을 찾을 수 없습니다. 사용 가능한 열: {available}")
+
+    def calculate_column_stat(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        column: str | int,
+        stat: str = "sum",
+    ) -> dict[str, Any]:
+        header, body, width = self._table_grid(workbook_id, sheet_name)
+        index, name = self._pick_column(column, header, width)
+        numbers = [n for n in (_as_number(row[index]) for row in body) if n is not None]
+        kind = str(stat or "sum").strip().lower()
+        kind = "average" if kind in {"average", "avg", "mean"} else kind
+        if kind not in {"sum", "average", "count", "max", "min"}:
+            raise ExcelLiveError(f"지원하지 않는 통계입니다: {stat}")
+        if kind == "count":
+            value = float(len(numbers))
+        elif not numbers:
+            raise ExcelLiveError(f"'{name or column}' 열에 숫자가 없어 {kind} 통계를 낼 수 없습니다.")
+        elif kind == "sum":
+            value = float(sum(numbers))
+        elif kind == "average":
+            value = float(sum(numbers)) / len(numbers)
+        else:
+            value = float(max(numbers) if kind == "max" else min(numbers))
+        return {
+            "value": value,
+            "column": get_column_letter(index + 1),
+            "header": name,
+            "stat": kind,
+            "numeric_count": len(numbers),
+        }
+
+    def sort_rows(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        column: str | int,
+        order: str = "asc",
+    ) -> dict[str, Any]:
+        """시트 전체를 한 열 기준으로 정렬한다. 범위를 말하지 않은 "정렬해줘"의 기본 경로."""
+        header, _body, width = self._table_grid(workbook_id, sheet_name)
+        index, name = self._pick_column(column, header, width)
+        ref = self.get_used_range_ref(workbook_id, sheet_name)
+        result = self.sort_range(
+            workbook_id,
+            sheet_name,
+            ref,
+            key_column=index + 1,
+            order=order,
+            has_header=True,
+        )
+        return {
+            "sorted_rows": result.get("sorted_rows", 0),
+            "order": result.get("order", "asc"),
+            "column": name or get_column_letter(index + 1),
+            "address": result.get("address", ref),
+        }
+
+    def drop_column(self, workbook_id: str | None, sheet_name: str, column: str | int) -> dict[str, Any]:
+        header, _body, width = self._table_grid(workbook_id, sheet_name)
+        index, name = self._pick_column(column, header, width)
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            ws.delete_cols(index + 1)
+            self._save_wb(wb, path)
+        finally:
+            wb.close()
+        # 열이 통째로 밀렸으니 이 시트의 수식 계산값 스냅샷은 더 이상 믿을 수 없다.
+        formula_cache.invalidate_sheet(path, sheet_name)
+        return {
+            "dropped_column": name or get_column_letter(index + 1),
+            "remaining_columns": max(0, width - 1),
+        }
+
+    def rename_column(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        column: str | int,
+        new_name: str,
+    ) -> dict[str, Any]:
+        target = str(new_name or "").strip()
+        if not target:
+            raise ExcelLiveError("새 열 이름을 알려주세요.")
+        header, _body, width = self._table_grid(workbook_id, sheet_name)
+        index, name = self._pick_column(column, header, width)
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            ws.cell(row=1, column=index + 1, value=target)
+            self._save_wb(wb, path)
+        finally:
+            wb.close()
+        return {
+            "old_name": name or get_column_letter(index + 1),
+            "new_name": target,
+            "column": get_column_letter(index + 1),
+        }
+
+    def add_column(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        name: str,
+        formula_a1: str | None = None,
+    ) -> dict[str, Any]:
+        label = str(name or "").strip()
+        if not label:
+            raise ExcelLiveError("추가할 열 이름을 알려주세요.")
+        _header, body, width = self._table_grid(workbook_id, sheet_name)
+        target_col = width + 1
+        letter = get_column_letter(target_col)
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        filled = 0
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            ws.cell(row=1, column=target_col, value=label)
+            if formula_a1:
+                origin = f"{letter}2"
+                for offset in range(len(body)):
+                    row_no = 2 + offset
+                    # 첫 행 수식을 그대로 복사하면 모든 행이 2행을 가리킨다. 행마다 옮겨 준다.
+                    text = (
+                        formula_a1
+                        if offset == 0
+                        else Translator(formula_a1, origin=origin).translate_formula(f"{letter}{row_no}")
+                    )
+                    ws.cell(row=row_no, column=target_col, value=text)
+                    filled += 1
+            self._save_wb(wb, path)
+        finally:
+            wb.close()
+        return {"column": letter, "name": label, "formula_filled_cells": filled}
+
+    def group_by_aggregate(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        group_column: str | int,
+        agg: str = "sum",
+        value_column: str | int | None = None,
+    ) -> dict[str, Any]:
+        """열 하나로 묶어 집계한 결과를 값으로 돌려준다. 시트에 쓰지는 않는다."""
+        header, body, width = self._table_grid(workbook_id, sheet_name)
+        group_index, group_name = self._pick_column(group_column, header, width)
+        kind = str(agg or "sum").strip().lower()
+        kind = "average" if kind in {"average", "avg", "mean"} else kind
+        if kind not in {"sum", "average", "count", "max", "min"}:
+            raise ExcelLiveError(f"지원하지 않는 집계입니다: {agg}")
+        value_index: int | None = None
+        value_name: str | None = None
+        if value_column is not None and str(value_column).strip():
+            value_index, value_name = self._pick_column(value_column, header, width)
+        elif kind != "count":
+            raise ExcelLiveError(f"{kind} 집계에는 대상 값 열이 필요합니다. 예: 매출")
+
+        buckets: dict[tuple, dict[str, Any]] = {}
+        for row in body:
+            key = _group_key(row, [group_index])
+            bucket = buckets.setdefault(
+                key,
+                {"label": row[group_index] if group_index < len(row) else None, "numbers": [], "count": 0},
+            )
+            bucket["count"] += 1
+            if value_index is not None:
+                number = _as_number(row[value_index]) if value_index < len(row) else None
+                if number is not None:
+                    bucket["numbers"].append(number)
+
+        groups: list[dict[str, Any]] = []
+        for bucket in buckets.values():
+            numbers = bucket["numbers"]
+            if kind == "count":
+                value = float(bucket["count"])
+            elif not numbers:
+                value = 0.0
+            elif kind == "sum":
+                value = float(sum(numbers))
+            elif kind == "average":
+                value = float(sum(numbers)) / len(numbers)
+            else:
+                value = float(max(numbers) if kind == "max" else min(numbers))
+            groups.append({"key": bucket["label"], "value": value, "count": bucket["count"]})
+        # 큰 값부터 보여 주는 편이 "어디가 제일 많아?"라는 원래 질문에 바로 답이 된다.
+        groups.sort(key=lambda g: (-g["value"], str(g["key"])))
+        return {
+            "agg": kind,
+            "group_column": group_name or get_column_letter(group_index + 1),
+            "value_column": value_name,
+            "groups": groups,
+        }
+
+    # ---- 기타 작업 ----
+
+    def save_workbook(self, workbook_id: str | None) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        return {
+            "saved": True,
+            "workbook_id": str(path),
+            "name": path.name,
+            "full_path": str(path),
+        }
+
+    def create_workbook_backup(self, workbook_id: str | None, *, label: str = "auto") -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        backup_dir = path.parent / "officeclaw_backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_label = re.sub(r"[^A-Za-z0-9_-]+", "_", str(label or "auto")).strip("_") or "auto"
+        backup_path = backup_dir / f"{path.stem}.{safe_label}.{stamp}{path.suffix}"
+        shutil.copy2(path, backup_path)
+        return {
+            "backup_created": True,
+            "backup_path": str(backup_path),
+            "source_path": str(path),
+            "workbook_id": str(path),
+        }
+
+    def list_workbook_backups(self, workbook_id: str | None, *, limit: int = 20) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        backup_dir = path.parent / "officeclaw_backups"
+        rows: list[dict[str, Any]] = []
+        if backup_dir.exists():
+            for fp in backup_dir.glob(f"{path.stem}.*{path.suffix}"):
+                if not fp.is_file():
+                    continue
+                stat = fp.stat()
+                rows.append(
+                    {
+                        "backup_path": str(fp.resolve()),
+                        "backup_name": fp.name,
+                        "size_bytes": int(stat.st_size),
+                        "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+                        "modified_ts": float(stat.st_mtime),
+                    }
+                )
+        rows.sort(key=lambda r: float(r.get("modified_ts", 0.0)), reverse=True)
+        for row in rows:
+            row.pop("modified_ts", None)
+        return {
+            "workbook_id": str(path),
+            "source_path": str(path),
+            "backup_dir": str(backup_dir),
+            "backups": rows[: max(1, min(200, int(limit)))],
+        }
+
+    def restore_workbook_from_backup(self, workbook_id: str | None, *, backup_path: str | None = None) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        if backup_path:
+            source = Path(str(backup_path)).expanduser().resolve()
+        else:
+            listed = self.list_workbook_backups(str(path), limit=1)
+            backups = listed.get("backups", [])
+            if not backups:
+                raise ExcelLiveError("복구 가능한 백업이 없습니다.")
+            source = Path(str(backups[0].get("backup_path", ""))).resolve()
+        if not source.exists() or not source.is_file():
+            raise ExcelLiveError(f"백업 파일을 찾을 수 없습니다: {source}")
+        pre_restore = self.create_workbook_backup(str(path), label="pre_restore")
+        shutil.copy2(source, path)
+        wb = self._load_wb(path)
+        try:
+            active = wb.active.title if wb.sheetnames else ""
+        finally:
+            wb.close()
+        self._selected_workbook_id = str(path)
+        self._selected_sheet_by_workbook[str(path)] = active
+        return {
+            "restored": True,
+            "workbook_id": str(path),
+            "name": path.name,
+            "full_path": str(path),
+            "restored_from_backup_path": str(source),
+            "pre_restore_backup_path": str(pre_restore.get("backup_path", "")),
+            "active_sheet": active,
+        }
+
+    def get_active_selection_ref(self, workbook_id: str | None, sheet_name: str | None) -> str:
+        """파일 기반 엔진에는 '선택 영역' 개념이 없으므로 데이터 영역으로 해석한다.
+
+        여기서 A1을 돌려주면 범위를 말하지 않은 모든 명령이 한 칸에만 적용된 채
+        성공으로 보고되므로, 반드시 사용 영역을 기준으로 삼는다.
+        """
+        return self.get_used_range_ref(workbook_id, sheet_name)
+
+    def get_used_range_ref(self, workbook_id: str | None, sheet_name: str | None) -> str:
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            target_sheet = sheet_name or self._selected_sheet_by_workbook.get(str(path)) or wb.active.title
+            ws = self._sheet_or_raise(wb, target_sheet)
+            max_row, max_col = self._used_bounds(ws)
+            return self._address_from_bounds((1, 1, max_row, max_col))
+        finally:
+            wb.close()
+
+    def find_replace(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        target_range: str,
+        find_text: str,
+        replace_text: str,
+        *,
+        match_case: bool = False,
+        whole_cell: bool = False,
+    ) -> dict[str, Any]:
+        if not find_text:
+            raise ExcelLiveError("find_replace.find_text가 비어 있습니다.")
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            bounds = self._range_bounds(ws, target_range)
+            min_row, min_col, max_row, max_col = bounds
+            needle = find_text if match_case else find_text.lower()
+            replaced = 0
+            for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
+                for cell in row:
+                    value = cell.value
+                    if not isinstance(value, str):
+                        continue
+                    haystack = value if match_case else value.lower()
+                    if whole_cell:
+                        if haystack == needle:
+                            cell.value = replace_text
+                            replaced += 1
+                        continue
+                    if needle not in haystack:
+                        continue
+                    if match_case:
+                        cell.value = value.replace(find_text, replace_text)
+                    else:
+                        # 대소문자 무시 치환은 원본 표기를 살려야 해서 위치 기반으로 잘라 붙인다.
+                        out: list[str] = []
+                        cursor = 0
+                        lowered = haystack
+                        while True:
+                            idx = lowered.find(needle, cursor)
+                            if idx == -1:
+                                out.append(value[cursor:])
+                                break
+                            out.append(value[cursor:idx])
+                            out.append(replace_text)
+                            cursor = idx + len(needle)
+                        cell.value = "".join(out)
+                    replaced += 1
+            self._save_wb(
+                wb,
+                path,
+                value_changed_sheet=ws.title,
+                changed_rows=set(range(min_row, max_row + 1)),
+            )
+            return {"replaced_cells": replaced, "address": self._address_from_bounds(bounds)}
+        finally:
+            wb.close()
+
+    def merge_cells(self, workbook_id: str | None, sheet_name: str, target_range: str) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            bounds = self._range_bounds(ws, target_range)
+            address = self._address_from_bounds(bounds)
+            # 병합은 왼쪽 위 셀 값만 남기고 나머지를 지운다 — 병합 전 값이 여러 개면
+            # 표시상 하나만 보이는 게 openpyxl/Excel 동작과 같다. 첫 값을 보존한다.
+            min_row, min_col, max_row, max_col = bounds
+            keep_value = ws.cell(row=min_row, column=min_col).value
+            ws.merge_cells(address)
+            ws.cell(row=min_row, column=min_col, value=keep_value)
+            self._save_wb(wb, path, value_changed_sheet=ws.title, changed_rows=set(range(min_row, max_row + 1)))
+            return {"merged": True, "address": address}
+        finally:
+            wb.close()
+
+    def unmerge_cells(self, workbook_id: str | None, sheet_name: str, target_range: str) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            bounds = self._range_bounds(ws, target_range)
+            address = self._address_from_bounds(bounds)
+            unmerged = 0
+            for merged_range in list(ws.merged_cells.ranges):
+                if str(merged_range) == address or CellRange(str(merged_range)).issubset(CellRange(address)):
+                    ws.unmerge_cells(str(merged_range))
+                    unmerged += 1
+            self._save_wb(wb, path)
+            return {"unmerged_ranges": unmerged, "address": address}
+        finally:
+            wb.close()
+
+    def freeze_panes(self, workbook_id: str | None, sheet_name: str, freeze_at: str | None = None) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            cell_ref = str(freeze_at or "A2").strip().upper() or "A2"
+            if cell_ref in {"NONE", "해제", "OFF"}:
+                ws.freeze_panes = None
+                self._save_wb(wb, path)
+                return {"frozen": False, "freeze_at": None}
+            ws.freeze_panes = cell_ref
+            self._save_wb(wb, path)
+            return {"frozen": True, "freeze_at": cell_ref}
+        finally:
+            wb.close()
+
+    def autofit_columns(self, workbook_id: str | None, sheet_name: str, target_range: str | None = None) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            if target_range and target_range not in {"__USED_RANGE__", "__ACTIVE_SELECTION__"}:
+                bounds = self._range_bounds(ws, target_range)
+            else:
+                max_row, max_col = self._used_bounds(ws)
+                bounds = (1, 1, max_row, max_col)
+            min_row, min_col, max_row, max_col = bounds
+            widths: dict[int, int] = {}
+            for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
+                for cell in row:
+                    text = "" if cell.value is None else str(cell.value)
+                    widths[cell.column] = max(widths.get(cell.column, 0), len(text))
+            for col_idx, width in widths.items():
+                ws.column_dimensions[get_column_letter(col_idx)].width = min(60, max(8, width + 2))
+            self._save_wb(wb, path)
+            return {"adjusted_columns": len(widths), "address": self._address_from_bounds(bounds)}
+        finally:
+            wb.close()
+
+    def define_named_range(
+        self, workbook_id: str | None, sheet_name: str, name: str, target_range: str
+    ) -> dict[str, Any]:
+        clean_name = str(name or "").strip()
+        if not clean_name or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]*", clean_name):
+            raise ExcelLiveError("define_named_range.name은 문자/밑줄로 시작하는 영문 식별자여야 합니다.")
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            bounds = self._range_bounds(ws, target_range)
+            address = self._address_from_bounds(bounds)
+            ref = f"'{ws.title}'!{self._absolute_ref(address)}"
+            if clean_name in wb.defined_names:
+                del wb.defined_names[clean_name]
+            wb.defined_names[clean_name] = DefinedName(clean_name, attr_text=ref)
+            self._save_wb(wb, path)
+            return {"name": clean_name, "ref": ref}
+        finally:
+            wb.close()
+
+    @staticmethod
+    def _absolute_ref(address: str) -> str:
+        left, _, right = address.partition(":")
+
+        def _abs(part: str) -> str:
+            m = re.fullmatch(r"([A-Z]+)(\d+)", part)
+            if not m:
+                return part
+            return f"${m.group(1)}${m.group(2)}"
+
+        return f"{_abs(left)}:{_abs(right)}" if right else _abs(left)
+
+    def set_print_area(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        *,
+        print_area: str | None = None,
+        orientation: str | None = None,
+        fit_to_page: bool | None = None,
+    ) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            if print_area:
+                bounds = self._range_bounds(ws, print_area)
+                resolved_area = self._address_from_bounds(bounds)
+                ws.print_area = resolved_area
+            else:
+                resolved_area = ws.print_area
+            if orientation:
+                normalized = str(orientation).strip().lower()
+                if normalized in {"landscape", "가로"}:
+                    ws.page_setup.orientation = "landscape"
+                elif normalized in {"portrait", "세로"}:
+                    ws.page_setup.orientation = "portrait"
+            if fit_to_page:
+                ws.sheet_properties.pageSetUpPr.fitToPage = True
+                ws.page_setup.fitToWidth = 1
+                ws.page_setup.fitToHeight = 1
+            self._save_wb(wb, path)
+            return {
+                "print_area": resolved_area,
+                "orientation": ws.page_setup.orientation,
+                "fit_to_page": bool(ws.sheet_properties.pageSetUpPr.fitToPage),
+            }
+        finally:
+            wb.close()
+
+    def add_cell_comment(
+        self, workbook_id: str | None, sheet_name: str, target_range: str, text: str, author: str = "OfficeClaw AI"
+    ) -> dict[str, Any]:
+        if not str(text or "").strip():
+            raise ExcelLiveError("add_cell_comment.text가 비어 있습니다.")
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            bounds = self._range_bounds(ws, target_range)
+            min_row, min_col, _, _ = bounds
+            # 메모는 셀 하나에 붙는 주석이라, 범위를 줘도 시작 셀 하나에만 적용한다 —
+            # 여러 셀에 같은 문구를 복제하면 사용자가 기대한 "이 셀에 메모"와 달라진다.
+            cell = ws.cell(row=min_row, column=min_col)
+            cell.comment = Comment(str(text), str(author or "OfficeClaw AI"))
+            self._save_wb(wb, path, value_changed_sheet=ws.title, changed_rows={min_row})
+            return {"address": cell.coordinate, "comment_added": True}
+        finally:
+            wb.close()
+
+    def apply_color_scale(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        target_range: str,
+        *,
+        min_color: str = "#F8696B",
+        mid_color: str = "#FFEB84",
+        max_color: str = "#63BE7B",
+    ) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            bounds = self._range_bounds(ws, target_range)
+            address = self._address_from_bounds(bounds)
+            rule = ColorScaleRule(
+                start_type="min",
+                start_color=self._to_argb(min_color),
+                mid_type="percentile",
+                mid_value=50,
+                mid_color=self._to_argb(mid_color),
+                end_type="max",
+                end_color=self._to_argb(max_color),
+            )
+            ws.conditional_formatting.add(address, rule)
+            self._save_wb(wb, path)
+            return {"address": address, "applied": True, "rule": "color_scale"}
+        finally:
+            wb.close()
+
+    def apply_data_bar(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        target_range: str,
+        *,
+        color: str = "#638EC6",
+    ) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            bounds = self._range_bounds(ws, target_range)
+            address = self._address_from_bounds(bounds)
+            rule = DataBarRule(
+                start_type="min",
+                end_type="max",
+                color=self._to_argb(color),
+            )
+            ws.conditional_formatting.add(address, rule)
+            self._save_wb(wb, path)
+            return {"address": address, "applied": True, "rule": "data_bar"}
+        finally:
+            wb.close()
+
+    def set_number_format(
+        self, workbook_id: str | None, sheet_name: str, target_range: str, format_code: str
+    ) -> dict[str, Any]:
+        code = str(format_code or "").strip()
+        if not code:
+            raise ExcelLiveError("set_number_format.format_code가 비어 있습니다.")
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            bounds = self._range_bounds(ws, target_range)
+            min_row, min_col, max_row, max_col = bounds
+            changed = 0
+            for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
+                for cell in row:
+                    cell.number_format = code
+                    changed += 1
+            self._save_wb(wb, path)
+            return {"formatted_cells": changed, "address": self._address_from_bounds(bounds), "format_code": code}
+        finally:
+            wb.close()
+
+    # ---- 미지원 기능 (앱 런타임 의존) ----
+
+    def refresh_power_query(self, workbook_id: str | None) -> dict[str, Any]:
+        raise ExcelLiveError(
+            "파일 편집 모드에서는 Power Query 새로고침을 할 수 없습니다. "
+            "Excel에서 파일을 연 뒤 다시 시도해 주세요."
+        )
+
+    def run_vba_macro(self, workbook_id: str | None, *, macro_name: str, args: list[Any] | None = None) -> dict[str, Any]:
+        raise ExcelLiveError(
+            "파일 편집 모드에서는 VBA 매크로를 실행할 수 없습니다. "
+            "Excel에서 파일을 연 뒤 다시 시도해 주세요."
+        )
+
+    def create_chart(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        source_range: str,
+        chart_type: str = "line",
+        title: str | None = None,
+        output_sheet: str | None = None,
+    ) -> dict[str, Any]:
+        """openpyxl 네이티브 차트를 만든다.
+
+        첫 열을 항목(카테고리), 나머지 숫자 열을 계열로 본다.
+        """
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            min_row, min_col, max_row, max_col = self._range_bounds(ws, source_range)
+            if max_row <= min_row or max_col < min_col:
+                raise ExcelLiveError("차트를 만들 데이터가 부족합니다. 머리글과 데이터 행이 필요합니다.")
+
+            kind = str(chart_type or "line").strip().lower()
+            aliases = {
+                "선": "line",
+                "꺾은선": "line",
+                "막대": "bar",
+                "column": "bar",
+                "원형": "pie",
+                "파이": "pie",
+                "분산형": "scatter",
+            }
+            kind = aliases.get(kind, kind)
+            if kind == "bar":
+                chart = BarChart()
+            elif kind == "pie":
+                chart = PieChart()
+            else:
+                kind = "line"
+                chart = LineChart()
+            chart.title = str(title or "데이터 차트")
+
+            categories = Reference(ws, min_col=min_col, min_row=min_row + 1, max_row=max_row)
+            value_min_col = min(min_col + 1, max_col)
+            if kind == "pie":
+                # 원형 차트는 계열이 하나여야 한다.
+                values = Reference(ws, min_col=value_min_col, min_row=min_row, max_row=max_row)
+            else:
+                values = Reference(
+                    ws,
+                    min_col=value_min_col,
+                    max_col=max_col,
+                    min_row=min_row,
+                    max_row=max_row,
+                )
+            chart.add_data(values, titles_from_data=True)
+            chart.set_categories(categories)
+
+            target_ws = ws
+            if output_sheet:
+                target_name = self._sanitize_sheet_name(output_sheet)
+                target_ws = (
+                    wb[target_name] if target_name in wb.sheetnames else wb.create_sheet(target_name)
+                )
+            anchor = f"{self._idx_to_col(max_col + 2)}{min_row}"
+            target_ws.add_chart(chart, anchor)
+            self._save_wb(wb, path)
+            return {
+                "created": True,
+                "chart_name": chart.title if isinstance(chart.title, str) else str(title or "데이터 차트"),
+                "chart_type": kind,
+                "sheet_name": target_ws.title,
+                "anchor": anchor,
+                "address": self._address_from_bounds((min_row, min_col, max_row, max_col)),
+            }
+        finally:
+            wb.close()
+
+    def pivot_table(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        source_range: str,
+        row_field: str | int,
+        value_field: str | int,
+        agg: str = "sum",
+        column_field: str | int | None = None,
+        output_sheet: str | None = None,
+        output_start: str = "A1",
+        has_header: bool = True,
+    ) -> dict[str, Any]:
+        payload = self.read_computed_range(workbook_id, sheet_name, source_range)
+        values = payload.get("values", [])
+        if not values:
+            raise ExcelLiveError("피벗 대상 데이터가 비어 있습니다.")
+        col_count = max(len(row) for row in values)
+        normalized = [list(row) + [None] * (col_count - len(row)) for row in values]
+        header = normalized[0] if has_header else [f"column_{i+1}" for i in range(col_count)]
+        body = normalized[1:] if has_header else normalized
+        if not body:
+            raise ExcelLiveError("피벗 대상 데이터가 비어 있습니다.")
+        row_idx = self._resolve_column_selector(row_field, 1, col_count, header)
+        val_idx = self._resolve_column_selector(value_field, 1, col_count, header)
+        col_idx = self._resolve_column_selector(column_field, 1, col_count, header) if column_field is not None else None
+        agg_name = str(agg or "sum").strip().lower()
+        if agg_name not in {"sum", "avg", "count"}:
+            agg_name = "sum"
+        self._require_computed_values(payload, [row_idx, val_idx, col_idx], header, "집계")
+
+        measures = [_as_number(row[val_idx]) if val_idx < len(row) else None for row in body]
+        if agg_name in {"sum", "avg"} and not any(m is not None for m in measures):
+            # 값 열이 날짜·문자열이면 더할 수 없다. 0을 채워 조용히 넘기면 사용자가 속는다.
+            raise ExcelLiveError(
+                f"'{header[val_idx]}' 열은 숫자가 아니라 {agg_name} 집계를 할 수 없습니다. "
+                f"(요청 value_field={value_field!r}, row_field={row_field!r})"
+            )
+
+        def summarize(numbers: list[float | None]) -> float | int:
+            present = [n for n in numbers if n is not None]
+            if agg_name == "count":
+                return len(present)
+            if not present:
+                return 0
+            total = sum(present)
+            return total / len(present) if agg_name == "avg" else total
+
+        if col_idx is None:
+            buckets: dict[tuple, list[float | None]] = {}
+            labels: dict[tuple, Any] = {}
+            for index, row in enumerate(body):
+                key = _group_key(row, [row_idx])
+                buckets.setdefault(key, []).append(measures[index])
+                labels.setdefault(key, row[row_idx] if row_idx < len(row) else None)
+            out_rows = [[str(header[row_idx]), f"{agg_name}_{header[val_idx]}"]]
+            for key in _sorted_group_keys(list(buckets)):
+                out_rows.append([labels[key], summarize(buckets[key])])
+        else:
+            cells: dict[tuple, dict[tuple, list[float | None]]] = {}
+            row_labels: dict[tuple, Any] = {}
+            col_labels: dict[tuple, Any] = {}
+            for index, row in enumerate(body):
+                rkey = _group_key(row, [row_idx])
+                ckey = _group_key(row, [col_idx])
+                row_labels.setdefault(rkey, row[row_idx] if row_idx < len(row) else None)
+                col_labels.setdefault(ckey, row[col_idx] if col_idx < len(row) else None)
+                cells.setdefault(rkey, {}).setdefault(ckey, []).append(measures[index])
+            ordered_cols = _sorted_group_keys(list(col_labels))
+            out_rows = [[str(header[row_idx]), *[col_labels[c] for c in ordered_cols]]]
+            for rkey in _sorted_group_keys(list(cells)):
+                line: list[Any] = [row_labels[rkey]]
+                for ckey in ordered_cols:
+                    found = cells[rkey].get(ckey)
+                    line.append(summarize(found) if found else 0)
+                out_rows.append(line)
+        sheet_name_out = output_sheet or sheet_name
+        written = self.write_range(
+            workbook_id=workbook_id,
+            sheet_name=sheet_name_out,
+            start_cell=output_start,
+            values_2d=out_rows,
+        )
+        return {
+            "created": True,
+            "address": written.get("address", output_start),
+            "rows": len(out_rows),
+            "cols": len(out_rows[0]) if out_rows else 0,
+            "sheet_name": sheet_name_out,
+            # 집계 전후 행 수. 그룹 기준을 잘못 잡아 "집계가 안 된" 결과를 걸러내는 데 쓴다.
+            "source_rows": len(body),
+        }
+
+    def validate_data(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        target_range: str,
+        checks: list[str] | None = None,
+        has_header: bool = True,
+        date_min: str | None = None,
+        date_max: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self.read_range(workbook_id, sheet_name, target_range)
+        values = payload.get("values", [])
+        if not values:
+            return {"address": str(payload.get("address", target_range)), "issues": [], "total_issues": 0}
+        col_count = max(len(row) for row in values)
+        normalized = [list(row) + [None] * (col_count - len(row)) for row in values]
+        rows = normalized[1:] if has_header else normalized
+        check_set = {str(c).strip().lower() for c in (checks or ["empty", "negative", "outlier"])}
+        address = str(payload.get("address", target_range))
+        min_col, min_row, _, _ = range_boundaries(address)
+        start_row = min_row + (1 if has_header else 0)
+        issues: list[dict[str, Any]] = []
+
+        if "empty" in check_set:
+            empty_cells: list[str] = []
+            for r_idx, row in enumerate(rows):
+                for c_idx, value in enumerate(row):
+                    if self._is_empty(value):
+                        empty_cells.append(f"{self._idx_to_col(min_col + c_idx)}{start_row + r_idx}")
+            issues.append({"type": "empty", "count": len(empty_cells), "samples": empty_cells[:20]})
+
+        if "negative" in check_set:
+            negative_cells: list[str] = []
+            for r_idx, row in enumerate(rows):
+                for c_idx, value in enumerate(row):
+                    num = self._as_float(value)
+                    if num is not None and num < 0:
+                        negative_cells.append(f"{self._idx_to_col(min_col + c_idx)}{start_row + r_idx}")
+            issues.append({"type": "negative", "count": len(negative_cells), "samples": negative_cells[:20]})
+
+        if "outlier" in check_set:
+            outlier_cells: list[str] = []
+            for c_idx in range(col_count):
+                numeric_values: list[tuple[int, float]] = []
+                for r_idx, row in enumerate(rows):
+                    num = self._as_float(row[c_idx] if c_idx < len(row) else None)
+                    if num is not None:
+                        numeric_values.append((r_idx, num))
+                if len(numeric_values) < 4:
+                    continue
+                mean = sum(v for _, v in numeric_values) / len(numeric_values)
+                variance = sum((v - mean) ** 2 for _, v in numeric_values) / len(numeric_values)
+                std = variance ** 0.5
+                if std <= 0:
+                    continue
+                for r_idx, value in numeric_values:
+                    z = abs((value - mean) / std)
+                    if z >= 3.0:
+                        outlier_cells.append(f"{self._idx_to_col(min_col + c_idx)}{start_row + r_idx}")
+            issues.append({"type": "outlier", "count": len(outlier_cells), "samples": outlier_cells[:20]})
+
+        if "date_range" in check_set and (date_min or date_max):
+            min_dt = self._parse_datetime_value(date_min) if date_min else None
+            max_dt = self._parse_datetime_value(date_max) if date_max else None
+            invalid_cells: list[str] = []
+            for r_idx, row in enumerate(rows):
+                for c_idx, value in enumerate(row):
+                    dt = self._parse_datetime_value(value)
+                    if dt is None:
+                        continue
+                    if min_dt and dt < min_dt:
+                        invalid_cells.append(f"{self._idx_to_col(min_col + c_idx)}{start_row + r_idx}")
+                        continue
+                    if max_dt and dt > max_dt:
+                        invalid_cells.append(f"{self._idx_to_col(min_col + c_idx)}{start_row + r_idx}")
+            issues.append({"type": "date_range", "count": len(invalid_cells), "samples": invalid_cells[:20]})
+
+        total = sum(int(item.get("count", 0) or 0) for item in issues)
+        return {"address": address, "issues": issues, "total_issues": total}
+
+    def protect_sheet(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        *,
+        password: str | None = None,
+        lock_formula_cells: bool = True,
+        unlock_range: str | None = None,
+    ) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            ws.protection.sheet = True
+            if password:
+                ws.protection.set_password(str(password))
+            unlocked = ""
+            if unlock_range:
+                bounds = self._range_bounds(ws, unlock_range)
+                min_row, min_col, max_row, max_col = bounds
+                for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
+                    for cell in row:
+                        cell.protection = cell.protection.copy(locked=False)
+                unlocked = self._address_from_bounds(bounds)
+            self._save_wb(wb, path)
+            return {
+                "protected": True,
+                "sheet_name": ws.title,
+                "lock_formula_cells": bool(lock_formula_cells),
+                "unlock_range": unlocked,
+            }
+        finally:
+            wb.close()
+
+    def find_duplicates(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        target_range: str,
+        key_columns: list[str | int] | None = None,
+        has_header: bool = True,
+        output_sheet: str | None = None,
+    ) -> dict[str, Any]:
+        """중복을 지우지 않고 "어디가 겹치는지"만 알려준다.
+
+        "중복 주문번호를 찾아줘"에 dedupe를 돌리면 사용자가 확인하기도 전에 행이 사라진다.
+        점검과 삭제는 위험도가 달라 별도 도구여야 한다.
+        """
+        payload = self.read_computed_range(workbook_id, sheet_name, target_range)
+        values = payload.get("values", [])
+        address = str(payload.get("address", target_range))
+        if not values:
+            return {"duplicate_groups": 0, "duplicate_rows": 0, "address": address, "samples": []}
+        col_count = max(len(row) for row in values)
+        normalized = [list(row) + [None] * (col_count - len(row)) for row in values]
+        header = normalized[0] if has_header else None
+        body = normalized[1:] if has_header else normalized
+        if not body:
+            return {"duplicate_groups": 0, "duplicate_rows": 0, "address": address, "samples": []}
+        if key_columns:
+            subset = [self._resolve_column_selector(col, 1, col_count, header) for col in key_columns]
+        else:
+            subset = list(range(col_count))
+        min_col, min_row, _max_col, _max_row = range_boundaries(address)
+        body_start = min_row + (1 if has_header else 0)
+
+        occurrences: dict[tuple, list[int]] = {}
+        for index, row in enumerate(body):
+            occurrences.setdefault(_group_key(row, subset), []).append(index)
+        repeated = {key: rows for key, rows in occurrences.items() if len(rows) > 1}
+        duplicate_rows = sum(len(rows) for rows in repeated.values())
+        samples: list[dict[str, Any]] = []
+        group_count = 0
+        for key in _sorted_group_keys(list(repeated)):
+            group_count += 1
+            if len(samples) < 20:
+                first_row = body[repeated[key][0]]
+                key_text = " / ".join(
+                    str(first_row[i]) if i < len(first_row) else "" for i in subset
+                )
+                samples.append(
+                    {
+                        "value": key_text,
+                        "count": len(repeated[key]),
+                        "rows": [body_start + i for i in repeated[key]][:10],
+                    }
+                )
+        result: dict[str, Any] = {
+            "duplicate_groups": group_count,
+            "duplicate_rows": duplicate_rows,
+            "address": address,
+            "key_columns": [
+                str(header[i]) if header and i < len(header) else self._idx_to_col(min_col + i)
+                for i in subset
+            ],
+            "samples": samples,
+        }
+        if output_sheet and duplicate_rows:
+            report: list[list[Any]] = [["중복값", "건수", "행번호"]]
+            for row in samples:
+                report.append([row["value"], row["count"], ", ".join(str(r) for r in row["rows"])])
+            written = self.write_range(workbook_id, output_sheet, "A1", report)
+            result["output_sheet"] = output_sheet
+            result["output_address"] = str(written.get("address", "A1"))
+        return result
+
+    def recalculate(self, workbook_id: str | None, sheet_name: str | None = None) -> dict[str, Any]:
+        """수식 캐시를 무효화해 Excel이 열 때 전부 다시 계산하도록 표시한다.
+
+        파일 편집 모드는 수식을 직접 계산하지 않는다. 대신 full_calc_on_load를 켜두면
+        사용자가 파일을 열었을 때 최신 데이터 기준으로 값이 다시 잡힌다.
+        """
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            formula_cells = 0
+            targets = [wb[sheet_name]] if sheet_name and sheet_name in wb.sheetnames else wb.worksheets
+            for ws in targets:
+                for row in ws.iter_rows():
+                    for cell in row:
+                        if isinstance(cell.value, str) and cell.value.startswith("="):
+                            formula_cells += 1
+            self._mark_full_recalc(wb)
+            self._save_wb(wb, path)
+            return {
+                "recalculated": True,
+                "formula_cells": formula_cells,
+                "sheets": [ws.title for ws in targets],
+                "workbook_id": str(path),
+            }
+        finally:
+            wb.close()
+
+    @staticmethod
+    def _pdf_target(path: Path, sheet_name: str | None, output_path: str | None) -> Path:
+        """PDF를 쓸 위치를 정한다.
+
+        플래너는 "dashboard_report.pdf"처럼 폴더 없는 이름을 곧잘 지어낸다. 그대로 쓰면
+        사이드카가 실행된 폴더에 떨어져, 사용자는 "저장했다"는 답만 받고 파일을 못 찾는다.
+        상대 경로는 언제나 통합문서 옆으로 되돌린다.
+        """
+        if output_path:
+            requested = Path(output_path)
+            return requested if requested.is_absolute() else path.parent / requested.name
+        if sheet_name:
+            safe = re.sub(r"[^\w가-힣.-]+", "_", sheet_name).strip("_") or "sheet"
+            return path.with_name(f"{path.stem}_{safe}.pdf")
+        return path.with_suffix(".pdf")
+
+    def export_pdf(
+        self,
+        workbook_id: str | None,
+        sheet_name: str | None = None,
+        output_path: str | None = None,
+    ) -> dict[str, Any]:
+        """시트를 PDF로 내보낸다. Excel이 설치된 Windows에서만 실제 변환이 가능하다."""
+        path = self._resolve_workbook_path(workbook_id)
+        target = self._pdf_target(path, sheet_name, output_path)
+        try:
+            import win32com.client  # type: ignore[import-not-found]
+        except Exception as exc:  # pragma: no cover - 플랫폼 의존
+            raise ExcelLiveError(
+                "PDF 내보내기는 Excel이 설치된 Windows에서만 됩니다. "
+                "다른 환경에서는 시트를 새 파일로 저장한 뒤 수동으로 내보내 주세요."
+            ) from exc
+
+        excel = win32com.client.DispatchEx("Excel.Application")
+        excel.Visible = False
+        excel.DisplayAlerts = False
+        try:
+            book = excel.Workbooks.Open(str(path))
+            try:
+                source = book.Worksheets(sheet_name) if sheet_name else book
+                source.ExportAsFixedFormat(0, str(target))
+            finally:
+                book.Close(SaveChanges=False)
+        except Exception as exc:  # pragma: no cover - 플랫폼 의존
+            raise ExcelLiveError(f"PDF 내보내기에 실패했습니다: {exc}") from exc
+        finally:
+            excel.Quit()
+        return {
+            "exported": True,
+            "pdf_path": str(target),
+            "sheet_name": sheet_name or "(전체)",
+            "workbook_id": str(path),
+        }
+
+    def compare_ranges(
+        self,
+        workbook_id: str | None,
+        *,
+        left_sheet: str,
+        left_range: str,
+        right_sheet: str,
+        right_range: str,
+        output_sheet: str | None = None,
+    ) -> dict[str, Any]:
+        left = self.read_range(workbook_id, left_sheet, left_range)
+        right = self.read_range(workbook_id, right_sheet, right_range)
+        lv = left.get("values", [])
+        rv = right.get("values", [])
+        rows = max(len(lv), len(rv))
+        cols = max(max((len(row) for row in lv), default=0), max((len(row) for row in rv), default=0))
+        diffs: list[list[Any]] = [["row", "col", "left_value", "right_value"]]
+        diff_count = 0
+        for r in range(rows):
+            for c in range(cols):
+                lval = lv[r][c] if r < len(lv) and c < len(lv[r]) else None
+                rval = rv[r][c] if r < len(rv) and c < len(rv[r]) else None
+                if str(lval) != str(rval):
+                    diff_count += 1
+                    diffs.append([r + 1, c + 1, lval, rval])
+        result: dict[str, Any] = {
+            "left_address": str(left.get("address", left_range)),
+            "right_address": str(right.get("address", right_range)),
+            "diff_cells": diff_count,
+            "sample_diffs": diffs[1:21],
+        }
+        if output_sheet:
+            written = self.write_range(workbook_id, output_sheet, "A1", diffs)
+            result["output_sheet"] = output_sheet
+            result["output_address"] = str(written.get("address", "A1"))
+        return result
+
+    def forecast_linear(
+        self,
+        workbook_id: str | None,
+        *,
+        sheet_name: str,
+        source_range: str,
+        horizon: int = 3,
+        output_sheet: str | None = None,
+        output_start: str = "A1",
+    ) -> dict[str, Any]:
+        payload = self.read_range(workbook_id, sheet_name, source_range)
+        values = payload.get("values", [])
+        series: list[float] = []
+        for row in values:
+            if not row:
+                continue
+            num = self._as_float(row[-1])
+            if num is not None:
+                series.append(num)
+        if len(series) < 2:
+            raise ExcelLiveError("예측을 위해 최소 2개 이상의 숫자 데이터가 필요합니다.")
+        n = len(series)
+        xs = list(range(1, n + 1))
+        sum_x = sum(xs)
+        sum_y = sum(series)
+        sum_xx = sum(x * x for x in xs)
+        sum_xy = sum(x * y for x, y in zip(xs, series))
+        denom = (n * sum_xx) - (sum_x * sum_x)
+        slope = ((n * sum_xy) - (sum_x * sum_y)) / denom if denom else 0.0
+        intercept = (sum_y - slope * sum_x) / n
+        horizon_n = max(1, min(36, int(horizon)))
+        out_rows: list[list[Any]] = [["step", "forecast"]]
+        for step in range(1, horizon_n + 1):
+            x = n + step
+            out_rows.append([x, slope * x + intercept])
+        target_sheet = output_sheet or sheet_name
+        written = self.write_range(workbook_id, target_sheet, output_start, out_rows)
+        return {
+            "created": True,
+            "sheet_name": target_sheet,
+            "address": str(written.get("address", output_start)),
+            "horizon": horizon_n,
+            "slope": slope,
+            "intercept": intercept,
+        }
+
+    def consolidate_sheets(
+        self,
+        workbook_id: str | None,
+        *,
+        source_sheets: list[str],
+        output_sheet: str = "통합결과",
+        include_header_once: bool = True,
+        add_source_sheet_col: bool = True,
+    ) -> dict[str, Any]:
+        if not source_sheets:
+            raise ExcelLiveError("source_sheets가 비어 있습니다.")
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            merged: list[list[Any]] = []
+            header_written = False
+            body_rows = 0
+            for source in source_sheets:
+                ws = self._sheet_or_raise(wb, source)
+                used = self._address_from_bounds((1, 1, *self._used_bounds(ws)))
+                payload = self.read_range(str(path), source, used)
+                values = payload.get("values", [])
+                if not values:
+                    continue
+                header = list(values[0])
+                body = values[1:] if len(values) > 1 else []
+                if include_header_once and not header_written:
+                    merged.append((["source_sheet"] if add_source_sheet_col else []) + header)
+                    header_written = True
+                elif not include_header_once:
+                    merged.append((["source_sheet"] if add_source_sheet_col else []) + header)
+                for row in body:
+                    merged.append(([source] if add_source_sheet_col else []) + list(row))
+                    body_rows += 1
+            if not merged:
+                raise ExcelLiveError("통합할 데이터가 없습니다.")
+            max_cols = max(len(row) for row in merged)
+            normalized = [row + [None] * (max_cols - len(row)) for row in merged]
+            written = self.write_range(str(path), output_sheet, "A1", normalized)
+            return {
+                "created": True,
+                "sheet_name": output_sheet,
+                "address": str(written.get("address", "A1")),
+                "rows": len(normalized),
+                "cols": max_cols,
+                "merged_rows": body_rows,
+            }
+        finally:
+            wb.close()
+
+    def consolidate_workbooks_from_folder(
+        self,
+        workbook_id: str | None,
+        *,
+        folder_path: str,
+        pattern: str = "*.xlsx",
+        source_sheet: str | None = None,
+        output_sheet: str = "파일통합결과",
+        include_header_once: bool = True,
+        add_source_file_col: bool = True,
+    ) -> dict[str, Any]:
+        root = Path(folder_path).expanduser()
+        if not root.exists() or not root.is_dir():
+            raise ExcelLiveError(f"유효하지 않은 폴더 경로: {folder_path}")
+        files = sorted(root.glob(pattern))
+        if not files:
+            raise ExcelLiveError("통합할 파일이 없습니다.")
+        merged: list[list[Any]] = []
+        header_written = False
+        merged_rows = 0
+        opened_count = 0
+        for fp in files:
+            if fp.name.startswith("~$"):
+                continue
+            try:
+                wb_in = self._load_wb(fp)
+            except Exception:
+                continue
+            opened_count += 1
+            try:
+                ws = wb_in[source_sheet] if source_sheet and source_sheet in wb_in.sheetnames else wb_in.active
+                used = self._address_from_bounds((1, 1, *self._used_bounds(ws)))
+                min_col, min_row, max_col, max_row = range_boundaries(used)
+                values: list[list[Any]] = []
+                for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
+                    values.append([cell.value for cell in row])
+                if not values:
+                    continue
+                header = list(values[0])
+                body = values[1:] if len(values) > 1 else []
+                if include_header_once and not header_written:
+                    merged.append((["source_file"] if add_source_file_col else []) + header)
+                    header_written = True
+                elif not include_header_once:
+                    merged.append((["source_file"] if add_source_file_col else []) + header)
+                for row in body:
+                    merged.append(([fp.name] if add_source_file_col else []) + list(row))
+                    merged_rows += 1
+            finally:
+                wb_in.close()
+        if not merged:
+            raise ExcelLiveError("파일에서 읽은 데이터가 없습니다.")
+        max_cols = max(len(row) for row in merged)
+        normalized = [row + [None] * (max_cols - len(row)) for row in merged]
+        written = self.write_range(workbook_id, output_sheet, "A1", normalized)
+        return {
+            "created": True,
+            "sheet_name": output_sheet,
+            "address": str(written.get("address", "A1")),
+            "rows": len(normalized),
+            "cols": max_cols,
+            "opened_files": opened_count,
+            "merged_rows": merged_rows,
+        }
+
+    def set_data_validation(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        *,
+        target_range: str,
+        validation_type: str = "list",
+        source: str | None = None,
+        minimum: float | None = None,
+        maximum: float | None = None,
+        allow_blank: bool = True,
+        show_error: bool = True,
+        error_message: str | None = None,
+    ) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            bounds = self._range_bounds(ws, target_range)
+            address = self._address_from_bounds(bounds)
+            vtype = str(validation_type or "list").strip().lower()
+            if vtype == "list":
+                formula1 = str(source or "").strip()
+                if not formula1:
+                    raise ExcelLiveError("list 유효성은 source가 필요합니다.")
+                dv = DataValidation(type="list", formula1=formula1, allow_blank=allow_blank)
+            elif vtype in {"whole", "decimal"}:
+                if minimum is None or maximum is None:
+                    raise ExcelLiveError("숫자 유효성은 minimum/maximum이 필요합니다.")
+                dv = DataValidation(
+                    type="whole" if vtype == "whole" else "decimal",
+                    operator="between",
+                    formula1=str(minimum),
+                    formula2=str(maximum),
+                    allow_blank=allow_blank,
+                )
+            else:
+                raise ExcelLiveError(f"지원하지 않는 validation_type: {validation_type}")
+            if error_message:
+                dv.error = str(error_message)
+            dv.showErrorMessage = bool(show_error)
+            ws.add_data_validation(dv)
+            dv.add(address)
+            self._save_wb(wb, path)
+            return {"applied": True, "address": address, "validation_type": vtype}
+        finally:
+            wb.close()

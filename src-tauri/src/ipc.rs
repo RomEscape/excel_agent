@@ -928,6 +928,135 @@ pub async fn excel_live_restore_last_backup(
     read_response(resp).await
 }
 
+// ── Harness 학습 루프 commands ──────────────────────────────────────────────
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri IPC 명령은 입력을 평면 인자로 받는 게 관례
+pub async fn harness_feedback(
+    state: State<'_, Mutex<SidecarState>>,
+    user_id: Option<String>,
+    session_id: Option<String>,
+    route: Option<String>,
+    message: Option<String>,
+    rating: String,
+    reason: Option<String>,
+    expected_action: Option<String>,
+    expected_behavior: Option<String>,
+) -> Result<String, String> {
+    let (url, client, token) = {
+        let s = state.lock().map_err(|e| e.to_string())?;
+        (
+            sidecar_url(&s, "/harness/feedback"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
+    };
+
+    let body = serde_json::json!({
+        "user_id": user_id,
+        "session_id": session_id,
+        "route": route.unwrap_or_else(|| "/excel-live/command".to_string()),
+        "message": message.unwrap_or_default(),
+        "rating": rating,
+        "reason": reason.unwrap_or_default(),
+        "expected_action": expected_action.unwrap_or_default(),
+        "expected_behavior": expected_behavior.unwrap_or_default(),
+    });
+
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(30))
+        .send()
+        .await
+        .map_err(|e| format!("하네스 피드백 저장 실패: {}", e))?;
+
+    read_response(resp).await
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri IPC 명령은 입력을 평면 인자로 받는 게 관례
+pub async fn harness_replay_failures(
+    state: State<'_, Mutex<SidecarState>>,
+    user_id: Option<String>,
+    session_id: Option<String>,
+    route: Option<String>,
+    limit: Option<i32>,
+    parse_timeout_seconds: Option<f64>,
+    min_gate_cases: Option<i32>,
+    min_gate_pass_rate: Option<f64>,
+) -> Result<String, String> {
+    let (url, client, token) = {
+        let s = state.lock().map_err(|e| e.to_string())?;
+        (
+            sidecar_url(&s, "/harness/replay-failures"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
+    };
+
+    let body = serde_json::json!({
+        "user_id": user_id,
+        "session_id": session_id,
+        "route": route.unwrap_or_else(|| "/excel-live/command".to_string()),
+        "limit": limit.unwrap_or(20),
+        "parse_timeout_seconds": parse_timeout_seconds.unwrap_or(10.0),
+        "min_gate_cases": min_gate_cases.unwrap_or(5),
+        "min_gate_pass_rate": min_gate_pass_rate.unwrap_or(0.7),
+    });
+
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(180))
+        .send()
+        .await
+        .map_err(|e| format!("하네스 실패 리플레이 실행 실패: {}", e))?;
+
+    read_response(resp).await
+}
+
+#[tauri::command]
+pub async fn harness_personalization(
+    state: State<'_, Mutex<SidecarState>>,
+    user_id: Option<String>,
+    session_id: Option<String>,
+) -> Result<String, String> {
+    let (url, client, token) = {
+        let s = state.lock().map_err(|e| e.to_string())?;
+        (
+            sidecar_url(&s, "/harness/personalization"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
+    };
+
+    let mut req = client.get(&url).bearer_auth(&token);
+    let mut query: Vec<(&str, String)> = Vec::new();
+    if let Some(user) = user_id {
+        if !user.trim().is_empty() {
+            query.push(("user_id", user));
+        }
+    }
+    if let Some(session) = session_id {
+        if !session.trim().is_empty() {
+            query.push(("session_id", session));
+        }
+    }
+    if !query.is_empty() {
+        req = req.query(&query);
+    }
+
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| format!("하네스 개인화 조회 실패: {}", e))?;
+
+    read_response(resp).await
+}
+
 // ── Document AI commands ────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -2111,7 +2240,13 @@ pub async fn open_workspace_file(path: String) -> Result<String, String> {
     let result = std::process::Command::new("open").arg(&target_str).status();
     #[cfg(target_os = "windows")]
     let result = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-Command", "Start-Process", "-FilePath", &target_str])
+        .args([
+            "-NoProfile",
+            "-Command",
+            "Start-Process",
+            "-FilePath",
+            &target_str,
+        ])
         .status();
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let result = std::process::Command::new("xdg-open")

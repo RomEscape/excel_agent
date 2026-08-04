@@ -4,6 +4,20 @@
 
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
+$LocalAppDataRoot = if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+    Join-Path $env:USERPROFILE "AppData\Local"
+} else {
+    $env:LOCALAPPDATA
+}
+$SidecarVenvPath = if (-not [string]::IsNullOrWhiteSpace($env:UV_PROJECT_ENVIRONMENT)) {
+    $env:UV_PROJECT_ENVIRONMENT.Trim()
+} else {
+    Join-Path $LocalAppDataRoot "officeclaw\venvs\python-sidecar"
+}
+$SidecarVenvParent = Split-Path -Parent $SidecarVenvPath
+if ($SidecarVenvParent -and -not (Test-Path $SidecarVenvParent)) {
+    New-Item -ItemType Directory -Force -Path $SidecarVenvParent | Out-Null
+}
 
 # 콘솔 UTF-8 강제 (한글 경로/로그 깨짐 방지)
 [Console]::InputEncoding  = [System.Text.UTF8Encoding]::new()
@@ -12,8 +26,10 @@ $OutputEncoding = [Console]::OutputEncoding
 chcp 65001 | Out-Null
 $env:PYTHONUTF8 = "1"
 $env:PYTHONIOENCODING = "utf-8"
+$env:UV_PROJECT_ENVIRONMENT = $SidecarVenvPath
 
 Write-Host "=== Office-Claw 로컬 스택 시작 (Ollama + Sidecar) ==="
+Write-Host "Python venv path: $SidecarVenvPath"
 
 # 1) Ollama (11434 미응답 시 백그라운드 기동)
 try {
@@ -45,10 +61,11 @@ try {
     Write-Host "Python sidecar 시작 (포트 $sidecarPort)..."
     $sidecarDir = Join-Path $ProjectRoot "python-sidecar"
     $sidecarJob = Start-Job -ScriptBlock {
-        param($dir)
+        param($dir, $venvPath)
         Set-Location $dir
+        $env:UV_PROJECT_ENVIRONMENT = $venvPath
         uv run python -m office_claw_sidecar --port 19532
-    } -ArgumentList $sidecarDir
+    } -ArgumentList $sidecarDir, $SidecarVenvPath
     $ready = $false
     for ($i = 0; $i -lt 30; $i++) {
         Start-Sleep -Milliseconds 500
@@ -69,7 +86,7 @@ try {
                 Write-Host "----------------------------"
             }
         } catch { }
-        throw "Sidecar 시작 실패. 수동 실행: cd python-sidecar; uv run python -m office_claw_sidecar --port 19532"
+        throw "Sidecar 시작 실패. 수동 실행: `$env:UV_PROJECT_ENVIRONMENT='$SidecarVenvPath'; cd python-sidecar; uv run python -m office_claw_sidecar --port 19532"
     }
 }
 

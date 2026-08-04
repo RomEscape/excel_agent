@@ -10,6 +10,8 @@
     "preview": "vite preview",
     "tauri:dev": "tauri dev",
     "test:unit": "node --test src/lib/*.test.js src/lib/localStack/*.test.js",
+    "devlog:auto": "cd python-sidecar && uv run python scripts/append_devlog_from_reports.py --devlog ../개발일지.md --complex-report ../logs/excel_complex_verify_report.json --release-gate ../logs/eval_release_gate.json --from-staged",
+    "devlog:check": "node ./scripts/check-devlog-update.mjs --staged",
     "setup:win": "powershell -ExecutionPolicy Bypass -File ./scripts/setup.ps1",
     "setup:unix": "bash ./scripts/setup.sh",
     "prepare": "lefthook install"

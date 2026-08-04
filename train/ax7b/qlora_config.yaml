@@ -1,0 +1,45 @@
+run_name: ax7b-planner-qlora-v1
+seed: 42
+
+# 학습 입력
+train_jsonl: datasets/train/ax7b_planner_sft_train.jsonl
+output_dir: artifacts/ax7b-planner-lora
+
+# 베이스 모델 (HF Transformers 원본)
+base_model: skt/A.X-4.0-Light
+
+# 토크나이저/시퀀스 (명령문+JSON 플랜 조합은 대부분 300토큰 이하라 2048은 과함 -> 낭비 컴퓨트 축소)
+max_seq_length: 768
+
+# QLoRA
+load_in_4bit: true
+bnb_4bit_quant_type: nf4
+bnb_4bit_compute_dtype: bfloat16
+bnb_4bit_use_double_quant: true
+lora_r: 64
+lora_alpha: 128
+lora_dropout: 0.05
+target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj
+
+# Trainer (729건 x 3epoch, effective batch 8)
+num_train_epochs: 3
+learning_rate: 2.0e-4
+weight_decay: 0.01
+warmup_ratio: 0.03
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+logging_steps: 10
+save_steps: 90
+save_total_limit: 3
+gradient_checkpointing: true
+bf16: true
+fp16: false
+optim: paged_adamw_8bit
+

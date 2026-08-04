@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from abc import ABC, abstractmethod
 
 from office_claw_sidecar.config import get_data_dir
@@ -59,6 +60,30 @@ def save_llm_config(config: dict) -> None:
     logger.info("LLM config saved: provider=%s model=%s", config.get("provider"), config.get("model"))
 
 
+def get_planner_model_name(*, fallback: str | None = None) -> str:
+    """
+    Excel 플래너 전용 모델명을 반환한다.
+    우선순위:
+      1) OFFICECLAW_PLANNER_MODEL 환경변수
+      2) llm_config.json의 planner_model
+      3) llm_config.json의 model
+      4) fallback / 기본값
+    """
+    env_model = str(os.getenv("OFFICECLAW_PLANNER_MODEL", "")).strip()
+    if env_model:
+        return env_model
+    cfg = load_llm_config()
+    cfg_planner = str(cfg.get("planner_model", "") or "").strip()
+    if cfg_planner:
+        return cfg_planner
+    cfg_model = str(cfg.get("model", "") or "").strip()
+    if cfg_model:
+        return cfg_model
+    if fallback:
+        return str(fallback).strip()
+    return str(_DEFAULT_CONFIG.get("model", "") or "").strip()
+
+
 # ── Abstract provider ─────────────────────────────────────────────────────
 
 
@@ -66,7 +91,9 @@ class LLMProvider(ABC):
     """Common interface for all LLM backends."""
 
     @abstractmethod
-    async def chat(self, messages: list[dict], model: str | None = None) -> str:
+    async def chat(
+        self, messages: list[dict], model: str | None = None, temperature: float | None = None
+    ) -> str:
         """
         Send a list of messages and return the assistant reply as a string.
 
@@ -95,11 +122,15 @@ class OllamaProvider(LLMProvider):
     def provider_name(self) -> str:
         return "ollama"
 
-    async def chat(self, messages: list[dict], model: str | None = None) -> str:
+    async def chat(
+        self, messages: list[dict], model: str | None = None, temperature: float | None = None
+    ) -> str:
         # 전체 대화 히스토리를 그대로 Ollama에 전달 (멀티턴 지원)
         cfg = load_llm_config()
         default_model = str(cfg.get("model") or get_default_llm_config()["model"])
-        return await self._svc.chat_messages(messages, model=model or default_model)
+        return await self._svc.chat_messages(
+            messages, model=model or default_model, temperature=temperature
+        )
 
 
 class ClaudeProvider(LLMProvider):
@@ -112,7 +143,9 @@ class ClaudeProvider(LLMProvider):
     def provider_name(self) -> str:
         return "claude"
 
-    async def chat(self, messages: list[dict], model: str | None = None) -> str:
+    async def chat(
+        self, messages: list[dict], model: str | None = None, temperature: float | None = None
+    ) -> str:
         # 전체 대화 히스토리를 그대로 Claude에 전달 (멀티턴 지원)
         return await self._svc.chat_messages(messages, model=model)
 
@@ -138,9 +171,15 @@ class LLMService:
     def current_provider(self) -> str:
         return self._provider.provider_name
 
-    async def chat(self, messages: list[dict], model: str | None = None) -> str:
-        """Send messages to the active provider and return the reply."""
-        return await self._provider.chat(messages, model=model)
+    async def chat(
+        self, messages: list[dict], model: str | None = None, temperature: float | None = None
+    ) -> str:
+        """Send messages to the active provider and return the reply.
+
+        temperature를 주면 그대로 넘긴다. 계획 수립처럼 같은 입력에 같은 답이 나와야 하는
+        호출은 0을 쓴다 — 기본 샘플링(0.8)에서는 같은 문장이 실행마다 다른 계획이 된다.
+        """
+        return await self._provider.chat(messages, model=model, temperature=temperature)
 
 
 # ── Singleton factory ─────────────────────────────────────────────────────

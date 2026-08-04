@@ -5,6 +5,7 @@ mod keyring_svc;
 mod ollama;
 mod openclaw;
 mod openclaw_cli;
+mod shell;
 mod sidecar;
 mod tray;
 
@@ -80,6 +81,9 @@ pub fn run() {
             ipc::excel_live_save_workbook,
             ipc::excel_live_list_backups,
             ipc::excel_live_restore_last_backup,
+            ipc::harness_feedback,
+            ipc::harness_replay_failures,
+            ipc::harness_personalization,
             ipc::document_generate,
             ipc::document_export_docx,
             ipc::document_export_pdf,

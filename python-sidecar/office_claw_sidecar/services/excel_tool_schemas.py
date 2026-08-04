@@ -132,7 +132,7 @@ class CalculateColumnStatParams(BaseModel):
 
 
 class FilterRowsParams(BaseModel):
-    """조건에 맞는 데이터 행만 남기고 나머지 행을 시트에서 제거합니다. 예: '매출 열에서 500만 이상인 행만 남겨줘' → column='매출', operator='>=', value=5000000. 첫 행은 머리글로 유지됩니다."""
+    """조건으로 데이터 행을 걸러 시트에서 실제로 지웁니다. '매출 500만 이상인 행만 남겨줘'는 mode='keep', '취소된 주문은 빼줘'는 mode='remove'. 첫 행은 머리글로 유지됩니다."""
 
     column: str = Field(
         ..., description="조건을 검사할 열의 머리글 이름(예: '매출') 또는 열 문자(예: 'B')"
@@ -143,6 +143,13 @@ class FilterRowsParams(BaseModel):
     )
     value: float | str = Field(
         ..., description="비교 기준값 (예: 5000000 또는 '서울')"
+    )
+    mode: Literal["keep", "remove"] | None = Field(
+        None,
+        description=(
+            "keep(기본): 조건에 맞는 행만 남기고 나머지를 지움. "
+            "remove: 조건에 맞는 행을 지움 — '빼줘/제외해줘/없애줘'처럼 제외를 요청할 때"
+        ),
     )
     sheet_name: str | None = Field(None, description=_SHEET_DESC)
 

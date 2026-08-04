@@ -23,6 +23,8 @@ pre-commit:
     frontend-lint:
       glob: "src/**/*.{ts,tsx,js,jsx}"
       run: npm run lint --if-present
+    devlog-guard:
+      run: cd python-sidecar && uv run python scripts/append_devlog_from_reports.py --devlog ../개발일지.md --complex-report ../logs/excel_complex_verify_report.json --release-gate ../logs/eval_release_gate.json --from-staged --skip-if-devlog-staged && node ../scripts/check-devlog-update.mjs --staged
 
 pre-push:
   parallel: true

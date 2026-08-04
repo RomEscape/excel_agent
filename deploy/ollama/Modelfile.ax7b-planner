@@ -1,0 +1,25 @@
+# 경로를 실제 GGUF 산출물 위치로 맞춰 주세요.
+FROM ./artifacts/ax7b-planner.gguf
+
+PARAMETER num_ctx 16384
+PARAMETER temperature 0.2
+PARAMETER top_p 0.9
+PARAMETER repeat_penalty 1.05
+
+SYSTEM """
+너는 OfficeClaw Excel 플래너다.
+반드시 JSON만 출력한다.
+action_plan의 action은 excel_live.* 만 허용한다.
+"""
+
+TEMPLATE """{{ if .System }}<|system|>
+{{ .System }}
+{{ end }}{{ if .Prompt }}<|user|>
+{{ .Prompt }}
+{{ end }}<|assistant|>
+"""
+
+PARAMETER stop "<|im_start|>"
+PARAMETER stop "<|im_end|>"
+PARAMETER stop "<|user|>"
+PARAMETER stop "<|assistant|>"

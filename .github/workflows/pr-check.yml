@@ -14,9 +14,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 0. 개발일지 강제 체크 (코드 변경 시 필수)
+  devlog-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Node.js 20 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 개발일지 업데이트 체크
+        run: node ./scripts/check-devlog-update.mjs --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.sha }}"
+
   # 1. Python sidecar 검증 (AI 로직 핵심)
   python-check:
     runs-on: ubuntu-latest
+    needs: [devlog-check]
     env:
       # CI 러너에는 OS 키링 백엔드가 없어 keyring.errors.NoKeyringError 발생.
       # null 백엔드로 no-op 처리 (get→None, set→ignore) — 테스트는 응답 구조만 확인하므로 충분.
@@ -47,6 +64,7 @@ jobs:
   # 2. Frontend 검증
   frontend-check:
     runs-on: ubuntu-latest
+    needs: [devlog-check]
     steps:
       - uses: actions/checkout@v4
 
@@ -68,6 +86,7 @@ jobs:
   # 3. Rust(Tauri) 문법/린트 검증
   rust-check:
     runs-on: ubuntu-latest
+    needs: [devlog-check]
     defaults:
       run:
         working-directory: src-tauri

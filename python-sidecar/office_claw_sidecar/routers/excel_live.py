@@ -1,25 +1,35 @@
 """Excel Live 라우터 — 자연어 기반 실시간 Excel(COM) 제어 API."""
 
 from __future__ import annotations
+
 import asyncio
 import os
+import re
 import threading
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-import re
 from typing import Any
-import time
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from office_claw_sidecar.models.approval import ApprovalRequest, ApprovalResponse
 from office_claw_sidecar.services.audit_service import AuditService
-from office_claw_sidecar.services.excel_live_agent import extract_create_table_slot_hints
-from office_claw_sidecar.services.excel_live_agent import parse_excel_live_command
-from office_claw_sidecar.services.excel_live_agent import parse_command_plan_with_llm
-from office_claw_sidecar.services.excel_live_agent import parse_command_rule_based
+from office_claw_sidecar.services.excel_actions import execute_excel_action
+from office_claw_sidecar.services.excel_header_lexicon import (
+    find_header_mentions,
+    resolve_header,
+)
+from office_claw_sidecar.services.excel_live_agent import (
+    COLUMN_LETTER_PATTERN,
+    RANGE_REF_PATTERN,
+    extract_create_table_slot_hints,
+    parse_command_plan_with_llm,
+    parse_command_rule_based,
+    parse_excel_live_command,
+)
 from office_claw_sidecar.services.excel_live_executor import (
     PlanStep,
     execute_plan,
@@ -43,8 +53,26 @@ from office_claw_sidecar.services.excel_live_service import (
     get_excel_live_service,
 )
 from office_claw_sidecar.services.excel_live_table_presets import get_table_preset
+from office_claw_sidecar.services.excel_param_binder import (
+    bind_plan_steps,
+    resolve_sheet_from_message,
+    sheet_entry,
+)
+from office_claw_sidecar.services.excel_result_verifier import verify_effect
+from office_claw_sidecar.services.excel_workbook_digest import (
+    build_workbook_digest,
+    invalidate_digest_cache,
+    render_workbook_digest,
+)
+from office_claw_sidecar.services.korean_number import (
+    parse_condition as parse_korean_condition,
+)
 from office_claw_sidecar.services.llm_service import LLMService, get_llm_service
 from office_claw_sidecar.services.tool_registry import PermissionLevel, get_tool
+from office_claw_sidecar.services.user_harness_service import (
+    build_personalization_prompt,
+    resolve_user_key,
+)
 
 router = APIRouter(tags=["excel-live"])
 _audit = AuditService()
@@ -52,6 +80,7 @@ _audit = AuditService()
 
 class ExcelLiveCommandRequest(BaseModel):
     message: str = Field(..., min_length=1, description="자연어 엑셀 명령")
+    user_id: str | None = Field(None, description="사용자 식별자(개인화 하네스 키)")
     workbook_id: str | None = Field(None, description="대상 통합문서 ID")
     sheet_name: str | None = Field(None, description="대상 시트명 (생략 시 active sheet)")
     session_id: str | None = Field(None, description="채팅 세션 ID (멀티턴 슬롯필링 상태 식별)")
@@ -130,6 +159,8 @@ _pending_approvals: dict[str, PendingExcelApproval] = {}
 _pending_create_table_slots: dict[str, PendingCreateTableSlots] = {}
 _pending_operation_slots: dict[str, PendingExcelOperationSlots] = {}
 _recent_range_by_workbook: dict[str, str] = {}
+# 세션별 직전 집계 결과 시트. "그 결과로 그래프도" 같은 다음 턴이 원본 대신 집계표를 그리게 한다.
+_last_aggregate_sheet: dict[str, str] = {}
 _SLOT_TTL_SECONDS = 300
 
 
@@ -190,6 +221,96 @@ _SKIP_BACKUP_ACTIONS = {
     "excel_live.save_workbook",
 }
 _RECOVERY_BACKUP_ACTIONS = {name for name in EDIT_ACTIONS if name not in _SKIP_BACKUP_ACTIONS}
+# "표/테이블을 만들어" 계열 요청인지 판정한다. 범위가 명시돼도 이 말이 있으면 표 생성이 맞다.
+_TABLE_KEYWORD_PATTERN = re.compile(r"(표|테이블|table|양식|서식지)", re.IGNORECASE)
+
+# 액션별로 "사용자가 이런 말을 했어야 이 액션이 나올 수 있다"는 최소 근거.
+# 플래너는 모호할 때 그럴듯한 다른 액션으로 새는 일이 잦은데,
+# 근거 없는 선택을 그대로 실행하면 사용자는 시키지 않은 색칠·표 생성을 보게 된다.
+_ACTION_EVIDENCE: dict[str, re.Pattern[str]] = {
+    "excel_live.create_table": re.compile(r"(표|테이블|table|양식|서식지)", re.IGNORECASE),
+    "excel_live.fill_range": re.compile(r"(색|칠|배경|하이라이트|highlight|color|음영)", re.IGNORECASE),
+    # 조건 표현(이상·미만)만으로는 근거가 되지 않는다. 수식·필터도 같은 말을 쓴다.
+    "excel_live.highlight_by_condition": re.compile(
+        r"(조건부|색|칠|강조|highlight|표시해|눈에)", re.IGNORECASE
+    ),
+    "excel_live.apply_border": re.compile(r"(테두리|괘선|border|윤곽|선을|선 )", re.IGNORECASE),
+    "excel_live.protect_sheet": re.compile(r"(보호|잠금|잠가|protect|수정 ?못)", re.IGNORECASE),
+    "excel_live.find_duplicates": re.compile(r"(중복|duplicate|겹치)", re.IGNORECASE),
+    "excel_live.export_pdf": re.compile(r"(pdf|인쇄|출력물)", re.IGNORECASE),
+    "excel_live.recalculate": re.compile(r"(갱신|새로고침|재계산|업데이트|refresh|recalc)", re.IGNORECASE),
+    "excel_live.run_vba_macro": re.compile(r"(매크로|vba|macro)", re.IGNORECASE),
+    "excel_live.refresh_power_query": re.compile(
+        r"(파워\s*쿼리|power\s*query|쿼리|갱신|새로고침|refresh)", re.IGNORECASE
+    ),
+    "excel_live.consolidate_workbooks_from_folder": re.compile(
+        r"(폴더|파일들|여러 파일|통합|합쳐|모아)", re.IGNORECASE
+    ),
+    "excel_live.create_chart": re.compile(r"(차트|그래프|chart|graph|시각화)", re.IGNORECASE),
+    "excel_live.sort_range": re.compile(r"(정렬|sort|오름|내림|순으로|순서대로)", re.IGNORECASE),
+    "excel_live.filter_rows": re.compile(r"(필터|filter|만 남|만 보|추출|골라)", re.IGNORECASE),
+    "excel_live.dedupe_rows": re.compile(r"(중복|dedupe|duplicate)", re.IGNORECASE),
+    "excel_live.pivot_table": re.compile(r"(피벗|pivot|집계|요약)", re.IGNORECASE),
+    "excel_live.forecast_linear": re.compile(r"(예측|추세|forecast|전망)", re.IGNORECASE),
+    "excel_live.compare_ranges": re.compile(r"(비교|차이|diff|대조)", re.IGNORECASE),
+    "excel_live.consolidate_sheets": re.compile(r"(통합|합쳐|병합|모아)", re.IGNORECASE),
+    "excel_live.protect_sheet": re.compile(r"(보호|잠금|잠가|protect|수정 ?못)", re.IGNORECASE),
+    "excel_live.set_data_validation": re.compile(
+        r"(드롭다운|유효성|목록|제한|validation|선택되도록)", re.IGNORECASE
+    ),
+    "excel_live.verify_formula_result": re.compile(r"(검증|확인|검사|verify|점검)", re.IGNORECASE),
+    "excel_live.clear_range": re.compile(r"(지워|삭제|비워|clear|초기화)", re.IGNORECASE),
+}
+
+
+# 계획 앞뒤에 붙는 준비·마무리 동작. 사용자가 말하지 않아도 따라붙는 게 정상이다.
+_PREPARATION_ACTIONS = {
+    "excel_live.list_workbooks",
+    "excel_live.select_workbook",
+    "excel_live.list_sheets",
+    "excel_live.select_sheet",
+    "excel_live.create_sheet",
+    "excel_live.read_range",
+    "excel_live.save_workbook",
+}
+# 값·수식을 넣는 건 "무엇을 넣을지"가 파라미터에 들어 있어야만 실행된다.
+# 표현이 워낙 다양해서(써줘/넣어/fill/set) 단어로 거르면 정상 요청까지 막힌다.
+_UNGATED_EDIT_ACTIONS = {
+    "excel_live.write_range",
+    "excel_live.set_formula",
+    "excel_live.verify_formula_result",
+}
+
+
+def _action_lacks_evidence(action: str, message: str) -> bool:
+    """사용자가 시키지 않은 편집을 걸러낸다.
+
+    근거 표를 빠뜨린 액션(과거 apply_border가 그랬다)은 무조건 통과해 버려서
+    "테두리 그려달라고 한 적 없는데 전체에 선이 그어지는" 사고가 났다.
+    그래서 편집 액션은 근거 규칙이 없으면 근거 없음으로 본다.
+    """
+    name = str(action or "")
+    pattern = _ACTION_EVIDENCE.get(name)
+    if pattern is not None:
+        return not pattern.search(str(message or ""))
+    if name in _PREPARATION_ACTIONS or name in _UNGATED_EDIT_ACTIONS:
+        return False
+    return name in EDIT_ACTIONS
+# 기준 열을 못 정한 채 실행하면 데이터가 조용히 뒤섞이는 액션들.
+_AMBIGUITY_SENSITIVE_SLOTS = {
+    ("excel_live.sort_range", "key_column"),
+    ("excel_live.dedupe_rows", "key_columns"),
+    ("excel_live.create_chart", "chart_type"),
+}
+_CHART_TYPE_MENTION = re.compile(
+    r"(선\s*그래프|꺾은|라인|line|막대|bar|원형|파이|pie|영역|area|분산|scatter)", re.IGNORECASE
+)
+# 계획 끝에 관례적으로 붙는 마무리 단계. 응답 액션으로 보고하면 실제 작업이 가려진다.
+_ANCILLARY_REPORT_ACTIONS = {
+    "excel_live.save_workbook",
+    "excel_live.select_sheet",
+    "excel_live.select_workbook",
+}
 _ROLLBACK_SNAPSHOT_ACTIONS = {
     "excel_live.write_range",
     "excel_live.clear_range",
@@ -290,6 +411,31 @@ def _resolve_sheet_name(service, workbook_id: str | None, sheet_name: str | None
             if row["workbook_id"].lower() == lowered or row["name"].lower() == lowered:
                 return row.get("active_sheet") or "Sheet1"
     return rows[0].get("active_sheet") or "Sheet1"
+
+
+def _split_sheet_qualified_range(service, workbook_id: str | None, range_ref: str) -> tuple[str, str]:
+    """`Sheet!A1:B2` 를 (시트명, `A1:B2`)로 나눈다.
+
+    플래너는 범위를 시트까지 붙여 말하는 경우가 있는데, 셀 범위 파서는 접두어를 모른다.
+    그대로 넘기면 "데이터가 비어 있다"는 엉뚱한 실패가 된다. 접두어가 실제 시트일 때만
+    시트로 인정하고, 아니면 접두어만 떼어 낸다.
+    """
+    text = str(range_ref or "").strip()
+    if "!" not in text:
+        return "", text
+    prefix, _, cell_part = text.rpartition("!")
+    cell_part = cell_part.strip()
+    if not cell_part:
+        return "", text
+    prefix = prefix.strip().strip("'\"")
+    try:
+        sheets = service.list_sheets(workbook_id).get("sheets", [])
+    except Exception:
+        sheets = []
+    for name in sheets:
+        if str(name).strip().lower() == prefix.lower():
+            return str(name), cell_part
+    return "", cell_part
 
 
 def _resolve_workbook_id(service, workbook_id: str | None) -> str:
@@ -604,24 +750,11 @@ def _quick_extract_colors(text: str) -> list[str]:
 
 def _quick_parse_condition(text: str) -> tuple[str, float] | None:
     lowered = str(text or "").lower()
-    sym_match = re.search(r"(>=|<=|>|<|==|!=)\s*(-?\d+(?:\.\d+)?)", lowered)
-    if sym_match:
-        return sym_match.group(1), float(sym_match.group(2))
-
-    text_match = re.search(
-        r"(-?\d+(?:\.\d+)?)\s*(이상|초과|이하|미만|같지 않음|같음)",
-        lowered,
-    )
-    if text_match:
-        op_map = {
-            "이상": ">=",
-            "초과": ">",
-            "이하": "<=",
-            "미만": "<",
-            "같음": "==",
-            "같지 않음": "!=",
-        }
-        return op_map.get(text_match.group(2), ">="), float(text_match.group(1))
+    # "10만 원 미만"처럼 단위가 낀 임계값은 전용 파서가 맡는다(숫자만 보면 10이 된다).
+    parsed = parse_korean_condition(lowered)
+    if parsed is not None:
+        operator, amount, _percent = parsed
+        return operator, amount
 
     than_match = re.search(
         r"(-?\d+(?:\.\d+)?)\s*보다\s*(크거나\s*같|작거나\s*같|큰|작은|크|작)",
@@ -641,6 +774,97 @@ def _quick_parse_condition(text: str) -> tuple[str, float] | None:
         if op:
             return op, float(than_match.group(1))
     return None
+
+
+# "현재고가 재주문점 이하" — 숫자 없이 두 열을 견주는 조건.
+# "보다 적거나 같은"처럼 구어체 비교도 같은 뜻이라 함께 받는다.
+_COLUMN_COMPARISON_PATTERN = re.compile(
+    r"[가-힣A-Za-z_][가-힣A-Za-z0-9_ ]{0,12}\s*(?:이|가)\s*"
+    r"[가-힣A-Za-z_][가-힣A-Za-z0-9_ ]{0,12}\s*"
+    r"(?:이하|이상|미만|초과|보다\s*(?:작|크|적|많|낮|높))"
+)
+
+
+# "이 파일에 시트가 뭐뭐 있어?" — 목록이라는 단어 없이 묻는 쪽이 더 흔하다.
+# 플래너는 "파일"에 끌려 list_workbooks를 고르곤 한다.
+_SHEET_INVENTORY_QUESTION = re.compile(
+    r"(?:시트|탭|sheet)[가는은이]?\s*(?:뭐|무슨|어떤|몇|얼마나|어떻게)"
+    r"|(?:무슨|어떤|몇\s*개의?)\s*(?:시트|탭|sheet)",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_column_comparison(text: str) -> bool:
+    match = _COLUMN_COMPARISON_PATTERN.search(str(text or ""))
+    return bool(match) and not re.search(r"\d", match.group(0))
+
+
+# fast path로 보내면 조건이 통째로 사라지는 액션들. "100만 미만은 빨갛게"가
+# fill_range로 가면 조건을 잃고 열 전체를 칠한다.
+_CONDITION_SENSITIVE_QUICK_ACTIONS = frozenset(
+    {
+        "excel_live.fill_range",
+        "excel_live.clear_range",
+        "excel_live.apply_border",
+    }
+)
+# "수식 채워줘"의 "채워"가 색 채우기 규칙에 먼저 잡힌다.
+_FORMULA_SENSITIVE_QUICK_ACTIONS = frozenset({"excel_live.fill_range", "excel_live.write_range"})
+_FORMULA_MENTION_PATTERN = re.compile(r"(수식|함수|계산식|formula)", re.IGNORECASE)
+# "지역별 매출 얼마", "채널 카테고리 교차표" — 집계 요청인데 표 만들기·정렬로 샌다.
+_AGGREGATE_SENSITIVE_QUICK_ACTIONS = frozenset(
+    {
+        "excel_live.create_table",
+        "excel_live.write_range",
+        "excel_live.fill_range",
+        "excel_live.sort_range",
+    }
+)
+_AGGREGATE_REQUEST_PATTERN = re.compile(
+    r"(교차표|피벗|pivot)"
+    r"|별\s*(?:로|은|는)?[^\n]{0,20}?(합계|집계|평균|순위|총액|총합|건수|얼마|요약|실적)",
+    re.IGNORECASE,
+)
+
+
+def _message_states_condition(text: str) -> bool:
+    """"매출이 100만도 안 되는 건"처럼 대상을 좁히는 조건이 붙었는지."""
+    message = str(text or "")
+    return _quick_parse_condition(message) is not None or _looks_like_column_comparison(message)
+
+
+def _quick_plan_underfits_message(quick_first_action: str, text: str) -> bool:
+    """규칙이 고른 액션으로는 문장이 요구하는 것을 표현할 수 없는지.
+
+    규칙은 동사 하나(칠해/채워/만들어)만 보고 액션을 정한다. 조건·수식·집계처럼
+    목적어 쪽에 뜻이 실린 문장은 여기서 걸러 플래너로 넘긴다.
+    """
+    message = str(text or "")
+    if quick_first_action in _CONDITION_SENSITIVE_QUICK_ACTIONS and _message_states_condition(message):
+        return True
+    if quick_first_action in _FORMULA_SENSITIVE_QUICK_ACTIONS and _FORMULA_MENTION_PATTERN.search(message):
+        return True
+    if quick_first_action in _PREPARATION_ONLY_QUICK_ACTIONS and _message_asks_for_more_work(message):
+        return True
+    return quick_first_action in _AGGREGATE_SENSITIVE_QUICK_ACTIONS and bool(
+        _AGGREGATE_REQUEST_PATTERN.search(message)
+    )
+
+
+# 시트를 만들거나 고르는 건 보통 본 작업의 준비 단계다. 규칙이 이걸 계획 전체로 삼으면
+# "Summary 시트 만들어서 B1에 합계 수식 넣어줘"가 빈 시트 하나만 남기고 끝난다.
+_PREPARATION_ONLY_QUICK_ACTIONS = frozenset(
+    {"excel_live.create_sheet", "excel_live.select_sheet", "excel_live.select_workbook"}
+)
+_FOLLOW_UP_WORK_PATTERN = re.compile(
+    r"(써|쓰고|쓴|적어|입력|넣어|기입|채워|계산|합계|집계|정렬|필터|복사|옮겨|만들어서|하고\s|한\s*다음|후에|그리고)",
+    re.IGNORECASE,
+)
+
+
+def _message_asks_for_more_work(text: str) -> bool:
+    """시트 준비 말고도 할 일이 더 적혀 있는 문장인지."""
+    return bool(_FOLLOW_UP_WORK_PATTERN.search(str(text or "")))
 
 
 def _is_color_format_request(lowered: str) -> bool:
@@ -674,6 +898,16 @@ def _is_color_format_request(lowered: str) -> bool:
     return has_color and has_format_verb
 
 
+def _has_border_style_context(text: str) -> bool:
+    lowered = str(text or "").strip().lower()
+    if not lowered:
+        return False
+    if any(token in lowered for token in ["테두리", "경계선", "border", "보더"]):
+        return True
+    # "경계값" 같은 수학/통계 문맥은 제외하고, "경계들을" 같은 구어체는 경계선 요청으로 본다.
+    return "경계" in lowered and "경계값" not in lowered
+
+
 def _is_color_clear_request(lowered: str) -> bool:
     text = str(lowered or "").strip().lower()
     if not text:
@@ -683,6 +917,39 @@ def _is_color_clear_request(lowered: str) -> bool:
     )
     if not has_color_context:
         return False
+
+    has_color_clear_verb = bool(
+        re.search(
+            r"(색|색깔|배경색|color).{0,12}(없애|제거|지우|삭제|비우|초기화|리셋|reset|clear)",
+            text,
+            re.IGNORECASE,
+        )
+        or re.search(
+            r"(없애|제거|지우|삭제|비우|초기화|리셋|reset|clear).{0,12}(색|색깔|배경색|color)",
+            text,
+            re.IGNORECASE,
+        )
+    )
+    has_color_reset_phrase = bool(
+        re.search(
+            r"(색|색깔|배경색|color).{0,12}(원래|기본)",
+            text,
+            re.IGNORECASE,
+        )
+    )
+    has_border_context = _has_border_style_context(text)
+    has_background_fill_context = any(
+        token in text for token in ["배경", "배경색", "색칠", "칠해", "채워", "채우", "fill"]
+    )
+
+    # "경계선 색을 기본으로"는 배경색이 아니라 border 요청으로 본다.
+    if has_border_context and not has_background_fill_context and not has_color_clear_verb:
+        return False
+
+    if has_color_clear_verb:
+        return True
+    if has_color_reset_phrase:
+        return True
     if re.search(
         r"(색|색깔|배경색|color).{0,12}(없애|제거|지우|삭제|비우|초기화|리셋|reset|clear|원래|기본)",
         text,
@@ -754,6 +1021,36 @@ def _is_clear_reset_request(lowered: str) -> bool:
     return has_clear_verb or has_state_reset_phrase
 
 
+# "지워줘"가 붙었다고 다 전체 삭제가 아니다. 아래 표현이 있으면 지울 대상이 따로 있다.
+_CLEAR_COLUMN_TARGET = re.compile(
+    r"(?:[A-Za-z0-9_]{2,24}|[가-힣]{2,12})\s*(?:열|칼럼|컬럼|column)(?=[\s을를은는도만과와,.]|$)",
+    re.IGNORECASE,
+)
+_CLEAR_ROW_TARGET = re.compile(r"(중복|빈\s*(?:행|줄|칸)|\d+\s*(?:번째\s*)?(?:행|줄))")
+_CLEAR_CONDITION_TARGET = re.compile(
+    # "이상"만으로 잡으면 "뭔가 이상한 명령"이 조건절로 읽힌다. 비교어 앞에 수량이 있어야 한다.
+    r"(?:된|인|한|일)\s*(?:것|건|행|줄|항목|데이터|주문|고객|제품)"
+    r"|[\d%원개건만억]\s*(?:이상|이하|미만|초과)"
+)
+
+
+def _clear_request_targets_a_subset(lowered: str) -> bool:
+    """지우기 요청이 시트 전체가 아니라 특정 열·행·조건을 겨냥하는지 본다.
+
+    "Discount 열은 지워줘"를 전체 비우기로 처리하면 표가 통째로 날아간다. 실행은
+    성공으로 보고되고 사용자는 되돌리기 전까지 알아채지 못한다. 이런 문장은 규칙 경로에
+    맡기지 말고 플래너로 보내 drop_column·filter_rows 같은 제대로 된 도구를 고르게 한다.
+    """
+    text = str(lowered or "").strip()
+    if not text:
+        return False
+    return bool(
+        _CLEAR_COLUMN_TARGET.search(text)
+        or _CLEAR_ROW_TARGET.search(text)
+        or _CLEAR_CONDITION_TARGET.search(text)
+    )
+
+
 def _is_whole_sheet_reset_request(
     lowered: str,
     normalized_ctx: str,
@@ -785,8 +1082,17 @@ def _is_whole_sheet_reset_request(
     ) or bool(re.search(r"\b다\s*(지우|비우|삭제)", text, re.IGNORECASE))
 
 
+# "Region_Chart 시트에"의 시트 이름. 의도 판정에서는 이름 속 단어를 지시어로 읽으면 안 된다
+# ("Region_Chart"의 chart 때문에 집계 요청이 차트 요청이 되어버린다).
+_SHEET_NAME_MENTION = re.compile(r"[A-Za-z0-9가-힣_]{1,24}\s*(?:시트|sheet)", re.IGNORECASE)
+
+
+def _mask_sheet_names(text: str) -> str:
+    return _SHEET_NAME_MENTION.sub(" 시트 ", str(text or ""))
+
+
 def _normalized_message_views(message: str) -> tuple[str, str]:
-    lowered = str(message or "").strip().lower()
+    lowered = _mask_sheet_names(str(message or "").strip()).lower()
     compact = re.sub(r"[\s\-_]+", "", lowered)
     return lowered, compact
 
@@ -811,10 +1117,74 @@ def _matches_any_pattern(lowered: str, patterns: list[str]) -> bool:
     return False
 
 
+# "채널별", "영업담당자별" — 묶는 기준은 열 이름만큼 다양해서 열거할 수 없다.
+# 대신 "무엇이든 -별"을 일반 패턴으로 잡고, 뒤에 붙는 동사가 아니라 집계어로 판정한다.
+_GROUP_MARKER = re.compile(r"([가-힣a-z0-9_]{2,12})\s*별(?:로|\s|$|[가-힣])")
+# 뜻이 "묶는 기준"이 아닌 -별 단어들. 이걸 거르지 않으면 "특별히 정렬해줘"가 집계가 된다.
+_GROUP_MARKER_STOPWORDS = frozenset({"특별", "개별", "각별", "구별", "판별", "이별", "차별", "선별", "식별"})
+_AGGREGATE_WORDS = [
+    "합계",
+    "총합",
+    "총계",
+    "소계",
+    "누계",
+    "평균",
+    "건수",
+    "개수",
+    "집계",
+    "집계표",
+    "요약",
+    "합산",
+    "통계",
+    "실적",
+]
+
+
+def _looks_like_group_aggregate(lowered: str, compact: str) -> bool:
+    """ "채널별 매출 합계를 Channel_Sum 시트에 만들어줘" 처럼 묶어서 더하라는 요청인가.
+
+    묶는 기준(-별)과 집계어가 함께 있어야만 참이다. 둘 중 하나만 있으면 다른 의도다.
+    "월별 추이를 그려줘"는 차트, "부서별 달성률 계산해줘"는 수식이어야 한다.
+    """
+    if not _contains_any_keyword(lowered, compact, _AGGREGATE_WORDS):
+        return False
+    for match in _GROUP_MARKER.finditer(lowered):
+        if match.group(1).strip() not in _GROUP_MARKER_STOPWORDS:
+            return True
+    return False
+
+
+# 열 구조를 손보는 요청. "마진율로 바꿔줘"의 '마진율'이 수식 키워드에 먼저 잡히고,
+# "열 하나 추가해줘"는 어떤 의도에도 걸리지 않아 400으로 떨어진다.
+_COLUMN_STRUCTURE_EDIT_PATTERNS = (
+    r"열\s*(?:이름|머리글|헤더|명)\s*(?:을|를|은|는)?\s*.{0,24}(?:바꿔|변경|고쳐|수정)",
+    r"(?:열|칼럼|컬럼)\s*(?:을|를|은|는)?\s*.{0,24}(?:으?로)\s*(?:이름\s*)?(?:바꿔|변경|고쳐)",
+    r"(?:열|칼럼|컬럼)\s*(?:하나|한\s*개|１개|1개)?\s*(?:더|새로)?\s*(?:추가|만들어|넣어|생성)",
+    r"(?:새|신규)\s*(?:열|칼럼|컬럼)",
+    r"(?:열|칼럼|컬럼)\s*(?:을|를|은|는|도)?\s*(?:통째로\s*)?(?:삭제|제거|없애|지워|빼)",
+)
+
+
+def _looks_like_column_structure_edit(lowered: str) -> bool:
+    text = str(lowered or "")
+    return any(re.search(pattern, text, re.IGNORECASE) for pattern in _COLUMN_STRUCTURE_EDIT_PATTERNS)
+
+
 def _detect_operation_intent(message: str) -> str:
     lowered, compact = _normalized_message_views(message)
     color_format_request = _is_color_format_request(lowered)
     color_condition_request = color_format_request and (_quick_parse_condition(lowered) is not None)
+    if _looks_like_column_structure_edit(lowered):
+        # 열 이름 바꾸기·열 추가·열 삭제. 슬롯 대화로 끌고 가면 되묻기만 하고 끝난다.
+        # 플래너에게 넘겨 rename_column/add_column/drop_column을 고르게 한다.
+        return ""
+    if _looks_like_named_formula(str(message or "")):
+        # "이익률 열에 매출이익 나누기 매출" — 열 이름만으로 계산을 말한 경우.
+        return "formula"
+    if _looks_like_group_aggregate(lowered, compact):
+        # 문장 끝 동사("만들어줘"/"정리해줘")보다 "-별 + 합계"가 우선이다.
+        # 동사를 먼저 보면 같은 집계 요청이 시트 생성이나 정렬로 흩어진다.
+        return "pivot"
     if (not color_format_request) and (
         _contains_any_keyword(
             lowered,
@@ -955,10 +1325,15 @@ def _detect_operation_intent(message: str) -> str:
         ],
     ):
         return "filter"
-    if _contains_any_keyword(lowered, compact, ["중복", "중복된", "중복 제거", "중복 없애", "중복값", "겹친 값"]) or _matches_any_pattern(
-        lowered, [r"(중복|겹치).{0,8}(제거|삭제|없애|정리)"]
-    ):
-        return "dedupe"
+    if _contains_any_keyword(lowered, compact, ["중복", "중복된", "중복값", "겹친 값", "겹치는"]):
+        # "중복 찾아줘"와 "중복 지워줘"는 되돌릴 수 있는지가 다르다. 삭제는 명시적으로 말했을 때만.
+        if _matches_any_pattern(lowered, [r"(중복|겹치).{0,10}(제거|삭제|없애|정리|지워|빼)"]):
+            return "dedupe"
+        if _matches_any_pattern(
+            lowered, [r"(중복|겹치).{0,12}(찾|확인|알려|점검|검사|있는지|보여|표시|체크)"]
+        ):
+            return "dupescan"
+        return "dupescan"
     if _contains_any_keyword(
         lowered,
         compact,
@@ -1022,8 +1397,14 @@ def _detect_operation_intent(message: str) -> str:
         lowered, [r"(파일|시트).{0,10}(통합|합치|병합)"]
     ):
         return "consolidate"
-    if _contains_any_keyword(lowered, compact, ["vba", "매크로", "power query", "refreshall", "새로고침"]):
+    if _contains_any_keyword(
+        lowered, compact, ["vba", "매크로", "power query", "파워쿼리", "쿼리", "refreshall", "연결 데이터"]
+    ):
         return "automation"
+    if _contains_any_keyword(lowered, compact, ["새로고침", "재계산", "다시 계산"]) or _matches_any_pattern(
+        lowered, [r"(대시보드|수식|시트|데이터).{0,10}(갱신|업데이트|최신)"]
+    ):
+        return "recalc"
     if _contains_any_keyword(lowered, compact, ["비교", "차이", "diff", "다른 값", "바뀐", "지난달", "전월", "전년"]):
         return "compare"
     if _contains_any_keyword(lowered, compact, ["예측", "추세", "시뮬레이션", "다음 달", "연말", "forecast", "앞으로"]):
@@ -1106,11 +1487,20 @@ def _action_to_operation_intent(action: str) -> str:
 
 
 def _extract_column_for_keyword(text: str, keyword: str) -> str | None:
-    m = re.search(rf"([A-Z])\s*열[^A-Z0-9]{{0,8}}{keyword}", text, re.IGNORECASE)
-    if m:
+    """ "단가는 D열" 처럼 항목명과 짝지어진 열 문자를 뽑는다.
+
+    keyword는 "단가|가격"처럼 대안 목록이 올 수 있어 반드시 비캡처 그룹으로 감싼다.
+    감싸지 않으면 대안 하나만 매칭돼 group(1)이 None이 되고, 그대로 "NONE" 열이 만들어진다.
+    또 절 구분자(쉼표 등)를 넘어가면 앞 절의 열을 잘못 집어오므로 구분자 앞에서 끊는다.
+    """
+    alternatives = f"(?:{keyword})"
+    separator_free = r"[^A-Z0-9,;·\n]"
+    # "단가는 D열"처럼 항목명이 앞에 오는 형태를 우선한다.
+    m = re.search(rf"{alternatives}{separator_free}{{0,8}}([A-Z])\s*열", text, re.IGNORECASE)
+    if m and m.group(1):
         return str(m.group(1)).upper()
-    m = re.search(rf"{keyword}[^A-Z0-9]{{0,8}}([A-Z])\s*열", text, re.IGNORECASE)
-    if m:
+    m = re.search(rf"([A-Z])\s*열{separator_free}{{0,8}}{alternatives}", text, re.IGNORECASE)
+    if m and m.group(1):
         return str(m.group(1)).upper()
     return None
 
@@ -1156,13 +1546,77 @@ def _quote_sheet_for_formula(sheet_name: str) -> str:
     return escaped
 
 
+def _extract_formula_from_text(text: str) -> str | None:
+    """문장에 직접 적힌 Excel 수식을 통째로 뽑는다.
+
+    쉼표를 종료 문자로 보면 =IF(B2>=70,"통과","미달")이 =IF(B2>=70에서 잘리므로,
+    괄호 깊이와 따옴표 상태를 추적해 수식의 실제 끝을 찾는다.
+    """
+    raw = str(text or "")
+    start = -1
+    for idx, ch in enumerate(raw):
+        if ch != "=":
+            continue
+        # >=, <=, != 의 '='는 수식 시작이 아니다.
+        if idx > 0 and raw[idx - 1] in "<>!=":
+            continue
+        start = idx
+        break
+    if start < 0:
+        return None
+
+    depth = 0
+    in_quote = False
+    end = len(raw)
+    for idx in range(start, len(raw)):
+        ch = raw[idx]
+        if ch == '"':
+            in_quote = not in_quote
+            continue
+        if in_quote:
+            continue
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth <= 0:
+                end = idx + 1
+                break
+        elif depth == 0 and ch.isspace() and idx > start:
+            end = idx
+            break
+    formula = raw[start:end].strip()
+    return formula if len(formula) > 1 else None
+
+
+_SHEET_MENTION_PATTERN = re.compile(r"([^\s,]+)\s*(?:시트|sheet)", re.IGNORECASE)
+
+
+def _extract_sheet_mentions(text: str) -> list[str]:
+    return [str(name).strip().strip("\"'") for name in _SHEET_MENTION_PATTERN.findall(str(text or ""))]
+
+
+def _extract_output_sheet_from_text(text: str) -> str | None:
+    """결과를 써 넣을 시트명을 고른다.
+
+    문장에서 첫 번째로 등장하는 시트는 대개 '원본'이다("매출 시트 ... 예측1 시트에 써줘").
+    첫 매치를 쓰면 결과가 원본 데이터를 덮어써서 파괴하므로 마지막 언급을 택한다.
+    """
+    mentions = _extract_sheet_mentions(text)
+    if len(mentions) < 2:
+        return None
+    return mentions[-1]
+
+
 def _build_quick_action_plan(message: str, context_range: str | None) -> list[dict[str, Any]] | None:
     text = str(message or "").strip()
     lowered = text.lower()
-    range_match = re.search(r"\b([A-Z]+\d+:[A-Z]+\d+|[A-Z]+:[A-Z]+|[A-Z]+\d+)\b", text, re.IGNORECASE)
+    range_match = RANGE_REF_PATTERN.search(text)
     range_ref = str(range_match.group(1)).upper() if range_match else ""
-    col_match = re.search(r"\b([A-Z])\s*열\b", text, re.IGNORECASE)
+    col_match = COLUMN_LETTER_PATTERN.search(text)
     col_range_ref = f"{str(col_match.group(1)).upper()}:{str(col_match.group(1)).upper()}" if col_match else ""
+    normalized_ctx = _normalize_range_text(context_range)
+    explicit_range = range_ref or col_range_ref
 
     if any(
         token in lowered
@@ -1190,7 +1644,7 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
             "list sheets",
             "worksheet list",
         ]
-    ):
+    ) or _SHEET_INVENTORY_QUESTION.search(lowered):
         return [{"action": "excel_live.list_sheets", "params": {}, "reason": "빠른 규칙 기반 시트 목록 조회"}]
 
     select_match = re.search(
@@ -1293,6 +1747,120 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
                     },
                 ]
 
+    if any(token in lowered for token in ["비교", "차이", "diff", "다른 값", "바뀐"]):
+        range_matches = re.findall(r"([A-Z]+\d+:[A-Z]+\d+)", text, re.IGNORECASE)
+        sheet_matches = _extract_sheet_mentions(text)
+        if len(range_matches) >= 2 and len(sheet_matches) >= 2:
+            output_sheet = "비교결과"
+            if len(sheet_matches) >= 3:
+                output_sheet = sheet_matches[2]
+            return [
+                {
+                    "action": "excel_live.compare_ranges",
+                    "params": {
+                        "left_sheet": sheet_matches[0],
+                        "left_range": str(range_matches[0]).upper(),
+                        "right_sheet": sheet_matches[1],
+                        "right_range": str(range_matches[1]).upper(),
+                        "output_sheet": output_sheet,
+                    },
+                    "reason": "빠른 규칙 기반 범위 비교",
+                }
+            ]
+
+    if any(token in lowered for token in ["예측", "forecast", "추세", "앞으로"]):
+        horizon_match = re.search(r"(\d{1,2})\s*(개월|달|월|주)", lowered)
+        if explicit_range or normalized_ctx:
+            return [
+                {
+                    "action": "excel_live.forecast_linear",
+                    "params": {
+                        "source_range": explicit_range or normalized_ctx or "__ACTIVE_SELECTION__",
+                        "horizon": int(horizon_match.group(1)) if horizon_match else 3,
+                        "output_sheet": _extract_output_sheet_from_text(text),
+                        "output_start": "A1",
+                    },
+                    "reason": "빠른 규칙 기반 추세 예측",
+                }
+            ]
+
+    # "C2:C8 수식 결과 확인해줘" — 값만 읽는 게 아니라 수식이 제대로 계산됐는지 본다.
+    if (explicit_range or normalized_ctx) and re.search(r"(수식|함수|formula)", text, re.IGNORECASE):
+        if re.search(r"(결과|확인|검증|검사|점검|verify)", text, re.IGNORECASE) and not re.search(
+            r"(넣|입력|적용|작성|만들|써)", text
+        ):
+            return [
+                {
+                    "action": "excel_live.verify_formula_result",
+                    "params": {"range_ref": explicit_range or normalized_ctx or "__ACTIVE_SELECTION__"},
+                    "reason": "빠른 규칙 기반 수식 결과 검증",
+                }
+            ]
+
+    # "완료,진행중,지연만 선택되도록 드롭다운으로 제한해줘"
+    if any(token in lowered for token in ["드롭다운", "dropdown", "목록", "선택되도록", "선택만"]) and (
+        explicit_range or normalized_ctx
+    ):
+        choices = re.search(r"([^\s,]{1,20}(?:\s*,\s*[^\s,]{1,20}){1,9})", text)
+        if choices:
+            items = [item.strip() for item in choices.group(1).split(",") if item.strip()]
+            # "지연만"처럼 조사가 붙은 마지막 항목을 정리한다.
+            items = [re.sub(r"(만|을|를|은|는)$", "", item) or item for item in items]
+            if len(items) >= 2:
+                return [
+                    {
+                        "action": "excel_live.set_data_validation",
+                        "params": {
+                            "target_range": explicit_range or normalized_ctx or "__ACTIVE_SELECTION__",
+                            "validation_type": "list",
+                            "source": ",".join(items),
+                            "allow_blank": True,
+                            "show_error": True,
+                        },
+                        "reason": "빠른 규칙 기반 드롭다운 목록 제한",
+                    }
+                ]
+
+    if any(token in lowered for token in ["입력 제한", "숫자만", "숫자 입력", "유효성", "validation"]) and (explicit_range or normalized_ctx):
+        number_range = re.search(
+            r"(-?\d+(?:\.\d+)?)\s*(?:부터|~|에서|사이|to|-)\s*(-?\d+(?:\.\d+)?)",
+            text,
+            re.IGNORECASE,
+        )
+        if number_range:
+            min_raw = float(number_range.group(1))
+            max_raw = float(number_range.group(2))
+            validation_type = "whole" if min_raw.is_integer() and max_raw.is_integer() else "decimal"
+            minimum: int | float = int(min_raw) if min_raw.is_integer() else min_raw
+            maximum: int | float = int(max_raw) if max_raw.is_integer() else max_raw
+            return [
+                {
+                    "action": "excel_live.set_data_validation",
+                    "params": {
+                        "target_range": explicit_range or normalized_ctx or "__ACTIVE_SELECTION__",
+                        "validation_type": validation_type,
+                        "minimum": minimum,
+                        "maximum": maximum,
+                        "allow_blank": True,
+                        "show_error": True,
+                    },
+                    "reason": "빠른 규칙 기반 숫자 입력 제한",
+                }
+            ]
+
+    formula_a1 = _extract_formula_from_text(text)
+    if formula_a1 and (explicit_range or normalized_ctx):
+        return [
+            {
+                "action": "excel_live.set_formula",
+                "params": {
+                    "range_ref": explicit_range or normalized_ctx or "__ACTIVE_SELECTION__",
+                    "formula_a1": formula_a1,
+                },
+                "reason": "빠른 규칙 기반 수식 입력",
+            }
+        ]
+
     if (range_ref or col_range_ref) and any(
         token in lowered for token in ["읽어", "보여", "확인", "조회", "read", "show", "display"]
     ):
@@ -1304,9 +1872,6 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
                 "reason": "빠른 규칙 기반 범위 조회",
             }
         ]
-
-    normalized_ctx = _normalize_range_text(context_range)
-    explicit_range = range_ref or col_range_ref
 
     if _is_color_clear_request(lowered):
         whole_sheet_color_clear = _is_whole_sheet_style_request(
@@ -1323,21 +1888,42 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
             }
         ]
 
-    if any(token in lowered for token in ["테두리", "경계선", "border"]):
+    if _looks_like_column_comparison(text) and not _contains_any_keyword(
+        lowered, "", ["필터", "걸러", "남겨", "추출", "정렬", "삭제", "지워"]
+    ):
+        # "현재고가 재주문점 이하인 제품만 표시해줘" — 기준이 다른 열이라 숫자가 없다.
+        # 대상 열·비교 열은 머리글을 아는 바인더가 채운다.
+        colors = _quick_extract_colors(lowered)
+        return [
+            {
+                "action": "excel_live.highlight_by_condition",
+                "params": {
+                    "target_range": "__ACTIVE_SELECTION__",
+                    "operator": "<=",
+                    "threshold": 0,
+                    "fill_color": colors[0] if colors else "#FFFF00",
+                },
+                "reason": "빠른 규칙 기반 열 간 비교 강조",
+            }
+        ]
+
+    if _has_border_style_context(lowered):
         whole_sheet_border = _is_whole_sheet_style_request(
             lowered=lowered,
             normalized_ctx=normalized_ctx,
             explicit_range=explicit_range,
         )
         target = normalized_ctx or explicit_range or ("__USED_RANGE__" if whole_sheet_border else "__ACTIVE_SELECTION__")
+        border_thin = any(token in lowered for token in ["얇", "thin"])
+        border_light = any(token in lowered for token in ["옅", "연한", "회색", "그레이", "gray", "grey"])
         border_reset = any(
             token in lowered
-            for token in ["기본값", "기본 상태", "원래 상태", "초기 상태", "없애", "제거", "지워", "reset"]
+            for token in ["기본값", "기본 상태", "기본", "원래 상태", "원래", "초기 상태", "초기", "없애", "제거", "지워", "reset"]
         )
         border_remove = any(token in lowered for token in ["없애", "제거", "지워", "remove"])
         line_style = "none" if border_remove else "continuous"
-        weight = "thin" if border_reset else "medium"
-        color = "#D9D9D9" if border_reset else "#000000"
+        weight = "thin" if (border_reset or border_thin) else "medium"
+        color = "#D9D9D9" if (border_reset or border_light) else "#000000"
         reason = (
             "빠른 규칙 기반 경계선 제거"
             if border_remove
@@ -1442,6 +2028,9 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
             normalized_ctx=normalized_ctx,
             explicit_range=explicit_range,
         )
+        if not whole_sheet_reset and not explicit_range and _clear_request_targets_a_subset(lowered):
+            # 지울 대상이 따로 지목된 문장. 규칙으로 밀면 시트가 통째로 비워진다.
+            return None
         target = normalized_ctx or explicit_range or ("__USED_RANGE__" if whole_sheet_reset else "__ACTIVE_SELECTION__")
         return [
             {
@@ -1452,6 +2041,15 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
         ]
 
     if any(token in lowered for token in ["저장", "save"]):
+        if "pdf" in lowered:
+            # "PDF로 저장" 은 통합문서 저장이 아니라 내보내기다.
+            return [
+                {
+                    "action": "excel_live.export_pdf",
+                    "params": {},
+                    "reason": "빠른 규칙 기반 PDF 내보내기",
+                }
+            ]
         return [{"action": "excel_live.save_workbook", "params": {}, "reason": "빠른 규칙 기반 저장"}]
     return None
 
@@ -1574,7 +2172,23 @@ def _looks_like_excel_request(message: str) -> bool:
         return True
     if any(token in lowered for token in ["read", "show", "display", "workbook", "sheet", "formula"]):
         return True
-    return False
+    if _clear_request_targets_a_subset(lowered):
+        # "취소된 건은 지워줘" — 지울 대상을 지목한 문장은 그 자체로 엑셀 편집 요청이다.
+        return True
+    return _mentions_spreadsheet_structure(lowered)
+
+
+# 명사 목록은 끝없이 늘어난다. "Discount 열은 지워줘"는 어느 낱말에도 안 걸려 400으로 떨어졌다.
+# 표의 구조를 가리키는 말 + 편집 동사 조합이면 엑셀 요청으로 본다.
+_STRUCTURE_WORD = re.compile(r"(열|칼럼|컬럼|column|행|줄|row|셀|cell|범위|머리글|헤더|header)")
+_EDIT_VERB = re.compile(
+    r"(지워|지우|삭제|제거|없애|추가|넣어|입력|바꿔|변경|고쳐|수정|만들어|생성|칠해|채워|막아|잠가|빼)"
+)
+
+
+def _mentions_spreadsheet_structure(lowered: str) -> bool:
+    text = str(lowered or "")
+    return bool(_STRUCTURE_WORD.search(text) and _EDIT_VERB.search(text))
 
 
 def _first_action_from_parsed(parsed: dict[str, Any] | None) -> str:
@@ -1615,6 +2229,8 @@ def _is_likely_edit_request(message: str, operation_hints: dict[str, Any]) -> bo
                 return False
         return True
     if _is_color_format_request(lowered):
+        return True
+    if _looks_like_column_structure_edit(lowered):
         return True
     return any(
         token in lowered
@@ -1858,20 +2474,60 @@ def _build_generic_excel_follow_up(message: str) -> str:
     )
 
 
+def _ordered_column_letters(text: str) -> list[str]:
+    """ "수량은 C열, 단가는 D열"처럼 문장에 등장한 열 문자를 등장 순서대로 모은다."""
+    seen: list[str] = []
+    for match in COLUMN_LETTER_PATTERN.finditer(str(text or "")):
+        letter = str(match.group(1)).upper()
+        if letter not in seen:
+            seen.append(letter)
+    return seen
+
+
+_NAMED_FORMULA_OPERATION = re.compile(
+    r"(나누기|나눈|곱하기|곱한|더하기|더한|빼기|뺀|빼서|차감|두\s*배|2배|절반)"
+)
+_NAMED_FORMULA_TARGET = re.compile(r"[가-힣A-Za-z0-9_]{2,14}\s*(?:열|칼럼|컬럼|필드)\s*(?:에|에다)")
+
+
+def _looks_like_named_formula(text: str) -> bool:
+    """ "이익률 열에 매출이익 나누기 매출" 처럼 열 이름으로만 말한 계산식인지 본다.
+
+    열 문자(B열·C열)가 이미 나온 문장은 기존 규칙이 더 정확하므로 넘긴다.
+    """
+    if not _NAMED_FORMULA_TARGET.search(text) or not _NAMED_FORMULA_OPERATION.search(text):
+        return False
+    return len(_ordered_column_letters(text)) < 2
+
+
 def _extract_formula_common_params(text: str) -> dict[str, Any]:
     lowered = text.lower()
     params: dict[str, Any] = {}
+    letters = _ordered_column_letters(text)
+
+    if _looks_like_named_formula(text):
+        params["formula_mode"] = "named"
+        params["named_formula_message"] = text
+        return params
 
     if any(token in lowered for token in ["곱해서", "곱한", "곱해", "수량", "단가", "가격"]):
         params["formula_mode"] = "multiply"
         qty_col = _extract_column_for_keyword(text, "수량")
         price_col = _extract_column_for_keyword(text, "단가|가격")
+        # 항목명과 짝지어지지 않았으면 "C열, D열, E열" 등장 순서를 그대로 쓴다.
+        if not qty_col and len(letters) >= 2:
+            qty_col = letters[0]
+        if not price_col and len(letters) >= 2:
+            price_col = letters[1]
         if qty_col:
             params["qty_column"] = qty_col
         if price_col:
             params["price_column"] = price_col
         if "qty_column" in params and "price_column" in params:
-            params["result_column"] = _next_column(str(params["price_column"]))
+            result_col = _extract_column_for_keyword(text, "결과|결괏값|답")
+            if not result_col and len(letters) >= 3:
+                result_col = letters[2]
+            params["result_column"] = result_col or _next_column(str(params["price_column"]))
 
     if any(token in lowered for token in ["세금", "부가세", "세율", "tax"]):
         params["formula_mode"] = "tax"
@@ -1935,9 +2591,27 @@ def _extract_formula_common_params(text: str) -> dict[str, Any]:
         if table_match:
             params["table_start_column"] = str(table_match.group(1)).upper()
             params["table_end_column"] = str(table_match.group(2)).upper()
-        idx_match = re.search(r"반환[^\d]{0,8}(\d+)\s*열", text)
+        else:
+            # "참조표는 조회표 시트 A:B" — 사람들이 실제로 쓰는 표기.
+            sheet_cols = re.search(
+                r"([가-힣A-Za-z0-9_]{1,20})\s*(?:시트|sheet)\s*([A-Z]{1,3})\s*:\s*([A-Z]{1,3})",
+                text,
+                re.IGNORECASE,
+            )
+            plain_cols = re.search(r"(?<![A-Za-z0-9])([A-Z])\s*:\s*([A-Z])(?![A-Za-z0-9])", text)
+            if sheet_cols:
+                params["table_sheet"] = sheet_cols.group(1)
+                params["table_start_column"] = str(sheet_cols.group(2)).upper()
+                params["table_end_column"] = str(sheet_cols.group(3)).upper()
+            elif plain_cols:
+                params["table_start_column"] = str(plain_cols.group(1)).upper()
+                params["table_end_column"] = str(plain_cols.group(2)).upper()
+        idx_match = re.search(r"반환[^\d]{0,8}(\d+)\s*열", text) or re.search(r"(\d+)\s*열\s*반환", text)
         if idx_match:
             params["return_index"] = int(idx_match.group(1))
+        result_col = _extract_column_for_keyword(text, "결과|결괏값|답")
+        if result_col:
+            params["result_column"] = result_col
 
     if any(
         token in lowered
@@ -1945,9 +2619,15 @@ def _extract_formula_common_params(text: str) -> dict[str, Any]:
     ):
         params["formula_mode"] = "if_compare"
         compare_col = _extract_column_for_keyword(text, "점수|실적|값|금액")
+        # "C열이 70 미만이면"처럼 항목명 없이 열만 말하는 경우가 훨씬 흔하다.
+        if not compare_col and letters:
+            compare_col = letters[0]
         if compare_col:
             params["compare_column"] = compare_col
-            params["result_column"] = _next_column(compare_col)
+            result_col = _extract_column_for_keyword(text, "결과|결괏값|판정")
+            if not result_col and len(letters) >= 2:
+                result_col = letters[1]
+            params["result_column"] = result_col or _next_column(compare_col)
         threshold_match = re.search(r"(\d+(?:\.\d+)?)\s*(미만|이하|초과|이상)", text)
         if threshold_match:
             params["threshold"] = float(threshold_match.group(1))
@@ -1978,6 +2658,59 @@ def _is_numeric_formula_candidate(formula_a1: str) -> bool:
     return False
 
 
+# "금액 열 기준"처럼 '열' 앞에 붙는 머리글 이름을 뽑는다.
+_COLUMN_LABEL_PATTERN = re.compile(r"([A-Za-z가-힣0-9_]{1,20}?)\s*열(?!쇠)")
+_COLUMN_LABEL_PARTICLES = ("으로", "에서", "을", "를", "은", "는", "이", "가", "의", "로")
+_COLUMN_KEYWORD_CANDIDATES = (
+    "매출",
+    "금액",
+    "가격",
+    "단가",
+    "수량",
+    "점수",
+    "비용",
+    "날짜",
+    "이름",
+    "상태",
+    "코드",
+    "전화번호",
+    "이메일",
+)
+_SHEET_SUFFIX_PATTERN = re.compile(r"\s*(?:시트|sheet)", re.IGNORECASE)
+
+
+def _extract_column_label_from_text(text: str) -> str | None:
+    """정렬/중복 제거 기준 열 이름을 문장에서 추출한다.
+
+    고정 토큰 목록을 순서대로 훑으면 시트명("매출 시트")이 실제 기준 열("금액")을
+    이겨버리므로, 반드시 '열'이라는 단서 앞에 오는 단어만 후보로 삼는다.
+    """
+    raw = str(text or "")
+    for match in _COLUMN_LABEL_PATTERN.finditer(raw):
+        label = str(match.group(1) or "").strip()
+        for particle in _COLUMN_LABEL_PARTICLES:
+            if len(label) > len(particle) and label.endswith(particle):
+                label = label[: -len(particle)]
+                break
+        if not label or label.endswith("시트"):
+            continue
+        if len(label) == 1 and label.isascii() and label.isalpha():
+            return label.upper()
+        return label
+
+    # "금액 순서대로 재배치해줘"처럼 '열' 단서가 없는 문장을 위한 폴백.
+    # 시트명으로 쓰인 언급("매출 시트")은 후보에서 제외해야 기준 열을 가로채지 않는다.
+    best: tuple[int, str] | None = None
+    for token in _COLUMN_KEYWORD_CANDIDATES:
+        for match in re.finditer(re.escape(token), raw):
+            if _SHEET_SUFFIX_PATTERN.match(raw[match.end() : match.end() + 6]):
+                continue
+            if best is None or match.start() < best[0]:
+                best = (match.start(), token)
+            break
+    return best[1] if best else None
+
+
 def _extract_operation_hints(message: str) -> dict[str, Any]:
     text = str(message or "").strip()
     lowered = text.lower()
@@ -1988,11 +2721,11 @@ def _extract_operation_hints(message: str) -> dict[str, Any]:
     }
     hints["params"]["raw_message"] = text
 
-    range_match = re.search(r"\b([A-Z]+\d+:[A-Z]+\d+|[A-Z]+:[A-Z]+|[A-Z]+\d+)\b", text, re.IGNORECASE)
+    range_match = RANGE_REF_PATTERN.search(text)
     if range_match:
         hints["params"]["target_range"] = str(range_match.group(1)).upper()
         hints["params"]["source_range"] = str(range_match.group(1)).upper()
-    range_matches = re.findall(r"\b([A-Z]+\d+:[A-Z]+\d+)\b", text, re.IGNORECASE)
+    range_matches = re.findall(r"([A-Za-z]{1,3}\d{1,7}:[A-Za-z]{1,3}\d{1,7})", text)
     if len(range_matches) >= 2:
         hints["params"]["left_range"] = str(range_matches[0]).upper()
         hints["params"]["right_range"] = str(range_matches[1]).upper()
@@ -2012,34 +2745,9 @@ def _extract_operation_hints(message: str) -> dict[str, Any]:
         top_match = re.search(r"상위\s*(\d{1,3})", lowered)
         if top_match:
             hints["params"]["top_n"] = int(top_match.group(1))
-        sort_col_match = re.search(
-            r"([A-Z])\s*열[^A-Z0-9]{0,8}(?:기준|정렬|순|순서|재배치)",
-            text,
-            re.IGNORECASE,
-        )
-        if sort_col_match is None:
-            sort_col_match = re.search(
-                r"(?:기준|정렬|순|순서|재배치)[^A-Z0-9]{0,8}([A-Z])\s*열",
-                text,
-                re.IGNORECASE,
-            )
-        if sort_col_match and sort_col_match.group(1):
-            hints["params"]["key_column"] = str(sort_col_match.group(1)).upper()
-        for token, key in [
-            ("매출", "매출"),
-            ("금액", "금액"),
-            ("가격", "가격"),
-            ("단가", "단가"),
-            ("수량", "수량"),
-            ("점수", "점수"),
-            ("비용", "비용"),
-            ("날짜", "날짜"),
-            ("이름", "이름"),
-            ("상태", "상태"),
-        ]:
-            if token in lowered:
-                hints["params"]["key_column"] = key
-                break
+        key_column = _extract_column_label_from_text(text)
+        if key_column:
+            hints["params"]["key_column"] = key_column
 
     if "filter" == hints["intent"]:
         if "완료" in lowered:
@@ -2071,8 +2779,13 @@ def _extract_operation_hints(message: str) -> dict[str, Any]:
             hints["params"]["operator"] = op_map.get(score_match.group(2), ">=")
             hints["params"]["value"] = float(score_match.group(1))
 
-    if "dedupe" == hints["intent"]:
-        if "전화번호" in lowered:
+    if hints["intent"] in {"dedupe", "dupescan"}:
+        dedupe_column = _extract_column_label_from_text(text)
+        if dedupe_column:
+            hints["params"]["key_columns"] = [dedupe_column]
+        elif "주문번호" in lowered or "주문 번호" in lowered:
+            hints["params"]["key_columns"] = ["주문번호"]
+        elif "전화번호" in lowered:
             hints["params"]["key_columns"] = ["전화번호"]
         elif "이메일" in lowered:
             hints["params"]["key_columns"] = ["이메일"]
@@ -2080,16 +2793,42 @@ def _extract_operation_hints(message: str) -> dict[str, Any]:
             hints["params"]["key_columns"] = ["이름"]
 
     if "pivot" == hints["intent"]:
-        if "월별" in lowered:
-            hints["params"]["row_field"] = "월"
-        if "상품" in lowered:
+        pivot_output_sheet = _extract_output_sheet_from_text(text)
+        if pivot_output_sheet:
+            hints["params"]["output_sheet"] = pivot_output_sheet
+        # "월을 행으로, 카테고리를 열로, 금액 합계" — 사람들이 피벗을 설명하는 기본 어순.
+        row_field = re.search(r"([가-힣A-Za-z0-9_]{1,12})\s*(?:을|를|은|는)?\s*행\s*(?:으로|에|기준)", text)
+        if row_field:
+            hints["params"]["row_field"] = row_field.group(1)
+        col_field = re.search(r"([가-힣A-Za-z0-9_]{1,12})\s*(?:을|를|은|는)?\s*열\s*(?:로|으로|에|기준)", text)
+        if col_field:
+            hints["params"]["column_field"] = col_field.group(1)
+        value_field = re.search(r"([가-힣A-Za-z0-9_]{1,12})\s*(합계|평균|개수|최대|최소)", text)
+        if value_field:
+            hints["params"]["value_field"] = value_field.group(1)
+            hints["params"]["agg"] = {
+                "합계": "sum",
+                "평균": "avg",
+                "개수": "count",
+                "최대": "max",
+                "최소": "min",
+            }[value_field.group(2)]
+        if not hints["params"].get("row_field"):
+            # "월을 행으로"보다 "지역별"이 훨씬 흔한 말투다. 여기서 못 잡으면 되묻기로 떨어진다.
+            for marker in _GROUP_MARKER.finditer(lowered):
+                term = marker.group(1).strip()
+                if term and term not in _GROUP_MARKER_STOPWORDS:
+                    hints["params"]["row_field"] = "월" if term == "월" else term
+                    break
+        if "상품" in lowered and not hints["params"].get("column_field"):
             hints["params"]["column_field"] = "상품명"
-        if "매출" in lowered:
-            hints["params"]["value_field"] = "매출"
-            hints["params"]["agg"] = "sum"
-        elif "비용" in lowered:
-            hints["params"]["value_field"] = "비용"
-            hints["params"]["agg"] = "sum"
+        if not hints["params"].get("value_field"):
+            if "매출" in lowered:
+                hints["params"]["value_field"] = "매출"
+                hints["params"]["agg"] = "sum"
+            elif "비용" in lowered:
+                hints["params"]["value_field"] = "비용"
+                hints["params"]["agg"] = "sum"
 
     if "chart" == hints["intent"]:
         if any(token in lowered for token in ["선 그래프", "추이", "변화"]):
@@ -2153,6 +2892,21 @@ def _extract_operation_hints(message: str) -> dict[str, Any]:
             hints["params"]["scope"] = "sheets"
         if "원본" in lowered and "유지" in lowered:
             hints["params"]["output_sheet"] = "통합결과"
+        # "1분기,2분기,3분기 시트를 통합1 시트로 합쳐줘"
+        listed = re.search(
+            r"((?:[가-힣A-Za-z0-9_]{1,20}\s*,\s*)+[가-힣A-Za-z0-9_]{1,20})\s*(?:시트|sheet)",
+            text,
+            re.IGNORECASE,
+        )
+        if listed:
+            sources = [part.strip() for part in listed.group(1).split(",") if part.strip()]
+            if len(sources) >= 2:
+                hints["params"]["source_sheets"] = sources
+        target = re.search(
+            r"([가-힣A-Za-z0-9_]{1,20})\s*(?:시트|sheet)\s*(?:으로|로|에)", text, re.IGNORECASE
+        )
+        if target:
+            hints["params"]["output_sheet"] = target.group(1)
 
     if "automation" == hints["intent"]:
         if "power query" in lowered or "새로고침" in lowered:
@@ -2242,6 +2996,138 @@ def _extract_formula_params_freeform(message: str) -> dict[str, Any]:
     return _extract_formula_common_params(text)
 
 
+_ROW_FIELD_PATTERNS = (
+    re.compile(r"([가-힣A-Za-z0-9_]{1,12})\s*별"),
+    re.compile(r"([가-힣A-Za-z0-9_]{1,12})\s*(?:을|를|은|는)?\s*행\s*(?:으로|에|기준)"),
+)
+_AGG_WORDS = {"합계": "sum", "총합": "sum", "평균": "avg", "개수": "count", "건수": "count"}
+
+
+# 번호·코드 열은 더해 봐야 뜻이 없다. 첫 숫자 열을 그냥 집으면 주문번호 합계가 나온다.
+_NON_MEASURE_HEADER = re.compile(r"(id|no|번호|코드|code|순번|index)$", re.IGNORECASE)
+
+
+def _pick_pivot_value_field(text: str, columns: list[dict[str, Any]], row_field: str) -> str:
+    """더할 열을 고른다. 문장이 지목한 열이 우선이고, 없으면 첫 측정값 열."""
+    numeric = {
+        str(col.get("header")): col
+        for col in columns
+        if col.get("numeric") and str(col.get("header") or "") != row_field
+    }
+    if not numeric:
+        return ""
+    for mention in find_header_mentions(text, list(numeric)):
+        header = str(mention.get("header") or "")
+        if header in numeric:
+            return header
+    for header in numeric:
+        if not _NON_MEASURE_HEADER.search(header):
+            return header
+    return next(iter(numeric))
+
+
+def _pivot_step_from_message(message: str, digest: dict[str, Any] | None, *, sheet_name: str | None):
+    """ "담당자별 합계를 피벗으로" 같은 요청에서 피벗 단계를 직접 구성한다.
+
+    작은 모델은 "필터하고 피벗하고 차트까지"를 한 번에 계획하지 못하고 첫 단계만 내놓을 때가 많다.
+    뒷단이 조용히 사라지는 대신, 기준 열을 확정할 수 있을 때만 규칙으로 채운다.
+    """
+    text = str(message or "")
+    term = ""
+    for pattern in _ROW_FIELD_PATTERNS:
+        found = pattern.search(text)
+        if found:
+            term = found.group(1)
+            break
+    if not term:
+        return None
+
+    entry = sheet_entry(digest or {}, sheet_name)
+    columns = list(entry.get("columns") or []) if entry else []
+    headers = [str(col.get("header") or "") for col in columns]
+    # 사용자는 "지역별"이라 말하고 시트 머리글은 Region이다. 글자 그대로 비교하면
+    # 한국어 명령은 전부 되묻기로 떨어진다.
+    row_field = resolve_header(term, headers) if headers else term
+    if not row_field:
+        return None
+
+    value_field = _pick_pivot_value_field(text, columns, row_field)
+    if not value_field:
+        return None
+
+    agg = next((code for word, code in _AGG_WORDS.items() if word in text), "sum")
+    return {
+        "action": "excel_live.pivot_table",
+        "params": {
+            "source_range": "__ACTIVE_SELECTION__",
+            "row_field": row_field,
+            "value_field": value_field,
+            "agg": agg,
+            "output_sheet": _extract_output_sheet_from_text(text) or "피벗1",
+        },
+        "reason": "원문이 요청한 피벗 단계 보완",
+    }
+
+
+def _infer_formula_mode_from_digest(
+    message: str,
+    digest: dict[str, Any] | None,
+    *,
+    sheet_name: str | None,
+) -> dict[str, Any]:
+    """머리글만 봐도 뻔한 계산은 되묻지 않고 확정한다.
+
+    "금액 계산해줘"라고 했는데 시트에 수량·단가 열이 있으면 사람이 뜻한 건 수량*단가다.
+    여기서 되물으면 사용자는 이미 시트에 써둔 걸 말로 또 설명해야 한다.
+    """
+    if not digest:
+        return {}
+    entry = sheet_entry(digest, sheet_name)
+    if not entry:
+        return {}
+    letters = {
+        str(col.get("header") or "").strip(): str(col.get("letter") or "").strip()
+        for col in entry.get("columns", [])
+        if col.get("header") and col.get("letter")
+    }
+    text = str(message or "")
+    wants_amount = bool(re.search(r"(금액|총액|합계|매출액|계산)", text))
+    qty = next((letters[h] for h in ("수량", "개수", "판매량") if h in letters), "")
+    price = next((letters[h] for h in ("단가", "가격", "판매가") if h in letters), "")
+    if not (wants_amount and qty and price):
+        return {}
+    result = next((letters[h] for h in ("금액", "총액", "합계") if h in letters), "") or _next_column(price)
+    return {
+        "formula_mode": "multiply",
+        "qty_column": qty,
+        "price_column": price,
+        "result_column": result,
+    }
+
+
+def _confident_group_key(message: str, digest: dict[str, Any] | None, *, sheet_name: str | None) -> str:
+    """집계 기준 열을 시트 머리글에서 확정할 수 있으면 그 열 이름을 준다.
+
+    "-별 + 집계어"만으로는 부족하다. 실제 시트에 그 열이 있어야 규칙만으로 끝까지 실행할 수
+    있고, 그때만 플래너보다 규칙을 앞세울 자격이 생긴다.
+    """
+    lowered, compact = _normalized_message_views(message)
+    if not _looks_like_group_aggregate(lowered, compact):
+        return ""
+    entry = sheet_entry(digest or {}, sheet_name)
+    headers = [str(col.get("header") or "") for col in (entry.get("columns") or [])] if entry else []
+    if not headers:
+        return ""
+    for marker in _GROUP_MARKER.finditer(lowered):
+        term = marker.group(1).strip()
+        if term in _GROUP_MARKER_STOPWORDS:
+            continue
+        resolved = resolve_header(term, headers)
+        if resolved:
+            return resolved
+    return ""
+
+
 def _merge_operation_slots(
     current: PendingExcelOperationSlots | None,
     *,
@@ -2249,6 +3135,7 @@ def _merge_operation_slots(
     req: ExcelLiveCommandRequest,
     hints: dict[str, Any],
     parsed: dict[str, Any] | None,
+    digest: dict[str, Any] | None = None,
 ) -> PendingExcelOperationSlots | None:
     hint_intent = str(hints.get("intent") or "").strip()
     parsed_intent = ""
@@ -2261,10 +3148,24 @@ def _merge_operation_slots(
     if current is None:
         # 파서가 이미 구체 액션을 만들었으면(예: write/read/set_formula 등)
         # 키워드 기반 operation 슬롯으로 다시 감싸지 않는다.
-        if first_action:
+        # 다만 "코드 기준으로 단가 찾아와"를 단순 조회로 떨어뜨리는 것처럼
+        # 편집 요청이 읽기로 격하되는 경우는 규칙이 짚은 의도를 따른다.
+        planner_downgraded_to_read = first_action in {
+            "excel_live.read_range",
+            "excel_live.list_sheets",
+        } and hint_intent not in {"", "general", "read"}
+        # 규칙이 기준 열까지 확정한 집계 요청은 플래너에게 맡기지 않는다.
+        # 같은 문장이 실행할 때마다 피벗/시트생성/셀칠하기로 갈리던 원인이 여기였다.
+        confident_pivot = bool(_confident_group_key(req.message, digest, sheet_name=req.sheet_name))
+        if first_action and not planner_downgraded_to_read and not confident_pivot:
             return None
-        # LLM이 액션 계획을 냈다면 우선 신뢰하고, 없을 때만 룰 힌트로 폴백한다.
-        intent = parsed_intent or hint_intent
+        if confident_pivot:
+            # 플래너가 같은 피벗을 말하더라도 기준 열까지 맡기지는 않는다.
+            # 액션은 맞고 row_field만 주문번호로 잡히면 180행짜리 "집계"가 나온다.
+            intent = "pivot"
+        else:
+            # LLM이 액션 계획을 냈다면 우선 신뢰하고, 없을 때만 룰 힌트로 폴백한다.
+            intent = hint_intent if planner_downgraded_to_read else (parsed_intent or hint_intent)
     else:
         intent = str(current.intent or "").strip()
         # 일반(general) 슬롯에서 구체 인텐트가 들어오면 즉시 승격해 멀티턴을 마무리한다.
@@ -2292,11 +3193,18 @@ def _merge_operation_slots(
     slot.params.update(hints.get("params", {}))
     if slot.intent == "formula":
         slot.params.update(_extract_formula_params_freeform(req.message))
+        if not str(slot.params.get("formula_mode") or "").strip():
+            slot.params.update(_infer_formula_mode_from_digest(req.message, digest, sheet_name=slot.sheet_name))
 
     if parsed and isinstance(parsed.get("action_plan"), list) and parsed["action_plan"]:
         first = parsed["action_plan"][0] if isinstance(parsed["action_plan"][0], dict) else {}
         if _action_to_operation_intent(first.get("action")) == slot.intent and isinstance(first.get("params"), dict):
             slot.params.update(first["params"])
+    if slot.intent == "pivot":
+        # 위에서 플래너 파라미터를 덮어썼더라도, 원문이 말한 기준 열은 되돌려 놓는다.
+        confident_key = _confident_group_key(req.message, digest, sheet_name=slot.sheet_name)
+        if confident_key:
+            slot.params["row_field"] = confident_key
     slot.updated_at_ts = now
     return slot
 
@@ -2309,6 +3217,9 @@ def _operation_follow_up(slot: PendingExcelOperationSlots) -> str:
         mode = str(slot.params.get("formula_mode") or "").strip()
         if not mode:
             return "어떤 계산을 원하시나요? 예: 수량*단가 / 세금 포함 / 목표 대비 차이"
+        if mode == "named":
+            # 결과 열과 피연산자를 이름으로 다 말했다. 열 문자는 바인더가 찾는다.
+            return ""
         if mode == "multiply":
             if not slot.params.get("qty_column") or not slot.params.get("price_column"):
                 return "수량 열과 단가 열이 필요합니다. 예: B열이 수량, C열이 단가"
@@ -2386,7 +3297,14 @@ def _operation_follow_up(slot: PendingExcelOperationSlots) -> str:
             return "예측할 원본 범위를 알려주세요. 예: B2:B25"
         return ""
     if intent == "print":
+        # "PDF로 저장해줘"는 그 자체로 완결된 지시다. 인쇄 설정까지 캐물으면 일이 진행되지 않는다.
+        msg = str(slot.params.get("raw_message") or "").lower()
+        if "pdf" in msg or "저장" in msg or "내보내" in msg:
+            return ""
         return "인쇄 기준을 알려주세요. 예: A4 가로/세로, 한 페이지 맞춤 여부, PDF 저장 여부."
+    if intent in {"dupescan", "recalc"}:
+        # 전체 범위를 훑는 점검·갱신이라 추가 정보 없이도 실행할 수 있다.
+        return ""
     if intent == "safety":
         msg = str(slot.params.get("raw_message") or "").lower()
         if any(token in msg for token in ["읽기 전용", "보호된 보기", "편집이 안", "강제로 수정"]):
@@ -2420,6 +3338,12 @@ def _operation_follow_up(slot: PendingExcelOperationSlots) -> str:
     return ""
 
 
+def _slot_column(params: dict[str, Any], key: str, default: str) -> str:
+    """슬롯에 열 값이 None으로 들어 있어도 "NONE" 같은 가짜 열을 만들지 않게 한다."""
+    value = str(params.get(key) or "").strip().upper()
+    return value or default
+
+
 def _operation_action_plan(slot: PendingExcelOperationSlots) -> list[dict[str, Any]]:
     intent = slot.intent
     p = dict(slot.params)
@@ -2433,57 +3357,73 @@ def _operation_action_plan(slot: PendingExcelOperationSlots) -> list[dict[str, A
                 }
             ]
         mode = str(p.get("formula_mode") or "").strip()
+        if mode == "named":
+            # 열 문자는 아직 모른다. 머리글을 아는 바인더가 range_ref/formula_a1을 채운다.
+            return [
+                {
+                    "action": "excel_live.set_formula",
+                    "params": {
+                        "named_formula_message": p.get("named_formula_message") or "",
+                        "formula_mode": "named",
+                        "expect_numeric": True,
+                    },
+                    "reason": "열 이름으로 표현된 계산식 적용",
+                }
+            ]
         target_range = p.get("target_range", "__ACTIVE_SELECTION__")
         start_row, end_row = _parse_row_bounds_from_range(str(target_range))
         if mode == "multiply":
-            qty = str(p.get("qty_column", "B")).upper()
-            price = str(p.get("price_column", "C")).upper()
-            result_col = str(p.get("result_column") or _next_column(price)).upper()
+            qty = _slot_column(p, "qty_column", "B")
+            price = _slot_column(p, "price_column", "C")
+            result_col = _slot_column(p, "result_column", _next_column(price))
             formula = f"={qty}{start_row}*{price}{start_row}"
             result_range = f"{result_col}{start_row}:{result_col}{end_row}"
             expect_numeric = True
         elif mode == "tax":
-            base = str(p.get("base_column", "C")).upper()
-            result_col = str(p.get("result_column") or _next_column(base)).upper()
+            base = _slot_column(p, "base_column", "C")
+            result_col = _slot_column(p, "result_column", _next_column(base))
             tax_rate = float(p.get("tax_rate", 0.1))
             formula = f"={base}{start_row}*(1+{tax_rate})"
             result_range = f"{result_col}{start_row}:{result_col}{end_row}"
             expect_numeric = True
         elif mode == "countif":
-            count_col = str(p.get("count_column", "B")).upper()
-            cond = str(p.get("count_condition", "완료")).replace('"', "").strip() or "완료"
-            result_col = str(p.get("result_column") or _next_column(count_col)).upper()
+            count_col = _slot_column(p, "count_column", "B")
+            cond = str(p.get("count_condition") or "완료").replace('"', "").strip() or "완료"
+            result_col = _slot_column(p, "result_column", _next_column(count_col))
             formula = f'=COUNTIF(${count_col}${start_row}:${count_col}${end_row},"{cond}")'
             result_range = f"{result_col}{start_row}"
             expect_numeric = True
         elif mode == "vlookup":
-            lookup_col = str(p.get("lookup_column", "A")).upper()
-            table_start = str(p.get("table_start_column", "F")).upper()
-            table_end = str(p.get("table_end_column", "H")).upper()
-            return_index = int(p.get("return_index", 2))
-            result_col = str(p.get("result_column") or _next_column(table_end)).upper()
+            lookup_col = _slot_column(p, "lookup_column", "A")
+            table_start = _slot_column(p, "table_start_column", "F")
+            table_end = _slot_column(p, "table_end_column", "H")
+            return_index = int(p.get("return_index") or 2)
+            result_col = _slot_column(p, "result_column", _next_column(table_end))
+            # 참조표가 다른 시트에 있으면 시트명을 붙여야 #REF!가 나지 않는다.
+            table_sheet = str(p.get("table_sheet") or "").strip()
+            sheet_prefix = f"'{table_sheet}'!" if table_sheet else ""
             formula = (
                 f"=VLOOKUP({lookup_col}{start_row},"
-                f"${table_start}${start_row}:${table_end}${end_row},{return_index},FALSE)"
+                f"{sheet_prefix}${table_start}${start_row}:${table_end}${end_row},{return_index},FALSE)"
             )
             result_range = f"{result_col}{start_row}:{result_col}{end_row}"
             expect_numeric = False
         elif mode == "if_compare":
-            compare_col = str(p.get("compare_column", "C")).upper()
-            compare_op = str(p.get("compare_op", "<")).strip()
-            threshold = float(p.get("threshold", 70))
-            true_value = str(p.get("true_value", "미달")).replace('"', "").strip() or "미달"
-            false_value = str(p.get("false_value", "통과")).replace('"', "").strip() or "통과"
-            result_col = str(p.get("result_column") or _next_column(compare_col)).upper()
+            compare_col = _slot_column(p, "compare_column", "C")
+            compare_op = str(p.get("compare_op") or "<").strip()
+            threshold = float(p.get("threshold") or 70)
+            true_value = str(p.get("true_value") or "미달").replace('"', "").strip() or "미달"
+            false_value = str(p.get("false_value") or "통과").replace('"', "").strip() or "통과"
+            result_col = _slot_column(p, "result_column", _next_column(compare_col))
             formula = (
                 f'=IF({compare_col}{start_row}{compare_op}{threshold},"{true_value}","{false_value}")'
             )
             result_range = f"{result_col}{start_row}:{result_col}{end_row}"
             expect_numeric = False
         else:
-            target = str(p.get("target_column", "C")).upper()
-            actual = str(p.get("actual_column", "D")).upper()
-            result_col = str(p.get("result_column") or _next_column(actual)).upper()
+            target = _slot_column(p, "target_column", "C")
+            actual = _slot_column(p, "actual_column", "D")
+            result_col = _slot_column(p, "result_column", _next_column(actual))
             formula = f"={actual}{start_row}-{target}{start_row}"
             result_range = f"{result_col}{start_row}:{result_col}{end_row}"
             expect_numeric = True
@@ -2529,6 +3469,35 @@ def _operation_action_plan(slot: PendingExcelOperationSlots) -> list[dict[str, A
                     "has_header": bool(p.get("has_header", True)),
                 },
                 "reason": "멀티턴 필터 실행",
+            }
+        ]
+    if intent == "dupescan":
+        return [
+            {
+                "action": "excel_live.find_duplicates",
+                "params": {
+                    "target_range": p.get("target_range", "__ACTIVE_SELECTION__"),
+                    "key_columns": p.get("key_columns", []),
+                    "has_header": bool(p.get("has_header", True)),
+                    "output_sheet": p.get("output_sheet"),
+                },
+                "reason": "중복 점검 실행",
+            }
+        ]
+    if intent == "print":
+        return [
+            {
+                "action": "excel_live.export_pdf",
+                "params": {"output_path": p.get("output_path")},
+                "reason": "PDF 내보내기 실행",
+            }
+        ]
+    if intent == "recalc":
+        return [
+            {
+                "action": "excel_live.recalculate",
+                "params": {},
+                "reason": "수식 재계산 표시",
             }
         ]
     if intent == "dedupe":
@@ -2942,7 +3911,11 @@ def _execute_action(
 
     if action == "excel_live.write_range":
         resolved_wb = _resolve_workbook_id(service, workbook_id)
-        resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
+        # 계획이 시트를 지목했으면 그쪽이다. 활성 시트로 밀면 방금 만든 Summary 대신
+        # 원본 시트 A1에 써서 머리글을 덮어쓴다.
+        resolved_sheet = _resolve_sheet_name(
+            service, resolved_wb, str(params.get("sheet_name") or "").strip() or sheet_name
+        )
         start_cell = str(params.get("start_cell", "")).strip().upper()
         if not start_cell or start_cell in {"__ACTIVE_CELL__", "__ACTIVE_SELECTION__"}:
             selected = service.get_active_selection_ref(resolved_wb, resolved_sheet)
@@ -2960,7 +3933,9 @@ def _execute_action(
 
     if action == "excel_live.create_table":
         resolved_wb = _resolve_workbook_id(service, workbook_id)
-        resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
+        resolved_sheet = _resolve_sheet_name(
+            service, resolved_wb, str(params.get("sheet_name") or "").strip() or sheet_name
+        )
         start_cell = str(params.get("start_cell", "")).strip().upper()
         if not start_cell or start_cell in {"__ACTIVE_CELL__", "__ACTIVE_SELECTION__"}:
             selected = service.get_active_selection_ref(resolved_wb, resolved_sheet)
@@ -2981,9 +3956,15 @@ def _execute_action(
         resolved_wb = _resolve_workbook_id(service, workbook_id)
         resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
         target_range = str(params.get("target_range", "A:A")).strip().upper()
+        # "진행률이 80% 미만" 처럼 대상이 다른 시트면 플래너가 `Project_Plan!I2:I21`로 준다.
+        qualified_sheet, target_range = _split_sheet_qualified_range(service, resolved_wb, target_range)
+        if qualified_sheet:
+            resolved_sheet = qualified_sheet
         operator = str(params.get("operator", ">=")).strip()
         threshold = float(params.get("threshold", 0))
         fill_color = str(params.get("fill_color", "#FFFF00"))
+        compare_column = str(params.get("compare_column") or "").strip().upper() or None
+        extra = {"compare_column": compare_column} if compare_column else {}
         return service.highlight_by_condition(
             workbook_id=resolved_wb,
             sheet_name=resolved_sheet,
@@ -2991,11 +3972,14 @@ def _execute_action(
             operator=operator,
             threshold=threshold,
             fill_color=fill_color,
+            **extra,
         )
 
     if action == "excel_live.fill_range":
         resolved_wb = _resolve_workbook_id(service, workbook_id)
-        resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
+        resolved_sheet = _resolve_sheet_name(
+            service, resolved_wb, str(params.get("sheet_name") or "").strip() or sheet_name
+        )
         target_range = str(params.get("target_range", "")).strip().upper()
         if target_range == "__USED_RANGE__":
             target_range = service.get_used_range_ref(resolved_wb, resolved_sheet)
@@ -3025,7 +4009,9 @@ def _execute_action(
 
     if action == "excel_live.apply_border":
         resolved_wb = _resolve_workbook_id(service, workbook_id)
-        resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
+        resolved_sheet = _resolve_sheet_name(
+            service, resolved_wb, str(params.get("sheet_name") or "").strip() or sheet_name
+        )
         target_range = str(params.get("target_range", "")).strip().upper()
         if target_range == "__USED_RANGE__":
             target_range = service.get_used_range_ref(resolved_wb, resolved_sheet)
@@ -3067,6 +4053,137 @@ def _execute_action(
             range_ref=range_ref,
         )
 
+    if action == "excel_live.find_replace":
+        resolved_wb = _resolve_workbook_id(service, workbook_id)
+        resolved_sheet = _resolve_sheet_name(
+            service, resolved_wb, str(params.get("sheet_name") or "").strip() or sheet_name
+        )
+        target_range = str(params.get("target_range", "")).strip().upper()
+        if target_range == "__USED_RANGE__":
+            target_range = service.get_used_range_ref(resolved_wb, resolved_sheet)
+        elif not target_range or target_range == "__ACTIVE_SELECTION__":
+            target_range = service.get_active_selection_ref(resolved_wb, resolved_sheet)
+        return service.find_replace(
+            resolved_wb,
+            resolved_sheet,
+            target_range,
+            str(params.get("find_text") or ""),
+            str(params.get("replace_text") or ""),
+            match_case=bool(params.get("match_case", False)),
+            whole_cell=bool(params.get("whole_cell", False)),
+        )
+
+    if action in {"excel_live.merge_cells", "excel_live.unmerge_cells"}:
+        resolved_wb = _resolve_workbook_id(service, workbook_id)
+        resolved_sheet = _resolve_sheet_name(
+            service, resolved_wb, str(params.get("sheet_name") or "").strip() or sheet_name
+        )
+        target_range = str(params.get("target_range", "")).strip().upper()
+        if not target_range or target_range == "__ACTIVE_SELECTION__":
+            target_range = service.get_active_selection_ref(resolved_wb, resolved_sheet)
+        method = service.merge_cells if action == "excel_live.merge_cells" else service.unmerge_cells
+        return method(resolved_wb, resolved_sheet, target_range)
+
+    if action == "excel_live.freeze_panes":
+        resolved_wb = _resolve_workbook_id(service, workbook_id)
+        resolved_sheet = _resolve_sheet_name(
+            service, resolved_wb, str(params.get("sheet_name") or "").strip() or sheet_name
+        )
+        return service.freeze_panes(resolved_wb, resolved_sheet, str(params.get("freeze_at") or "A2"))
+
+    if action == "excel_live.autofit_columns":
+        resolved_wb = _resolve_workbook_id(service, workbook_id)
+        resolved_sheet = _resolve_sheet_name(
+            service, resolved_wb, str(params.get("sheet_name") or "").strip() or sheet_name
+        )
+        target_range = str(params.get("target_range") or "__USED_RANGE__").strip().upper()
+        return service.autofit_columns(resolved_wb, resolved_sheet, target_range)
+
+    if action == "excel_live.define_named_range":
+        resolved_wb = _resolve_workbook_id(service, workbook_id)
+        resolved_sheet = _resolve_sheet_name(
+            service, resolved_wb, str(params.get("sheet_name") or "").strip() or sheet_name
+        )
+        target_range = str(params.get("target_range", "")).strip().upper()
+        if not target_range or target_range == "__ACTIVE_SELECTION__":
+            target_range = service.get_active_selection_ref(resolved_wb, resolved_sheet)
+        return service.define_named_range(
+            resolved_wb, resolved_sheet, str(params.get("name") or ""), target_range
+        )
+
+    if action == "excel_live.set_print_area":
+        resolved_wb = _resolve_workbook_id(service, workbook_id)
+        resolved_sheet = _resolve_sheet_name(
+            service, resolved_wb, str(params.get("sheet_name") or "").strip() or sheet_name
+        )
+        print_area = params.get("print_area")
+        if print_area:
+            print_area = _resolve_runtime_range_ref(
+                service, workbook_id=resolved_wb, sheet_name=resolved_sheet, raw_range=str(print_area), for_cell=False
+            )
+        return service.set_print_area(
+            resolved_wb,
+            resolved_sheet,
+            print_area=print_area or None,
+            orientation=params.get("orientation"),
+            fit_to_page=bool(params.get("fit_to_page", False)),
+        )
+
+    if action == "excel_live.add_cell_comment":
+        resolved_wb = _resolve_workbook_id(service, workbook_id)
+        resolved_sheet = _resolve_sheet_name(
+            service, resolved_wb, str(params.get("sheet_name") or "").strip() or sheet_name
+        )
+        target_cell = _resolve_runtime_range_ref(
+            service,
+            workbook_id=resolved_wb,
+            sheet_name=resolved_sheet,
+            raw_range=str(params.get("target_range") or "__ACTIVE_CELL__"),
+            for_cell=True,
+        )
+        return service.add_cell_comment(
+            resolved_wb, resolved_sheet, target_cell, str(params.get("text") or ""), str(params.get("author") or "OfficeClaw AI")
+        )
+
+    if action in {"excel_live.apply_color_scale", "excel_live.apply_data_bar"}:
+        resolved_wb = _resolve_workbook_id(service, workbook_id)
+        resolved_sheet = _resolve_sheet_name(
+            service, resolved_wb, str(params.get("sheet_name") or "").strip() or sheet_name
+        )
+        target_range = _resolve_runtime_range_ref(
+            service,
+            workbook_id=resolved_wb,
+            sheet_name=resolved_sheet,
+            raw_range=str(params.get("target_range") or "__ACTIVE_SELECTION__"),
+            for_cell=False,
+        )
+        if action == "excel_live.apply_color_scale":
+            return service.apply_color_scale(
+                resolved_wb,
+                resolved_sheet,
+                target_range,
+                min_color=str(params.get("min_color") or "#F8696B"),
+                mid_color=str(params.get("mid_color") or "#FFEB84"),
+                max_color=str(params.get("max_color") or "#63BE7B"),
+            )
+        return service.apply_data_bar(
+            resolved_wb, resolved_sheet, target_range, color=str(params.get("color") or "#638EC6")
+        )
+
+    if action == "excel_live.set_number_format":
+        resolved_wb = _resolve_workbook_id(service, workbook_id)
+        resolved_sheet = _resolve_sheet_name(
+            service, resolved_wb, str(params.get("sheet_name") or "").strip() or sheet_name
+        )
+        target_range = _resolve_runtime_range_ref(
+            service,
+            workbook_id=resolved_wb,
+            sheet_name=resolved_sheet,
+            raw_range=str(params.get("target_range") or "__ACTIVE_SELECTION__"),
+            for_cell=False,
+        )
+        return service.set_number_format(resolved_wb, resolved_sheet, target_range, str(params.get("format_code") or ""))
+
     if action == "excel_live.sort_range":
         resolved_wb = _resolve_workbook_id(service, workbook_id)
         resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
@@ -3096,6 +4213,7 @@ def _execute_action(
             operator=str(params.get("operator", "==")),
             value=params.get("value"),
             has_header=bool(params.get("has_header", True)),
+            mode=str(params.get("mode", "keep")),
         )
 
     if action == "excel_live.dedupe_rows":
@@ -3112,10 +4230,51 @@ def _execute_action(
             has_header=bool(params.get("has_header", True)),
         )
 
-    if action == "excel_live.pivot_table":
+    if action == "excel_live.find_duplicates":
         resolved_wb = _resolve_workbook_id(service, workbook_id)
         resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
+        target_range = str(params.get("target_range", "")).strip().upper()
+        if not target_range or target_range == "__ACTIVE_SELECTION__":
+            target_range = service.get_active_selection_ref(resolved_wb, resolved_sheet)
+        return service.find_duplicates(
+            workbook_id=resolved_wb,
+            sheet_name=resolved_sheet,
+            target_range=target_range,
+            key_columns=params.get("key_columns") or [],
+            has_header=bool(params.get("has_header", True)),
+            output_sheet=params.get("output_sheet"),
+        )
+
+    if action == "excel_live.recalculate":
+        resolved_wb = _resolve_workbook_id(service, workbook_id)
+        resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
+        return service.recalculate(workbook_id=resolved_wb, sheet_name=resolved_sheet)
+
+    if action == "excel_live.export_pdf":
+        resolved_wb = _resolve_workbook_id(service, workbook_id)
+        resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
+        return service.export_pdf(
+            workbook_id=resolved_wb,
+            sheet_name=resolved_sheet,
+            output_path=str(params.get("output_path") or "").strip() or None,
+        )
+
+    if action == "excel_live.pivot_table":
+        resolved_wb = _resolve_workbook_id(service, workbook_id)
+        # 같은 계획에 create_sheet가 앞서 오면 활성 시트가 결과 시트로 바뀐다.
+        # 원본 시트를 명시로 붙잡아 두지 않으면 빈 시트를 집계하려다 실패한다.
+        resolved_sheet = str(params.get("source_sheet") or "").strip() or _resolve_sheet_name(
+            service, resolved_wb, sheet_name
+        )
+        output_sheet = str(params.get("output_sheet") or "").strip()
+        request_sheet = str(sheet_name or "").strip()
         source_range = str(params.get("source_range", "")).strip().upper()
+        qualified_sheet, source_range = _split_sheet_qualified_range(service, resolved_wb, source_range)
+        if qualified_sheet:
+            resolved_sheet = qualified_sheet
+        if output_sheet and request_sheet and resolved_sheet.lower() == output_sheet.lower():
+            # 결과 시트를 원본으로 잡으면 방금 만든 빈 시트를 집계하게 된다.
+            resolved_sheet = request_sheet
         if not source_range or source_range == "__ACTIVE_SELECTION__":
             source_range = service.get_active_selection_ref(resolved_wb, resolved_sheet)
         return service.pivot_table(
@@ -3133,9 +4292,16 @@ def _execute_action(
 
     if action == "excel_live.create_chart":
         resolved_wb = _resolve_workbook_id(service, workbook_id)
-        resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
+        # 앞 단계가 만든 집계표를 그리는 경우, 원본 시트가 아니라 결과 시트를 봐야 한다.
+        chart_sheet = str(params.get("source_sheet") or "").strip() or sheet_name
+        resolved_sheet = _resolve_sheet_name(service, resolved_wb, chart_sheet)
         source_range = str(params.get("source_range", "")).strip().upper()
-        if not source_range or source_range == "__ACTIVE_SELECTION__":
+        qualified_sheet, source_range = _split_sheet_qualified_range(service, resolved_wb, source_range)
+        if qualified_sheet:
+            resolved_sheet = qualified_sheet
+        if source_range == "__USED_RANGE__":
+            source_range = service.get_used_range_ref(resolved_wb, resolved_sheet)
+        elif not source_range or source_range == "__ACTIVE_SELECTION__":
             source_range = service.get_active_selection_ref(resolved_wb, resolved_sheet)
         return service.create_chart(
             workbook_id=resolved_wb,
@@ -3260,7 +4426,186 @@ def _execute_action(
         resolved_wb = _resolve_workbook_id(service, workbook_id)
         return service.save_workbook(resolved_wb)
 
+    if action in _SHARED_DISPATCH_ACTIONS:
+        # 열/집계 도구는 excel_actions가 이미 갖고 있다. 여기서 한 번 더 쓰면 두 벌이 어긋난다.
+        return execute_excel_action(
+            action=action,
+            params=params,
+            workbook_id=workbook_id,
+            sheet_name=str(params.get("sheet_name") or "").strip() or sheet_name,
+        )
+
     raise ExcelLiveError(f"지원하지 않는 action: {action}")
+
+
+# 라우터가 자체 분기를 갖지 않고 공용 디스패처에 넘기는 액션.
+_SHARED_DISPATCH_ACTIONS = frozenset(
+    {
+        "excel_live.sort_rows",
+        "excel_live.drop_column",
+        "excel_live.rename_column",
+        "excel_live.add_column",
+        "excel_live.group_by_aggregate",
+        "excel_live.calculate_column_stat",
+    }
+)
+
+
+_XLWINGS_TRACE_PARAM_KEYS = {
+    "target_range",
+    "range_ref",
+    "start_cell",
+    "rows",
+    "cols",
+    "fill_color",
+    "line_style",
+    "weight",
+    "color",
+    "operator",
+    "threshold",
+    "formula_a1",
+    "sheet_name",
+    "key_column",
+    "order",
+    "column",
+    "value",
+    "output_sheet",
+    "output_start",
+}
+_XLWINGS_TRACE_RESULT_KEYS = {
+    "address",
+    "changed_cells",
+    "written_cells",
+    "cleared_cells",
+    "matched_cells",
+    "formula_applied_cells",
+    "rows",
+    "cols",
+    "row_count",
+    "col_count",
+    "created",
+    "selected",
+    "sorted_rows",
+    "filtered_rows",
+    "removed_rows",
+    "remaining_rows",
+    "non_empty_cells",
+    "numeric_cells",
+    "sum",
+    "average",
+    "queue_wait_ms",
+}
+
+
+def _trace_compact_value(value: Any, *, limit: int = 180) -> Any:
+    if isinstance(value, (int, float, bool)) or value is None:
+        return value
+    text = str(value)
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "..."
+
+
+def _trace_params(params: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for raw_key, value in params.items():
+        key = str(raw_key or "").strip()
+        if not key:
+            continue
+        include = (
+            key in _XLWINGS_TRACE_PARAM_KEYS
+            or key.endswith("_range")
+            or key.endswith("_sheet")
+            or key.endswith("_cell")
+        )
+        if not include:
+            continue
+        if key == "values_2d":
+            if isinstance(value, list):
+                row_count = len(value)
+                col_count = max((len(row) if isinstance(row, list) else 1 for row in value), default=0)
+                out["values_shape"] = f"{row_count}x{col_count}"
+            continue
+        out[key] = _trace_compact_value(value)
+    return out
+
+
+def _trace_result(result: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key in _XLWINGS_TRACE_RESULT_KEYS:
+        if key not in result:
+            continue
+        out[key] = _trace_compact_value(result.get(key))
+    return out
+
+
+def _build_xlwings_trace_entry(
+    *,
+    action: str,
+    params: dict[str, Any],
+    workbook_id: str | None,
+    sheet_name: str | None,
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    service = get_excel_live_service()
+    engine_name = str(getattr(service, "engine", "xlwings") or "xlwings").strip() or "xlwings"
+    action_name = str(action or "").strip()
+    method = action_name[11:] if action_name.startswith("excel_live.") else action_name
+    target_range = _normalize_range_text(
+        result.get("address")
+        or params.get("target_range")
+        or params.get("range_ref")
+        or params.get("start_cell")
+    )
+    effective_sheet = str(params.get("sheet_name") or sheet_name or "").strip()
+    return {
+        "engine": engine_name,
+        "action": action_name,
+        "method": method,
+        "workbook_id": str(workbook_id or ""),
+        "sheet_name": effective_sheet,
+        "target_range": target_range,
+        "params": _trace_params(params),
+        "result": _trace_result(result),
+    }
+
+
+def _append_xlwings_trace(
+    *,
+    action: str,
+    params: dict[str, Any],
+    workbook_id: str | None,
+    sheet_name: str | None,
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    out = dict(result or {})
+    existing = out.get("xlwings_ops")
+    ops = [row for row in existing if isinstance(row, dict)] if isinstance(existing, list) else []
+    ops.append(
+        _build_xlwings_trace_entry(
+            action=action,
+            params=params,
+            workbook_id=workbook_id,
+            sheet_name=sheet_name,
+            result=out,
+        )
+    )
+    out["xlwings_ops"] = ops
+    return out
+
+
+def _collect_xlwings_ops_from_execution(execution: Any) -> list[dict[str, Any]]:
+    if execution is None:
+        return []
+    ops: list[dict[str, Any]] = []
+    for step in getattr(execution, "steps", []) or []:
+        result = getattr(step, "result", None)
+        if not isinstance(result, dict):
+            continue
+        step_ops = result.get("xlwings_ops")
+        if isinstance(step_ops, list):
+            ops.extend([row for row in step_ops if isinstance(row, dict)])
+    return ops
 
 
 def _verify_step_result(
@@ -3270,12 +4615,24 @@ def _verify_step_result(
     result: dict[str, Any],
     workbook_id: str | None,
     sheet_name: str | None,
-) -> bool:
+) -> bool | tuple[bool, str]:
     """
     단계 실행 후 최소 검증.
     - service의 range snapshot을 활용해 상태를 빠르게 점검한다.
+    - 그 다음 파일을 다시 읽어 사후조건(정렬 순서·결과 시트 등)까지 확인한다.
     """
     service = get_excel_live_service()
+    effect_ok, effect_detail = verify_effect(
+        action=action,
+        params=params,
+        result=result,
+        service=service,
+        workbook_id=workbook_id,
+        sheet_name=sheet_name,
+    )
+    if not effect_ok:
+        return False, effect_detail
+
     if action == "excel_live.write_range":
         written_cells = int(result.get("written_cells", 0) or 0)
         if written_cells >= 1:
@@ -3314,6 +4671,36 @@ def _verify_step_result(
     if action == "excel_live.verify_formula_result":
         return "non_empty_cells" in result
 
+    if action == "excel_live.find_replace":
+        return int(result.get("replaced_cells", 0) or 0) >= 0
+
+    if action == "excel_live.merge_cells":
+        return bool(result.get("merged"))
+
+    if action == "excel_live.unmerge_cells":
+        return int(result.get("unmerged_ranges", 0) or 0) >= 0
+
+    if action == "excel_live.freeze_panes":
+        return "frozen" in result
+
+    if action == "excel_live.autofit_columns":
+        return int(result.get("adjusted_columns", 0) or 0) >= 1
+
+    if action == "excel_live.define_named_range":
+        return bool(result.get("name"))
+
+    if action == "excel_live.set_print_area":
+        return "orientation" in result
+
+    if action == "excel_live.add_cell_comment":
+        return bool(result.get("comment_added"))
+
+    if action in {"excel_live.apply_color_scale", "excel_live.apply_data_bar"}:
+        return bool(result.get("applied"))
+
+    if action == "excel_live.set_number_format":
+        return int(result.get("formatted_cells", 0) or 0) >= 1
+
     if action == "excel_live.sort_range":
         return int(result.get("sorted_rows", 0) or 0) >= 0
 
@@ -3324,7 +4711,12 @@ def _verify_step_result(
         return int(result.get("removed_rows", 0) or 0) >= 0
 
     if action == "excel_live.pivot_table":
-        return bool(result.get("created")) and int(result.get("rows", 0) or 0) >= 2
+        rows = int(result.get("rows", 0) or 0)
+        source_rows = int(result.get("source_rows", 0) or 0)
+        if source_rows and rows - 1 >= source_rows:
+            # 그룹 기준이 고유값 열(주문번호 등)이면 원본 행이 그대로 복사된다. 집계가 아니다.
+            return False
+        return bool(result.get("created")) and rows >= 2
 
     if action == "excel_live.create_chart":
         return bool(result.get("created")) and bool(str(result.get("chart_name", "")).strip())
@@ -3371,6 +4763,28 @@ def _verify_step_result(
     return True
 
 
+# 사후조건 검증 실패 코드 → 사용자가 다음에 뭘 해야 할지 알 수 있는 안내 문구.
+_VERIFY_FAILURE_MESSAGES = {
+    "sort_not_applied": "정렬을 적용했지만 기준 열이 요청한 순서로 바뀌지 않아 원래 상태로 되돌렸습니다. 기준 열을 다시 알려주세요.",
+    "sort_key_out_of_range": "지정한 기준 열이 정렬 범위 밖입니다. 범위나 기준 열을 다시 알려주세요.",
+    "sort_no_rows": "정렬할 데이터 행이 없습니다. 머리글 아래에 데이터가 있는 범위를 알려주세요.",
+    "filter_no_match": "조건에 맞는 행이 하나도 없어 아무것도 남기지 않았습니다. 조건을 확인해 주세요.",
+    "no_cells_changed": "조건에 해당하는 셀이 없어 서식이 적용되지 않았습니다. 기준 값을 확인해 주세요.",
+    "formula_not_applied": "수식이 입력된 셀이 없습니다. 적용할 범위를 알려주세요.",
+    "validation_not_applied": "입력 제한이 설정되지 않았습니다. 대상 범위와 허용 값을 알려주세요.",
+    "output_sheet_missing": "결과를 쓸 시트가 만들어지지 않았습니다. 결과 시트 이름을 알려주세요.",
+    "output_sheet_empty": "결과 시트가 비어 있어 작업을 되돌렸습니다. 원본 범위를 확인해 주세요.",
+}
+
+
+def _verification_failure_reason(detail: str) -> str:
+    code = str(detail or "").split(":", 1)[0].split(";", 1)[0].strip()
+    message = _VERIFY_FAILURE_MESSAGES.get(code)
+    if message:
+        return message
+    return "작업 실행이 안정성 검증을 통과하지 못했습니다. 복구 정보로 원상 복원이 가능합니다."
+
+
 def _build_approval(action: str, params: dict[str, Any]) -> ApprovalRequest:
     approval_id = str(uuid.uuid4())
     summary = {
@@ -3383,6 +4797,9 @@ def _build_approval(action: str, params: dict[str, Any]) -> ApprovalRequest:
         "excel_live.sort_range": "지정 범위를 정렬합니다.",
         "excel_live.filter_rows": "조건에 맞는 행만 필터링합니다.",
         "excel_live.dedupe_rows": "중복 행을 제거합니다.",
+        "excel_live.find_duplicates": "중복 값을 삭제하지 않고 찾아서 보고합니다.",
+        "excel_live.recalculate": "수식을 다시 계산하도록 표시합니다.",
+        "excel_live.export_pdf": "시트를 PDF로 내보냅니다.",
         "excel_live.pivot_table": "집계표(피벗 형태)를 생성합니다.",
         "excel_live.create_chart": "차트를 생성합니다.",
         "excel_live.protect_sheet": "시트 보호/잠금 규칙을 적용합니다.",
@@ -3393,6 +4810,17 @@ def _build_approval(action: str, params: dict[str, Any]) -> ApprovalRequest:
         "excel_live.run_vba_macro": "VBA 매크로를 실행합니다.",
         "excel_live.compare_ranges": "두 범위를 비교해 차이를 정리합니다.",
         "excel_live.forecast_linear": "추세 기반 예측값을 생성합니다.",
+        "excel_live.find_replace": "선택 범위에서 텍스트를 찾아 바꿉니다.",
+        "excel_live.merge_cells": "선택 범위의 셀을 병합합니다.",
+        "excel_live.unmerge_cells": "선택 범위의 병합 셀을 해제합니다.",
+        "excel_live.freeze_panes": "머리글 행/열을 고정합니다.",
+        "excel_live.autofit_columns": "열 너비를 내용에 맞게 자동 조정합니다.",
+        "excel_live.define_named_range": "선택 범위에 이름(정의된 이름)을 지정합니다.",
+        "excel_live.set_print_area": "인쇄 영역/방향/페이지 맞춤을 설정합니다.",
+        "excel_live.add_cell_comment": "셀에 메모(코멘트)를 추가합니다.",
+        "excel_live.apply_color_scale": "선택 범위에 색조 조건부 서식을 적용합니다.",
+        "excel_live.apply_data_bar": "선택 범위에 데이터 막대 조건부 서식을 적용합니다.",
+        "excel_live.set_number_format": "선택 범위의 표시 형식(숫자/퍼센트/날짜 등)을 변경합니다.",
     }.get(action, "엑셀 변경 작업을 실행합니다.")
     return ApprovalRequest(
         approval_id=approval_id,
@@ -3408,9 +4836,11 @@ def _build_approval(action: str, params: dict[str, Any]) -> ApprovalRequest:
 @router.get("/status")
 def get_status():
     service = get_excel_live_service()
+    available = service.is_available()
     return {
-        "available": service.is_available(),
-        "workbooks": service.list_workbooks() if service.is_available() else [],
+        "available": available,
+        "engine": str(getattr(service, "engine", "xlwings") or "xlwings"),
+        "workbooks": service.list_workbooks() if available else [],
     }
 
 
@@ -3518,11 +4948,18 @@ def post_action(req: ExcelLiveActionRequest):
                 if _action_needs_recovery_backup(req.action)
                 else None
             )
-            return _execute_action(
+            raw_result = _execute_action(
                 action=req.action,
                 params=req.params,
                 workbook_id=req.workbook_id,
                 sheet_name=req.sheet_name,
+            )
+            return _append_xlwings_trace(
+                action=req.action,
+                params=req.params,
+                workbook_id=req.workbook_id,
+                sheet_name=req.sheet_name,
+                result=raw_result,
             )
 
         result, queue_wait_ms = _run_in_excel_queue("action", _run_action_once)
@@ -3555,9 +4992,9 @@ async def post_command(
     pending_operation = _pending_operation_slots.get(session_key)
     hints = extract_create_table_slot_hints(req.message)
     operation_hints = _extract_operation_hints(req.message)
+    user_key = resolve_user_key({"user_id": req.user_id, "session_id": req.session_id})
+    personalization_hint = build_personalization_prompt(user_key)
     quick_action_plan = _build_quick_action_plan(req.message, req.context_range)
-    if pending_slot is not None or pending_operation is not None:
-        quick_action_plan = None
     rule_based_step = parse_command_rule_based(
         req.message,
         context_range=req.context_range,
@@ -3565,9 +5002,40 @@ async def post_command(
     fallback_rule_step: dict[str, Any] | None = (
         rule_based_step if isinstance(rule_based_step, dict) else None
     )
-    if pending_operation is not None:
-        fallback_rule_step = None
     operation_intent = str(operation_hints.get("intent") or "").strip()
+
+    def _reads_concrete_range(step: Any) -> dict[str, Any] | None:
+        """ "B9 값만 읽어줘"처럼 범위를 콕 집은 단순 조회인지 판정한다."""
+        if not isinstance(step, dict):
+            return None
+        if str(step.get("action", "")) != "excel_live.read_range":
+            return None
+        range_ref = str((step.get("params") or {}).get("range_ref", ""))
+        return step if RANGE_REF_PATTERN.fullmatch(range_ref) else None
+
+    # 범위를 직접 지목한 조회는 이전 멀티턴의 답도, 플래너가 재해석할 대상도 아니다.
+    # 규칙이 이미 확실히 아는 명령을 모델 기분에 맡기면 같은 문장이 매번 다르게 동작한다.
+    # "D2:D20 수식 값 확인해줘"는 범위가 있어도 단순 조회가 아니라 수식 검증이다.
+    reads_only = not re.search(r"(수식|함수|formula)", req.message, re.IGNORECASE)
+    standalone_read_step = (
+        None
+        if operation_intent or not reads_only
+        else (
+            _reads_concrete_range(rule_based_step)
+            or _reads_concrete_range(
+                quick_action_plan[0] if isinstance(quick_action_plan, list) and quick_action_plan else None
+            )
+        )
+    )
+    if pending_operation is not None:
+        starts_new_command = bool(standalone_read_step)
+        if starts_new_command:
+            _pending_operation_slots.pop(session_key, None)
+            pending_operation = None
+        else:
+            fallback_rule_step = None
+    if pending_slot is not None or pending_operation is not None:
+        quick_action_plan = None
     if operation_intent in {"general", "safety"}:
         fallback_rule_step = None
     elif operation_intent == "formula":
@@ -3640,11 +5108,18 @@ async def post_command(
         "excel_live.select_sheet",
         "excel_live.create_sheet",
         "excel_live.save_workbook",
+        "excel_live.compare_ranges",
+        "excel_live.forecast_linear",
+        "excel_live.set_data_validation",
+        "excel_live.set_formula",
     }:
         should_parse_with_llm = False
     elif quick_first_action == "excel_live.fill_range":
         # 단순 색 채우기 요청은 fast path로 즉시 실행하는 편이 안정적이다.
         should_parse_with_llm = False
+    if _quick_plan_underfits_message(quick_first_action, req.message):
+        # 규칙이 표현하지 못하는 요청은 플래너에게 넘긴다.
+        should_parse_with_llm = True
     reasoning_complexity_score = _score_command_complexity(
         message=req.message,
         operation_hints=operation_hints,
@@ -3658,12 +5133,124 @@ async def post_command(
     parse_timeout_seconds, parse_max_attempts, parse_retry_backoff_seconds = _parse_budget_for_reasoning_mode(
         reasoning_mode
     )
+    # 플래너가 시트/머리글을 모른 채 파라미터를 추측하지 않도록 실제 파일 상태를 먼저 읽는다.
+    workbook_digest = build_workbook_digest(
+        get_excel_live_service(),
+        workbook_id=req.workbook_id,
+        active_sheet_hint=req.sheet_name,
+    )
+    # "매출 시트 ~"처럼 원문이 대상 시트를 지목하면 실행 시트를 그쪽으로 맞춘다.
+    # 액션 파라미터에는 시트 슬롯이 없어서, 여기서 정하지 않으면 활성 시트에 잘못 적용된다.
+    message_sheet = resolve_sheet_from_message(req.message, workbook_digest, default=req.sheet_name)
+    if message_sheet and message_sheet != req.sheet_name:
+        req.sheet_name = message_sheet
+        workbook_digest = build_workbook_digest(
+            get_excel_live_service(),
+            workbook_id=req.workbook_id,
+            active_sheet_hint=req.sheet_name,
+            use_cache=False,
+        )
+    def _validate_steps(steps):
+        return validate_plan(
+            steps,
+            context=ValidationContext(
+                message=req.message,
+                workbook_id=req.workbook_id,
+                sheet_name=req.sheet_name,
+                context_range=req.context_range,
+                recent_range=_recent_range_by_workbook.get(_context_key(req.workbook_id)),
+            ),
+        )
+
+    def _bind_steps(steps):
+        """실행 직전에 상징적 파라미터를 실제 머리글/시트로 확정한다."""
+        try:
+            return bind_plan_steps(
+                steps,
+                digest=workbook_digest,
+                message=req.message,
+                sheet_name=req.sheet_name,
+            )
+        except Exception:
+            # 바인딩은 보조 레이어다. 실패해도 원본 플랜으로 계속 진행한다.
+            return steps, []
+
+    def _chain_chart_to_pivot(steps: list[PlanStep]) -> list[PlanStep]:
+        """피벗 다음에 오는 차트는 원본이 아니라 집계 결과를 그린다.
+
+        같은 계획 안이든("집계하고 차트도"), 다음 턴이든("그 결과로 막대 그래프도") 마찬가지다.
+        직전 집계 결과를 기억해 두지 않으면 차트가 180행짜리 원본을 그리거나 엉뚱한 시트에 붙는다.
+        """
+        pivot_sheet = ""
+        for step in steps:
+            if step.action == "excel_live.pivot_table":
+                pivot_sheet = str(step.params.get("output_sheet") or "").strip()
+            elif step.action == "excel_live.create_chart":
+                target = pivot_sheet or _last_aggregate_sheet.get(session_key, "")
+                if not target:
+                    continue
+                step.params["source_sheet"] = target
+                step.params["source_range"] = "__USED_RANGE__"
+                step.params["output_sheet"] = target
+        return steps
+
+    def _drop_table_step_when_aggregating(steps: list[PlanStep]) -> list[PlanStep]:
+        """집계 계획에 끼어든 표 생성 단계를 덜어낸다.
+
+        플래너는 "집계표를 만들어줘"를 create_table로도 해석해, 빈 5x5 표를 새 시트에 만들고
+        활성 시트를 그쪽으로 옮긴다. 그러면 뒤따르는 피벗이 빈 시트를 집계하려다 실패한다.
+        집계 결과표는 피벗이 직접 쓰므로 이 단계는 필요 없다.
+        """
+        if not any(step.action == "excel_live.pivot_table" for step in steps):
+            return steps
+        return [step for step in steps if step.action != "excel_live.create_table"]
+
+    def _drop_trailing_verification(steps: list[PlanStep]) -> list[PlanStep]:
+        """수식과 무관한 계획 끝에 붙은 결과 검증 단계를 덜어낸다.
+
+        플래너는 색칠·정렬 계획 뒤에도 verify_formula_result를 붙이곤 한다. 각 단계는
+        어차피 실행기가 검증하므로 하는 일이 없는데, 마지막 액션이 응답의 대표 액션이라
+        "노란색으로 칠했습니다" 대신 "수식 결과를 확인했습니다"라고 답하게 된다.
+        """
+        if len(steps) < 2 or steps[-1].action != "excel_live.verify_formula_result":
+            return steps
+        if any(step.action == "excel_live.set_formula" for step in steps):
+            return steps
+        return steps[:-1]
+
+    def _bind_and_validate(steps, *, require_binding_evidence: bool = False) -> list[PlanStep] | None:
+        """바인딩까지 마친 뒤 실행 가능한 계획이면 돌려주고, 아니면 None.
+
+        되묻기 전에 "이 계획 그냥 돌려도 되나?"를 판정하는 데 쓴다.
+        미해결 슬롯이 하나라도 있으면 추측 실행 대신 되묻는 쪽을 택한다.
+
+        require_binding_evidence=True면 바인더가 실제로 원문·머리글에서 값을 확정한
+        경우에만 통과시킨다. 슬롯 규칙이 채워 넣은 기본값(B열·C열 같은)은 검증을 통과해도
+        근거가 없으므로, 그대로 실행하면 조용히 엉뚱한 열을 건드리게 된다.
+        """
+        if not steps:
+            return None
+        bound, notes = _bind_steps(steps)
+        if any(note.get("status") == "unresolved" for note in notes):
+            return None
+        if require_binding_evidence and not any(note.get("status") == "bound" for note in notes):
+            return None
+        try:
+            return _chain_chart_to_pivot(
+                _drop_trailing_verification(_drop_table_step_when_aggregating(_validate_steps(bound)))
+            )
+        except Exception:
+            return None
+
     parse_context_base = {
         "context_range": req.context_range,
         "workbook_id": req.workbook_id,
         "sheet_name": req.sheet_name,
         "reasoning_mode": reasoning_mode,
         "complexity_score": reasoning_complexity_score,
+        "personalization_hint": personalization_hint,
+        "workbook_digest": workbook_digest,
+        "workbook_digest_text": render_workbook_digest(workbook_digest),
     }
     parse_error: Exception | None = None
     parse_timeout_count = 0
@@ -3793,10 +5380,132 @@ async def post_command(
             _pending_create_table_slots.pop(session_key, None)
             pending_slot = None
 
-    table_intent = bool(hints.get("table_intent")) or pending_slot is not None
+    # "B2:D2에 이름,수량,금액 입력"처럼 범위와 값이 다 나온 명령은 표 생성 인터뷰 대상이 아니다.
+    # 플래너가 create_table로 답하는 날에만 되묻기가 뜨면 같은 문장이 실행되기도 하고 안 되기도 한다.
+    if standalone_read_step and parsed and parsed.get("action_plan"):
+        planner_steps = [s for s in parsed["action_plan"] if isinstance(s, dict)]
+        planner_actions = [str(s.get("action", "")) for s in planner_steps]
+        # 조회 한 줄이면 될 명령에 플래너가 검증·저장 단계를 덧붙이면
+        # 보고되는 액션까지 바뀌어 사용자는 묻지도 않은 작업을 본다.
+        if planner_actions != ["excel_live.read_range"]:
+            read_steps = _normalize_plan_or_empty([standalone_read_step])
+            if read_steps:
+                parsed = {
+                    "action_plan": [s.__dict__ for s in read_steps],
+                    "action": read_steps[0].action,
+                    "params": read_steps[0].params,
+                    "reason": "범위를 지목한 단순 조회",
+                    "intent": "read",
+                }
+
+    def _write_steps_from(raw: Any) -> list[PlanStep]:
+        steps = _normalize_plan_or_empty(raw) if raw else []
+        return steps if steps and steps[0].action == "excel_live.write_range" else []
+
+    preferred_write = _write_steps_from(quick_action_plan) or _write_steps_from(
+        [fallback_rule_step] if fallback_rule_step else None
+    )
+    # 범위를 콕 집어 "여기에 써줘"라고 한 명령은 표 생성 인터뷰 대상이 아니다.
+    explicit_write = bool(preferred_write) and (
+        bool(RANGE_REF_PATTERN.search(req.message)) or bool(req.context_range)
+    )
+    if explicit_write and _TABLE_KEYWORD_PATTERN.search(req.message):
+        # "B2부터 3행 3열 표 만들어줘"는 범위가 있어도 표 생성이 맞다.
+        explicit_write = False
+
+    # 플래너가 고른 액션이 사용자의 말에 근거가 없으면, 근거 있는 규칙 후보로 되돌린다.
+    # 같은 문장이 실행될 때마다 색칠·표생성·조건부서식으로 튀는 문제를 여기서 끊는다.
     if parsed and parsed.get("action_plan"):
+        planner_first = parsed["action_plan"][0] if isinstance(parsed["action_plan"][0], dict) else {}
+        planner_action = str(planner_first.get("action", ""))
+        # 첫 단계만 보면 [create_sheet, pivot_table]처럼 준비 단계 뒤에 숨은 오작동을 놓친다.
+        ungrounded_step = next(
+            (
+                str(s.get("action", ""))
+                for s in parsed["action_plan"]
+                if isinstance(s, dict) and _action_lacks_evidence(str(s.get("action", "")), req.message)
+            ),
+            "",
+        )
+        grounded_steps = [
+            s
+            for s in parsed["action_plan"]
+            if isinstance(s, dict) and not _action_lacks_evidence(str(s.get("action", "")), req.message)
+        ]
+        # 남은 단계가 create_sheet 같은 준비 동작뿐이면 실행할 의미가 없다.
+        # 원문 근거를 요구하는 액션이 하나라도 남아야 "덜어내기"가 성립한다.
+        keeps_real_work = any(
+            str(s.get("action", "")) not in _PREPARATION_ACTIONS for s in grounded_steps
+        )
+        if ungrounded_step and grounded_steps and keeps_real_work:
+            # "필터 → 피벗 → 차트"처럼 여러 단계 중 하나만 근거가 없을 때
+            # 계획 전체를 규칙 한 줄로 갈아끼우면 나머지 요청이 조용히 사라진다.
+            # 근거 없는 단계만 덜어내고 나머지는 그대로 실행한다.
+            parsed = {
+                "action_plan": grounded_steps,
+                "action": str(grounded_steps[0].get("action", "")),
+                "params": dict(grounded_steps[0].get("params", {}) or {}),
+                "reason": "원문 근거가 없는 단계를 덜어낸 계획",
+                "intent": parsed.get("intent", "edit"),
+            }
+            ungrounded_step = ""
+
+        if ungrounded_step:
+            planner_action = ungrounded_step
+            replaced = False
+            for raw_candidate in (quick_action_plan, [fallback_rule_step] if fallback_rule_step else None):
+                grounded = _normalize_plan_or_empty(raw_candidate) if raw_candidate else []
+                if not grounded or grounded[0].action == planner_action:
+                    continue
+                if _action_lacks_evidence(grounded[0].action, req.message):
+                    continue
+                parsed = {
+                    "action_plan": [s.__dict__ for s in grounded],
+                    "action": grounded[0].action,
+                    "params": grounded[0].params,
+                    "reason": "원문 근거가 있는 규칙 해석",
+                    "intent": "read" if grounded[0].action == "excel_live.read_range" else "edit",
+                }
+                replaced = True
+                break
+            if not replaced and operation_intent not in {"", "general", "safety"}:
+                # 규칙은 "통합" 같은 구체 의도를 짚었는데 플래너가 엉뚱한 액션을 냈다.
+                # 규칙만으로 실행 가능한 계획이 나오면 그쪽을 쓴다.
+                # (부족하면 플래너 계획을 유지해 검증·재계획 루프에 맡긴다.)
+                rule_slot = _merge_operation_slots(
+                    None,
+                    session_key=session_key,
+                    req=req,
+                    hints=operation_hints,
+                    parsed=None,
+                    digest=workbook_digest,
+                )
+                if rule_slot is not None and not _operation_follow_up(rule_slot):
+                    slot_steps = _normalize_plan_or_empty(_operation_action_plan(rule_slot))
+                    # 슬롯이 고른 액션에도 같은 잣대를 적용한다. 근거 없으면 쓰지 않는다.
+                    if slot_steps and _action_lacks_evidence(slot_steps[0].action, req.message):
+                        slot_steps = []
+                    if slot_steps:
+                        parsed = {
+                            "action_plan": [s.__dict__ for s in slot_steps],
+                            "action": slot_steps[0].action,
+                            "params": slot_steps[0].params,
+                            "reason": f"규칙이 확정한 {rule_slot.intent} 실행 계획",
+                            "intent": "edit",
+                        }
+
+    table_intent = (bool(hints.get("table_intent")) and not explicit_write) or pending_slot is not None
+    if pending_operation is not None:
+        # 진행 중인 멀티턴 답변("수량은 C열, 단가는 D열")을 표 생성으로 끌고 가면 대화가 원점으로 돌아간다.
+        table_intent = pending_slot is not None
+    if parsed and parsed.get("action_plan") and not explicit_write and pending_operation is None:
         first_step = parsed["action_plan"][0] if isinstance(parsed["action_plan"][0], dict) else {}
-        if first_step.get("action") == "excel_live.create_table":
+        # 플래너는 모호할 때 create_table로 도피하는 경향이 있다.
+        # 규칙이 통합/비교/예측처럼 구체적인 의도를 이미 짚었다면 그쪽을 신뢰한다.
+        if first_step.get("action") == "excel_live.create_table" and operation_intent in {
+            "",
+            "general",
+        }:
             table_intent = True
     if table_intent:
         slot = _merge_create_table_slots(
@@ -3849,10 +5558,17 @@ async def post_command(
                 first = parsed["action_plan"][0] if isinstance(parsed["action_plan"][0], dict) else {}
                 first_action = str(first.get("action", ""))
             # 후속 답변은 키워드가 없어도 기존 pending 슬롯을 유지해야 한다.
-            # 명시적으로 다른(비 operation) 액션이 나온 경우에만 pending을 해제한다.
-            if has_parsed_plan and not _action_to_operation_intent(first_action):
-                _pending_operation_slots.pop(session_key, None)
-                pending_operation = None
+            # 다른 액션이 나왔더라도, 그 계획이 바인딩·검증을 다 통과할 만큼 완결된 경우에만
+            # "새 명령"으로 보고 pending을 해제한다. 반쯤 비어 있는 계획은 슬롯 답변으로 취급한다.
+            if (
+                has_parsed_plan
+                and not _action_to_operation_intent(first_action)
+                and not _action_lacks_evidence(first_action, req.message)
+            ):
+                standalone = _bind_and_validate(_normalize_plan_or_empty(parsed.get("action_plan")))
+                if standalone:
+                    _pending_operation_slots.pop(session_key, None)
+                    pending_operation = None
 
         op_slot = _merge_operation_slots(
             pending_operation,
@@ -3860,9 +5576,21 @@ async def post_command(
             req=req,
             hints=operation_hints,
             parsed=parsed,
+            digest=workbook_digest,
         )
         if op_slot is not None:
             follow_up = _operation_follow_up(op_slot)
+            rescued_plan: list[PlanStep] | None = None
+            if follow_up:
+                # 되묻기 전에 바인더에게 기회를 준다.
+                # 슬롯 규칙이 못 채운 값이라도 실제 머리글·시트를 보면 확정되는 경우가 많고,
+                # 그때까지 질문하면 사용자는 이미 말한 내용을 또 말해야 한다.
+                rescued_plan = _bind_and_validate(
+                    _normalize_plan_or_empty(_operation_action_plan(op_slot)),
+                    require_binding_evidence=True,
+                )
+                if rescued_plan:
+                    follow_up = ""
             # 새 멀티턴 시작이거나 기존 멀티턴 이어서 파라미터가 부족하면 질문한다.
             if follow_up:
                 _pending_operation_slots[session_key] = op_slot
@@ -3879,8 +5607,8 @@ async def post_command(
                 )
 
             op_plan_raw = _operation_action_plan(op_slot)
-            if op_plan_raw:
-                action_plan = _normalize_plan_or_empty(op_plan_raw)
+            if rescued_plan or op_plan_raw:
+                action_plan = rescued_plan or _normalize_plan_or_empty(op_plan_raw)
                 if (
                     not action_plan
                     and isinstance(fallback_rule_step, dict)
@@ -3938,23 +5666,74 @@ async def post_command(
         "sheet_name": req.sheet_name,
     }
 
-    def _validate_steps(steps):
-        return validate_plan(
-            steps,
-            context=ValidationContext(
-                message=req.message,
-                workbook_id=req.workbook_id,
-                sheet_name=req.sheet_name,
-                context_range=base_context.get("context_range"),
-                recent_range=_recent_range_by_workbook.get(_context_key(req.workbook_id)),
-            ),
-        )
+    def _recovery_plans() -> list[list[PlanStep]]:
+        """LLM 플랜이 검증을 통과하지 못했을 때 대신 쓸 수 있는 후보들.
 
-    try:
-        current_plan = _validate_steps(action_plan)
-    except Exception as exc:
-        if _looks_like_excel_request(req.message):
-            follow = _build_generic_excel_follow_up(req.message)
+        플래너가 빈 수식 같은 쓰레기 플랜을 내놨다고 해서 되묻기로 떨어지면,
+        규칙이 이미 정확히 이해한 명령까지 실패한다.
+        """
+        rows: list[list[PlanStep]] = []
+        if quick_action_plan:
+            rows.append(_normalize_plan_or_empty(quick_action_plan))
+        if isinstance(fallback_rule_step, dict) and fallback_rule_step.get("action"):
+            rows.append(_normalize_plan_or_empty([fallback_rule_step]))
+        recovery_slot = _merge_operation_slots(
+            None,
+            session_key=session_key,
+            req=req,
+            hints=operation_hints,
+            parsed=None,
+            digest=workbook_digest,
+        )
+        if recovery_slot is not None and not _operation_follow_up(recovery_slot):
+            rows.append(_normalize_plan_or_empty(_operation_action_plan(recovery_slot)))
+        return [row for row in rows if row]
+
+    current_plan: list[PlanStep] | None = None
+    bind_notes: list[dict[str, Any]] = []
+    validation_error: Exception | None = None
+    # 검증기는 value 누락 같은 빈 슬롯을 예외로 막으므로, 바인딩을 먼저 돌려 채운다.
+    for candidate in [action_plan, *_recovery_plans()]:
+        bound_candidate, candidate_notes = _bind_steps(candidate)
+        try:
+            current_plan = _validate_steps(bound_candidate)
+            bind_notes = candidate_notes
+            validation_error = None
+            break
+        except Exception as exc:
+            validation_error = exc
+
+    if current_plan is None:
+        # 플랜까지 만들어졌다면 이미 Excel 명령으로 판정된 것이므로,
+        # 파라미터가 부족하다는 이유로 500을 던지지 말고 되물어야 한다.
+        # 규칙이 의도(수식/정렬/피벗...)를 알고 있다면 일반 되묻기 대신
+        # 그 작업에 필요한 값을 콕 집어 묻고, 답을 이어받을 슬롯도 남긴다.
+        if pending_operation is None and operation_intent not in {"", "general"}:
+            intent_slot = _merge_operation_slots(
+                None,
+                session_key=session_key,
+                req=req,
+                hints=operation_hints,
+                parsed=None,
+                digest=workbook_digest,
+            )
+            intent_follow_up = _operation_follow_up(intent_slot) if intent_slot else ""
+            if intent_slot is not None and intent_follow_up:
+                _pending_operation_slots[session_key] = intent_slot
+                return ExcelLiveActionResponse(
+                    ok=True,
+                    action=f"excel_live.{intent_slot.intent}",
+                    reason=intent_follow_up,
+                    result={
+                        "ask_follow_up": True,
+                        "follow_up_question": intent_follow_up,
+                        "slot_state": dict(intent_slot.params),
+                        "operation_intent": intent_slot.intent,
+                        "validation_error": str(validation_error),
+                    },
+                )
+        follow = _build_generic_excel_follow_up(req.message)
+        if _looks_like_excel_request(req.message) or action_plan:
             return ExcelLiveActionResponse(
                 ok=True,
                 action="excel_live.clarify",
@@ -3963,9 +5742,73 @@ async def post_command(
                     "ask_follow_up": True,
                     "follow_up_question": follow,
                     "operation_intent": operation_hints.get("intent") or "clarify",
+                    "validation_error": str(validation_error),
                 },
             )
-        raise _map_error(exc)
+        raise _map_error(validation_error or ValueError("계획 검증 실패"))
+
+    # 기준 열을 못 정했는데 그대로 실행하면 엉뚱한 열로 정렬/삭제된다.
+    # 이럴 때는 추측하지 말고 멀티턴 슬롯으로 넘겨 되묻는다.
+    unresolved_pairs = {
+        (str(note.get("action")), str(note.get("slot")))
+        for note in bind_notes
+        if note.get("status") == "unresolved"
+    }
+    # "완료 행만 남기고 담당자별 합계를 피벗으로" — 작은 모델은 이런 연쇄 지시의 첫 단계만 계획한다.
+    # 원문이 분명히 요청한 피벗이 빠졌다면 규칙으로 채워 넣는다(기준 열을 확정할 수 있을 때만).
+    if (
+        pending_operation is None
+        and _ACTION_EVIDENCE["excel_live.pivot_table"].search(req.message)
+        and not any(step.action == "excel_live.pivot_table" for step in current_plan)
+    ):
+        pivot_raw = _pivot_step_from_message(req.message, workbook_digest, sheet_name=req.sheet_name)
+        if pivot_raw:
+            extra = _bind_and_validate(_normalize_plan_or_empty([pivot_raw]))
+            if extra:
+                current_plan = current_plan + extra
+
+    # 차트 종류는 결과물의 성격 자체를 바꾼다. 원문에 없으면 기본값(선)으로 밀지 않고 물어본다.
+    # 단 "필터 → 피벗 → 차트"처럼 차트가 파이프라인의 마지막 단계일 뿐이라면
+    # 여기서 멈춰 세우면 앞 단계 작업까지 통째로 미뤄지므로 그냥 진행한다.
+    chart_only = {step.action for step in current_plan if step.action in _ACTION_EVIDENCE} == {
+        "excel_live.create_chart"
+    }
+    if (
+        pending_operation is None
+        and chart_only
+        and not _CHART_TYPE_MENTION.search(req.message)
+    ):
+        unresolved_pairs = unresolved_pairs | {("excel_live.create_chart", "chart_type")}
+
+    if pending_operation is None and unresolved_pairs & _AMBIGUITY_SENSITIVE_SLOTS:
+        ambiguous_action = next(
+            action for action, slot in unresolved_pairs if (action, slot) in _AMBIGUITY_SENSITIVE_SLOTS
+        )
+        ambiguity_slot = _merge_operation_slots(
+            None,
+            session_key=session_key,
+            req=req,
+            hints={
+                "intent": _action_to_operation_intent(ambiguous_action),
+                "params": dict(operation_hints.get("params", {})),
+            },
+            parsed=None,
+        )
+        follow_up = _operation_follow_up(ambiguity_slot) if ambiguity_slot else ""
+        if ambiguity_slot is not None and follow_up:
+            _pending_operation_slots[session_key] = ambiguity_slot
+            return ExcelLiveActionResponse(
+                ok=True,
+                action=f"excel_live.{ambiguity_slot.intent}",
+                reason=follow_up,
+                result={
+                    "ask_follow_up": True,
+                    "follow_up_question": follow_up,
+                    "slot_state": dict(ambiguity_slot.params),
+                    "operation_intent": ambiguity_slot.intent,
+                    "unresolved_slots": sorted(f"{a}.{s}" for a, s in unresolved_pairs),
+                },
+            )
 
     execution = None
     replan_count = 0
@@ -4013,11 +5856,22 @@ async def post_command(
                     sheet_name=req.sheet_name,
                 )
                 try:
-                    return _execute_action(
+                    raw_result = _execute_action(
                         action=action,
                         params=params,
                         workbook_id=req.workbook_id,
                         sheet_name=req.sheet_name,
+                    )
+                    if action == "excel_live.pivot_table":
+                        produced = str((raw_result or {}).get("sheet_name") or "").strip()
+                        if produced:
+                            _last_aggregate_sheet[session_key] = produced
+                    return _append_xlwings_trace(
+                        action=action,
+                        params=params,
+                        workbook_id=req.workbook_id,
+                        sheet_name=req.sheet_name,
+                        result=raw_result,
                     )
                 except Exception:
                     restored = _restore_action_snapshot(snapshot_holder.get("current"))
@@ -4067,7 +5921,9 @@ async def post_command(
                         label="command",
                     )
                 return execute_plan(
-                    steps=current_plan,
+                    steps=_chain_chart_to_pivot(
+                        _drop_trailing_verification(_drop_table_step_when_aggregating(current_plan))
+                    ),
                     execute_action=_guarded_execute,
                     verify_step=_guarded_verify,
                     max_attempts=2,
@@ -4076,6 +5932,8 @@ async def post_command(
 
             execution, queue_wait_ms = _run_in_excel_queue("command-plan", _run_execute_once)
             queue_wait_total_ms += queue_wait_ms
+            # 파일이 바뀌었으므로 다음 턴이 낡은 다이제스트를 보지 않게 한다.
+            invalidate_digest_cache(req.workbook_id)
         except Exception as exc:
             mapped = _map_error(exc)
             if recovery_backup_info and recovery_backup_info.get("backup_path"):
@@ -4092,6 +5950,16 @@ async def post_command(
 
         replan_count += 1
         replan_context = build_replan_context(base_context=base_context, execution=execution)
+        replan_context["personalization_hint"] = personalization_hint
+        # 재계획은 이미 일부 실행된 뒤이므로 파일 상태를 다시 읽어 최신 다이제스트를 준다.
+        invalidate_digest_cache(req.workbook_id)
+        replan_digest = build_workbook_digest(
+            get_excel_live_service(),
+            workbook_id=req.workbook_id,
+            active_sheet_hint=req.sheet_name,
+        )
+        replan_context["workbook_digest"] = replan_digest
+        replan_context["workbook_digest_text"] = render_workbook_digest(replan_digest)
         try:
             replanned = await parse_command_plan_with_llm(
                 req.message,
@@ -4100,10 +5968,18 @@ async def post_command(
                 forbid_list_action=True,
                 require_edit_action=True,
             )
-            current_plan = _validate_steps(_normalize_plan_or_empty(replanned.get("action_plan")))
+            replan_steps, _ = _bind_steps(_normalize_plan_or_empty(replanned.get("action_plan")))
+            current_plan = _validate_steps(replan_steps)
             parsed["reason"] = replanned.get("reason", "") or parsed.get("reason", "")
         except Exception as exc:
-            raise HTTPException(status_code=400, detail=f"재계획 실패: {exc}")
+            # 재계획은 이미 한 번 실행한 뒤의 보정 시도다. 여기서 실패했다고 400을 던지면
+            # 첫 실행 결과까지 사라지므로, 원래 실행 결과를 그대로 보고하고 끝낸다.
+            last_step = execution.last if execution else None
+            if last_step is not None:
+                last_step.verify_detail = (
+                    f"{last_step.verify_detail or ''};replan_failed:{exc}".strip(";")
+                )
+            break
 
     if execution is None or not execution.steps:
         raise HTTPException(status_code=400, detail="실행 가능한 계획(step)을 생성하지 못했습니다.")
@@ -4111,7 +5987,18 @@ async def post_command(
     last = execution.last
     if last is None:
         raise HTTPException(status_code=400, detail="실행 결과를 생성하지 못했습니다.")
-    last_result = dict(last.result or {})
+    # 계획 끝에 붙는 저장/조회 단계가 "무슨 작업을 했는지"를 가리면 안 된다.
+    # 사용자와 로그가 보는 액션은 실제 편집을 한 마지막 단계여야 한다.
+    primary = next(
+        (s for s in reversed(execution.steps) if s.action not in _ANCILLARY_REPORT_ACTIONS),
+        last,
+    )
+    last_result = dict(primary.result or {})
+    if primary is not last:
+        last_result["closing_action"] = last.action
+    execution_xlwings_ops = _collect_xlwings_ops_from_execution(execution)
+    if execution_xlwings_ops:
+        last_result["xlwings_ops"] = execution_xlwings_ops
     address = _normalize_range_text(last_result.get("address"))
     if address:
         _recent_range_by_workbook[_context_key(req.workbook_id)] = address
@@ -4134,6 +6021,8 @@ async def post_command(
             }
             for s in execution.steps
         ]
+    if bind_notes:
+        last_result["param_bindings"] = bind_notes
     reasoning_profile = {
         "mode": reasoning_mode,
         "complexity_score": reasoning_complexity_score,
@@ -4149,7 +6038,7 @@ async def post_command(
         return ExcelLiveActionResponse(
             ok=False,
             action=last.action,
-            reason="작업 실행이 안정성 검증을 통과하지 못했습니다. 복구 정보로 원상 복원이 가능합니다.",
+            reason=_verification_failure_reason(failure_detail),
             result={
                 "failed_action": last.action,
                 "failed_step_index": last.index,
@@ -4159,6 +6048,11 @@ async def post_command(
                 "recovery_backup": recovery_backup_info,
                 "queue_wait_ms": queue_wait_total_ms,
                 "reasoning_profile": reasoning_profile,
+                "xlwings_ops": execution_xlwings_ops,
+                # 실패 원인은 대개 계획 자체에 있다. 어떤 단계였는지 남겨야 재현이 된다.
+                "planned_steps": [
+                    {"action": step.action, "params": dict(step.params or {})} for step in current_plan
+                ],
             },
         )
 
@@ -4167,7 +6061,7 @@ async def post_command(
     has_formula_step = any(s.action == "excel_live.set_formula" for s in execution.steps)
     if (
         has_formula_step
-        and last.action == "excel_live.verify_formula_result"
+        and primary.action == "excel_live.verify_formula_result"
         and int(last_result.get("numeric_cells", 0) or 0) == 0
     ):
         formula_step = next((s for s in execution.steps if s.action == "excel_live.set_formula"), None)
@@ -4176,20 +6070,38 @@ async def post_command(
         if retry_formula and _is_numeric_formula_candidate(formula_a1):
             try:
                 def _run_formula_retry_once():
-                    retry_set_local = _execute_action(
+                    retry_set_params = {
+                        "range_ref": str((formula_step.params or {}).get("range_ref", "__ACTIVE_SELECTION__")),
+                        "formula_a1": retry_formula,
+                    }
+                    retry_set_raw = _execute_action(
                         action="excel_live.set_formula",
-                        params={
-                            "range_ref": str((formula_step.params or {}).get("range_ref", "__ACTIVE_SELECTION__")),
-                            "formula_a1": retry_formula,
-                        },
+                        params=retry_set_params,
                         workbook_id=req.workbook_id,
                         sheet_name=req.sheet_name,
                     )
-                    retry_verify_local = _execute_action(
-                        action="excel_live.verify_formula_result",
-                        params={"range_ref": str((formula_step.params or {}).get("range_ref", "__ACTIVE_SELECTION__"))},
+                    retry_set_local = _append_xlwings_trace(
+                        action="excel_live.set_formula",
+                        params=retry_set_params,
                         workbook_id=req.workbook_id,
                         sheet_name=req.sheet_name,
+                        result=retry_set_raw,
+                    )
+                    retry_verify_params = {
+                        "range_ref": str((formula_step.params or {}).get("range_ref", "__ACTIVE_SELECTION__"))
+                    }
+                    retry_verify_raw = _execute_action(
+                        action="excel_live.verify_formula_result",
+                        params=retry_verify_params,
+                        workbook_id=req.workbook_id,
+                        sheet_name=req.sheet_name,
+                    )
+                    retry_verify_local = _append_xlwings_trace(
+                        action="excel_live.verify_formula_result",
+                        params=retry_verify_params,
+                        workbook_id=req.workbook_id,
+                        sheet_name=req.sheet_name,
+                        result=retry_verify_raw,
                     )
                     return retry_set_local, retry_verify_local
 
@@ -4204,6 +6116,9 @@ async def post_command(
                     retry_verify["retry_formula"] = retry_formula
                     retry_verify["retry_set_result"] = retry_set
                     retry_verify["reasoning_profile"] = reasoning_profile
+                    retry_ops = [row for row in retry_verify.get("xlwings_ops", []) if isinstance(row, dict)]
+                    if execution_xlwings_ops:
+                        retry_verify["xlwings_ops"] = execution_xlwings_ops + retry_ops
                     if rollback_events:
                         retry_verify["auto_rollbacks"] = list(rollback_events)
                     if recovery_backup_info:
@@ -4233,14 +6148,15 @@ async def post_command(
                 "recovery_backup": recovery_backup_info,
                 "queue_wait_ms": queue_wait_total_ms,
                 "reasoning_profile": reasoning_profile,
+                "xlwings_ops": execution_xlwings_ops,
             },
         )
 
     return ExcelLiveActionResponse(
         ok=True,
-        action=last.action,
+        action=primary.action,
         result=last_result,
-        reason=parsed.get("reason", "") or last.reason,
+        reason=parsed.get("reason", "") or primary.reason,
     )
 
 
@@ -4273,11 +6189,18 @@ def post_approval(req: ApprovalResponse):
                 if _action_needs_recovery_backup(pending.action)
                 else None
             )
-            return _execute_action(
+            raw_result = _execute_action(
                 action=pending.action,
                 params=pending.params,
                 workbook_id=pending.workbook_id,
                 sheet_name=pending.sheet_name,
+            )
+            return _append_xlwings_trace(
+                action=pending.action,
+                params=pending.params,
+                workbook_id=pending.workbook_id,
+                sheet_name=pending.sheet_name,
+                result=raw_result,
             )
 
         result, queue_wait_ms = _run_in_excel_queue("approval", _run_approval_once)

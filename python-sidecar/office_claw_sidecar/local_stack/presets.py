@@ -30,6 +30,9 @@ QWEN3_OPENCLAW: LocalStackPreset = {
     "llm": {"provider": "ollama", "model": "skt/A.X-4.0-Light:latest"},
 }
 
+# 이전 코드/테스트 호환용 별칭
+QWEN3_LOCAL = QWEN3_OPENCLAW
+
 PRESETS: dict[str, LocalStackPreset] = {
     QWEN3_OPENCLAW["id"]: QWEN3_OPENCLAW,
 }

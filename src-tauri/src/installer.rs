@@ -207,6 +207,29 @@ fn run_shell_streaming(
     })
 }
 
+/// Tauri command: OpenClaw 전역 설치 — `npm install -g openclaw@latest`
+///
+/// manual_command에는 sudo를 포함하지 않는다 — 프론트에서 result.eacces 플래그를
+/// 보고 EACCES 케이스에만 "sudo " 프리픽스를 붙여 표시한다.
+#[tauri::command]
+pub async fn install_openclaw(
+    app: AppHandle,
+    state: State<'_, Mutex<InstallerState>>,
+) -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "windows")]
+    let install_cmd = "$prefix = Join-Path $env:USERPROFILE '.npm-global'; \
+if (-not (Test-Path $prefix)) { New-Item -ItemType Directory -Force -Path $prefix | Out-Null }; \
+npm config set prefix \"$prefix\"; \
+npm install -g openclaw@latest";
+
+    #[cfg(not(target_os = "windows"))]
+    let install_cmd =
+        "mkdir -p \"$HOME/.npm-global\" && npm config set prefix \"$HOME/.npm-global\" && npm install -g openclaw@latest";
+
+    let result = run_shell_streaming(app, &state, "install-oc", install_cmd, install_cmd)?;
+    serde_json::to_value(result).map_err(|e| e.to_string())
+}
+
 /// Tauri command: Ollama 설치.
 /// - macOS: `brew install ollama`
 /// - Windows: `winget install -e --id Ollama.Ollama ...`

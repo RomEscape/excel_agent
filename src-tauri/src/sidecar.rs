@@ -1,3 +1,4 @@
+use std::env;
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
@@ -49,7 +50,9 @@ pub async fn spawn_sidecar(app: &AppHandle) -> Result<(), String> {
             auth_token: auth_token.clone(),
         }));
 
-        if wait_for_ready(port, &auth_token).await.is_err() {
+        // 이미 떠 있는지는 한 번만 짧게 찔러본다. 여기서 전체 폴링을 돌리면
+        // 사이드카가 없을 때 자동 기동 시작까지 45초를 그냥 흘려보낸다.
+        if !probe_health(port, &auth_token, Duration::from_millis(400)).await {
             println!("[office-claw] Dev mode: sidecar not ready. Attempting auto-launch...");
             spawn_dev_sidecar_process(port, &auth_token)?;
             wait_for_ready(port, &auth_token).await?;
@@ -110,12 +113,23 @@ pub async fn spawn_sidecar(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// 헬스 엔드포인트를 한 번만 확인한다. 이미 떠 있는 사이드카를 빠르게 감지할 때 쓴다.
+async fn probe_health(port: u16, auth_token: &str, timeout: Duration) -> bool {
+    let client = reqwest::Client::new();
+    let url = format!("http://127.0.0.1:{}/health", port);
+    matches!(
+        client.get(&url).bearer_auth(auth_token).timeout(timeout).send().await,
+        Ok(resp) if resp.status().is_success()
+    )
+}
+
 /// Poll the sidecar health endpoint until it responds.
 async fn wait_for_ready(port: u16, auth_token: &str) -> Result<(), String> {
+    const MAX_ATTEMPTS: u32 = 30;
     let client = reqwest::Client::new();
     let url = format!("http://127.0.0.1:{}/health", port);
 
-    for attempt in 1..=30 {
+    for attempt in 1..=MAX_ATTEMPTS {
         match client
             .get(&url)
             .bearer_auth(auth_token)
@@ -142,7 +156,68 @@ async fn wait_for_ready(port: u16, auth_token: &str) -> Result<(), String> {
         }
     }
 
-    Err("Sidecar failed to start within 15 seconds".to_string())
+    Err(format!(
+        "사이드카가 {}초 안에 기동하지 못했습니다",
+        MAX_ATTEMPTS * 3 / 2
+    ))
+}
+
+fn resolve_uv_project_environment_dir(python_sidecar_dir: &Path) -> PathBuf {
+    let from_env = env::var("UV_PROJECT_ENVIRONMENT")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+
+    let project_root = python_sidecar_dir.parent().unwrap_or(python_sidecar_dir);
+    if let Some(raw) = from_env {
+        let configured = PathBuf::from(raw);
+        if configured.is_absolute() {
+            return configured;
+        }
+        return project_root.join(configured);
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let local_app_data = env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                env::var_os("USERPROFILE")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| PathBuf::from("."))
+                    .join("AppData")
+                    .join("Local")
+            });
+        local_app_data
+            .join("officeclaw")
+            .join("venvs")
+            .join("python-sidecar")
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let home = env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("."));
+        home.join(".cache")
+            .join("officeclaw")
+            .join("venvs")
+            .join("python-sidecar")
+    }
+}
+
+fn python_executable_from_venv(venv_dir: &Path) -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    let candidate = venv_dir.join("Scripts").join("python.exe");
+
+    #[cfg(not(target_os = "windows"))]
+    let candidate = venv_dir.join("bin").join("python");
+
+    if candidate.exists() {
+        Some(candidate)
+    } else {
+        None
+    }
 }
 
 fn spawn_dev_sidecar_process(port: u16, auth_token: &str) -> Result<(), String> {
@@ -162,17 +237,17 @@ fn spawn_dev_sidecar_process(port: u16, auth_token: &str) -> Result<(), String> 
             "Dev sidecar 자동 기동 실패: python-sidecar 디렉토리를 찾을 수 없습니다.".to_string()
         })?;
 
-    // venv 실행 파일도 위에서 찾은 디렉토리 기준으로 해석한다(cwd 의존 상대경로 제거).
-    let venv_candidates = [
-        python_sidecar_dir.join(".venv").join("Scripts").join("python.exe"), // Windows
-        python_sidecar_dir.join(".venv").join("bin").join("python"), // macOS/Linux
-    ];
-    let python_cmd = venv_candidates
-        .into_iter()
-        .find(|p| p.exists())
-        .unwrap_or_else(|| PathBuf::from("python"));
+    let uv_project_environment = resolve_uv_project_environment_dir(&python_sidecar_dir);
+    let local_project_venv = python_sidecar_dir.join(".venv");
+    let python_cmd = [
+        uv_project_environment.as_path(),
+        local_project_venv.as_path(),
+    ]
+    .iter()
+    .find_map(|venv_dir| python_executable_from_venv(venv_dir))
+    .unwrap_or_else(|| PathBuf::from("python"));
 
-    let mut cmd = ProcessCommand::new(&python_cmd);
+    let mut cmd = ProcessCommand::new(python_cmd);
     cmd.current_dir(&python_sidecar_dir)
         .args([
             "-m",
@@ -183,9 +258,58 @@ fn spawn_dev_sidecar_process(port: u16, auth_token: &str) -> Result<(), String> 
             auth_token,
         ])
         .env("PYTHONUTF8", "1")
-        .env("PYTHONIOENCODING", "utf-8");
+        .env("PYTHONIOENCODING", "utf-8")
+        .env(
+            "UV_PROJECT_ENVIRONMENT",
+            uv_project_environment.to_string_lossy().to_string(),
+        );
+    let excel_engine = env::var("EXCEL_LIVE_ENGINE")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "file".to_string());
+    cmd.env("EXCEL_LIVE_ENGINE", excel_engine);
+
+    if let Some(token) = load_gateway_token_from_openclaw_config() {
+        if !token.is_empty() {
+            cmd.env("OPENCLAW_GATEWAY_TOKEN", token);
+        }
+    }
 
     cmd.spawn()
         .map_err(|e| format!("Dev sidecar 자동 기동 실패: {}", e))?;
     Ok(())
+}
+
+fn load_gateway_token_from_openclaw_config() -> Option<String> {
+    if let Ok(token) = std::env::var("OPENCLAW_GATEWAY_TOKEN") {
+        let t = token.trim().to_string();
+        if !t.is_empty() {
+            return Some(t);
+        }
+    }
+
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)?;
+    let cfg_path = home.join(".openclaw").join("openclaw.json");
+    if !cfg_path.exists() {
+        return None;
+    }
+
+    let raw = std::fs::read_to_string(cfg_path).ok()?;
+    let json: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let token = json
+        .get("gateway")
+        .and_then(|v| v.get("auth"))
+        .and_then(|v| v.get("token"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if token.is_empty() {
+        None
+    } else {
+        Some(token)
+    }
 }
