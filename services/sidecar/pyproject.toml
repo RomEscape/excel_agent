@@ -35,10 +35,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# 여기 넣는 패키지는 로컬 PyInstaller 빌드 크기에 직결된다 — dev extra 를 동기화한
+# 상태로 사이드카를 말면 그대로 번들에 들어간다. 실제로 sentence-transformers 가
+# torch/transformers 를 끌어와 64MB 산출물을 201MB 로 부풀리고 있었다(미사용).
 dev = [
     "pytest>=8.0",
     "pyinstaller>=6.0",
-    "sentence-transformers>=3.0.0",
 ]
 
 [project.scripts]
