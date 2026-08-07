@@ -40,6 +40,10 @@
     "externalBin": [
       "binaries/office-claw-sidecar"
     ],
+    "macOS": {
+      "entitlements": "entitlements.plist",
+      "minimumSystemVersion": "12.0"
+    },
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper",
