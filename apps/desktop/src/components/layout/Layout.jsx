@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
-import Sidebar from "./Sidebar";
+import ConversationSidebar from "./ConversationSidebar";
 import StatusBar from "./StatusBar";
 // 통합 승인 다이얼로그: Phase 2 메신저 CONFIRM과 Phase 4 에이전트 스킬 CONFIRM이
 // 동일한 pendingApproval 상태를 공유한다.
@@ -9,6 +9,7 @@ import CommandPalette from "@/components/cmdk/CommandPalette";
 import ShortcutHelp from "@/components/cmdk/ShortcutHelp";
 import UpdateNotice from "@/components/updater/UpdateNotice";
 import { Toast } from "@/components/ui/toast";
+import { cn } from "@/lib/utils";
 import useAppStore from "@/store/appStore";
 import useToast from "@/hooks/useToast";
 import { securityRespondApproval } from "@/lib/api";
@@ -46,6 +47,7 @@ function isImeComposing(e) {
 // Lazy-loaded page components — each module is its own code-split chunk.
 // This keeps the initial bundle small and defers loading of heavy modules
 // until the user first navigates to them.
+const ChatPage = lazy(() => import("@/components/chat/ChatPage"));
 const Dashboard = lazy(() => import("@/components/dashboard/Dashboard"));
 const WorkspacePage = lazy(() => import("@/components/workspace/WorkspacePage"));
 const ConversationsPage = lazy(() => import("@/components/conversations/ConversationsPage"));
@@ -54,11 +56,12 @@ const SettingsHub = lazy(() => import("@/components/settings/SettingsHub"));
 /**
  * Map page keys to their lazy components.
  *
- * 4개 핵심 페이지(dashboard/workspace/conversations/settings) 외에는
+ * 5개 핵심 페이지(chat/dashboard/workspace/conversations/settings) 외에는
  * Settings 허브 안의 탭으로 흡수되었지만, 호환성을 위해 일부 키는
  * Settings 허브로 라우팅(설정 내부에서 자동으로 해당 탭이 열림).
  */
 const PAGE_MAP = {
+  chat: ChatPage,
   dashboard: Dashboard,
   workspace: WorkspacePage,
   conversations: ConversationsPage,
@@ -87,7 +90,11 @@ export default function Layout() {
   const pendingApproval = useAppStore((s) => s.pendingApproval);
   const setPendingApproval = useAppStore((s) => s.setPendingApproval);
   const setSidebarCollapsed = useAppStore((s) => s.setSidebarCollapsed);
-  const PageComponent = PAGE_MAP[currentPage] ?? Dashboard;
+  const PageComponent = PAGE_MAP[currentPage] ?? ChatPage;
+
+  // 채팅은 스레드·컴포저가 자기 여백과 스크롤을 직접 관리한다.
+  // 여기서 p-6을 얹으면 컴포저가 창 하단에서 떠 보인다.
+  const isChat = currentPage === "chat";
 
   // 로컬 토스트 상태 (승인/거부 결과 안내) — useToast 훅이 상태·자동 dismiss 소유
   const { toast: notifyToast, showToast: showNotify, dismissToast: dismissNotify } = useToast();
@@ -183,13 +190,19 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background">
-      {/* Left sidebar */}
-      <Sidebar />
+      {/* 대화 목록 사이드바 — Cmd/Ctrl+B로 접으면 아이콘 레일이 된다.
+          접힘 모양은 사이드바가 직접 소유하므로 여기서 언마운트하지 않는다. */}
+      <ConversationSidebar />
 
       {/* Main area */}
       <div className="flex flex-1 flex-col overflow-hidden">
         <StatusBar />
-        <main className="flex-1 overflow-y-auto p-6">
+        <main
+          className={cn(
+            "flex-1 overflow-hidden",
+            isChat ? "flex flex-col" : "overflow-y-auto p-6"
+          )}
+        >
           <Suspense fallback={<PageLoader />}>
             <PageComponent />
           </Suspense>

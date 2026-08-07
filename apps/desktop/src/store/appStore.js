@@ -10,7 +10,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-/** @typedef {'dashboard'|'telegram'|'workspace'|'conversations'|'credentials'|'audit'|'settings'|'security'|'permissions'|'messenger_settings'|'guide'} Page */
+/** @typedef {'chat'|'dashboard'|'telegram'|'workspace'|'conversations'|'credentials'|'audit'|'settings'|'security'|'permissions'|'messenger_settings'|'guide'} Page */
 
 /**
  * @typedef {Object} ChatMessage
@@ -35,8 +35,12 @@ import { persist } from "zustand/middleware";
 const useAppStore = create(
   persist(
     (set) => ({
-      /** @type {Page} */
-      currentPage: "dashboard",
+      /**
+       * 시작 페이지는 채팅이다 — 앱의 주 작업면이 대화이고, 대시보드/워크스페이스는
+       * 대화 사이드바 푸터에서 언제든 열 수 있다.
+       * @type {Page}
+       */
+      currentPage: "chat",
 
       /** @type {LLMConfig} */
       llmConfig: {
@@ -153,7 +157,8 @@ const useAppStore = create(
         set({ activeSessionId: sessionId }),
 
       /**
-       * 에이전트 채팅 메시지 목록 (대시보드 AgentChatPanel과 공유).
+       * 에이전트 채팅 메시지 목록. 렌더는 ChatPage, 액션은 lib/chatManager.js가 맡고
+       * 여기서는 상태만 소유한다(세션 목록·진행 상태는 store/chatStore.js).
        * system 메시지는 타임아웃 거부 등 시스템 이벤트를 채팅 히스토리에 영구 기록한다.
        * @type {ChatMessage[]}
        */

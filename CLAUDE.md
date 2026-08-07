@@ -41,7 +41,9 @@
 | Tauri IPC | — | `lib/api.js` (모든 invoke wrapper 1곳) | `src-tauri/src/ipc.rs` | — |
 | OS 자격증명 | — | api.js의 `rustCredential*` | `src-tauri/src/keyring_svc.rs` | — |
 | 감사 로그 | — | api.js의 `rustAudit*` | `src-tauri/src/audit.rs` | — |
-| Excel tool-calling | — | (sidecar) `services/excel_tool_schemas.py`(함수 명세) · `excel_tool_agent.py`(루프) · `excel_actions.py`(실행) | — | WorkspacePage 채팅 (조합만) |
+| Excel tool-calling | — | (sidecar) `services/excel_tool_schemas.py`(함수 명세) · `excel_tool_agent.py`(루프) · `excel_actions.py`(실행) | — | ChatPage (조합만) |
+| 에이전트 채팅 | `store/chatStore.js`(세션 목록·진행 상태) + appStore의 `agentMessages`·`activeSessionId` | `lib/chatManager.js`(전송/세션/승인 액션) · `lib/chatSessions.js`(오늘·어제 그룹핑, 순수) · `lib/excelRangeContext.js`(범위 참조 블록, 순수) | — | `components/ui/chat.jsx`(버블·컴포저·칩) |
+| 엑셀 결과 표현 | — | `lib/excelResult.js`(action+result → 표시 모델, 순수) | — | `components/ui/result-card.jsx`(표·막대·통계 카드) |
 | 모바일 릴레이(QR 페어링) | `store/relayStore.js` | `lib/relayManager.js`(액션·상태폴링) · `lib/relayQr.js`(QR 페이로드 계약, 순수) | `ipc.rs`의 `relay_pair`/`relay_status`/`relay_disconnect` | `components/relay/RelayPairing.jsx` (조합만) |
 | 모바일 브랜드 테마 | — | (mobile) `lib/theme/brand_palette.dart`(색 토큰, 순수) · `brand_theme.dart`(ThemeData + `AgentStatusColors` 확장) · `agent_status_tokens.dart`(상태→라벨·색) | — | (mobile) `lib/widgets/brand_wordmark.dart` · `agent_status_chip.dart` (조합만) |
 | relay 페어링 보안 | — | (relay) `oc_relay/pairing.py`(code 발급·TTL·바인딩) · `oc_relay/rate_limit.py`(시도 제한, 순수) | — | — (`app.py`가 두 모듈을 결합만) |
@@ -60,6 +62,16 @@
 > **2026-08 페어링 code 방어 노트**: 페어링 code의 방어는 **TTL(120초) · rate-limit(IP당 10회/60초) · 엔트로피(8 hex = 2^32)** 세 가지가 곱해져야 성립한다. 하나씩은 부족하다 — TTL만 있으면 초당 1만 회 공격에 창당 약 7% 확률로 뚫리고, rate-limit만 있으면 미소비 code가 쌓여 "아무거나 하나만 맞히면 되는" 상태가 된다. **셋 중 하나를 줄이려면 나머지를 키워야 한다.** rate-limit 키는 클라이언트 IP이고, `X-Forwarded-For`는 위조 가능하므로 기본 비신뢰다 — 리버스 프록시가 들어오는 XFF를 **덮어쓰도록** 설정한 경우에만 `RELAY_TRUST_PROXY=1`로 켠다. 전역 잠금(전체 실패 N회 → 엔드포인트 차단)은 공격자가 정상 사용자의 페어링을 막는 DoS 수단이 되므로 의도적으로 넣지 않았다.
 >
 > TTL 도입으로 QR은 120초 후 만료된다. `/pair/start`가 `expires_in`을 함께 주므로 **데스크톱 UI는 이 값으로 카운트다운·재발급을 붙여야 한다** — 안 붙이면 사용자는 이유 없는 페어링 실패만 본다(현재 `RelayPairing.jsx` 미구현, 후속 과제).
+>
+> **2026-08 데스크톱 채팅 우선 레이아웃 노트**: 앱의 주 작업면은 채팅이다(`currentPage` 기본값 `"chat"`). 왼쪽은 `ConversationSidebar`(사용자 칩 → 새 대화 → 오늘/어제 그룹 대화 목록)이고, **채팅·대시보드·워크스페이스·대화 모니터링·설정 진입은 그 사이드바 푸터에 있다** — 디자인 원본(`8a6513e`의 `DesktopAppShell.jsx`)은 채팅 표면만 그려서 내비게이션이 아예 없었기 때문에 진입 경로가 사라지지 않도록 푸터에 붙인 것이다. 지우지 말 것.
+>
+> 푸터의 **`채팅` 항목은 없으면 안 된다**. 대화 목록 클릭은 *다른* 대화로 가고 `새 대화`는 화면을 비우므로, 이 항목이 빠지면 대시보드에 갔다가 *보던 대화로* 돌아올 경로가 Cmd+K뿐이다.
+>
+> 접힘(Cmd/Ctrl+B)은 **통째 숨김이 아니라 64px 아이콘 레일**이다 — 대화 목록만 숨고 내비게이션은 남는다. 통째로 없애면 접는 순간 모든 페이지 진입 경로를 잃고 돌아올 길이 StatusBar 구석 버튼뿐이라 사용자가 길을 잃는다. 접힘 모양은 `ConversationSidebar`가 직접 소유하므로 `Layout`에서 조건부 언마운트하지 않는다.
+>
+> 그 Figma export는 7570px 캔버스에 5개 화면을 절대좌표로 늘어놓은 **정적 목업**이라 컴포넌트로 쓸 수 없었다(props·state 없음, 문자열 하드코딩). 시각 규격만 가져오고 색은 전부 테마 토큰으로 옮겼다 — 목업의 `lime-600/100/800`은 브랜드 초록의 Figma 근사치이므로 **그대로 쓰면 안 된다**(브랜드 색 노트 참조). 목업의 `● ● ● 김대리 AI` 타이틀바도 옮기지 않았다: Figma가 "데스크톱 창"임을 나타내려 그린 장식이고 실제 Tauri 창에는 OS 타이틀바가 이미 있다.
+>
+> 인라인 결과 카드(표·막대)는 `lib/excelResult.js`가 `action`+`result`를 표시 모델로 번역해서 만든다. 기존 `formatExcelLiveResult()`는 데이터를 한 줄 문장으로 눌러버려 `read_range`의 `values`가 버려졌었다 — 그래서 문자열 대신 구조화 모델을 돌려주되 `summary` 필드로 종전 문장을 그대로 유지한다(세션 영속화·메신저 전송이 그 문자열에 의존). **카드가 붙는 결과를 추가하려면 `toResultView()`에 case를 넣고 `result-card.jsx`에 렌더를 더한다.**
 >
 > **2026-08 모바일 평문 차단 노트**: 모바일의 TLS 강제는 **매니페스트/plist가 아니라 Dart 코드**(`apps/mobile/lib/transport/relay_url.dart`)가 책임진다. 안드로이드 `usesCleartextTraffic`·네트워크 보안 설정과 iOS ATS는 *플랫폼이 소유한* 소켓에만 걸리는데, 이 앱의 통신은 `package:http`와 `web_socket_channel` 둘 다 Dart 소유 소켓이라 적용되지 않는다(Flutter 공식: "If the socket is owned by Dart/Flutter, no policy will be enforced" — flutter/flutter#106678은 not planned로 닫힘). 그래서 `kAllowInsecureRelayByDefault = !kReleaseMode`로 debug·profile만 평문을 허용하고, relay 주소는 QR·수동입력 어느 경로든 `normalizeRelayBaseUrl`을 통과시킨다. **새 네트워크 경로를 추가하면 이 함수를 반드시 태울 것** — 안 태우면 릴리스에서 평문이 그대로 나간다.
 >

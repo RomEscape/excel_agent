@@ -1,8 +1,10 @@
 /**
  * ConversationsPage.jsx — 메신저 채널 모니터링.
  *
+ * 이 페이지는 "메신저로 들어온 명령"을 모니터링하는 곳이다. 사용자가 직접
+ * 김대리와 대화하는 화면은 채팅 페이지(components/chat/ChatPage.jsx)로 따로 있다.
+ *
  * R2 변경:
- *   - 앱 내 에이전트 채팅(AgentChatPane) 제거 → WorkspacePage 사이드 패널로 이동
  *   - 미연결 메신저는 "+ 채널 추가" 그룹으로 묶어 시각 노이즈 감소
  *
  * 좌측: 연결된 채널 리스트 + 미연결 그룹 (Telegram/Slack/Discord).
