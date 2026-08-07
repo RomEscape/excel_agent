@@ -1,8 +1,8 @@
 {
   "productName": "김대리",
-  "mainBinaryName": "officeclaw",
+  "mainBinaryName": "kimdaeri",
   "version": "0.1.0",
-  "identifier": "com.officeclaw.app",
+  "identifier": "com.kimdaeri.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "frontendDist": "../dist",
