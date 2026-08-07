@@ -1,0 +1,128 @@
+﻿ <FRAME> Frame 155 [1600x900] fill=#0C1909
+   <FRAME> Frame 120 [1360x900]
+   <FRAME> Frame 125 [390x507] fill=#FDFEFC
+     <FRAME> Frame 129 [390x398] fill=#F9FDF7
+       <FRAME> tabler:aspect-ratio [20x20] fill=#FFFFFF
+         <GROUP> Group [15x12]
+           <VECTOR> Vector [15x12]
+           <VECTOR> Vector [8x5]
+       <FRAME> 김대리_Light 1 [36x36] fill=#F9FDF7
+         <VECTOR> Vector [36x36] fill=#FFFFFF
+         <GROUP> Group [31x31]
+           <VECTOR> Vector [24x9]
+           <GROUP> Group [6x12]
+             <VECTOR> Vector [6x12]
+             <VECTOR> Vector [6x12] fill=#141312
+           <VECTOR> Vector [12x6]
+           <VECTOR> Vector [9x24]
+           <VECTOR> Vector [9x11]
+           <VECTOR> Vector [26x9]
+           <VECTOR> Vector [5x6]
+           <GROUP> Group [6x4]
+             <VECTOR> Vector [6x4]
+             <VECTOR> Vector [6x4] fill=#092400
+       <GROUP> Group [74x26]
+         <VECTOR> Vector [17x10] fill=#2DB400
+         <VECTOR> Vector [15x18] fill=#2DB400
+         <VECTOR> Vector [11x26] fill=#2DB400
+         <VECTOR> Vector [5x26] fill=#2DB400
+         <VECTOR> Vector [14x13] fill=#2DB400
+         <VECTOR> Vector [11x17] fill=#2DB400
+         <VECTOR> Vector [5x15] fill=#2DB400
+     <FRAME> Frame 130 [390x117] fill=#FDFEFC
+       <FRAME> Frame 70 [358x48] fill=#FDFEFC
+         <FRAME> Frame 119 [36x36]
+           <FRAME> tabler:plus [20x20] fill=#FFFFFF
+             <VECTOR> Vector [12x12]
+         TEXT [168x20] "김비서에게 명령을 내려주세요."
+       <FRAME> Frame 127 [358x29] fill=#FDFEFC
+         <FRAME> Frame 124 [116x29] fill=#FDFEFC
+           <FRAME> Frame 112 [92x13]
+             <FRAME> Frame 110 [92x13]
+               TEXT [92x13] "중복 데이터 처리해줘"
+         <FRAME> Frame 125 [125x29] fill=#FDFEFC
+           <FRAME> Frame 112 [101x13]
+             <FRAME> Frame 110 [101x13]
+               TEXT [101x13] "배송 형태로 필터링해줘"
+         <FRAME> Frame 126 [125x29] fill=#FDFEFC
+           <FRAME> Frame 112 [101x13]
+             <FRAME> Frame 110 [101x13]
+               TEXT [101x13] "배송 형태로 필터링해줘"
+       <FRAME> Frame 128 [28x28] fill=#FCFEFB
+         <FRAME> tabler:chevron-right [24x24] fill=#FFFFFF
+           <VECTOR> Vector [6x12]
+   <FRAME> Frame 121 [240x1231] fill=#0C1909
+     <FRAME> Frame 151 [240x176]
+       <FRAME> Frame 99 [240x44] fill=#0C1909
+         <FRAME> Frame 112 [216x20]
+           <FRAME> Frame 110 [77x20]
+             <FRAME> tabler:layout-dashboard [16x16] fill=#FFFFFF
+               <VECTOR> Vector [11x11]
+             TEXT [49x20] "대시보드"
+       <FRAME> Frame 121 [240x44] fill=#0C1909
+         <FRAME> Frame 112 [216x20]
+           <FRAME> Frame 110 [101x20]
+             <FRAME> tabler:subtitles-edit [16x16] fill=#FFFFFF
+               <VECTOR> Vector [13x11]
+             TEXT [73x20] "워크스페이스"
+       <FRAME> Frame 123 [240x44] fill=#0C1909
+         <FRAME> Frame 112 [216x20]
+           <FRAME> Frame 110 [80x20]
+             <FRAME> tabler:input-search [16x16] fill=#FFFFFF
+               <VECTOR> Vector [12x10]
+             TEXT [52x20] "작업 겁색"
+           <FRAME> tabler:chevron-down [20x20] fill=#FFFFFF
+             <VECTOR> Vector [5x10]
+       <FRAME> Frame 122 [240x44] fill=#0C1909
+         <FRAME> Frame 112 [216x20]
+           <FRAME> Frame 110 [77x20]
+             <FRAME> tabler:message-circle [16x16] fill=#FFFFFF
+               <VECTOR> Vector [12x11]
+             TEXT [49x20] "대화목록"
+           <FRAME> tabler:chevron-down [20x20] fill=#FFFFFF
+             <VECTOR> Vector [5x10]
+     <FRAME> 아트보드 5 2 [126x36] fill=#FFFFFF
+       <VECTOR> Vector [126x36] fill=#F9FDF7
+       <GROUP> Group [51x18]
+         <VECTOR> Vector [12x7] fill=#2DB400
+         <VECTOR> Vector [11x12] fill=#2DB400
+         <VECTOR> Vector [7x18] fill=#2DB400
+         <VECTOR> Vector [3x18] fill=#2DB400
+         <VECTOR> Vector [9x9] fill=#2DB400
+         <VECTOR> Vector [8x12] fill=#2DB400
+         <VECTOR> Vector [3x10] fill=#2DB400
+       <GROUP> Group [23x23]
+         <VECTOR> Vector [18x7]
+         <GROUP> Group [5x9]
+           <VECTOR> Vector [5x9]
+           <VECTOR> Vector [5x9] fill=#141312
+         <VECTOR> Vector [9x5]
+         <VECTOR> Vector [7x18]
+         <VECTOR> Vector [7x8]
+         <VECTOR> Vector [19x7]
+         <VECTOR> Vector [4x5]
+         <GROUP> Group [4x3]
+           <VECTOR> Vector [4x3]
+           <VECTOR> Vector [4x3] fill=#092400
+     <FRAME> tabler:layout-sidebar-left-collapse [20x20] fill=#FFFFFF
+       <GROUP> Group [13x13]
+         <VECTOR> Vector [13x13]
+         <VECTOR> Vector [2x3]
+     <FRAME> Frame 148 [240x112]
+       <FRAME> Frame 122 [216x44] fill=#0C1909
+         <FRAME> Frame 112 [196x20]
+           <FRAME> Frame 110 [65x20]
+             <FRAME> tabler:help [16x16] fill=#FFFFFF
+               <GROUP> Group [12x12]
+                 <VECTOR> Vector [12x12]
+                 <VECTOR> Vector [3x4]
+             TEXT [37x20] "도움말"
+       <FRAME> Frame 124 [216x44] fill=#0C1909
+         <FRAME> Frame 112 [196x20]
+           <FRAME> Frame 110 [80x20]
+             <FRAME> tabler:settings [16x16] fill=#FFFFFF
+               <GROUP> Group [12x12]
+                 <VECTOR> Vector [12x12]
+                 <VECTOR> Vector [4x4]
+             TEXT [52x20] "환경 설정"
+

@@ -1,0 +1,228 @@
+﻿ <FRAME> Frame 166 [1600x1231] fill=#FDFEFC
+   <ELLIPSE> Ellipse 1 [938x632] fill=#7FD163
+   <FRAME> Frame 120 [1360x1231] fill=#FFFFFF
+     <GROUP> Group 3 [751x950]
+       TEXT [530x50] "좋은 아침입니다, 무엇을 도와드릴까요?"
+       <FRAME> 김대리_Light 1 [36x36] fill=#F9FDF7
+         <VECTOR> Vector [36x36] fill=#FFFFFF
+         <GROUP> Group [31x31]
+           <VECTOR> Vector [24x9]
+           <GROUP> Group [6x12]
+             <VECTOR> Vector [6x12]
+             <VECTOR> Vector [6x12] fill=#141312
+           <VECTOR> Vector [12x6]
+           <VECTOR> Vector [9x24]
+           <VECTOR> Vector [9x11]
+           <VECTOR> Vector [26x9]
+           <VECTOR> Vector [5x6]
+           <GROUP> Group [6x4]
+             <VECTOR> Vector [6x4]
+             <VECTOR> Vector [6x4] fill=#092400
+       <FRAME> Frame 149 [751x44]
+         <FRAME> Frame 161 [497x44]
+           <FRAME> Frame 99 [242x44] fill=#FDFEFC
+             <FRAME> Frame 112 [224x20]
+               <FRAME> Frame 110 [118x20]
+                 <FRAME> Frame 147 [20x20]
+                   <GROUP> Group 5 [13x17]
+                     <VECTOR> Rectangle 30 [12x15] fill=#46C642
+                     <VECTOR> Vector 3 [4x4] fill=#46C642
+                     <VECTOR> Rectangle 29 (Stroke) [13x17] fill=#E0FCDA
+                     <VECTOR> Vector (Stroke) [7x7] fill=#FFFFFF
+                 TEXT [92x20] "새로운 문서 생성"
+           <FRAME> Frame 118 [242x44] fill=#FDFEFC
+             <FRAME> Frame 112 [224x20]
+               <FRAME> Frame 110 [91x20]
+                 <FRAME> Upload [20x20] fill=#FFFFFF
+                   <GROUP> Group 6 [13x17]
+                     <VECTOR> Rectangle 29 [12x15] fill=#46C642
+                     <VECTOR> Union [6x7] fill=#FFFFFF
+                     <VECTOR> Vector 1 [4x4] fill=#46C642
+                     <VECTOR> Rectangle 29 (Stroke) [13x17] fill=#E0FCDA
+                 TEXT [65x20] "문서 업로드"
+         <FRAME> Frame 112 [78x44]
+           <FRAME> Frame 110 [78x20]
+             <FRAME> tabler:trash [20x20] fill=#FFFFFF
+               <VECTOR> Vector [13x15]
+             TEXT [52x20] "문서 삭제"
+       <FRAME> Frame 118 [242x268] fill=#FDFEFC
+         <FRAME> Frame 152 [180x239]
+         <FRAME> Frame 112 [242x44] fill=#FDFEFC
+           <FRAME> Frame 110 [189x20]
+             <FRAME> vscode-icons:file-type-excel [20x20] fill=#FFFFFF
+               <VECTOR> Vector [13x10] fill=#185C37
+               <VECTOR> Vector [13x9] fill=#21A366
+               <VECTOR> Vector [7x4] fill=#107C41
+               <VECTOR> Vector [6x10] fill=#000000
+               <VECTOR> Vector [5x10] fill=#000000
+               <VECTOR> Vector [5x9] fill=#000000
+               <VECTOR> Vector [5x9] fill=#000000
+               <VECTOR> Vector [9x9]
+               <VECTOR> Vector [4x5] fill=#FFFFFF
+               <VECTOR> Vector [7x4] fill=#33C481
+               <VECTOR> Vector [7x4] fill=#107C41
+             TEXT [163x20] "마케팅 시장조사"
+           TEXT [29x13] "3일 전"
+       <FRAME> Frame 119 [242x268] fill=#FDFEFC
+         <FRAME> Frame 152 [180x239]
+         <FRAME> Frame 112 [242x44] fill=#FDFEFC
+           <FRAME> Frame 110 [189x20]
+             <FRAME> vscode-icons:file-type-excel [20x20] fill=#FFFFFF
+               <VECTOR> Vector [13x10] fill=#185C37
+               <VECTOR> Vector [13x9] fill=#21A366
+               <VECTOR> Vector [7x4] fill=#107C41
+               <VECTOR> Vector [6x10] fill=#000000
+               <VECTOR> Vector [5x10] fill=#000000
+               <VECTOR> Vector [5x9] fill=#000000
+               <VECTOR> Vector [5x9] fill=#000000
+               <VECTOR> Vector [9x9]
+               <VECTOR> Vector [4x5] fill=#FFFFFF
+               <VECTOR> Vector [7x4] fill=#33C481
+               <VECTOR> Vector [7x4] fill=#107C41
+             TEXT [163x20] "마케팅 시장조사"
+           TEXT [29x13] "4일 전"
+       <FRAME> Frame 120 [242x268] fill=#FDFEFC
+         <FRAME> Frame 152 [180x239]
+         <FRAME> Frame 112 [242x44] fill=#FDFEFC
+           <FRAME> Frame 110 [189x20]
+             <FRAME> vscode-icons:file-type-excel [20x20] fill=#FFFFFF
+               <VECTOR> Vector [13x10] fill=#185C37
+               <VECTOR> Vector [13x9] fill=#21A366
+               <VECTOR> Vector [7x4] fill=#107C41
+               <VECTOR> Vector [6x10] fill=#000000
+               <VECTOR> Vector [5x10] fill=#000000
+               <VECTOR> Vector [5x9] fill=#000000
+               <VECTOR> Vector [5x9] fill=#000000
+               <VECTOR> Vector [9x9]
+               <VECTOR> Vector [4x5] fill=#FFFFFF
+               <VECTOR> Vector [7x4] fill=#33C481
+               <VECTOR> Vector [7x4] fill=#107C41
+             TEXT [163x20] "마케팅 시장조사"
+           TEXT [29x13] "5일 전"
+       <FRAME> Frame 113 [242x268] fill=#F9FDF7
+         <FRAME> Frame 147 [60x60]
+           <GROUP> Group 5 [40x50]
+             <VECTOR> Rectangle 30 [35x45] fill=#46C642
+             <VECTOR> Vector 3 [12x12] fill=#46C642
+             <VECTOR> Rectangle 29 (Stroke) [40x50] fill=#E0FCDA
+         TEXT [113x22] "15개 문서 더보기..."
+       <FRAME> Frame 70 [750x48] fill=#FDFEFC
+         <FRAME> Frame 119 [36x36]
+           <FRAME> tabler:plus [24x24] fill=#FFFFFF
+             <VECTOR> Vector [14x14]
+         TEXT [183x22] "김비서에게 명령을 내려주세요."
+       TEXT [222x22] "당신의 업무비서 김대리 대기중입니다"
+       <INSTANCE> Component 3 [242x268] fill=#F9FDF7
+         <FRAME> Frame 152 [180x239]
+         <FRAME> Frame 112 [242x44] fill=#FDFEFC
+           <FRAME> Frame 110 [191x20]
+             <FRAME> vscode-icons:file-type-excel [20x20] fill=#FFFFFF
+               <VECTOR> Vector [13x10] fill=#185C37
+               <VECTOR> Vector [13x9] fill=#21A366
+               <VECTOR> Vector [7x4] fill=#107C41
+               <VECTOR> Vector [6x10] fill=#000000
+               <VECTOR> Vector [5x10] fill=#000000
+               <VECTOR> Vector [5x9] fill=#000000
+               <VECTOR> Vector [5x9] fill=#000000
+               <VECTOR> Vector [9x9]
+               <VECTOR> Vector [4x5] fill=#FFFFFF
+               <VECTOR> Vector [7x4] fill=#33C481
+               <VECTOR> Vector [7x4] fill=#107C41
+             TEXT [165x20] "마케팅 시장조사"
+           TEXT [27x13] "1일 전"
+       <INSTANCE> Component 4 [242x268] fill=#F9FDF7
+         <FRAME> Frame 152 [180x239]
+         <FRAME> Frame 112 [242x44] fill=#FDFEFC
+           <FRAME> Frame 110 [191x20]
+             <FRAME> vscode-icons:file-type-excel [20x20] fill=#FFFFFF
+               <VECTOR> Vector [13x10] fill=#185C37
+               <VECTOR> Vector [13x9] fill=#21A366
+               <VECTOR> Vector [7x4] fill=#107C41
+               <VECTOR> Vector [6x10] fill=#000000
+               <VECTOR> Vector [5x10] fill=#000000
+               <VECTOR> Vector [5x9] fill=#000000
+               <VECTOR> Vector [5x9] fill=#000000
+               <VECTOR> Vector [9x9]
+               <VECTOR> Vector [4x5] fill=#FFFFFF
+               <VECTOR> Vector [7x4] fill=#33C481
+               <VECTOR> Vector [7x4] fill=#107C41
+             TEXT [165x20] "마케팅 시장조사"
+           TEXT [27x13] "1일 전"
+     <FRAME> Frame 153 [108x13]
+       TEXT [92x13] "로컬 에이전트 작동중"
+       <ELLIPSE> Ellipse 3 [8x8] fill=#2DB400
+   <FRAME> Frame 121 [240x1231] fill=#FDFEFC
+     <FRAME> Frame 151 [240x176]
+       <FRAME> Frame 99 [240x44] fill=#FDFEFC
+         <FRAME> Frame 112 [216x20]
+           <FRAME> Frame 110 [77x20]
+             <FRAME> tabler:layout-dashboard [16x16] fill=#FFFFFF
+               <VECTOR> Vector [11x11]
+             TEXT [49x20] "대시보드"
+       <FRAME> Frame 121 [240x44] fill=#FDFEFC
+         <FRAME> Frame 112 [216x20]
+           <FRAME> Frame 110 [101x20]
+             <FRAME> tabler:subtitles-edit [16x16] fill=#FFFFFF
+               <VECTOR> Vector [13x11]
+             TEXT [73x20] "워크스페이스"
+       <FRAME> Frame 123 [240x44] fill=#FDFEFC
+         <FRAME> Frame 112 [216x20]
+           <FRAME> Frame 110 [80x20]
+             <FRAME> tabler:input-search [16x16] fill=#FFFFFF
+               <VECTOR> Vector [12x10]
+             TEXT [52x20] "작업 겁색"
+           <FRAME> tabler:chevron-down [20x20] fill=#FFFFFF
+             <VECTOR> Vector [5x10]
+       <FRAME> Frame 122 [240x44] fill=#FDFEFC
+         <FRAME> Frame 112 [216x20]
+           <FRAME> Frame 110 [77x20]
+             <FRAME> tabler:message-circle [16x16] fill=#FFFFFF
+               <VECTOR> Vector [12x11]
+             TEXT [49x20] "대화목록"
+           <FRAME> tabler:chevron-down [20x20] fill=#FFFFFF
+             <VECTOR> Vector [5x10]
+     <FRAME> 아트보드 5 2 [126x36] fill=#FFFFFF
+       <VECTOR> Vector [126x36] fill=#F9FDF7
+       <GROUP> Group [51x18]
+         <VECTOR> Vector [12x7] fill=#2DB400
+         <VECTOR> Vector [11x12] fill=#2DB400
+         <VECTOR> Vector [7x18] fill=#2DB400
+         <VECTOR> Vector [3x18] fill=#2DB400
+         <VECTOR> Vector [9x9] fill=#2DB400
+         <VECTOR> Vector [8x12] fill=#2DB400
+         <VECTOR> Vector [3x10] fill=#2DB400
+       <GROUP> Group [23x23]
+         <VECTOR> Vector [18x7]
+         <GROUP> Group [5x9]
+           <VECTOR> Vector [5x9]
+           <VECTOR> Vector [5x9] fill=#141312
+         <VECTOR> Vector [9x5]
+         <VECTOR> Vector [7x18]
+         <VECTOR> Vector [7x8]
+         <VECTOR> Vector [19x7]
+         <VECTOR> Vector [4x5]
+         <GROUP> Group [4x3]
+           <VECTOR> Vector [4x3]
+           <VECTOR> Vector [4x3] fill=#092400
+     <FRAME> tabler:layout-sidebar-left-collapse [20x20] fill=#FFFFFF
+       <GROUP> Group [13x13]
+         <VECTOR> Vector [13x13]
+         <VECTOR> Vector [2x3]
+     <FRAME> Frame 148 [240x112]
+       <FRAME> Frame 122 [216x44] fill=#FDFEFC
+         <FRAME> Frame 112 [196x20]
+           <FRAME> Frame 110 [65x20]
+             <FRAME> tabler:help [16x16] fill=#FFFFFF
+               <GROUP> Group [12x12]
+                 <VECTOR> Vector [12x12]
+                 <VECTOR> Vector [3x4]
+             TEXT [37x20] "도움말"
+       <FRAME> Frame 124 [216x44] fill=#FDFEFC
+         <FRAME> Frame 112 [196x20]
+           <FRAME> Frame 110 [80x20]
+             <FRAME> tabler:settings [16x16] fill=#FFFFFF
+               <GROUP> Group [12x12]
+                 <VECTOR> Vector [12x12]
+                 <VECTOR> Vector [4x4]
+             TEXT [52x20] "환경 설정"
+

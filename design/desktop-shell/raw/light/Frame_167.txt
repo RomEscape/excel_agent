@@ -1,0 +1,102 @@
+﻿ <FRAME> Frame 167 [1600x900] fill=#FDFEFC
+   <ELLIPSE> Ellipse 1 [938x632] fill=#7FD163
+   <FRAME> Frame 120 [1360x900] fill=#FFFFFF
+     <FRAME> QR Code [160x160] fill=#FFFFFF
+       <VECTOR> Vector [140x140] fill=#000000
+     <FRAME> Frame 70 [334x44] fill=#FDFEFC
+       TEXT [223x20] "akjsdbnjjknjjc98us89200cnj023ldsl"
+       <FRAME> tabler:copy [16x16] fill=#FFFFFF
+         <GROUP> Group [12x12]
+           <VECTOR> Vector [9x9]
+           <VECTOR> Vector [9x9]
+     <FRAME> Frame 145 [151x22]
+       TEXT [87x22] "입력 가능 시간"
+       TEXT [32x22] "3:29"
+       <FRAME> stash:arrow-retry-duotone [16x16] fill=#FFFFFF
+         <VECTOR> Vector [10x9] fill=#1B6C00
+     <FRAME> Frame 157 [300x120]
+       TEXT [264x40] "아직 김대리 앱이 없으신가요? / 김대리를 다운받고 더 많은 기능을 사용해보세요."
+       <FRAME> Frame 156 [300x48]
+         <FRAME> googleplay [153x48] fill=#F9FDF7
+           <FRAME> Image:margin [30x24]
+             <FRAME> Image [24x24]
+           TEXT [88x18] "Google Play"
+         <FRAME> appstore [139x48] fill=#F9FDF7
+           <FRAME> Image:margin [30x24]
+             <FRAME> Image [24x24]
+           TEXT [74x18] "App Store"
+   <FRAME> Frame 121 [240x900] fill=#FDFEFC
+     <FRAME> Frame 151 [240x176]
+       <FRAME> Frame 99 [240x44] fill=#FDFEFC
+         <FRAME> Frame 112 [216x20]
+           <FRAME> Frame 110 [77x20]
+             <FRAME> tabler:layout-dashboard [16x16] fill=#FFFFFF
+               <VECTOR> Vector [11x11]
+             TEXT [49x20] "대시보드"
+       <FRAME> Frame 121 [240x44] fill=#FDFEFC
+         <FRAME> Frame 112 [216x20]
+           <FRAME> Frame 110 [101x20]
+             <FRAME> tabler:subtitles-edit [16x16] fill=#FFFFFF
+               <VECTOR> Vector [13x11]
+             TEXT [73x20] "워크스페이스"
+       <FRAME> Frame 123 [240x44] fill=#FDFEFC
+         <FRAME> Frame 112 [216x20]
+           <FRAME> Frame 110 [80x20]
+             <FRAME> tabler:input-search [16x16] fill=#FFFFFF
+               <VECTOR> Vector [12x10]
+             TEXT [52x20] "작업 겁색"
+           <FRAME> tabler:chevron-down [20x20] fill=#FFFFFF
+             <VECTOR> Vector [5x10]
+       <FRAME> Frame 122 [240x44] fill=#FDFEFC
+         <FRAME> Frame 112 [216x20]
+           <FRAME> Frame 110 [77x20]
+             <FRAME> tabler:message-circle [16x16] fill=#FFFFFF
+               <VECTOR> Vector [12x11]
+             TEXT [49x20] "대화목록"
+           <FRAME> tabler:chevron-down [20x20] fill=#FFFFFF
+             <VECTOR> Vector [5x10]
+     <FRAME> 아트보드 5 2 [126x36] fill=#FFFFFF
+       <VECTOR> Vector [126x36] fill=#F9FDF7
+       <GROUP> Group [51x18]
+         <VECTOR> Vector [12x7] fill=#2DB400
+         <VECTOR> Vector [11x12] fill=#2DB400
+         <VECTOR> Vector [7x18] fill=#2DB400
+         <VECTOR> Vector [3x18] fill=#2DB400
+         <VECTOR> Vector [9x9] fill=#2DB400
+         <VECTOR> Vector [8x12] fill=#2DB400
+         <VECTOR> Vector [3x10] fill=#2DB400
+       <GROUP> Group [23x23]
+         <VECTOR> Vector [18x7]
+         <GROUP> Group [5x9]
+           <VECTOR> Vector [5x9]
+           <VECTOR> Vector [5x9] fill=#141312
+         <VECTOR> Vector [9x5]
+         <VECTOR> Vector [7x18]
+         <VECTOR> Vector [7x8]
+         <VECTOR> Vector [19x7]
+         <VECTOR> Vector [4x5]
+         <GROUP> Group [4x3]
+           <VECTOR> Vector [4x3]
+           <VECTOR> Vector [4x3] fill=#092400
+     <FRAME> tabler:layout-sidebar-left-collapse [20x20] fill=#FFFFFF
+       <GROUP> Group [13x13]
+         <VECTOR> Vector [13x13]
+         <VECTOR> Vector [2x3]
+     <FRAME> Frame 148 [240x112]
+       <FRAME> Frame 122 [216x44] fill=#FDFEFC
+         <FRAME> Frame 112 [196x20]
+           <FRAME> Frame 110 [65x20]
+             <FRAME> tabler:help [16x16] fill=#FFFFFF
+               <GROUP> Group [12x12]
+                 <VECTOR> Vector [12x12]
+                 <VECTOR> Vector [3x4]
+             TEXT [37x20] "도움말"
+       <FRAME> Frame 124 [216x44] fill=#FDFEFC
+         <FRAME> Frame 112 [196x20]
+           <FRAME> Frame 110 [80x20]
+             <FRAME> tabler:settings [16x16] fill=#FFFFFF
+               <GROUP> Group [12x12]
+                 <VECTOR> Vector [12x12]
+                 <VECTOR> Vector [4x4]
+             TEXT [52x20] "환경 설정"
+
