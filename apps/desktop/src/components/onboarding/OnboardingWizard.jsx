@@ -26,6 +26,7 @@ import {
   Hash,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BrandMark } from "@/components/ui/logo";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
@@ -1032,9 +1033,10 @@ export default function OnboardingWizard() {
     <div className="fixed inset-0 z-50 overflow-y-auto bg-background/95 backdrop-blur-sm">
       <div className="flex min-h-full items-center justify-center p-4">
         <div className="w-full max-w-md">
-          <div className="mb-2 text-center">
-            <span className="text-3xl select-none">🦞</span>
-            <p className="mt-1 text-xs text-muted-foreground uppercase tracking-widest">
+          <div className="mb-2 flex flex-col items-center text-center">
+            {/* 브랜드 마크 — 이전에는 OpenClaw 시절 잔재인 🦞 이모지였다. */}
+            <BrandMark className="h-10 w-10 rounded-lg" />
+            <p className="mt-1.5 text-xs text-muted-foreground uppercase tracking-widest">
               김대리 시작하기
             </p>
           </div>

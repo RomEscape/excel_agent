@@ -18,6 +18,9 @@ services/sidecar/build/
 *.pyo
 
 # PyInstaller
+# .spec 은 빌드할 때마다 재생성된다 — 빌드 옵션의 단일 소스는 release.yml 의
+# 커맨드라인이므로 커밋하면 둘이 어긋난다.
+services/sidecar/*.spec
 *.spec.bak
 
 # Virtual environments
