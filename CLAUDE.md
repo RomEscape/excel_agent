@@ -76,6 +76,26 @@
 > **2026-08 모바일 평문 차단 노트**: 모바일의 TLS 강제는 **매니페스트/plist가 아니라 Dart 코드**(`apps/mobile/lib/transport/relay_url.dart`)가 책임진다. 안드로이드 `usesCleartextTraffic`·네트워크 보안 설정과 iOS ATS는 *플랫폼이 소유한* 소켓에만 걸리는데, 이 앱의 통신은 `package:http`와 `web_socket_channel` 둘 다 Dart 소유 소켓이라 적용되지 않는다(Flutter 공식: "If the socket is owned by Dart/Flutter, no policy will be enforced" — flutter/flutter#106678은 not planned로 닫힘). 그래서 `kAllowInsecureRelayByDefault = !kReleaseMode`로 debug·profile만 평문을 허용하고, relay 주소는 QR·수동입력 어느 경로든 `normalizeRelayBaseUrl`을 통과시킨다. **새 네트워크 경로를 추가하면 이 함수를 반드시 태울 것** — 안 태우면 릴리스에서 평문이 그대로 나간다.
 >
 > 안드로이드 `INTERNET` 권한은 별개다. 이건 플랫폼이 UID 레벨에서 막으므로 Dart 소켓도 걸린다 — Flutter 템플릿이 `src/debug`·`src/profile`에만 넣어주기 때문에 `src/main`에 직접 선언해야 릴리스 APK가 네트워크를 쓴다. iOS는 실기기에서 LAN 주소로 붙을 때 iOS 14+ 로컬 네트워크 권한 팝업이 뜨므로 `NSLocalNetworkUsageDescription`이 필요하다.
+>
+> **2026-08 앱 아이덴티티 노트**: 저장소 곳곳에 `officeclaw`·`office-claw`·`office_claw`가 남아 있는데 **전부 의도적이다. 일괄 치환하면 빌드가 깨진다.** 사용자에게 보이는 이름만 김대리고, 나머지는 내부 식별자라 그대로 둔다.
+>
+> | 층 | 값 | 사용자에게 보이나 | 바꿔도 되나 |
+> |---|---|---|---|
+> | `productName` | `김대리` | **보임** — `.app` 이름·창 제목 | 자유 |
+> | `mainBinaryName` | `kimdaeri` | 보임 — `Contents/MacOS/`, 작업관리자 | 자유 |
+> | `identifier` | `com.kimdaeri.app` | 간접 — 데이터 경로·업데이트 동일성 | **릴리스 후 불가** |
+> | 앱/트레이 아이콘 | 브랜드 마크 | **보임** | 자유 |
+> | Cargo 패키지명 | `office-claw` | 안 보임 (`mainBinaryName`이 덮어씀) | 가능하나 실익 없음 |
+> | 사이드카 바이너리 | `office-claw-sidecar` | 안 보임 (번들 내부) | 4곳 동시 수정 필요 |
+> | keyring 네임스페이스 | `office_claw` | 안 보임 (OS Keychain 키) | **바꾸면 기존 자격증명 유실** |
+>
+> **`identifier`는 릴리스 후 절대 바꾸지 않는다.** 바꾸면 macOS가 다른 앱으로 취급해 사용자에게 앱이 두 개 생기고(데이터 디렉터리·WebView localStorage가 identifier 단위라 설정도 초기화된다), 기존 설치본에 업데이트를 보낼 수 없다. Windows 설치 프로그램도 별개 제품으로 본다. macOS 권한 승인(Apple Events 등)도 bundle ID 단위로 기억되므로 함께 날아간다.
+>
+> 사이드카 바이너리명은 **4곳이 같은 문자열을 공유**한다 — `tauri.conf.json`(`bundle.externalBin`) · `capabilities/default.json`(shell allow-spawn `name`) · `src/sidecar.rs`(`.sidecar("...")`) · `release.yml`(PyInstaller `--name`과 `binaries/` 복사 경로). 하나만 고치면 런타임에 사이드카를 못 찾는다. 사용자에게 보이지도 않으므로 건드릴 이유가 없다.
+>
+> keyring 네임스페이스는 `identifier`와 **독립**이다 — `apps/desktop/src-tauri/src/keyring_svc.rs`의 `SERVICE_NAMESPACE`와 `services/sidecar/office_claw_sidecar/config.py:10`의 동명 상수가 같은 값(`office_claw`)을 써서 OS Keychain을 공유한다(위 Rust 보안 계층 노트 참조). 그래서 앱 이름을 바꿔도 저장된 자격증명은 살아남는다 — 반대로 이 상수를 바꾸면 사용자가 등록한 봇 토큰·API 키를 전부 다시 넣어야 한다.
+>
+> 아이콘 소스는 브랜드 색과 같은 규칙을 따른다(위 브랜드 색 노트) — `src/assets/brand-logo-light.svg`에서 `tauri icon`으로 생성한다. 다크 변형은 `#0C1909` 타일이라 macOS Dock에서 묻혀 쓰지 않는다. **플랫폼마다 여백 규격이 달라 `tauri icon`을 두 번 돌린다**: 전체 세트는 full-bleed(Windows 작업표시줄 기준), `icon.icns`만 Apple 그리드(1024 캔버스에 824 아트박스)로 만든 여백판으로 교체한다. 한 장으로 통일하면 macOS에서 크거나 Windows에서 작아 보인다. 트레이(32px)는 여백 없이 만든다.
 
 ## 빌드/실행
 
