@@ -327,8 +327,9 @@ export async function refreshModule(id) {
  * 마이그레이션 호환성용 — 새 코드는 store에서 직접 읽는 것을 권장.
  */
 export function getDerivedDiag() {
-  const oc = useStatusStore.getState().modules.openclaw;
-  const oll = useStatusStore.getState().modules.ollama;
+  const { getModule } = useStatusStore.getState();
+  const oc = getModule("openclaw");
+  const oll = getModule("ollama");
   return {
     oc: {
       state: oc.running ? "running" : "stopped",

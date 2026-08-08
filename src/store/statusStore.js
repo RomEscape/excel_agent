@@ -3,7 +3,7 @@
  *
  * 사용자 요청: "각 모듈이 상태를 체크해서 가지고 있으면서 그걸 대시보드에서 보여주는 형식".
  *
- * 모듈별 슬롯(`modules.ollama`, ...)에 동일한 형태의 상태 객체를 보관:
+ * 모듈별 슬롯(`modules.openclaw`, `modules.ollama`, ...)에 동일한 형태의 상태 객체를 보관:
  *
  *   {
  *     state: ModuleState,
@@ -62,6 +62,14 @@ function emptyModule() {
 }
 
 /**
+ * 슬롯이 없는 모듈을 읽을 때 돌려줄 공유 상수.
+ *
+ * zustand 셀렉터는 호출마다 같은 참조를 돌려줘야 무한 렌더를 피할 수 있으므로
+ * 매번 emptyModule()을 새로 만들지 않고 이 동결 객체를 재사용한다.
+ */
+const MISSING_MODULE = Object.freeze(emptyModule());
+
+/**
  * check() 결과 필드에서 state 머신 값을 도출.
  * 모듈마다 약간씩 다른 health 기준이 있어 module 정의 쪽에서도 override 가능.
  */
@@ -78,6 +86,7 @@ const useStatusStore = create((set, get) => ({
    * 새 모듈을 추가하려면 여기 초기값 + statusManager.js에 정의 추가.
    */
   modules: {
+    openclaw: emptyModule(),
     ollama: emptyModule(),
   },
 
@@ -109,7 +118,18 @@ const useStatusStore = create((set, get) => ({
     })),
 
   /** 헬퍼: 단일 모듈 상태 읽기 */
-  getModule: (id) => get().modules[id] || emptyModule(),
+  getModule: (id) => get().modules[id] || MISSING_MODULE,
 }));
+
+/**
+ * 컴포넌트용 셀렉터 팩토리 — `useStatusStore(selectModule("ollama"))`.
+ *
+ * `s.modules.<id>`를 직접 읽으면 슬롯이 없는 순간 undefined가 흘러들어가
+ * 렌더가 통째로 죽는다(흰 화면). 이 셀렉터는 없는 슬롯을 unknown 상태로
+ * 대체하므로 UI는 "확인 중"으로 표시될 뿐 앱은 계속 동작한다.
+ */
+export function selectModule(id) {
+  return (s) => s.modules[id] || MISSING_MODULE;
+}
 
 export default useStatusStore;

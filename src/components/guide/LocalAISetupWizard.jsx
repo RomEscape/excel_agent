@@ -27,7 +27,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { StatusRow } from "@/components/ui/status";
 import useAppStore from "@/store/appStore";
-import useStatusStore from "@/store/statusStore";
+import useStatusStore, { selectModule } from "@/store/statusStore";
 import {
   STATUS_MODULES,
   refreshAllModules,
@@ -97,8 +97,8 @@ export default function LocalAISetupWizard() {
 
   // 새 중앙 상태 store에서 모듈 데이터 구독 — App 루트의 useStatusPoller가 자동 갱신.
   // 이 wizard는 더 이상 자체 fetch를 하지 않고 store의 데이터를 읽기만 한다.
-  const ocModule = useStatusStore((s) => s.modules.openclaw);
-  const ollamaModule = useStatusStore((s) => s.modules.ollama);
+  const ocModule = useStatusStore(selectModule("openclaw"));
+  const ollamaModule = useStatusStore(selectModule("ollama"));
 
   const [open, setOpen] = useState(false);
   const [dismissed, setDismissed] = useState(false);
