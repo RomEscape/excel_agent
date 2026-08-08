@@ -1,15 +1,17 @@
-run_name: ax7b-planner-qlora-v1
+run_name: ax7b-planner-qlora-v2
 seed: 42
 
-# 학습 입력
-train_jsonl: datasets/train/ax7b_planner_sft_train.jsonl
-output_dir: artifacts/ax7b-planner-lora
+# 학습 입력 — build_planner_sft_jsonl.py가 프로덕션 플래너 프롬프트로 재생성한 데이터.
+# v1은 짧은 자체 프롬프트를 써서 추론 형식과 어긋났다(파인튜닝 효과 소실).
+train_jsonl: datasets/train/planner_sft_v2_train.jsonl
+output_dir: artifacts/ax7b-planner-lora-v2
 
 # 베이스 모델 (HF Transformers 원본)
 base_model: skt/A.X-4.0-Light
 
-# 토크나이저/시퀀스 (명령문+JSON 플랜 조합은 대부분 300토큰 이하라 2048은 과함 -> 낭비 컴퓨트 축소)
-max_seq_length: 768
+# 플래너 프롬프트가 통째로 들어가므로 실토큰이 1677~1831이다(verify_sft_encoding.py 실측).
+# 768이면 프롬프트 중간에서 잘려 정답 구간이 통째로 사라진다.
+max_seq_length: 2048
 
 # QLoRA
 load_in_4bit: true
@@ -28,7 +30,7 @@ target_modules:
   - up_proj
   - down_proj
 
-# Trainer (729건 x 3epoch, effective batch 8)
+# Trainer (729건 x 3epoch, effective batch 8 -> 약 273 step)
 num_train_epochs: 3
 learning_rate: 2.0e-4
 weight_decay: 0.01

@@ -116,51 +116,84 @@ def _read_sft_rows(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def _render_chat(messages: list[dict[str, Any]]) -> str:
-    parts: list[str] = []
-    for msg in messages:
-        role = _text(msg.get("role")) or "user"
-        content = _text(msg.get("content"))
-        parts.append(f"<|{role}|>\n{content}\n")
-    parts.append("<|assistant|>\n")
-    return "".join(parts)
-
-
-def _to_train_text(row: dict[str, Any]) -> str:
+def _to_messages(row: dict[str, Any]) -> list[dict[str, Any]]:
+    """레코드를 chat messages 목록으로 정규화한다."""
     messages = row.get("messages")
     if isinstance(messages, list) and messages:
-        return _render_chat([msg for msg in messages if isinstance(msg, dict)])
+        return [msg for msg in messages if isinstance(msg, dict)]
+
     instruction = _text(row.get("instruction"))
     output_json = row.get("output_json")
     if isinstance(output_json, dict):
         answer = json.dumps(output_json, ensure_ascii=False)
     else:
         answer = _text(row.get("output"))
-    return _render_chat(
-        [
-            {"role": "system", "content": "너는 Excel 플래너다. JSON만 출력해라."},
-            {"role": "user", "content": instruction},
-            {"role": "assistant", "content": answer},
-        ]
-    )
+    return [
+        {"role": "user", "content": instruction},
+        {"role": "assistant", "content": answer},
+    ]
+
+
+def _split_prompt_and_answer(
+    messages: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], str]:
+    """
+    마지막 assistant 턴을 정답으로, 그 앞을 프롬프트로 나눈다.
+
+    프롬프트 구간은 손실에서 제외해야 한다. 플래너 프롬프트는 4천 자가 넘고
+    정답은 250자 남짓이라, 마스킹하지 않으면 손실의 대부분이 '프롬프트를
+    그대로 외우는' 데 쓰여 정작 계획 생성을 배우지 못한다.
+    """
+    for idx in range(len(messages) - 1, -1, -1):
+        if _text(messages[idx].get("role")) == "assistant":
+            return messages[:idx], _text(messages[idx].get("content"))
+    return messages, ""
 
 
 class JsonlSFTDataset:
+    """
+    모델의 실제 chat template으로 렌더링하고, 정답 구간에만 손실을 건다.
+
+    이전 구현은 `<|system|>/<|user|>/<|assistant|>`라는 자체 템플릿을 썼는데
+    추론(Ollama)은 모델 본래 템플릿을 쓴다. 학습·추론 형식이 달라 파인튜닝
+    효과가 사라졌으므로 `tokenizer.apply_chat_template`으로 통일한다.
+    """
+
     def __init__(self, rows: list[dict[str, Any]], tokenizer: Any, max_seq_length: int):
         self.items: list[dict[str, Any]] = []
+        self.truncated = 0
+
         for row in rows:
-            text = _to_train_text(row)
+            messages = _to_messages(row)
+            prompt_messages, answer = _split_prompt_and_answer(messages)
+
+            prompt_text = tokenizer.apply_chat_template(
+                prompt_messages, tokenize=False, add_generation_prompt=True
+            )
+            full_text = prompt_text + answer + (tokenizer.eos_token or "")
+
+            prompt_len = len(tokenizer(prompt_text, add_special_tokens=False)["input_ids"])
             encoded = tokenizer(
-                text,
+                full_text,
                 truncation=True,
                 max_length=max_seq_length,
                 padding="max_length",
+                add_special_tokens=False,
                 return_tensors="pt",
             )
+
             input_ids = encoded["input_ids"][0]
             attention_mask = encoded["attention_mask"][0]
             labels = input_ids.clone()
             labels[attention_mask == 0] = -100
+            labels[: min(prompt_len, labels.numel())] = -100
+
+            if int(attention_mask.sum()) >= max_seq_length:
+                self.truncated += 1
+            if int((labels != -100).sum()) == 0:
+                # 정답이 통째로 잘렸다면 학습 신호가 없어 오히려 해롭다.
+                continue
+
             self.items.append(
                 {
                     "input_ids": input_ids,
