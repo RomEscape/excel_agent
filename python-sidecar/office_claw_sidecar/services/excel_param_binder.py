@@ -377,6 +377,7 @@ def _bind_filter_value(params: dict[str, Any], *, message: str, entry: dict[str,
         if category
     }
     if current_value and str(current_value) in known_values:
+        notes.extend(_bind_filter_column_from_value(params, entry=entry))
         return notes
 
     for col in entry.get("columns") or []:
@@ -388,6 +389,29 @@ def _bind_filter_value(params: dict[str, Any], *, message: str, entry: dict[str,
                 notes.append(f"column={params['column']},value={category}")
                 return notes
     return notes
+
+
+def _bind_filter_column_from_value(params: dict[str, Any], *, entry: dict[str, Any]) -> list[str]:
+    """값이 어느 한 열에만 있으면 그 열을 기준 열로 삼는다.
+
+    "완료된 것만 남겨줘"는 기준 열을 말하지 않았지만 '완료'가 상태 열에만 있다면
+    되물을 것이 없다. 두 열 이상에 있으면 정하지 않고 남겨서 되묻게 한다.
+    """
+    if str(params.get("column") or "").strip():
+        return []
+    value = str(params.get("value") or "")
+    if not value:
+        return []
+    owners = [
+        str(col.get("header") or "")
+        for col in entry.get("columns") or []
+        if value in {str(category) for category in col.get("categories") or []}
+    ]
+    owners = [name for name in owners if name]
+    if len(owners) != 1:
+        return []
+    params["column"] = owners[0]
+    return [f"column={owners[0]}"]
 
 
 _EXCLUSION_VERB = re.compile(r"(빼|제외|없애|제거|지워|지우|삭제|말고|아닌|제하고|빠뜨)", re.IGNORECASE)
@@ -497,8 +521,6 @@ def _bind_write_values(params: dict[str, Any], *, message: str) -> list[str]:
     가장 단순한 명령이 되묻기로 떨어진다.
     """
     existing = params.get("values_2d")
-    if isinstance(existing, list) and existing:
-        return []
     match = _WRITE_VALUE_PATTERN.search(str(message or ""))
     if not match:
         return []
@@ -506,8 +528,19 @@ def _bind_write_values(params: dict[str, Any], *, message: str) -> list[str]:
     if shape is None:
         return []
     top_left, row_count, col_count = shape
+    existing_cells = 0
+    if isinstance(existing, list) and existing:
+        existing_cells = sum(len(r) if isinstance(r, list) else 1 for r in existing)
+        # 값이 이미 있어도 원문이 지목한 범위를 다 못 채우면 그대로 둘 수 없다.
+        # "A1:A3에 총매출,총이익,평균주문금액 입력"에 값 하나만 실려 오면
+        # 나머지 두 칸은 아무 말 없이 빈 채로 남는다.
+        if existing_cells >= row_count * col_count:
+            return []
     values = _shape_write_values(match.group(2), row_count, col_count)
     if not values:
+        return []
+    if existing_cells and sum(len(row) for row in values) <= existing_cells:
+        # 원문에서 다시 뽑아도 나아지지 않으면 플래너가 준 값을 존중한다.
         return []
     params["values_2d"] = values
     # 원문에 범위가 명시됐으면 그 좌상단이 항상 옳다. 플래너가 범위의 끝 셀을
@@ -557,7 +590,7 @@ def _bind_consolidate(params: dict[str, Any], *, message: str, digest: dict[str,
 
 
 def _normalize_output_sheet(
-    params: dict[str, Any], *, message: str = "", source_sheet: str = ""
+    params: dict[str, Any], *, message: str = "", source_sheet: str = "", action: str = ""
 ) -> list[str]:
     """결과를 쓸 시트를 확정한다.
 
@@ -578,6 +611,13 @@ def _normalize_output_sheet(
             changes.append(f"output_sheet={sheet_part}")
 
     named = _result_sheet_from_message(message)
+    if action == "excel_live.create_chart" and not named:
+        # 차트는 표를 덮어쓰지 않는 오버레이라 소스 시트에 그대로 붙이면 된다.
+        # 집계 계열과 달리 별도 시트로 뺄 이유가 없는데, 플래너가 "Rep_Chart" 같은
+        # 이름을 지어내면 사용자가 보던 시트에는 아무것도 안 생기고 낯선 시트만 하나 는다.
+        if params.pop("output_sheet", None) is not None:
+            changes.append("output_sheet=소스 시트")
+        return changes
     if named and str(params.get("output_sheet") or "").strip() != named:
         params["output_sheet"] = named
         changes.append(f"output_sheet={named}")
@@ -1126,7 +1166,10 @@ def bind_plan_steps(
         if step.action in _OUTPUT_SHEET_ACTIONS:
             changes.extend(
                 _normalize_output_sheet(
-                    params, message=message, source_sheet=str(entry.get("name") or "")
+                    params,
+                    message=message,
+                    source_sheet=str(entry.get("name") or ""),
+                    action=step.action,
                 )
             )
 
@@ -1134,11 +1177,27 @@ def bind_plan_steps(
         if step.action == "excel_live.create_sheet":
             created_sheet = str(params.get("sheet_name") or "").strip() or created_sheet
 
+        # 미해결 보고는 슬롯 순회 시점에 남는데, 그 뒤 단계에서 채워지는 슬롯이 있다.
+        # 예: "완료된 것만 남겨줘"는 열을 말하지 않았지만 값 '완료'가 상태 열에만
+        # 있으므로 _bind_filter_value가 기준 열을 특정한다. 이미 정해진 슬롯을
+        # 미해결로 남겨 두면 물어볼 필요가 없는 걸 묻게 된다.
+        notes = [note for note in notes if not _is_stale_unresolved(note, step.action, params)]
+
         if changes:
             notes.append({"action": step.action, "status": "bound", "changes": changes})
         bound.append(PlanStep(action=step.action, params=params, reason=step.reason))
 
     return bound, notes
+
+
+def _is_stale_unresolved(note: dict[str, Any], action: str, params: dict[str, Any]) -> bool:
+    """이 단계에서 결국 채워진 슬롯의 미해결 보고인지."""
+    if note.get("status") != "unresolved" or note.get("action") != action:
+        return False
+    value = params.get(str(note.get("slot") or ""))
+    if isinstance(value, list):
+        return bool(value)
+    return value is not None and value != ""
 
 
 # 앞 단계에서 만든 시트에 이어서 써야 하는 액션. 원본을 읽어 집계하는 액션은 제외한다.

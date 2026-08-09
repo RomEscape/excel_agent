@@ -45,6 +45,7 @@ from office_claw_sidecar.services.excel_live_plan_validator import (
     validate_plan,
 )
 from office_claw_sidecar.services.excel_live_service import (
+    AmbiguousWorkbookError,
     ExcelConnectionError,
     ExcelDependencyError,
     ExcelLiveError,
@@ -297,10 +298,15 @@ def _action_lacks_evidence(action: str, message: str) -> bool:
         return False
     return name in EDIT_ACTIONS
 # 기준 열을 못 정한 채 실행하면 데이터가 조용히 뒤섞이는 액션들.
+#
+# filter_rows가 특히 위험하다. 기준 열을 못 정하면 검증기가 1번 열로 채우는데,
+# 이 액션은 조건에 안 맞는 행을 지운다. 엉뚱한 열로 거르면 남아야 할 데이터가
+# 사라지고, 사용자는 "필터 완료" 메시지만 본다.
 _AMBIGUITY_SENSITIVE_SLOTS = {
     ("excel_live.sort_range", "key_column"),
     ("excel_live.dedupe_rows", "key_columns"),
     ("excel_live.create_chart", "chart_type"),
+    ("excel_live.filter_rows", "column"),
 }
 _CHART_TYPE_MENTION = re.compile(
     r"(선\s*그래프|꺾은|라인|line|막대|bar|원형|파이|pie|영역|area|분산|scatter)", re.IGNORECASE
@@ -385,6 +391,26 @@ def _run_in_excel_queue(task_name: str, fn):
         return fn(), wait_ms
     finally:
         _EXCEL_QUEUE_LOCK.release()
+
+
+def _ambiguous_workbook_response(exc: AmbiguousWorkbookError) -> ExcelLiveActionResponse:
+    """대상 통합문서를 못 정했을 때 후보를 들고 되묻는 응답을 만든다."""
+    candidates = list(exc.candidates)[:5]
+    question = str(exc)
+    if candidates:
+        question = f"{question} 후보: {', '.join(candidates)}"
+    return ExcelLiveActionResponse(
+        ok=True,
+        action="excel_live.clarify",
+        reason=question,
+        result={
+            "ask_follow_up": True,
+            "follow_up_question": question,
+            "operation_intent": "clarify",
+            "missing_slot": "workbook_id",
+            "candidates": candidates,
+        },
+    )
 
 
 def _map_error(exc: Exception) -> HTTPException:
@@ -5385,9 +5411,20 @@ async def post_command(
     if standalone_read_step and parsed and parsed.get("action_plan"):
         planner_steps = [s for s in parsed["action_plan"] if isinstance(s, dict)]
         planner_actions = [str(s.get("action", "")) for s in planner_steps]
+        rule_range = str((standalone_read_step.get("params") or {}).get("range_ref", ""))
+        planner_range = (
+            str((planner_steps[0].get("params") or {}).get("range_ref", "")) if planner_steps else ""
+        )
         # 조회 한 줄이면 될 명령에 플래너가 검증·저장 단계를 덧붙이면
         # 보고되는 액션까지 바뀌어 사용자는 묻지도 않은 작업을 본다.
-        if planner_actions != ["excel_live.read_range"]:
+        #
+        # 액션이 같아도 범위가 다르면 원문에서 뽑은 쪽을 쓴다. "B9 값만 읽어줘"에
+        # 플래너가 선택 영역 전체를 답하는 일이 있는데, 그대로 두면 콕 집어 물은
+        # 한 칸 대신 표 전체가 읽힌다.
+        if (
+            planner_actions != ["excel_live.read_range"]
+            or planner_range.upper() != rule_range.upper()
+        ):
             read_steps = _normalize_plan_or_empty([standalone_read_step])
             if read_steps:
                 parsed = {
@@ -5412,6 +5449,29 @@ async def post_command(
     if explicit_write and _TABLE_KEYWORD_PATTERN.search(req.message):
         # "B2부터 3행 3열 표 만들어줘"는 범위가 있어도 표 생성이 맞다.
         explicit_write = False
+
+    # 범위와 값을 다 말한 쓰기는 계획이 이미 정해진 것이다. 그런데 값에 "총매출",
+    # "평균주문금액" 같은 집계어가 섞이면 플래너가 통계 조회로 알아들어, 라벨은
+    # 한 글자도 안 써지고 엉뚱한 액션이 실패로 돌아온다. 규칙이 확실히 아는 쓰기는
+    # 플래너가 뒤집지 못하게 고정한다. (수식·표 생성은 규칙 단계에서 이미 갈린다.)
+    if (
+        explicit_write
+        and pending_operation is None
+        and pending_slot is None
+        and parsed
+        and parsed.get("action_plan")
+    ):
+        planner_actions = [
+            str(s.get("action", "")) for s in parsed["action_plan"] if isinstance(s, dict)
+        ]
+        if planner_actions != ["excel_live.write_range"]:
+            parsed = {
+                "action_plan": [step.__dict__ for step in preferred_write],
+                "action": preferred_write[0].action,
+                "params": preferred_write[0].params,
+                "reason": "범위와 값을 지목한 쓰기",
+                "intent": "edit",
+            }
 
     # 플래너가 고른 액션이 사용자의 말에 근거가 없으면, 근거 있는 규칙 후보로 되돌린다.
     # 같은 문장이 실행될 때마다 색칠·표생성·조건부서식으로 튀는 문제를 여기서 끊는다.
@@ -5928,12 +5988,17 @@ async def post_command(
                     verify_step=_guarded_verify,
                     max_attempts=2,
                     abort_on_failure=True,
+                    reraise=(AmbiguousWorkbookError,),
                 )
 
             execution, queue_wait_ms = _run_in_excel_queue("command-plan", _run_execute_once)
             queue_wait_total_ms += queue_wait_ms
             # 파일이 바뀌었으므로 다음 턴이 낡은 다이제스트를 보지 않게 한다.
             invalidate_digest_cache(req.workbook_id)
+        except AmbiguousWorkbookError as exc:
+            # 대상을 못 정한 건 실패가 아니라 정보 부족이다. 404로 끊으면 사용자는
+            # 무엇을 더 말해야 하는지 알 수 없으므로 후보를 들고 되묻는다.
+            return _ambiguous_workbook_response(exc)
         except Exception as exc:
             mapped = _map_error(exc)
             if recovery_backup_info and recovery_backup_info.get("backup_path"):

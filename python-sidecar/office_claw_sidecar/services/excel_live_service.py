@@ -47,6 +47,18 @@ class WorksheetNotFoundError(ExcelLiveError):
     """요청한 시트를 찾지 못함."""
 
 
+class AmbiguousWorkbookError(ExcelLiveError):
+    """대상 통합문서를 특정하지 못함 — 후보가 여럿이라 되물어야 한다.
+
+    대상을 지정하지 않았을 때 아무 파일이나 골라 편집하면, 사용자가 보고 있지도
+    않은 통합문서가 조용히 바뀐다. 후보를 들고 되묻기 위해 별도 예외로 둔다.
+    """
+
+    def __init__(self, message: str, candidates: list[str] | None = None) -> None:
+        super().__init__(message)
+        self.candidates = candidates or []
+
+
 @dataclass(frozen=True)
 class WorkbookInfo:
     workbook_id: str
