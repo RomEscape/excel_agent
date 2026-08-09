@@ -29,6 +29,8 @@ import {
   permissionsWhitelistRemove,
 } from "@/lib/api";
 import { toUserMessage } from "@/lib/errorMessages";
+import { refreshWorkspacePath } from "@/lib/workspaceManager";
+import useAppStore from "@/store/appStore";
 
 // ── 상수 ─────────────────────────────────────────────────────────────────────
 
@@ -43,6 +45,9 @@ const AVAILABLE_APPS = [
 // ── 컴포넌트 ──────────────────────────────────────────────────────────────────
 
 export default function PermissionManager() {
+  // 워크스페이스 폴더는 앱의 기본 허용 폴더라 삭제를 막아야 한다.
+  // 어떤 경로인지는 사이드카만 알고 있으므로 store를 통해 받아 온다.
+  const workspacePath = useAppStore((s) => s.workspacePath);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -77,6 +82,7 @@ export default function PermissionManager() {
 
   useEffect(() => {
     loadPermissions();
+    refreshWorkspacePath();
   }, [loadPermissions]);
 
   const savePermissions = async () => {
@@ -243,7 +249,7 @@ export default function PermissionManager() {
                     size="sm"
                     className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
                     onClick={() => removeFolder(folder)}
-                    disabled={folder === "~/officeclaw/Workspace"}
+                    disabled={Boolean(workspacePath) && folder === workspacePath}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>

@@ -1,7 +1,7 @@
 """
 워크스페이스 파일 접근 엔드포인트 — Phase 1 (officeclaw).
 
-모든 경로는 sandbox.py를 통해 ~/officeclaw/Workspace 내부로 제한된다.
+모든 경로는 sandbox.py를 통해 config.get_workspace_root() 내부로 제한된다.
 """
 
 from __future__ import annotations
@@ -27,6 +27,22 @@ class CreateExcelFileRequest(BaseModel):
     """새 엑셀 파일 생성 요청 모델."""
     path: str
     sheet_name: str | None = "Sheet1"
+
+
+@router.get("/root")
+async def get_root():
+    """
+    워크스페이스 루트의 절대 경로를 반환한다.
+
+    워크스페이스 위치를 계산하는 곳은 config.get_workspace_root() 하나뿐이다.
+    파일을 여는 Rust IPC처럼 사이드카 바깥에서 같은 폴더를 가리켜야 하는 쪽은
+    경로를 다시 조합하지 말고 이 값을 받아 쓴다.
+
+    Returns
+    -------
+    {"root": str}
+    """
+    return {"root": str(sandbox.WORKSPACE_ROOT)}
 
 
 @router.get("/files")

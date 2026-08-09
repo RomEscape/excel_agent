@@ -20,7 +20,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from office_claw_sidecar.config import get_data_dir
+from office_claw_sidecar.config import get_data_dir, get_workspace_root
 from office_claw_sidecar.services.audit_service import AuditService
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ _PERMISSIONS_FILE = Path(get_data_dir()) / "permissions.json"
 
 # 기본 권한 설정
 _DEFAULT_PERMISSIONS: dict[str, Any] = {
-    "allowed_folders": ["~/officeclaw/Workspace"],
+    "allowed_folders": [str(get_workspace_root())],
     "allowed_apps": ["excel", "email", "document"],
     "shell_command_whitelist": [],
     "python_module_whitelist": [],
