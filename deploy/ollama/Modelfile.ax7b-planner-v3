@@ -1,0 +1,23 @@
+# ax7bplanner-v3 — planner_sft_v3 데이터로 재학습한 A.X-4.0-Light QLoRA 병합본.
+#
+# v3 변경점:
+#  - 프롬프트 누락 액션 7종 추가 + 별칭 36건 정리
+#  - write_range 리터럴 값 보강(규칙 기반 augmentation)
+#  - max_seq_length 2304 (프롬프트 실측 최대 2095토큰)
+#
+# held-out 18건 체크포인트 비교: checkpoint-375 / 최종본 seq 일치 67% (125: 56%, 250: 50%)
+#
+# 등록: ollama create ax7bplanner-v3 -f deploy/ollama/Modelfile.ax7b-planner-v3 --quantize q4_K_M
+FROM C:\Users\asdjj\OneDrive\바탕 화면\동화책 프로젝트\officeclaw\artifacts\ax7b-planner-v3-f16.gguf
+
+# 플래너 프롬프트 실측 1931~2095토큰 + 계획 JSON 출력. 여유를 둬 8192.
+PARAMETER num_ctx 8192
+PARAMETER temperature 0.2
+PARAMETER top_p 0.9
+PARAMETER repeat_penalty 1.05
+
+# 학습 렌더링과 동일: 메시지 사이에 개행·공백을 넣지 않는다.
+TEMPLATE """{{ range .Messages }}{{ if eq .Role "system" }}<|im_start|><|system|>{{ .Content }}<|im_end|>{{ else if eq .Role "user" }}<|im_start|><|user|>{{ .Content }}<|im_end|>{{ else if eq .Role "assistant" }}<|im_start|><|assistant|>{{ .Content }}<|im_end|>{{ end }}{{ end }}<|im_start|><|assistant|>"""
+
+PARAMETER stop "<|im_end|>"
+PARAMETER stop "<|im_start|>"

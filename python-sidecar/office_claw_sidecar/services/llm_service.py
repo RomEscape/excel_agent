@@ -19,8 +19,8 @@ from abc import ABC, abstractmethod
 
 from office_claw_sidecar.config import get_data_dir
 from office_claw_sidecar.local_stack import get_default_llm_config
-from office_claw_sidecar.services.ollama_service import OllamaService
 from office_claw_sidecar.services.claude_service import ClaudeService
+from office_claw_sidecar.services.ollama_service import OllamaService
 
 logger = logging.getLogger(__name__)
 
@@ -60,12 +60,27 @@ def save_llm_config(config: dict) -> None:
     logger.info("LLM config saved: provider=%s model=%s", config.get("provider"), config.get("model"))
 
 
+def _is_planner_model_applicable(cfg: dict, planner_model: str) -> bool:
+    """
+    설정된 planner_model을 현재 프로바이더에 그대로 넘겨도 되는지 판단한다.
+
+    프리셋 기본 planner_model(`ax7bplanner-v2:latest`)은 로컬 Ollama에만 존재하는
+    파인튜닝 태그다. 사용자가 프로바이더를 Claude로 바꾼 상태에서 이 태그를 넘기면
+    존재하지 않는 모델을 호출하게 된다. 반대로 사용자가 직접 지정한 값이라면
+    의도가 있는 것으로 보고 프로바이더와 무관하게 존중한다.
+    """
+    if str(cfg.get("provider", "") or "").strip().lower() == "ollama":
+        return True
+    default_planner = str(_DEFAULT_CONFIG.get("planner_model", "") or "").strip()
+    return planner_model != default_planner
+
+
 def get_planner_model_name(*, fallback: str | None = None) -> str:
     """
     Excel 플래너 전용 모델명을 반환한다.
     우선순위:
       1) OFFICECLAW_PLANNER_MODEL 환경변수
-      2) llm_config.json의 planner_model
+      2) llm_config.json의 planner_model (현재 프로바이더에서 쓸 수 있을 때만)
       3) llm_config.json의 model
       4) fallback / 기본값
     """
@@ -74,7 +89,7 @@ def get_planner_model_name(*, fallback: str | None = None) -> str:
         return env_model
     cfg = load_llm_config()
     cfg_planner = str(cfg.get("planner_model", "") or "").strip()
-    if cfg_planner:
+    if cfg_planner and _is_planner_model_applicable(cfg, cfg_planner):
         return cfg_planner
     cfg_model = str(cfg.get("model", "") or "").strip()
     if cfg_model:

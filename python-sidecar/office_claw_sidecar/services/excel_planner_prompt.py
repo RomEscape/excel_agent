@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from office_claw_sidecar.services.excel_live_plan_validator import EDIT_ACTIONS
+
 # 프롬프트에 붙일 설명. 이름만 나열하면 소형 모델이 highlight_by_condition과 헷갈린다.
 LATER_TOOL_LINES = (
     "- excel_live.calculate_column_stat (한 열의 합계/평균/최대 등을 '계산해서 알려주기'. 시트 수정 없음)\n"
@@ -37,14 +39,19 @@ LATER_TOOL_LINES = (
     "- excel_live.apply_data_bar (값 크기를 셀 안 막대로 시각화하는 데이터 막대 조건부 서식)\n"
     "- excel_live.set_number_format (표시 형식 변경. format_code는 'percent'/'comma'/'currency'/'date'"
     " 같은 개념어 또는 실제 Excel 서식 코드)\n"
+    "- excel_live.compare_ranges (두 범위를 비교해 차이 나는 셀/값을 찾기)\n"
+    "- excel_live.consolidate_sheets (같은 통합문서의 여러 시트를 하나로 통합)\n"
+    "- excel_live.consolidate_workbooks_from_folder (폴더 안 여러 Excel 파일을 현재 통합문서로 통합)\n"
+    "- excel_live.forecast_linear (시계열 숫자의 단순 선형 추세 예측)\n"
+    "- excel_live.refresh_power_query (Power Query/외부 연결 새로고침)\n"
+    "- excel_live.run_vba_macro (이름을 지정한 VBA 매크로 실행)\n"
 )
 
-_EDIT_ACTION_NAMES = (
-    "write_range/create_table/highlight_by_condition/fill_range/apply_border/set_formula/"
-    "sort_range/sort_rows/filter_rows/dedupe_rows/pivot_table/create_chart/drop_column/"
-    "rename_column/add_column/set_data_validation/protect_sheet/save_workbook/find_replace/"
-    "merge_cells/unmerge_cells/freeze_panes/autofit_columns/define_named_range/set_print_area/"
-    "add_cell_comment/apply_color_scale/apply_data_bar/set_number_format"
+# 편집 액션 목록은 검증기가 단일 소스다. 여기에 다시 적어 두면 한쪽만 갱신되어
+# 프롬프트가 "편집 액션이 아니다"라고 말한 액션을 검증기는 편집으로 처리하는
+# 어긋남이 생긴다. 실제로 clear_range 등 7종이 그렇게 누락돼 있었다.
+_EDIT_ACTION_NAMES = "/".join(
+    sorted(name.removeprefix("excel_live.") for name in EDIT_ACTIONS)
 )
 
 VALID_REASONING_MODES = frozenset({"fast", "deep", "reflect"})
@@ -148,6 +155,7 @@ def build_planner_prompt(
         "- excel_live.create_table\n"
         "- excel_live.highlight_by_condition\n"
         "- excel_live.fill_range\n"
+        "- excel_live.clear_range (범위의 값/수식을 비우기. 서식은 유지)\n"
         "- excel_live.save_workbook\n"
         "- excel_live.apply_border\n"
         "- excel_live.set_formula\n\n"
