@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from office_claw_sidecar.main import app
 from office_claw_sidecar.routers import excel_live as excel_live_router
+from office_claw_sidecar.services.excel_live_service import AmbiguousWorkbookError
 
 
 HEADERS = {"Authorization": "Bearer dev-token"}
@@ -1307,6 +1308,33 @@ def test_command_validation_error_excel_like_returns_clarify(monkeypatch):
     assert body["ok"] is True
     assert body["action"] == "excel_live.clarify"
     assert body["result"]["ask_follow_up"] is True
+
+
+def test_ambiguous_workbook_asks_which_file_instead_of_erroring(monkeypatch):
+    """대상 통합문서를 못 정하면 404가 아니라 후보를 들고 되묻는다."""
+
+    class _AmbiguousService(_FakeExcelService):
+        def write_range(self, workbook_id, sheet_name, start_cell, values_2d):
+            raise AmbiguousWorkbookError(
+                "어떤 통합문서에 적용할까요?",
+                candidates=["sales.xlsx", "inventory.xlsx"],
+            )
+
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _AmbiguousService())
+
+    resp = client.post(
+        "/excel-live/command",
+        json={"message": "C3에 120 입력해줘", "approve": True, "session_id": "ambiguous-wb"},
+        headers=HEADERS,
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["action"] == "excel_live.clarify"
+    assert body["result"]["ask_follow_up"] is True
+    assert body["result"]["missing_slot"] == "workbook_id"
+    assert body["result"]["candidates"] == ["sales.xlsx", "inventory.xlsx"]
+    assert "sales.xlsx" in body["result"]["follow_up_question"]
 
 
 def test_command_general_slot_upgrades_to_specific_intent(monkeypatch):

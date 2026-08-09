@@ -69,7 +69,14 @@ def execute_plan(
     max_attempts: int = 2,
     abort_on_failure: bool = True,
     on_step_complete: Callable[[StepExecutionResult], None] | None = None,
+    reraise: tuple[type[BaseException], ...] = (),
 ) -> ExecutionResult:
+    """계획을 순서대로 실행한다.
+
+    reraise에 넣은 예외는 결과로 감싸지 않고 그대로 올려보낸다. "대상 통합문서를
+    못 정했다" 같은 정보 부족은 재시도한다고 달라지지 않고, 단계 실패로 접어 두면
+    호출자가 되묻기로 바꿀 기회를 잃는다.
+    """
     results: list[StepExecutionResult] = []
     for idx, step in enumerate(steps, start=1):
         last_result: dict[str, Any] | None = None
@@ -82,6 +89,8 @@ def execute_plan(
             used_attempts += 1
             try:
                 out = execute_action(step.action, step.params)
+            except reraise:
+                raise
             except Exception as exc:  # noqa: BLE001 - 실행기에서 예외를 결과로 구조화한다.
                 error_text = str(exc)
                 if used_attempts >= attempts:

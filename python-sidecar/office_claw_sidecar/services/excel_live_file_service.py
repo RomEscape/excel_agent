@@ -35,10 +35,29 @@ from office_claw_sidecar.services.excel_formula_eval import (
 )
 from office_claw_sidecar.services.excel_header_lexicon import resolve_header
 from office_claw_sidecar.services.excel_live_service import (
+    AmbiguousWorkbookError,
     ExcelLiveError,
     ExcelLiveService,
     WorkbookNotFoundError,
     WorksheetNotFoundError,
+)
+
+# 워크스페이스를 훑을 때 건너뛸 디렉터리.
+# 가상환경의 샘플 통합문서(xlwings quickstart 등)나 우리가 만든 백업본이
+# "가장 최근 수정된 파일"로 잡혀 편집 대상이 되는 사고를 막는다.
+_SCAN_EXCLUDED_DIRS = frozenset(
+    {
+        ".git",
+        ".venv",
+        "venv",
+        "env",
+        "node_modules",
+        "site-packages",
+        "__pycache__",
+        "officeclaw_backups",
+        "dist",
+        "build",
+    }
 )
 
 
@@ -118,6 +137,15 @@ class FileExcelLiveService(ExcelLiveService):
     def _is_excel_file(path: Path) -> bool:
         return path.suffix.lower() in {".xlsx", ".xlsm", ".xltx", ".xltm"}
 
+    @staticmethod
+    def _is_scannable(path: Path, root: Path) -> bool:
+        """사용자 작업물로 볼 수 있는 경로인지 판정한다."""
+        try:
+            parts = path.relative_to(root).parts[:-1]
+        except ValueError:
+            return False
+        return not any(part in _SCAN_EXCLUDED_DIRS or part.startswith(".") for part in parts)
+
     def _list_workspace_workbooks(self, limit: int = 200) -> list[Path]:
         rows: dict[str, Path] = {}
         for root in self._candidate_roots():
@@ -130,6 +158,8 @@ class FileExcelLiveService(ExcelLiveService):
                     if fp.name.startswith("~$"):
                         continue
                     if not self._is_excel_file(fp):
+                        continue
+                    if not self._is_scannable(fp, root):
                         continue
                     rows[str(fp.resolve())] = fp.resolve()
             except Exception:
@@ -157,9 +187,17 @@ class FileExcelLiveService(ExcelLiveService):
             selected_path = Path(selected).expanduser()
             if selected_path.exists() and selected_path.is_file():
                 return selected_path.resolve()
-        files = self._list_workspace_workbooks(limit=1)
-        if files:
+        # 대상이 안 정해졌을 때 "가장 최근 수정된 파일"을 말없이 고르면, 사용자가
+        # 열어 보지도 않은 통합문서가 편집된다. 실제로 백업 파일이 최신이 되면서
+        # 대상이 매 명령마다 흘러가는 일이 있었다. 후보가 하나뿐일 때만 자동 선택한다.
+        files = self._list_workspace_workbooks(limit=10)
+        if len(files) == 1:
             return files[0]
+        if files:
+            raise AmbiguousWorkbookError(
+                "어떤 통합문서에 적용할까요? 워크스페이스에 여러 파일이 있어 대상을 특정하지 못했습니다.",
+                candidates=[fp.name for fp in files],
+            )
         raise WorkbookNotFoundError(
             "대상 통합문서를 찾지 못했습니다. workbook_id를 지정하거나 워크스페이스에 .xlsx 파일을 준비해 주세요."
         )

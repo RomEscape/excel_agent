@@ -284,6 +284,58 @@ def test_existing_write_values_are_not_overwritten():
     assert bound[0].params["values_2d"] == [["항목", "수량"]]
 
 
+def test_chart_stays_on_the_source_sheet_when_no_sheet_was_named():
+    """플래너가 지어낸 차트 전용 시트는 버린다 — 차트는 표를 덮어쓰지 않는다."""
+    steps = [
+        PlanStep(
+            action="excel_live.create_chart",
+            params={"source_range": "A5:C11", "chart_type": "bar", "output_sheet": "Rep_Chart"},
+        )
+    ]
+    bound, _notes = _bind(steps, "A5:C11로 막대 차트 만들어줘")
+    assert "output_sheet" not in bound[0].params
+
+
+def test_chart_honors_an_explicitly_named_result_sheet():
+    steps = [
+        PlanStep(
+            action="excel_live.create_chart",
+            params={"source_range": "A5:C11", "chart_type": "bar"},
+        )
+    ]
+    bound, _notes = _bind(steps, "A5:C11로 막대 차트를 Region_Chart 시트에 만들어줘")
+    assert bound[0].params["output_sheet"] == "Region_Chart"
+
+
+def test_pivot_keeps_its_separate_output_sheet():
+    """집계는 결과표를 쓰므로 별도 시트가 필요하다 — 차트 규칙을 여기 적용하면 안 된다."""
+    steps = [
+        PlanStep(
+            action="excel_live.pivot_table",
+            params={"row_field": "카테고리", "value_field": "금액", "output_sheet": "요약"},
+        )
+    ]
+    bound, _notes = _bind(steps, "카테고리별 금액 합계 내줘")
+    assert bound[0].params["output_sheet"] == "요약"
+
+
+def test_filter_without_any_column_hint_is_reported_unresolved():
+    """기준 열을 못 정한 filter_rows는 되물어야 한다 — 행을 지우는 작업이라서."""
+    steps = [PlanStep(action="excel_live.filter_rows", params={})]
+    _bound, notes = _bind(steps, "필요없는 행 지워줘")
+    unresolved = {(n["action"], n["slot"]) for n in notes if n.get("status") == "unresolved"}
+    assert ("excel_live.filter_rows", "column") in unresolved
+
+
+def test_filter_column_inferred_from_value_is_not_reported_unresolved():
+    """값이 한 열에만 있으면 기준 열이 정해진 것이니 묻지 않는다."""
+    steps = [PlanStep(action="excel_live.filter_rows", params={"value": "완료"})]
+    bound, notes = _bind(steps, "완료된 것만 남겨줘")
+    unresolved = {(n["action"], n["slot"]) for n in notes if n.get("status") == "unresolved"}
+    assert bound[0].params["column"] == "상태"
+    assert ("excel_live.filter_rows", "column") not in unresolved
+
+
 def test_filter_value_not_in_sheet_is_corrected_to_real_cell_value():
     steps = [
         PlanStep(
