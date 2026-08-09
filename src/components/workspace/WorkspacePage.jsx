@@ -547,7 +547,7 @@ function persistMessageSilent(sessionId, role, text, extra = {}) {
   ).catch(() => { /* graceful — sidecar 미지원 */ });
 }
 
-function ChatSidePanel({ openclawState }) {
+function ChatSidePanel({ sidecarState }) {
   const activeSessionId = useAppStore((s) => s.activeSessionId);
   const setActiveSessionId = useAppStore((s) => s.setActiveSessionId);
   const agentMessages = useAppStore((s) => s.agentMessages);
@@ -678,7 +678,11 @@ function ChatSidePanel({ openclawState }) {
     ta.style.height = `${newHeight}px`;
   }, [input]);
 
-  const isUnavailable = openclawState === "stopped" || openclawState === "error";
+  // 사이드카가 끊기면 채팅(/agent/chat)도 엑셀 명령(/excel-live/command)도 전부 실패한다.
+  // 예전에는 OpenClaw 게이트웨이 상태를 봤는데, LLM 경로에서 OpenClaw가 빠진 뒤로
+  // 게이트웨이 실행 여부는 이 패널과 아무 상관이 없어졌다.
+  // "checking"은 기동 직후 잠깐 거치는 값이라 막지 않는다.
+  const isUnavailable = sidecarState === "error";
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1455,7 +1459,7 @@ function ChatSidePanel({ openclawState }) {
       {isUnavailable ? (
         <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
           <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          OpenClaw가 실행되지 않아 사용할 수 없습니다.
+          앱 서버에 연결할 수 없어 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.
         </div>
       ) : (
         <div className="flex items-end gap-2">
@@ -1481,8 +1485,11 @@ function ChatSidePanel({ openclawState }) {
 // ── 메인 WorkspacePage ──────────────────────────────────────────────────────
 
 export default function WorkspacePage() {
-  const ocStatus = useAppStore((s) => s.openclawStatus);
+  // 채팅·엑셀 명령은 둘 다 사이드카를 거친다. appStore.sidecarStatus는 StatusBar가
+  // 헬스 체크로 계속 갱신하므로 여기서 따로 fetch하지 않고 구독만 한다.
+  const sidecarState = useAppStore((s) => s.sidecarStatus?.state);
   const workspacePath = useAppStore((s) => s.workspacePath);
+  const setWorkspacePath = useAppStore((s) => s.setWorkspacePath);
   const [currentPath, setCurrentPath] = useState("");
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1550,12 +1557,13 @@ export default function WorkspacePage() {
       const data = await workspaceListFiles(path);
       const rows = Array.isArray(data.files) ? data.files : [];
       setFiles(rows.filter((entry) => !isOfficeLockTempFile(entry?.name)));
+      if (data.workspace) setWorkspacePath(data.workspace);
     } catch (err) {
       setError(toUserMessage(err, "파일 목록을 불러오지 못했습니다."));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setWorkspacePath]);
 
   useEffect(() => {
     loadFiles(currentPath);
@@ -1756,7 +1764,7 @@ export default function WorkspacePage() {
             <h1 className="text-lg font-semibold">워크스페이스</h1>
             <Breadcrumb currentPath={currentPath} onNavigate={handleNavigate} />
             <p className="mt-1 text-xs text-muted-foreground">
-              업로드 위치: `{workspacePath}`{currentPath ? `/${currentPath}` : ""}
+              업로드 위치: {workspacePath ? `${workspacePath}${currentPath ? `/${currentPath}` : ""}` : "확인 중..."}
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -1917,7 +1925,7 @@ export default function WorkspacePage() {
             style={{ width: `${chatWidth}px` }}
             aria-label="에이전트 채팅"
           >
-            <ChatSidePanel openclawState={ocStatus.state} />
+            <ChatSidePanel sidecarState={sidecarState} />
           </aside>
         </>
       )}

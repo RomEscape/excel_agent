@@ -2164,11 +2164,50 @@ pub async fn command_audit_clear(state: State<'_, Mutex<SidecarState>>) -> Resul
 
 // ── Phase 1: Private-Claw — Workspace commands ──────────────────────────────
 
+/// 워크스페이스 루트의 절대 경로를 사이드카에서 받아온다.
+///
+/// 워크스페이스 위치의 단일 출처는 사이드카(`config.get_workspace_root()`)다.
+/// Rust가 홈 디렉토리를 따로 조합하면 파일을 만드는 폴더와 여는 폴더가 어긋나서,
+/// 방금 만든 파일을 "찾을 수 없습니다"로 되돌려주게 된다.
+async fn fetch_workspace_root(
+    state: &State<'_, Mutex<SidecarState>>,
+) -> Result<std::path::PathBuf, String> {
+    let (url, client, token) = {
+        let s = state.lock().map_err(|e| e.to_string())?;
+        (
+            sidecar_url(&s, "/workspace/root"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
+    };
+
+    let resp = client
+        .get(&url)
+        .bearer_auth(&token)
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|e| format!("워크스페이스 경로 조회 실패: {}", e))?;
+
+    let body = read_response(resp).await?;
+    let parsed: serde_json::Value = serde_json::from_str(&body)
+        .map_err(|e| format!("워크스페이스 경로 응답 파싱 실패: {}", e))?;
+    let root = parsed
+        .get("root")
+        .and_then(|v| v.as_str())
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| "워크스페이스 경로 응답에 root가 없습니다".to_string())?;
+
+    Ok(std::path::PathBuf::from(root))
+}
+
 /// 워크스페이스 폴더를 Finder(macOS) / Explorer(Windows)로 연다.
 #[tauri::command]
-pub async fn open_workspace_folder(_app: tauri::AppHandle) -> Result<String, String> {
-    let home = dirs_home().ok_or_else(|| "홈 디렉토리를 찾을 수 없습니다".to_string())?;
-    let workspace = home.join("PrivateClaw").join("Workspace");
+pub async fn open_workspace_folder(
+    _app: tauri::AppHandle,
+    state: State<'_, Mutex<SidecarState>>,
+) -> Result<String, String> {
+    let workspace = fetch_workspace_root(&state).await?;
 
     // 디렉토리가 없으면 생성
     if !workspace.exists() {
@@ -2201,7 +2240,10 @@ pub async fn open_workspace_folder(_app: tauri::AppHandle) -> Result<String, Str
 ///   - 절대 경로 차단 (상대 경로만 허용)
 ///   - `..` 포함 경로 차단 (워크스페이스 탈출 방지)
 #[tauri::command]
-pub async fn open_workspace_file(path: String) -> Result<String, String> {
+pub async fn open_workspace_file(
+    state: State<'_, Mutex<SidecarState>>,
+    path: String,
+) -> Result<String, String> {
     // 1) 입력 경로 검증
     if path.starts_with('/') || path.starts_with('\\') {
         return Err("절대 경로는 허용되지 않습니다. 상대 경로를 사용하세요.".to_string());
@@ -2214,8 +2256,7 @@ pub async fn open_workspace_file(path: String) -> Result<String, String> {
     }
 
     // 2) 워크스페이스 루트 확인/생성
-    let home = dirs_home().ok_or_else(|| "홈 디렉토리를 찾을 수 없습니다".to_string())?;
-    let workspace_root = home.join("PrivateClaw").join("Workspace");
+    let workspace_root = fetch_workspace_root(&state).await?;
     if !workspace_root.exists() {
         std::fs::create_dir_all(&workspace_root)
             .map_err(|e| format!("워크스페이스 폴더 생성 실패: {}", e))?;
@@ -2391,11 +2432,12 @@ pub async fn workspace_create_excel_file(
 /// 보안 샌드박스:
 ///   - 경로 내 `..` 컴포넌트 차단 (디렉토리 탈출 방지)
 ///   - 절대 경로 차단 — 반드시 상대 경로 사용
-///   - 최종 경로는 ~/PrivateClaw/Workspace/{path} 고정
+///   - 최종 경로는 워크스페이스 루트/{path} 고정
 ///
 /// 호출 측(Frontend)은 base64 표준 인코딩(RFC 4648) 문자열을 전달해야 한다.
 #[tauri::command]
 pub async fn workspace_write_file_binary(
+    state: State<'_, Mutex<SidecarState>>,
     path: String,
     content_base64: String,
 ) -> Result<String, String> {
@@ -2413,8 +2455,7 @@ pub async fn workspace_write_file_binary(
     }
 
     // 3. 워크스페이스 루트 확인 및 생성
-    let home = dirs_home().ok_or_else(|| "홈 디렉토리를 찾을 수 없습니다".to_string())?;
-    let workspace_root = home.join("PrivateClaw").join("Workspace");
+    let workspace_root = fetch_workspace_root(&state).await?;
     if !workspace_root.exists() {
         std::fs::create_dir_all(&workspace_root)
             .map_err(|e| format!("워크스페이스 폴더 생성 실패: {}", e))?;

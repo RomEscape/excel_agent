@@ -50,6 +50,7 @@ import {
   openWorkspaceFolder,
 } from "@/lib/api";
 import { toUserMessage } from "@/lib/errorMessages";
+import { refreshWorkspacePath } from "@/lib/workspaceManager";
 
 const TOTAL_STEPS = 5;
 
@@ -821,6 +822,10 @@ function StepWorkspace({ onNext, onPrev }) {
   const [opening, setOpening] = useState(false);
   const [openError, setOpenError] = useState("");
 
+  useEffect(() => {
+    refreshWorkspacePath();
+  }, []);
+
   const handleOpenFolder = async () => {
     setOpening(true);
     setOpenError("");
@@ -850,7 +855,9 @@ function StepWorkspace({ onNext, onPrev }) {
           <p className="text-xs text-muted-foreground mb-1 font-medium uppercase tracking-wide">
             워크스페이스 경로
           </p>
-          <code className="text-sm font-mono break-all">{workspacePath}</code>
+          <code className="text-sm font-mono break-all">
+            {workspacePath || "확인 중..."}
+          </code>
           <p className="mt-3 text-xs text-muted-foreground">
             앱을 처음 실행할 때 자동으로 생성됩니다.
             메신저에서 "파일 목록 보여줘" 같은 명령으로 이 폴더의 파일에 접근할 수 있습니다.

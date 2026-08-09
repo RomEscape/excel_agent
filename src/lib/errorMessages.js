@@ -180,8 +180,8 @@ const ERROR_MAPPINGS = [
     message: "파일 접근 권한이 없습니다. 앱 권한 설정을 확인해 주세요.",
   },
   {
-    pattern: /No such file|file.*not found/i,
-    message: "파일을 찾을 수 없습니다.",
+    pattern: /No such file|file.*not found|파일을 찾을 수 없습니다/i,
+    message: "파일을 찾을 수 없습니다. 목록을 새로고침한 뒤 다시 시도해 주세요.",
   },
 
   // Excel / file parsing
@@ -205,8 +205,10 @@ const ERROR_MAPPINGS = [
     message: "파일을 읽을 수 없습니다. 파일이 손상되지 않은 올바른 엑셀/CSV 파일인지 확인해 주세요.",
   },
   {
-    // Stale file_id — file was cleaned up (24h expiry) or app was restarted
-    pattern: /파일을 찾을 수 없습니다|file_id.*not found|HTTP 404.*excel|HTTP 404.*document/i,
+    // Stale file_id — file was cleaned up (24h expiry) or app was restarted.
+    // "파일을 찾을 수 없습니다"만으로 여기 걸리게 두면 업로드와 무관한 not-found까지
+    // 업로드 문제로 둔갑해 원인을 가린다 — 업로드 맥락이 드러난 것만 잡는다.
+    pattern: /업로드.*찾을 수 없|file_id.*not found|HTTP 404.*excel|HTTP 404.*document/i,
     message: "업로드된 파일을 찾을 수 없습니다. 파일을 다시 업로드해 주세요.",
   },
   {

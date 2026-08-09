@@ -80,10 +80,12 @@ const useAppStore = create(
       telegramConnected: false,
 
       /**
-       * 워크스페이스 경로 (표시용).
+       * 워크스페이스 절대 경로 (표시용).
+       * 실제 값은 사이드카가 알려준다 — 파일 목록을 불러올 때 채워지므로,
+       * 그전까지는 빈 문자열이다. 여기에 경로를 하드코딩하지 말 것.
        * @type {string}
        */
-      workspacePath: "~/officeclaw/Workspace",
+      workspacePath: "",
 
       /**
        * 온보딩에서 선택된 메신저.
@@ -140,6 +142,9 @@ const useAppStore = create(
       /** Update sidecar connection status */
       setSidecarStatus: (/** @type {SidecarStatus} */ status) =>
         set({ sidecarStatus: status }),
+
+      /** 사이드카가 알려준 워크스페이스 절대 경로를 기록한다 */
+      setWorkspacePath: (/** @type {string} */ path) => set({ workspacePath: path }),
 
       /** Update whether the active LLM provider is reachable */
       setLLMReachable: (/** @type {boolean|null} */ reachable) =>

@@ -914,7 +914,7 @@ def _cmd_ws_list(path: str = "") -> str:
         return f"파일 목록 조회 실패: {e}"
 
     if not entries:
-        return "워크스페이스가 비어있습니다.\n경로: ~/officeclaw/Workspace"
+        return f"워크스페이스가 비어있습니다.\n경로: {sandbox.WORKSPACE_ROOT}"
 
     lines = ["워크스페이스 파일 목록:\n"]
     for entry in entries:
