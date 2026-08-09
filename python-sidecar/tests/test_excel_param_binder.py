@@ -237,6 +237,42 @@ def test_write_value_is_filled_even_without_digest():
     assert bound[0].params["values_2d"] == [["안녕"]]
 
 
+def test_range_write_splits_comma_separated_values_across_cells():
+    steps = [PlanStep(action="excel_live.write_range", params={"start_cell": "__ACTIVE_CELL__"})]
+    bound, _notes = _bind(steps, "E2:G2에 이름,수량,금액 입력")
+    assert bound[0].params["values_2d"] == [["이름", "수량", "금액"]]
+    assert bound[0].params["start_cell"] == "E2"
+
+
+def test_range_write_start_cell_is_the_top_left_not_the_range_end():
+    """플래너가 범위 끝(G2)을 시작 셀로 잡아 와도 좌상단으로 되돌린다."""
+    steps = [PlanStep(action="excel_live.write_range", params={"start_cell": "G2"})]
+    bound, _notes = _bind(steps, "E2:G2에 이름,수량,금액 입력")
+    assert bound[0].params["start_cell"] == "E2"
+
+
+def test_vertical_range_write_produces_a_column():
+    steps = [PlanStep(action="excel_live.write_range", params={})]
+    bound, _notes = _bind(steps, "E2:E4에 사과,배,감 입력")
+    assert bound[0].params["values_2d"] == [["사과"], ["배"], ["감"]]
+    assert bound[0].params["start_cell"] == "E2"
+
+
+def test_reversed_range_still_anchors_at_the_top_left():
+    steps = [PlanStep(action="excel_live.write_range", params={})]
+    bound, _notes = _bind(steps, "G2:E2에 1,2,3 입력")
+    assert bound[0].params["values_2d"] == [[1, 2, 3]]
+    assert bound[0].params["start_cell"] == "E2"
+
+
+def test_single_cell_keeps_thousand_separator_intact():
+    """단일 셀에서는 콤마가 값 구분자가 아니라 천 단위 구분자다."""
+    steps = [PlanStep(action="excel_live.write_range", params={})]
+    bound, _notes = _bind(steps, "C3에 1,000 입력")
+    assert bound[0].params["values_2d"] == [[1000]]
+    assert bound[0].params["start_cell"] == "C3"
+
+
 def test_existing_write_values_are_not_overwritten():
     steps = [
         PlanStep(
