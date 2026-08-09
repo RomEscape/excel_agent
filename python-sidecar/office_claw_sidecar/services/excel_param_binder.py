@@ -416,9 +416,67 @@ def _bind_filter_mode(params: dict[str, Any], *, message: str) -> list[str]:
 
 
 _WRITE_VALUE_PATTERN = re.compile(
-    r"([A-Za-z]{1,3}\d{1,7})\s*(?:셀)?\s*에\s*(.+?)\s*(?:입력|기입|써|쓰|넣|적어|set|write)",
+    r"([A-Za-z]{1,3}\d{1,7}(?::[A-Za-z]{1,3}\d{1,7})?)"
+    r"\s*(?:셀|범위)?\s*에\s*(.+?)\s*(?:입력|기입|써|쓰|넣|적어|set|write)",
     re.IGNORECASE,
 )
+
+_CELL_REF_PATTERN = re.compile(r"^([A-Za-z]{1,3})(\d{1,7})$")
+
+
+def _column_index(letters: str) -> int:
+    index = 0
+    for char in letters.upper():
+        index = index * 26 + (ord(char) - ord("A") + 1)
+    return index
+
+
+def _range_shape(ref: str) -> tuple[str, int, int] | None:
+    """ "E2:G2" → ("E2", 1, 3). 단일 셀이면 (셀, 1, 1).
+
+    시작 셀은 항상 좌상단으로 정규화한다. "G2:E2"처럼 거꾸로 적어도 E2가 기준이 돼야
+    값이 범위 밖으로 밀려나지 않는다.
+    """
+    parts = ref.upper().split(":")
+    head = _CELL_REF_PATTERN.match(parts[0])
+    if not head:
+        return None
+    if len(parts) == 1:
+        return parts[0], 1, 1
+    tail = _CELL_REF_PATTERN.match(parts[1])
+    if not tail:
+        return None
+
+    head_col, tail_col = _column_index(head.group(1)), _column_index(tail.group(1))
+    head_row, tail_row = int(head.group(2)), int(tail.group(2))
+    left_letters = head.group(1) if head_col <= tail_col else tail.group(1)
+    return (
+        f"{left_letters}{min(head_row, tail_row)}",
+        abs(tail_row - head_row) + 1,
+        abs(tail_col - head_col) + 1,
+    )
+
+
+def _shape_write_values(raw: str, row_count: int, col_count: int) -> list[list[Any]]:
+    """원문의 값 부분을 대상 범위 모양에 맞춘 2차원 배열로 만든다.
+
+    단일 셀이면 콤마를 건드리지 않는다 — "C3에 1,000 입력"의 천 단위 구분자를
+    구분자로 오해해 쪼개면 값이 1과 0으로 망가진다. 범위가 명시됐을 때만
+    콤마를 값 구분자로 본다.
+    """
+    if row_count == 1 and col_count == 1:
+        literal = _coerce_literal(raw)
+        return [[literal]] if literal != "" else []
+
+    parts = [_coerce_literal(part) for part in raw.split(",")]
+    parts = [part for part in parts if part != ""]
+    if not parts:
+        return []
+    if col_count == 1:
+        return [[part] for part in parts]
+    if row_count == 1:
+        return [parts]
+    return [parts[index : index + col_count] for index in range(0, len(parts), col_count)]
 
 
 def _coerce_literal(text: str) -> Any:
@@ -444,14 +502,21 @@ def _bind_write_values(params: dict[str, Any], *, message: str) -> list[str]:
     match = _WRITE_VALUE_PATTERN.search(str(message or ""))
     if not match:
         return []
-    literal = _coerce_literal(match.group(2))
-    if literal == "":
+    shape = _range_shape(match.group(1))
+    if shape is None:
         return []
-    params["values_2d"] = [[literal]]
+    top_left, row_count, col_count = shape
+    values = _shape_write_values(match.group(2), row_count, col_count)
+    if not values:
+        return []
+    params["values_2d"] = values
+    # 원문에 범위가 명시됐으면 그 좌상단이 항상 옳다. 플래너가 범위의 끝 셀을
+    # 시작으로 잡아 오는 경우가 있는데, 두면 값이 범위 밖으로 밀려 쓰인다.
     start_cell = str(params.get("start_cell") or "").strip().upper()
-    if not start_cell or start_cell in {"__ACTIVE_CELL__", "__ACTIVE_SELECTION__"}:
-        params["start_cell"] = match.group(1).upper()
-    return [f"values_2d=[[{literal}]]"]
+    is_placeholder = not start_cell or start_cell in {"__ACTIVE_CELL__", "__ACTIVE_SELECTION__"}
+    if is_placeholder or row_count > 1 or col_count > 1:
+        params["start_cell"] = top_left
+    return [f"values_2d={values}"]
 
 
 _OUTPUT_SHEET_TARGET_PATTERN = re.compile(
