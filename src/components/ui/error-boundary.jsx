@@ -96,23 +96,30 @@ export default class ErrorBoundary extends React.Component {
   }
 }
 
+/** 오버레이 DOM이 이미 붙어 있는지 표시하는 body 속성. */
+const OVERLAY_FLAG = "data-oc-error-overlay";
+
 /**
  * 렌더 바깥(모듈 로드·비동기 콜백)에서 터진 예외를 잡아 화면에 표시한다.
  * ErrorBoundary는 렌더 중 예외만 잡으므로 이 핸들러가 나머지를 보완한다.
+ *
+ * 오버레이는 React 루트가 아니라 body 직속 엘리먼트에 그린다. 예전에는 루트를
+ * `innerHTML = ""`로 비웠는데, 그러면 React의 파이버 트리는 그대로인 채 DOM만
+ * 사라져서 다음 커밋 때 "removeChild: 지우려는 노드가 이 노드의 자식이 아니다"로
+ * 앱이 죽었다. 원래 오류는 그 뒤에 묻혀 보이지도 않았다.
  */
-export function installGlobalErrorOverlay(rootElement) {
+export function installGlobalErrorOverlay() {
   const show = (title, error) => {
-    if (!rootElement || rootElement.dataset.errorShown === "1") return;
-    rootElement.dataset.errorShown = "1";
+    if (document.body.hasAttribute(OVERLAY_FLAG)) return;
+    document.body.setAttribute(OVERLAY_FLAG, "1");
     const stack = String(error?.stack || error || "알 수 없는 오류");
-    rootElement.innerHTML = "";
     const pre = document.createElement("pre");
     pre.textContent = `${title}\n\n${stack}`;
     pre.style.cssText =
       "position:fixed;inset:0;z-index:99999;overflow:auto;padding:24px;" +
       "background:#1a1a1a;color:#ff6b6b;font:13px/1.6 ui-monospace,Menlo,monospace;" +
       "white-space:pre-wrap;word-break:break-all;margin:0";
-    rootElement.appendChild(pre);
+    document.body.appendChild(pre);
   };
 
   window.addEventListener("error", (event) => {
