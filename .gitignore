@@ -47,3 +47,12 @@ text_1.xlsx
 
 # 개발 로그 (로컬 전용 — 버전관리 제외)
 개발일지.md
+
+# 학습 산출물 — LoRA 어댑터·병합 모델·GGUF는 수십 GB라 저장소에 넣지 않는다.
+# 재현에 필요한 건 train/ax7b/의 설정과 datasets/의 학습 데이터뿐이고,
+# 배포본은 Ollama에 등록된 태그(ax7bplanner-v3)로 유통한다.
+artifacts/
+
+# 실행/평가 로그, 임시 작업물
+logs/
+scratch/

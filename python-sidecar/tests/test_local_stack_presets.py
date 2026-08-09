@@ -16,4 +16,10 @@ def test_default_preset_is_the_openclaw_stack():
 
 def test_default_llm_config_matches_ollama_adot():
     cfg = get_default_llm_config()
-    assert cfg == {"provider": "ollama", "model": "skt/A.X-4.0-Light:latest"}
+    # 범용 대화는 베이스 모델, Excel Live 계획 수립은 파인튜닝본으로 나뉜다.
+    # 파인튜닝본은 계획 JSON만 뱉도록 학습돼 일반 대화에 쓰면 안 된다.
+    assert cfg == {
+        "provider": "ollama",
+        "model": "skt/A.X-4.0-Light:latest",
+        "planner_model": "ax7bplanner-v3:latest",
+    }

@@ -1,17 +1,22 @@
-run_name: ax7b-planner-qlora-v2
+run_name: ax7b-planner-qlora-v3
 seed: 42
 
 # 학습 입력 — build_planner_sft_jsonl.py가 프로덕션 플래너 프롬프트로 재생성한 데이터.
 # v1은 짧은 자체 프롬프트를 써서 추론 형식과 어긋났다(파인튜닝 효과 소실).
-train_jsonl: datasets/train/planner_sft_v2_train.jsonl
-output_dir: artifacts/ax7b-planner-lora-v2
+# v3은 두 가지를 더 고쳤다.
+#  - 실행 불가 액션(clarify 등)을 정답에서 제거
+#  - write_range가 첫 액션인 예제가 0건이라 값 입력을 set_formula로 계획하던 문제를
+#    규칙 기반 보강으로 해소(generate_planner_augmentation.py)
+train_jsonl: datasets/train/planner_sft_v3_train.jsonl
+output_dir: artifacts/ax7b-planner-lora-v3
 
 # 베이스 모델 (HF Transformers 원본)
 base_model: skt/A.X-4.0-Light
 
-# 플래너 프롬프트가 통째로 들어가므로 실토큰이 1677~1831이다(verify_sft_encoding.py 실측).
-# 768이면 프롬프트 중간에서 잘려 정답 구간이 통째로 사라진다.
-max_seq_length: 2048
+# 플래너 프롬프트가 통째로 들어가므로 실토큰이 1931~2095다(verify_sft_encoding.py 실측).
+# 누락됐던 액션 7종을 프롬프트에 추가하면서 v2(최대 1831)보다 길어졌고,
+# 2048로 두면 69건이 잘려 정답 뒷부분이 사라진다.
+max_seq_length: 2304
 
 # QLoRA
 load_in_4bit: true
@@ -30,7 +35,7 @@ target_modules:
   - up_proj
   - down_proj
 
-# Trainer (729건 x 3epoch, effective batch 8 -> 약 273 step)
+# Trainer (1000건 x 3epoch, effective batch 8 -> 약 375 step)
 num_train_epochs: 3
 learning_rate: 2.0e-4
 weight_decay: 0.01
@@ -38,7 +43,9 @@ warmup_ratio: 0.03
 per_device_train_batch_size: 1
 gradient_accumulation_steps: 8
 logging_steps: 10
-save_steps: 90
+# 에폭 경계마다 체크포인트가 남는다. v2는 최종 loss가 7e-5까지 떨어져 과적합이
+# 의심되므로, 최종본이 회귀를 보이면 1~2에폭 체크포인트로 되돌릴 수 있어야 한다.
+save_steps: 125
 save_total_limit: 3
 gradient_checkpointing: true
 bf16: true

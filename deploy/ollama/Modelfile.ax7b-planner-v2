@@ -1,0 +1,24 @@
+# ax7bplanner-v2 — planner_sft_v2 데이터로 재학습한 A.X-4.0-Light QLoRA 병합본.
+#
+# v1과 달리 학습 시 tokenizer.apply_chat_template()을 그대로 썼으므로,
+# 여기 TEMPLATE도 A.X-4.0-Light의 네이티브 포맷과 한 글자도 어긋나면 안 된다.
+# v1은 <|im_start|>/<|im_end|> 래핑이 빠진 자체 포맷이라 학습/추론이 어긋났고
+# 그 결과 계획 JSON 파싱이 통째로 실패했다.
+#
+# 양자화는 Ollama가 등록 시점에 처리한다. llama.cpp의 convert_hf_to_gguf.py는
+# q4_k_m outtype이 없고(f32/f16/bf16/q8_0만) llama-quantize 바이너리도 빌드돼 있지 않다.
+# 등록: ollama create ax7bplanner-v2 -f deploy/ollama/Modelfile.ax7b-planner-v2 --quantize q4_K_M
+FROM C:\Users\asdjj\OneDrive\바탕 화면\동화책 프로젝트\officeclaw\artifacts\ax7b-planner-v2-f16.gguf
+
+# 플래너 프롬프트 실측 1677~1831토큰 + 계획 JSON 출력. 여유를 둬 8192.
+PARAMETER num_ctx 8192
+PARAMETER temperature 0.2
+PARAMETER top_p 0.9
+PARAMETER repeat_penalty 1.05
+
+# 학습 렌더링과 동일: 메시지 사이에 개행·공백을 넣지 않는다.
+TEMPLATE """{{ range .Messages }}{{ if eq .Role "system" }}<|im_start|><|system|>{{ .Content }}<|im_end|>{{ else if eq .Role "user" }}<|im_start|><|user|>{{ .Content }}<|im_end|>{{ else if eq .Role "assistant" }}<|im_start|><|assistant|>{{ .Content }}<|im_end|>{{ end }}{{ end }}<|im_start|><|assistant|>"""
+
+# eos_token이 <|im_end|>다. 이게 빠지면 생성이 멈추지 않는다.
+PARAMETER stop "<|im_end|>"
+PARAMETER stop "<|im_start|>"
