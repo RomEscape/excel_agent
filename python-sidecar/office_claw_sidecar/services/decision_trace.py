@@ -29,7 +29,16 @@ KST = timezone(timedelta(hours=9), name="KST")
 
 # 셀 값 수천 개가 통째로 들어오면 로그가 읽을 수 없게 된다.
 _MAX_TEXT = 400
+_MAX_LONG_TEXT = 4000
 _MAX_LIST = 12
+
+
+class Long(str):
+    """400자에서 자르면 뜻이 사라지는 문자열.
+
+    LLM 원본 응답이나 통합문서 다이제스트가 여기 해당한다. 계획 JSON이 중간에
+    끊기면 "모델이 뭘 뱉었나"를 확인할 수 없어 로그를 남긴 의미가 없다.
+    """
 
 
 @dataclass
@@ -43,6 +52,7 @@ class DecisionTurn:
     started_at: str
     started_ts: float
     request: dict[str, Any] = field(default_factory=dict)
+    routes: list[dict[str, Any]] = field(default_factory=list)
     stages: list[dict[str, Any]] = field(default_factory=list)
     outcome: dict[str, Any] = field(default_factory=dict)
 
@@ -59,8 +69,11 @@ def compact(value: Any, *, depth: int = 0) -> Any:
     if value is None or isinstance(value, (bool, int, float)):
         return value
     if isinstance(value, str):
-        return value if len(value) <= _MAX_TEXT else value[:_MAX_TEXT] + f"...(+{len(value) - _MAX_TEXT}자)"
-    if depth >= 4:
+        limit = _MAX_LONG_TEXT if isinstance(value, Long) else _MAX_TEXT
+        return str(value) if len(value) <= limit else value[:limit] + f"...(+{len(value) - limit}자)"
+    # plan_summary를 거친 값이 note()에서 한 번 더 줄어든다. 한도가 얕으면
+    # 그 두 번을 지나는 동안 params의 values_2d가 "<list>"로 뭉개진다.
+    if depth >= 7:
         return f"<{type(value).__name__}>"
     if isinstance(value, dict):
         out: dict[str, Any] = {}
@@ -94,6 +107,35 @@ def note(stage: str, **fields: Any) -> None:
     for key, value in fields.items():
         entry[key] = compact(value)
     turn.stages.append(entry)
+
+
+def route(name: str, why: str = "", **fields: Any) -> None:
+    """이 턴이 지나간 갈림길을 순서대로 남긴다.
+
+    `stages`가 "무엇을 알아냈나"라면 `routes`는 "어느 길로 갔나"다. 같은 명령이
+    어떤 날은 규칙으로, 어떤 날은 플래너로 처리되는데 이 흔적이 없으면 재현이
+    안 된다. 한 줄로 이어 붙이면 그 턴의 경로가 그대로 보인다.
+
+        quick_rule:miss → planner:llm → validate:ok → execute → verify:failed → replan
+    """
+    turn = _CURRENT.get()
+    if turn is None:
+        return
+    entry: dict[str, Any] = {
+        "at": str(name),
+        "at_ms": round((time.perf_counter() - turn.started_ts) * 1000, 1),
+    }
+    if why:
+        entry["why"] = compact(why)
+    for key, value in fields.items():
+        entry[key] = compact(value)
+    turn.routes.append(entry)
+
+
+def route_path(turn: dict[str, Any] | DecisionTurn) -> str:
+    """`routes`를 한 줄 경로 문자열로 잇는다."""
+    routes = turn.get("routes", []) if isinstance(turn, dict) else turn.routes
+    return " → ".join(str(r.get("at", "")) for r in routes if isinstance(r, dict))
 
 
 def plan_summary(steps: Any) -> list[dict[str, Any]]:
@@ -168,6 +210,7 @@ def turn_scope(
                 "message": turn.message,
                 "request": turn.request,
                 "elapsed_ms": round((time.perf_counter() - turn.started_ts) * 1000, 1),
+                "routes": turn.routes,
                 "stages": turn.stages,
                 "outcome": turn.outcome,
             }
@@ -181,15 +224,29 @@ def set_outcome_from_response(response: Any) -> None:
         return
     result = getattr(response, "result", None)
     result = result if isinstance(result, dict) else {}
+    ok = getattr(response, "ok", None)
+    asked = bool(result.get("ask_follow_up"))
+    approval = bool(getattr(response, "approval_required", False))
     turn.outcome = compact(
         {
-            "ok": getattr(response, "ok", None),
+            "ok": ok,
             "action": getattr(response, "action", ""),
             "reason": getattr(response, "reason", ""),
-            "ask_follow_up": bool(result.get("ask_follow_up")),
+            "ask_follow_up": asked,
             "follow_up_question": result.get("follow_up_question", ""),
-            "approval_required": bool(getattr(response, "approval_required", False)),
+            "approval_required": approval,
             "executed_steps": result.get("executed_steps"),
             "failure_detail": result.get("failure_detail", ""),
+            "auto_rollbacks": result.get("auto_rollbacks") or [],
         }
     )
+    # 경로가 결론 없이 끝나면 로그만 봐서는 이 턴이 어떻게 됐는지 알 수 없다.
+    if approval:
+        verdict = "final:approval_required"
+    elif asked:
+        verdict = "final:asked_back"
+    elif ok:
+        verdict = "final:ok"
+    else:
+        verdict = "final:failed"
+    route(verdict, why=str(result.get("failure_detail", "") or getattr(response, "reason", "")))

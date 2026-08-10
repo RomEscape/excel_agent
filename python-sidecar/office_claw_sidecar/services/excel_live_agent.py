@@ -10,8 +10,18 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from typing import Any
 
+from office_claw_sidecar.services.decision_trace import (
+    Long,
+)
+from office_claw_sidecar.services.decision_trace import (
+    note as trace_note,
+)
+from office_claw_sidecar.services.decision_trace import (
+    route as trace_route,
+)
 from office_claw_sidecar.services.excel_live_plan_validator import (
     SUPPORTED_ACTIONS as VALIDATOR_SUPPORTED_ACTIONS,
 )
@@ -785,11 +795,28 @@ async def parse_command_plan_with_llm(
         require_edit_action=require_edit_action,
         forbid_clarify=forbid_clarify,
     )
+    started = time.perf_counter()
     raw = await llm_service.chat(
         [{"role": "user", "content": prompt}], model=planner_model or None, temperature=PLAN_TEMPERATURE
     )
+    elapsed_ms = round((time.perf_counter() - started) * 1000, 1)
     match = re.search(r"\{.*\}", raw, re.DOTALL)
+    # 모델이 뭘 돌려줬는지 원본으로 남긴다. 파싱 실패를 "모델이 이상한 걸 뱉었다"와
+    # "정규식이 못 잡았다"로 갈라 보려면 이 문자열이 있어야 한다.
+    trace_note(
+        "llm_call",
+        purpose="planner",
+        model=planner_model or "(기본)",
+        forbid_list_action=forbid_list_action,
+        require_edit_action=require_edit_action,
+        forbid_clarify=forbid_clarify,
+        prompt_chars=len(prompt),
+        elapsed_ms=elapsed_ms,
+        raw_response=Long(raw),
+        json_found=bool(match),
+    )
     if not match:
+        trace_route("planner:json_missing", why="응답에서 JSON 블록을 찾지 못함")
         raise ValueError("LLM 계획 JSON 파싱 실패")
     parsed = json.loads(match.group(0))
 

@@ -431,6 +431,33 @@ python scripts/build_sft_from_escalations.py \
 되묻기로 끝난 턴은 정답으로 수확하지 않는다 — 그걸 학습하면 "어려우면 물어봐라"를
 강화하게 되는데 원하는 건 그 반대다.
 
+### 턴 트레이스 — 실패 원인 추적 (2026-08-11)
+
+`/excel-live/command` 한 턴이 어디서 깨졌는지 가르는 로그다. 요청·관측·계획·실행·검증이
+`logs/chat_log.jsonl`에 **턴당 JSON 한 줄**로 모인다. 소유 모듈은 `services/decision_trace.py`,
+읽기는 `services/trace_report.py`다.
+
+```powershell
+python scripts/show_turns.py            # 최근 5턴을 사람이 읽는 형태로
+python scripts/show_turns.py --failed   # 실패한 턴만
+python scripts/show_turns.py --summary  # 실패 유형 집계
+python scripts/show_turns.py --prompt   # LLM에 준 프롬프트와 원본 응답까지
+```
+
+```
+[USER]        C3에 120 입력해줘
+[OBSERVATION] sheet=매출 used_range=A1:C3   headers=월, 지역, 금액
+[ROUTE]       quick_rule:miss → planner:local → verify:failed×2 → replan:1 → final:failed
+[PLAN]        excel_live.write_range {"start_cell": "C3", "values_2d": [[120]]}
+[EXECUTION]   excel_live.write_range → ok
+              [VERIFY] 실패 — write_value_mismatch:C3 셀에 120를 쓰려 했으나 777가 들어 있습니다
+[FINAL]       검증 실패 · 재계획도 실패
+```
+
+- `routes`는 이 턴이 지나간 갈림길이다. 규칙으로 처리됐는지 플래너를 탔는지, 몇 번째 티어까지 올라갔는지, 재계획했는지가 한 줄로 보인다.
+- 결론(`final:ok` / `final:failed` / `final:asked_back` / `final:approval_required`)은 라우터가 어디서 반환하든 반드시 붙는다.
+- 실행 오류·플래너 파싱 실패·검증 실패·재계획 누락은 자동 분류한다. **인자 오류는 자동 분류하지 않는다** — 사용자 의도를 알아야 하므로 OBSERVATION과 PLAN을 나란히 보고 사람이 판정한다.
+
 ### 플래너 승격 게이트 (2026-08-11)
 
 새 플래너 모델은 **고정 평가셋 154건에서 기준선을 이겨야만** Ollama 태그로 승격된다.

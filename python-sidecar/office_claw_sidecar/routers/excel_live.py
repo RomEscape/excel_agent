@@ -18,7 +18,13 @@ from pydantic import BaseModel, Field
 from office_claw_sidecar.models.approval import ApprovalRequest, ApprovalResponse
 from office_claw_sidecar.services.audit_service import AuditService
 from office_claw_sidecar.services.decision_trace import (
+    Long,
+)
+from office_claw_sidecar.services.decision_trace import (
     note as trace_note,
+)
+from office_claw_sidecar.services.decision_trace import (
+    route as trace_route,
 )
 from office_claw_sidecar.services.decision_trace import (
     plan_summary as trace_plan,
@@ -5559,6 +5565,15 @@ async def _run_command(
     if _quick_plan_underfits_message(quick_first_action, req.message):
         # 규칙이 표현하지 못하는 요청은 플래너에게 넘긴다.
         should_parse_with_llm = True
+    trace_route(
+        "quick_rule:hit" if not should_parse_with_llm else "quick_rule:miss",
+        why=(
+            f"규칙이 {quick_first_action}로 확정"
+            if not should_parse_with_llm
+            else "규칙으로 확정하지 못해 플래너로 넘김"
+        ),
+        quick_first_action=quick_first_action or "(없음)",
+    )
     reasoning_complexity_score = _score_command_complexity(
         message=req.message,
         operation_hints=operation_hints,
@@ -5697,6 +5712,32 @@ async def _run_command(
             and pending_clarification.ask_count >= _MAX_CONSECUTIVE_CLARIFICATIONS
         ),
     }
+    # 모델이 무엇을 보고 판단했는지가 실패 원인 분류의 출발점이다. "매출 열이 없다"는
+    # 계획을 세웠을 때, 모델에게 매출 열을 안 보여준 것인지 보여줬는데 못 고른 것인지를
+    # 이 기록 없이는 가를 수 없다.
+    _digest_sheets = [s for s in (workbook_digest.get("sheets") or []) if isinstance(s, dict)]
+    _target_sheet = str(req.sheet_name or workbook_digest.get("active_sheet") or "")
+    _sheet_digest = next(
+        (s for s in _digest_sheets if str(s.get("name", "")) == _target_sheet),
+        _digest_sheets[0] if _digest_sheets else {},
+    )
+    trace_note(
+        "observation",
+        workbook_id=req.workbook_id or "(선택된 통합문서)",
+        sheet_name=_target_sheet or "(활성 시트)",
+        context_range=req.context_range or "(없음)",
+        sheets=[s.get("name") for s in _digest_sheets],
+        headers=[
+            str(c.get("header") or "")
+            for c in (_sheet_digest.get("columns") or [])
+            if isinstance(c, dict)
+        ],
+        used_range=_sheet_digest.get("used_range") or "",
+        digest_text=Long(parse_context_base["workbook_digest_text"]),
+        conversation_history=parse_context_base["conversation_history_text"],
+        forbid_clarify=parse_context_base["forbid_clarify"],
+    )
+
     parse_error: Exception | None = None
     parse_timeout_count = 0
 
@@ -5780,6 +5821,14 @@ async def _run_command(
             follow_up_question=str((parsed or {}).get("follow_up_question", "")),
             escalation_tier=escalation.final_tier,
             escalation_attempts=escalation.trace(),
+        )
+        trace_route(
+            f"planner:{escalation.final_tier or 'none'}",
+            why=(
+                escalation.last_error
+                or (f"{str((parsed or {}).get('intent', '')) or '의도 미상'} 계획 확보")
+            ),
+            plan_obtained=parsed is not None,
         )
 
         if (
@@ -6475,7 +6524,7 @@ async def _run_command(
                         sheet_name=req.sheet_name,
                         result=raw_result,
                     )
-                except Exception:
+                except Exception as exc:
                     restored = _restore_action_snapshot(snapshot_holder.get("current"))
                     current_snapshot = snapshot_holder.get("current")
                     if restored and current_snapshot is not None:
@@ -6486,6 +6535,12 @@ async def _run_command(
                                 "reason": "execute_error",
                             }
                         )
+                    trace_route(
+                        "execute:error",
+                        why=f"{type(exc).__name__}: {exc}",
+                        action=action,
+                        rolled_back=bool(restored),
+                    )
                     raise
 
             def _guarded_verify(action: str, params: dict[str, Any], result: dict[str, Any]) -> tuple[bool, str]:
@@ -6513,6 +6568,12 @@ async def _run_command(
                             }
                         )
                         detail = f"{detail};auto_rollback_applied" if detail else "auto_rollback_applied"
+                    trace_route(
+                        "verify:failed",
+                        why=str(detail or "사후조건 불일치"),
+                        action=action,
+                        rolled_back=bool(restored),
+                    )
                 return bool(is_ok), str(detail or "")
 
             def _run_execute_once():
@@ -6558,6 +6619,12 @@ async def _run_command(
         replan_count += 1
         replan_context = build_replan_context(base_context=base_context, execution=execution)
         replan_context["personalization_hint"] = personalization_hint
+        trace_route(
+            f"replan:{replan_count}",
+            why=str(replan_context.get("failed_error") or "직전 단계가 검증을 통과하지 못함"),
+            failed_action=replan_context.get("failed_action", ""),
+            failed_args=replan_context.get("failed_args", {}),
+        )
         # 재계획은 이미 일부 실행된 뒤이므로 파일 상태를 다시 읽어 최신 다이제스트를 준다.
         invalidate_digest_cache(req.workbook_id)
         replan_digest = build_workbook_digest(
