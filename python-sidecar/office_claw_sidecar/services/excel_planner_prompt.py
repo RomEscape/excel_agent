@@ -13,6 +13,7 @@ Excel Live 플래너 프롬프트 단일 소스.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from office_claw_sidecar.services.excel_live_plan_validator import EDIT_ACTIONS
@@ -77,6 +78,36 @@ def _reasoning_line(mode: str, complexity_score: int, reflection_note: str, prev
     )
 
 
+def _compact_args(args: Any, *, limit: int = 400) -> str:
+    """실패한 액션의 인자를 프롬프트에 넣을 한 줄로 만든다."""
+    if not isinstance(args, dict) or not args:
+        return ""
+    try:
+        text = json.dumps(args, ensure_ascii=False, separators=(",", ":"), default=str)
+    except (TypeError, ValueError):
+        text = str(args)
+    return text[:limit]
+
+
+def render_execution_failure(failed_action: str, failed_error: str, failed_args: str) -> str:
+    """직전 실행이 왜 깨졌는지 재계획 프롬프트에 붙일 블록.
+
+    이게 없으면 모델은 왜 실패했는지 모르는 채로 다시 계획하게 되고, 같은 인자를
+    그대로 내놓아 같은 실패를 반복한다.
+    """
+    if not failed_error and not failed_action:
+        return ""
+    lines = ["직전 실행 실패:"]
+    if failed_action:
+        lines.append(f"- 실패한 액션: {failed_action}")
+    if failed_args:
+        lines.append(f"- 그때 쓴 인자: {failed_args}")
+    if failed_error:
+        lines.append(f"- 실패 원인: {failed_error}")
+    lines.append("같은 인자를 그대로 다시 쓰지 말고 위 원인을 피하는 계획을 세워라.")
+    return "\n".join(lines) + "\n"
+
+
 def render_conversation_history(original_message: str, question: str) -> str:
     """직전에 되물은 내용을 프롬프트에 붙일 형태로 만든다.
 
@@ -120,6 +151,9 @@ def normalize_planner_context(context: dict[str, Any] | None) -> dict[str, Any]:
         "personalization_hint": str(context.get("personalization_hint", "") or "").strip(),
         "workbook_digest_text": str(context.get("workbook_digest_text") or ""),
         "conversation_history_text": str(context.get("conversation_history_text") or ""),
+        "failed_action": str(context.get("failed_action", "") or "").strip(),
+        "failed_error": str(context.get("failed_error", "") or "").strip(),
+        "failed_args": _compact_args(context.get("failed_args")),
     }
 
 
@@ -153,6 +187,10 @@ def build_planner_prompt(
             "안전하지 않거나 모호한 경우에는 follow_up_question으로 되물어라.\n"
             f"{ctx['personalization_hint'][:1200]}\n"
         )
+
+    failure_line = render_execution_failure(
+        ctx["failed_action"], ctx["failed_error"], ctx["failed_args"]
+    )
 
     reasoning_line = _reasoning_line(
         ctx["reasoning_mode"],
@@ -230,6 +268,7 @@ def build_planner_prompt(
         f"{ctx['workbook_digest_text']}"
         f"{context_line}"
         f"{personalization_line}"
+        f"{failure_line}"
         f"{reasoning_line}"
         "출력 형식:\n"
         '{"intent":"edit","mutates_workbook":true,"action_plan":[{"action":"excel_live.fill_range","params":{"target_range":"__ACTIVE_SELECTION__","fill_color":"#FFFF00"},"reason":"범위 배경색 변경"}],"slot_fill":{},"partial_params":{},"follow_up_question":"","reason":"한 줄 한국어"}\n'

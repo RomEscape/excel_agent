@@ -277,6 +277,115 @@ def router_dispatcher() -> Dispatcher:
     return _execute_action
 
 
+@dataclass
+class VerifierOutcome:
+    """검증기 판정과 파일 실제 상태를 나란히 놓은 결과.
+
+    둘이 어긋나는 두 경우가 이 벤치마크의 관심사다.
+    - false pass: 검증기는 통과시켰는데 파일은 틀렸다 (검증 공백)
+    - false fail: 검증기는 막았는데 파일은 맞았다 (과잉 검증)
+    """
+
+    case_id: str
+    verifier_passed: bool
+    file_correct: bool
+    verify_detail: str
+    file_detail: str
+    error: str = ""
+    legacy_passed: bool = True
+
+    @property
+    def false_pass(self) -> bool:
+        return self.verifier_passed and not self.file_correct
+
+    @property
+    def false_fail(self) -> bool:
+        return not self.verifier_passed and self.file_correct
+
+
+def legacy_verdict(action: str, result: dict[str, Any]) -> bool:
+    """검증 강화 이전에 write/clear를 통과시키던 조건.
+
+    "몇 칸을 건드렸다"만 보던 판정이다. 지금 판정과 나란히 놓아야 무엇이
+    달라졌는지 숫자로 보인다.
+    """
+    if action == "excel_live.write_range":
+        return int(result.get("written_cells", 0) or 0) >= 1
+    if action == "excel_live.clear_range":
+        return int(result.get("cleared_cells", 0) or 0) >= 1
+    return True
+
+
+def run_plan_with_verification(
+    case: BenchCase,
+    plan: list[dict[str, Any]],
+    *,
+    sabotage: Callable[[Any], None] | None = None,
+) -> VerifierOutcome:
+    """프로덕션 검증기(`_verify_step_result`)를 그대로 태워 판정을 기록한다.
+
+    LLM이 필요 없으므로 학습 중에도 돌릴 수 있고, 검증 공백을 직접 측정한다.
+    `sabotage`를 주면 실행기가 성공을 보고하면서 실제로는 일을 하지 않게 만들어,
+    "실행이 거짓말할 때 검증이 잡아내는가"를 잰다.
+    """
+    from office_claw_sidecar.routers.excel_live import (
+        _execute_action,
+        _verify_step_result,
+        get_excel_live_service,
+    )
+
+    with isolated_workspace() as root:
+        path = build_workbook(root, case)
+        if sabotage is not None:
+            sabotage(get_excel_live_service())
+        verifier_passed = True
+        legacy_passed = True
+        details: list[str] = []
+        try:
+            for step in plan:
+                action = str(step.get("action") or "")
+                params = dict(step.get("params") or {})
+                result = _execute_action(
+                    action=action,
+                    params=params,
+                    workbook_id=str(path),
+                    sheet_name=case.sheet,
+                )
+                checked = _verify_step_result(
+                    action=action,
+                    params=params,
+                    result=result,
+                    workbook_id=str(path),
+                    sheet_name=case.sheet,
+                )
+                ok, detail = checked if isinstance(checked, tuple) else (bool(checked), "")
+                legacy_passed = legacy_passed and legacy_verdict(action, result or {})
+                details.append(f"{action.split('.')[-1]}={'OK' if ok else detail or 'NG'}")
+                if not ok:
+                    verifier_passed = False
+                    break
+            _execute_action(
+                action="excel_live.save_workbook",
+                params={},
+                workbook_id=str(path),
+                sheet_name=case.sheet,
+            )
+        except Exception as exc:  # noqa: BLE001 - 실행 실패도 결과다.
+            return VerifierOutcome(
+                case.case_id, False, False, " | ".join(details), "", error=str(exc)
+            )
+
+        file_result = case.expectation.check(path, case.sheet)
+        return VerifierOutcome(
+            case_id=case.case_id,
+            verifier_passed=verifier_passed,
+            legacy_passed=legacy_passed,
+            file_correct=file_result.passed,
+            verify_detail=" | ".join(details),
+            file_detail=file_result.detail,
+        )
+
+
 def run_plan(
     case: BenchCase,
     plan: list[dict[str, Any]],

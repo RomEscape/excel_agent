@@ -123,3 +123,98 @@ def _sort_with(service):
         workbook_id="wb",
         sheet_name="매출",
     )
+
+
+# ── write_range 사후조건 ─────────────────────────────────────────────────
+# written_cells는 "몇 칸을 건드렸다"까지만 말해 준다. 보호 시트나 병합 셀처럼
+# 쓰기가 삼켜지는 경우에도 그 숫자는 그대로 올라오므로, 실제로 그 값이
+# 들어갔는지는 파일에서 다시 읽어야 안다.
+
+
+def _write(expected_2d, actual_2d, address="C1:C1"):
+    return verify_effect(
+        action="excel_live.write_range",
+        params={"start_cell": address.split(":")[0], "values_2d": expected_2d},
+        result={"address": address, "written_cells": 1},
+        service=_Service(actual_2d),
+        workbook_id="wb",
+        sheet_name="매출",
+    )
+
+
+def test_write_passes_when_written_value_is_in_the_cell():
+    assert _write([[120]], [[120]]) == (True, "")
+
+
+def test_write_fails_when_cell_holds_a_different_value():
+    """실행은 성공을 보고했지만 파일 값이 다르면 실패로 판정해야 한다."""
+    ok, detail = _write([[120]], [[999]])
+    assert ok is False
+    assert "write_value_mismatch" in detail
+
+
+def test_write_fails_when_cell_stayed_empty():
+    ok, detail = _write([["비고"]], [[None]])
+    assert ok is False
+    assert "write_value_mismatch" in detail
+
+
+def test_write_tolerates_numeric_type_change():
+    """3.0을 쓰면 3으로 돌아온다. 표현 차이로 멀쩡한 작업을 되돌리면 안 된다."""
+    assert _write([[3.0]], [[3]]) == (True, "")
+    assert _write([["1200"]], [[1200]]) == (True, "")
+
+
+def test_write_tolerates_blank_representations():
+    assert _write([[""]], [[None]]) == (True, "")
+
+
+def test_write_skips_formula_cells():
+    """수식은 읽을 때 수식 문자열과 계산값 중 무엇이 오는지 엔진에 달렸다."""
+    assert _write([["=SUM(A1:A9)"]], [[12918500]]) == (True, "")
+
+
+def test_write_reports_the_offending_cell():
+    ok, detail = _write([[1, 2, 999]], [[1, 2, 3]], address="A1:C1")
+    assert ok is False
+    assert "C1" in detail
+
+
+def test_write_passes_when_workbook_cannot_be_read():
+    class _Broken(_Service):
+        def read_range(self, workbook_id, sheet_name, range_ref):
+            raise RuntimeError("boom")
+
+    assert verify_effect(
+        action="excel_live.write_range",
+        params={"start_cell": "C1", "values_2d": [[120]]},
+        result={"address": "C1:C1", "written_cells": 1},
+        service=_Broken([[999]]),
+        workbook_id="wb",
+        sheet_name="매출",
+    ) == (True, "")
+
+
+# ── clear_range 사후조건 ─────────────────────────────────────────────────
+
+
+def _clear(remaining_2d):
+    return verify_effect(
+        action="excel_live.clear_range",
+        params={"target_range": "C2:C9"},
+        result={"address": "C2:C9", "cleared_cells": 8},
+        service=_Service(remaining_2d),
+        workbook_id="wb",
+        sheet_name="매출",
+    )
+
+
+def test_clear_passes_when_range_is_empty():
+    assert _clear([[None], [None], [""]]) == (True, "")
+
+
+def test_clear_fails_when_values_remain():
+    ok, detail = _clear([[None], ["김민수"], [None]])
+    assert ok is False
+    assert "clear_not_applied" in detail
+    assert "김민수" in detail

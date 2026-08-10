@@ -629,7 +629,9 @@ class FileExcelLiveService(ExcelLiveService):
             min_row, min_col, _, _ = self._range_bounds(ws, start_cell)
             for r_idx, row in enumerate(normalized):
                 for c_idx, value in enumerate(row):
-                    ws.cell(row=min_row + r_idx, column=min_col + c_idx, value=value)
+                    # ws.cell(value=None)은 기존 값을 남긴다. None을 쓴다는 것은
+                    # 그 칸을 비우라는 뜻이므로 속성에 직접 대입해야 한다.
+                    ws.cell(row=min_row + r_idx, column=min_col + c_idx).value = value
             max_row = min_row + rows - 1
             max_col = min_col + cols - 1
             self._save_wb(

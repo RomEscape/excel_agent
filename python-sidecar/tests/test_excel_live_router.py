@@ -31,6 +31,9 @@ class _FakeExcelService:
         self._last_snapshot = {"row_count": 5, "col_count": 5}
         self._last_formula = {}
         self._last_border = {}
+        # 검증기가 쓴 값을 다시 읽어 확인하므로, 더블도 변경을 기억해야 한다.
+        # 항상 같은 값을 돌려주면 멀쩡한 쓰기가 전부 불일치로 잡힌다.
+        self._written: dict[str, list[list]] = {}
 
     def is_available(self):
         return True
@@ -76,7 +79,13 @@ class _FakeExcelService:
         return "A1:C8"
 
     def read_range(self, workbook_id, sheet_name, range_ref):
-        return {"values": [[1, 2]], "address": range_ref, "row_count": 1, "col_count": 2}
+        values = self._written.get(str(range_ref).strip().upper(), [[1, 2]])
+        return {
+            "values": [list(row) for row in values],
+            "address": range_ref,
+            "row_count": len(values),
+            "col_count": max((len(row) for row in values), default=0),
+        }
 
     def get_range_snapshot(self, workbook_id, sheet_name, range_ref):
         return {
@@ -87,7 +96,9 @@ class _FakeExcelService:
         }
 
     def write_range(self, workbook_id, sheet_name, start_cell, values_2d):
-        return {"written_cells": 2, "address": f"{start_cell}:B1"}
+        address = f"{start_cell}:B1"
+        self._written[address.strip().upper()] = [list(row) for row in values_2d or []]
+        return {"written_cells": 2, "address": address}
 
     def create_table(self, workbook_id, sheet_name, start_cell, rows, cols, with_border):
         self._last_snapshot = {"row_count": int(rows), "col_count": int(cols)}
@@ -101,6 +112,7 @@ class _FakeExcelService:
         return {"changed_cells": 12, "address": target_range}
 
     def clear_range(self, workbook_id, sheet_name, target_range):
+        self._written[str(target_range).strip().upper()] = [[None]]
         return {"cleared_cells": 12, "address": target_range}
 
     def apply_border(self, workbook_id, sheet_name, target_range, line_style, weight, color):
@@ -266,8 +278,18 @@ class _FakeExcelService:
         }
 
 
+def _one_fake():
+    """테스트 하나가 처음부터 끝까지 같은 가짜 Excel을 보게 한다.
+
+    호출마다 새 인스턴스를 만들면 실행이 기록한 값을 검증 단계에서 다시 읽을 수
+    없어, 정상 동작까지 검증 실패로 잡힌다.
+    """
+    service = _FakeExcelService()
+    return lambda: service
+
+
 def test_excel_live_status(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     resp = client.get("/excel-live/status", headers=HEADERS)
     assert resp.status_code == 200
@@ -278,7 +300,7 @@ def test_excel_live_status(monkeypatch):
 
 def test_approval_is_not_offered_for_a_sheet_that_does_not_exist(monkeypatch):
     """플래너가 지어낸 시트로 승인 카드를 띄우면, 승인한 뒤에야 404로 죽는다."""
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     async def _plan_parse(_message, llm_service, context):
         return {
@@ -316,7 +338,7 @@ def test_approval_is_not_offered_for_a_sheet_that_does_not_exist(monkeypatch):
 
 def test_approval_on_a_missing_sheet_answers_instead_of_404(monkeypatch):
     """승인까지 누른 사용자에게 404만 던지면 무엇이 잘못됐는지 알 수 없다."""
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
     pending = excel_live_router._build_approval(
         "excel_live.add_column", {"sheet_name": "없는시트", "name": "담당자"}
     )
@@ -346,7 +368,7 @@ def test_approval_on_a_missing_sheet_answers_instead_of_404(monkeypatch):
 
 
 def test_excel_live_backups_list(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     resp = client.get("/excel-live/backups?limit=5", headers=HEADERS)
     assert resp.status_code == 200
@@ -358,7 +380,7 @@ def test_excel_live_backups_list(monkeypatch):
 
 
 def test_excel_live_restore_last(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     resp = client.post(
         "/excel-live/restore-last",
@@ -375,7 +397,7 @@ def test_excel_live_restore_last(monkeypatch):
 
 
 def test_action_confirm_required_then_approval_execute(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     first = client.post(
         "/excel-live/action",
@@ -410,7 +432,7 @@ def test_action_confirm_required_then_approval_execute(monkeypatch):
 
 
 def test_action_without_workbook_id_uses_first_open_workbook(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     resp = client.post(
         "/excel-live/action",
@@ -433,7 +455,7 @@ def test_conditional_color_request_reaches_the_planner(monkeypatch):
 
     조건을 표현하지 못하는 규칙이 먼저 잡으면 조건이 사라진 채 열 전체가 칠해진다.
     """
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
     calls: list[str] = []
 
     async def _plan_parse(message, llm_service, context):
@@ -473,7 +495,7 @@ def test_conditional_color_request_reaches_the_planner(monkeypatch):
 
 
 def test_command_rule_based_highlight(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
     
     async def _plan_parse(_message, llm_service, context):
         return {
@@ -507,7 +529,7 @@ def test_command_rule_based_highlight(monkeypatch):
 
 
 def test_action_save_workbook_without_id_uses_selected(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     resp = client.post(
         "/excel-live/action",
@@ -526,7 +548,7 @@ def test_action_save_workbook_without_id_uses_selected(monkeypatch):
 
 
 def test_action_apply_border_uses_active_selection_when_range_missing(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     resp = client.post(
         "/excel-live/action",
@@ -544,7 +566,7 @@ def test_action_apply_border_uses_active_selection_when_range_missing(monkeypatc
 
 
 def test_action_create_table_uses_active_cell_when_start_missing(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     resp = client.post(
         "/excel-live/action",
@@ -564,7 +586,7 @@ def test_action_create_table_uses_active_cell_when_start_missing(monkeypatch):
 
 
 def test_command_rule_based_fill_range(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     resp = client.post(
         "/excel-live/command",
@@ -673,7 +695,7 @@ def test_quick_extract_colors_supports_white_korean_and_english():
 
 
 def test_command_rule_based_fill_range_full_sheet_white_uses_used_range(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
     excel_live_router._pending_operation_slots.clear()
 
     resp = client.post(
@@ -695,7 +717,7 @@ def test_command_rule_based_fill_range_full_sheet_white_uses_used_range(monkeypa
 
 
 def test_command_rule_based_color_clear_with_border_reset_phrase_prefers_white_fill(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
     excel_live_router._pending_operation_slots.clear()
 
     resp = client.post(
@@ -824,7 +846,7 @@ def test_command_rule_based_border_remove_phrase_maps_to_none_line_style(monkeyp
 
 
 def test_command_two_color_condition_executes_fill_then_highlight(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     async def _raise_parse(_message, llm_service, context):
         raise ValueError("LLM parse failed")
@@ -987,7 +1009,7 @@ def test_highlight_accepts_sheet_qualified_target_range(monkeypatch):
 
 
 def test_command_rule_based_clear_range(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
     excel_live_router._pending_operation_slots.clear()
 
     resp = client.post(
@@ -1007,7 +1029,7 @@ def test_command_rule_based_clear_range(monkeypatch):
 
 
 def test_command_rule_based_clear_range_full_reset_uses_used_range(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
     excel_live_router._pending_operation_slots.clear()
 
     resp = client.post(
@@ -1029,7 +1051,7 @@ def test_command_rule_based_clear_range_full_reset_uses_used_range(monkeypatch):
 
 
 def test_command_rule_based_clear_range_all_contents_phrase_uses_used_range(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
     excel_live_router._pending_operation_slots.clear()
 
     resp = client.post(
@@ -1051,7 +1073,7 @@ def test_command_rule_based_clear_range_all_contents_phrase_uses_used_range(monk
 
 
 def test_command_rule_based_clear_range_colloquial_cleanup_phrase_uses_used_range(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
     excel_live_router._pending_operation_slots.clear()
 
     resp = client.post(
@@ -1073,7 +1095,7 @@ def test_command_rule_based_clear_range_colloquial_cleanup_phrase_uses_used_rang
 
 
 def test_command_rule_based_clear_range_restore_phrase_uses_used_range(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
     excel_live_router._pending_operation_slots.clear()
 
     resp = client.post(
@@ -1095,7 +1117,7 @@ def test_command_rule_based_clear_range_restore_phrase_uses_used_range(monkeypat
 
 
 def test_command_rule_based_clear_range_restore_phrase_without_clear_verb(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
     excel_live_router._pending_operation_slots.clear()
 
     resp = client.post(
@@ -1205,7 +1227,7 @@ def test_command_debug_filter_function_error_prefers_debug_intent(monkeypatch):
 
 
 def test_command_parse_failure_returns_400_instead_of_list_fallback(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     async def _raise_parse(_message, llm_service, context):
         raise ValueError("엑셀 명령을 해석하지 못했습니다.")
@@ -1222,7 +1244,7 @@ def test_command_parse_failure_returns_400_instead_of_list_fallback(monkeypatch)
 
 
 def test_command_parse_failure_returns_clarify_for_excel_like_request(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     async def _raise_parse(_message, llm_service, context):
         raise ValueError("엑셀 명령을 해석하지 못했습니다.")
@@ -1242,7 +1264,7 @@ def test_command_parse_failure_returns_clarify_for_excel_like_request(monkeypatc
 
 
 def test_command_parse_timeout_returns_clarify_not_400(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     async def _raise_timeout(_message, llm_service, context):
         raise asyncio.TimeoutError()
@@ -1263,7 +1285,7 @@ def test_command_parse_timeout_returns_clarify_not_400(monkeypatch):
 
 
 def test_command_parse_failure_problem_phrase_returns_clarify(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     async def _raise_parse(_message, llm_service, context):
         raise ValueError("엑셀 명령을 해석하지 못했습니다.")
@@ -1282,7 +1304,7 @@ def test_command_parse_failure_problem_phrase_returns_clarify(monkeypatch):
 
 
 def test_command_empty_plan_excel_like_returns_clarify(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     async def _empty_plan(_message, llm_service, context):
         return {"action_plan": [], "reason": "불충분"}
@@ -1302,7 +1324,7 @@ def test_command_empty_plan_excel_like_returns_clarify(monkeypatch):
 
 
 def test_command_general_followup_prefers_llm_then_fallback(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
     excel_live_router._pending_operation_slots.clear()
     called = {"count": 0}
 
@@ -1326,7 +1348,7 @@ def test_command_general_followup_prefers_llm_then_fallback(monkeypatch):
 
 
 def test_command_safety_followup_prefers_llm_then_fallback(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
     excel_live_router._pending_operation_slots.clear()
     called = {"count": 0}
 
@@ -1350,7 +1372,7 @@ def test_command_safety_followup_prefers_llm_then_fallback(monkeypatch):
 
 
 def test_command_validation_error_excel_like_returns_clarify(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     async def _invalid_plan(_message, llm_service, context):
         return {
@@ -1440,7 +1462,7 @@ def test_command_general_slot_upgrades_to_specific_intent(monkeypatch):
 
 
 def test_command_executes_action_plan_sequentially(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     async def _plan_parse(_message, llm_service, context):
         return {
@@ -1466,7 +1488,7 @@ def test_command_executes_action_plan_sequentially(monkeypatch):
 
 
 def test_command_passes_context_range_to_parser(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     async def _plan_parse(_message, llm_service, context):
         assert context["context_range"] == "C3:E9"
@@ -1491,7 +1513,7 @@ def test_command_passes_context_range_to_parser(monkeypatch):
 
 
 def test_command_uses_deep_reasoning_profile_for_complex_request(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
     observed = {"modes": [], "score": 0}
 
     async def _plan_parse(_message, llm_service, context):
@@ -1526,7 +1548,7 @@ def test_command_uses_deep_reasoning_profile_for_complex_request(monkeypatch):
 
 
 def test_command_runs_reflection_once_for_low_confidence_plan(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
     seen_modes: list[str] = []
 
     async def _plan_parse(_message, llm_service, context):
@@ -1573,7 +1595,7 @@ def test_command_runs_reflection_once_for_low_confidence_plan(monkeypatch):
 
 
 def test_command_stabilizes_table_intent_when_llm_returns_invalid_write_range(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     async def _plan_parse(_message, llm_service, context):
         return {
@@ -1599,7 +1621,7 @@ def test_command_stabilizes_table_intent_when_llm_returns_invalid_write_range(mo
 
 
 def test_command_applies_context_range_to_here_border(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     async def _plan_parse(_message, llm_service, context):
         return {
@@ -1628,7 +1650,7 @@ def test_command_applies_context_range_to_here_border(monkeypatch):
 
 
 def test_command_executes_sort_range_action_plan(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     async def _plan_parse(_message, llm_service, context):
         return {
@@ -1658,7 +1680,7 @@ def test_command_executes_sort_range_action_plan(monkeypatch):
 
 
 def test_command_executes_validate_data_action_plan(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     async def _plan_parse(_message, llm_service, context):
         return {
@@ -1688,7 +1710,7 @@ def test_command_executes_validate_data_action_plan(monkeypatch):
 
 
 def test_command_create_chart_requires_confirm(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     async def _plan_parse(_message, llm_service, context):
         return {
@@ -1718,7 +1740,7 @@ def test_command_create_chart_requires_confirm(monkeypatch):
 
 def test_command_create_chart_without_type_asks_first(monkeypatch):
     """차트 종류를 안 말했으면 기본값(선)으로 밀지 말고 물어본다."""
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     async def _plan_parse(_message, llm_service, context):
         return {
@@ -1747,7 +1769,7 @@ def test_command_create_chart_without_type_asks_first(monkeypatch):
 
 
 def test_command_executes_verify_formula_result(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     async def _plan_parse(_message, llm_service, context):
         return {
@@ -1777,7 +1799,7 @@ def test_command_executes_verify_formula_result(monkeypatch):
 
 
 def test_command_replans_once_when_execution_verify_fails(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     async def _plan_parse(_message, llm_service, context):
         return {
@@ -1828,7 +1850,7 @@ def test_command_replans_once_when_execution_verify_fails(monkeypatch):
 
 
 def test_command_replan_formula_without_equal_is_normalized(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     async def _plan_parse(_message, llm_service, context):
         return {
@@ -1872,7 +1894,7 @@ def test_command_replan_formula_without_equal_is_normalized(monkeypatch):
 
 
 def test_command_create_table_multiturn_slot_fill_with_session(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
     excel_live_router._pending_create_table_slots.clear()
 
     async def _raise_parse(_message, llm_service, context):
@@ -1912,7 +1934,7 @@ def test_command_create_table_multiturn_slot_fill_with_session(monkeypatch):
 
 def test_command_create_table_accepts_column_first_size(monkeypatch):
     """'4열*4행'처럼 열을 먼저 말해도 같은 질문으로 돌아오지 않고 표를 만든다."""
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
     excel_live_router._pending_create_table_slots.clear()
 
     async def _raise_parse(_message, llm_service, context):
@@ -1941,7 +1963,7 @@ def test_command_create_table_accepts_column_first_size(monkeypatch):
 
 def test_command_create_table_stops_asking_and_uses_defaults(monkeypatch):
     """크기를 못 알아들어도 되묻기를 무한 반복하지 않고 기본값으로 만든다."""
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
     excel_live_router._pending_create_table_slots.clear()
 
     async def _raise_parse(_message, llm_service, context):
@@ -1967,7 +1989,7 @@ def test_command_create_table_stops_asking_and_uses_defaults(monkeypatch):
 
 
 def test_command_table_vague_ignores_llm_1x1_guess_and_asks_follow_up(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
     excel_live_router._pending_create_table_slots.clear()
 
     async def _fake_parse(_message, llm_service, context):
@@ -2000,7 +2022,7 @@ def test_command_table_vague_ignores_llm_1x1_guess_and_asks_follow_up(monkeypatc
 
 
 def test_command_table_intent_skips_llm_parse_for_faster_follow_up(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
     excel_live_router._pending_create_table_slots.clear()
 
     async def _must_not_run(_message, llm_service, context):
@@ -2020,7 +2042,7 @@ def test_command_table_intent_skips_llm_parse_for_faster_follow_up(monkeypatch):
 
 
 def test_command_create_table_slot_state_expires_by_ttl(monkeypatch):
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
     excel_live_router._pending_create_table_slots.clear()
 
     async def _raise_parse(_message, llm_service, context):

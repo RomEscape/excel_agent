@@ -382,6 +382,10 @@ npm run tauri:dev
   - `수식`도 세션 기반 멀티턴 슬롯필링으로 동작한다(`multiply`, `tax`, `gap`, `countif`, `if_compare`, `vlookup`).
   - 편집 액션은 실행 전 복구용 사본을 자동 생성한다(가능 시 `officeclaw_backups/`).
   - 실행/검증 실패 시 가능한 범위에서 자동 롤백을 시도하고, 응답에 `auto_rollbacks`/`recovery_backup` 정보를 포함한다.
+  - 사후조건 검증(`services/excel_result_verifier.py`)은 실행기의 성공 보고를 믿지 않고 워크북을 다시 읽는다.
+    `write_range`는 값이 실제로 그 셀에 들어갔는지, `clear_range`는 범위가 실제로 비었는지 대조한다.
+    (숫자 타입 변화·날짜 표현 차이·수식 셀은 오탐을 막으려고 비교에서 제외한다.)
+  - 재계획 시 `failed_action`/`failed_args`/`failed_error`를 프롬프트에 붙여, 같은 인자로 같은 실패를 반복하지 않게 한다.
     - 예: `정렬해줘` → `어떤 열 기준으로 정렬할까요?` → `매출 열 기준 높은 순`
     - 예: `그래프로 만들어줘` → `선/막대/원형 중 어떤 차트?` → `선 그래프`
     - 예: `중복 지워줘` → `어떤 기준으로 중복 판단?` → `전화번호 기준`

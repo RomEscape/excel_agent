@@ -6,9 +6,15 @@ sorted_rows=0, filtered_rows=0 처럼 "아무것도 안 했다"는 응답도 성
 사용자는 "완료했습니다"를 듣고 바뀌지 않은 시트를 보게 됐다.
 
 이 모듈은 액션별 사후조건을 워크북에서 직접 확인한다.
+- 쓰기: 기록하려던 값이 실제로 그 셀에 들어갔는가
+- 지우기: 지우라고 한 범위가 실제로 비었는가
 - 정렬: 기준 열이 실제로 단조 증가/감소인가
 - 필터/강조/수식: 실제로 영향받은 셀이 1개 이상인가
 - 피벗/예측/비교/통합/차트: 결과 시트가 생겼고 비어 있지 않은가
+
+주의: 여기서 보는 것은 "실행이 인자대로 됐는가"이지 "인자가 옳았는가"가 아니다.
+사용자가 C3를 원했는데 플래너가 D3를 지목했다면 D3에 값이 제대로 들어간 이상
+이 검증기는 통과시킨다. 그건 플래너 인자 오류이고 계획 단계에서 잡아야 한다.
 
 판정은 (ok, detail) 튜플이다. detail은 실패 이유이며 Critic 재계획과 사용자 안내에 쓰인다.
 상태를 갖지 않는 순수 함수 모듈이고, 라우터는 verify_effect만 호출한다.
@@ -17,6 +23,7 @@ sorted_rows=0, filtered_rows=0 처럼 "아무것도 안 했다"는 응답도 성
 from __future__ import annotations
 
 import re
+from datetime import date, datetime, time
 from typing import Any
 
 _CELL_REF = re.compile(r"^([A-Za-z]{1,3})(\d{1,7})$")
@@ -124,6 +131,112 @@ def _sheet_has_data(service: Any, workbook_id: str | None, sheet_name: str) -> b
     return False
 
 
+def _is_blank(value: Any) -> bool:
+    return value is None or str(value).strip() == ""
+
+
+def _same_cell(expected: Any, actual: Any) -> bool:
+    """쓴 값과 읽은 값이 같은가. 엔진이 바꿔 놓는 표현 차이는 같다고 본다.
+
+    3.0을 쓰면 3으로 돌아오고, 날짜 문자열은 datetime이 되어 돌아온다. 이런
+    표현 차이를 불일치로 보면 멀쩡한 작업을 되돌리게 된다 — 실제 값이 다를
+    때만 걸러야 한다.
+    """
+    if _is_blank(expected) and _is_blank(actual):
+        return True
+    if isinstance(expected, bool) or isinstance(actual, bool):
+        return bool(expected) == bool(actual)
+
+    exp_num, act_num = _as_number(expected), _as_number(actual)
+    if exp_num is not None and act_num is not None:
+        return abs(exp_num - act_num) < 1e-9
+
+    # 날짜·시간은 엔진마다 문자열/객체가 갈려 신뢰할 수 있게 비교하기 어렵다.
+    if isinstance(actual, (datetime, date, time)) or isinstance(expected, (datetime, date, time)):
+        return True
+
+    return str(expected).strip() == str(actual).strip()
+
+
+def _verify_write(
+    params: dict[str, Any],
+    result: dict[str, Any],
+    *,
+    service: Any,
+    workbook_id: str | None,
+    sheet_name: str | None,
+) -> tuple[bool, str]:
+    """기록한 값이 실제로 셀에 들어갔는지 다시 읽어 확인한다.
+
+    written_cells만 보면 "몇 칸을 건드렸다"까지만 알 수 있다. 보호된 시트나
+    병합 셀처럼 쓰기가 삼켜지는 경우 그 숫자는 그대로 올라온다.
+    """
+    expected = params.get("values_2d")
+    if not isinstance(expected, list) or not expected:
+        return True, ""
+    address = str(result.get("address") or "").strip()
+    if not address:
+        return True, ""
+
+    try:
+        actual = _read(service, workbook_id, sheet_name, address)
+    except Exception:
+        return True, ""
+    if not actual:
+        return True, ""
+
+    origin = _range_parts(address)
+    base_col = _col_to_idx(origin[0]) if origin else 1
+    base_row = origin[1] if origin else 1
+
+    for row_idx, exp_row in enumerate(expected):
+        if not isinstance(exp_row, list) or row_idx >= len(actual):
+            continue
+        act_row = actual[row_idx] or []
+        for col_idx, exp_value in enumerate(exp_row):
+            # 수식은 읽을 때 수식 문자열/계산값 중 무엇이 오는지 엔진에 달렸다.
+            if isinstance(exp_value, str) and exp_value.strip().startswith("="):
+                continue
+            if col_idx >= len(act_row):
+                continue
+            if not _same_cell(exp_value, act_row[col_idx]):
+                cell = f"{_idx_to_col(base_col + col_idx)}{base_row + row_idx}"
+                detail = (
+                    f"write_value_mismatch:{cell} 셀에 {exp_value!r}를 쓰려 했으나 "
+                    f"{act_row[col_idx]!r}가 들어 있습니다"
+                )
+                return False, detail
+    return True, ""
+
+
+def _verify_clear(
+    params: dict[str, Any],
+    result: dict[str, Any],
+    *,
+    service: Any,
+    workbook_id: str | None,
+    sheet_name: str | None,
+) -> tuple[bool, str]:
+    """지우라고 한 범위가 실제로 비었는지 확인한다."""
+    address = str(result.get("address") or params.get("target_range") or "").strip()
+    if not address:
+        return True, ""
+
+    try:
+        rows = _read(service, workbook_id, sheet_name, address)
+    except Exception:
+        return True, ""
+
+    remaining = [cell for row in rows for cell in row if not _is_blank(cell)]
+    if remaining:
+        detail = (
+            f"clear_not_applied:{address} 범위에 값이 {len(remaining)}개 남아 있습니다 "
+            f"({remaining[:3]})"
+        )
+        return False, detail
+    return True, ""
+
+
 def _verify_sort(
     params: dict[str, Any],
     result: dict[str, Any],
@@ -214,6 +327,16 @@ def verify_effect(
     result = result or {}
 
     try:
+        if action == "excel_live.write_range":
+            return _verify_write(
+                params, result, service=service, workbook_id=workbook_id, sheet_name=sheet_name
+            )
+
+        if action == "excel_live.clear_range":
+            return _verify_clear(
+                params, result, service=service, workbook_id=workbook_id, sheet_name=sheet_name
+            )
+
         if action == "excel_live.sort_range":
             return _verify_sort(
                 params, result, service=service, workbook_id=workbook_id, sheet_name=sheet_name

@@ -39,6 +39,8 @@ def build_replan_context(
         ctx["context_range"] = last_address
     ctx["failed_action"] = last.action
     ctx["failed_reason"] = last.reason
+    # 어떤 인자로 실패했는지까지 줘야 모델이 같은 인자를 또 내놓지 않는다.
+    ctx["failed_args"] = dict(last.params or {})
     if last.error:
         ctx["failed_error"] = last.error
     elif last.verify_detail:
