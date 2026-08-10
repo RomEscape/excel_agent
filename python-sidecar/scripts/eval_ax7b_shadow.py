@@ -54,6 +54,13 @@ def _action_seq(action_plan: Any) -> list[str]:
     return out
 
 
+CLARIFY_ACTION = "excel_live.clarify"
+
+
+def _rate(hit: int, total: int) -> float:
+    return round(hit / total, 4) if total else 0.0
+
+
 def _percentile(values: list[int], p: float) -> int:
     if not values:
         return 0
@@ -75,6 +82,13 @@ async def _eval_model(
     first_action_match = 0
     exact_action_seq_match = 0
     latencies: list[int] = []
+    # 분류별 집계. 전체 정답률 하나로는 무엇이 나빠졌는지 알 수 없다.
+    by_category: dict[str, dict[str, int]] = {}
+    # 되묻기는 맞히는 것만큼 "안 물어야 할 때 안 묻는 것"이 중요하다.
+    clarify_expected = 0
+    clarify_hit = 0
+    nonclarify_expected = 0
+    over_clarify = 0
 
     for row in rows:
         input_obj = row.get("input") if isinstance(row.get("input"), dict) else {}
@@ -94,10 +108,15 @@ async def _eval_model(
             "reasoning_mode": "deep",
             "complexity_score": 4,
             "planner_model": model_name,
+            # 프로덕션은 실제 파일에서 읽은 통합문서 상태를 프롬프트에 넣는다.
+            # 평가에서 이걸 빼면 학습·추론 조건이 어긋나 측정값이 실제보다 낮게 나온다.
+            "workbook_digest_text": _text(input_obj.get("workbook_digest_text")),
         }
+        category = _text(row.get("category")) or "uncategorized"
         t0 = time.perf_counter()
         case = {
             "record_id": _text(row.get("record_id")),
+            "category": category,
             "message": message,
             "expected_first_action": expected_seq[0],
             "expected_action_seq": expected_seq,
@@ -138,6 +157,27 @@ async def _eval_model(
             case["elapsed_ms"] = int((time.perf_counter() - t0) * 1000)
             case["error"] = _text(exc)
             latencies.append(case["elapsed_ms"])
+
+        predicted_first = _text(case["predicted_first_action"])
+        bucket = by_category.setdefault(
+            category, {"total": 0, "first_action_match": 0, "exact_action_seq_match": 0}
+        )
+        bucket["total"] += 1
+        if case["match_first_action"]:
+            bucket["first_action_match"] += 1
+        if case["match_exact_action_seq"]:
+            bucket["exact_action_seq_match"] += 1
+
+        if expected_seq[0] == CLARIFY_ACTION:
+            clarify_expected += 1
+            if predicted_first == CLARIFY_ACTION:
+                clarify_hit += 1
+        else:
+            nonclarify_expected += 1
+            if predicted_first == CLARIFY_ACTION:
+                over_clarify += 1
+                case["over_clarify"] = True
+
         cases.append(case)
 
     total = len(cases)
@@ -150,6 +190,26 @@ async def _eval_model(
         "first_action_match_rate": round((first_action_match / total), 4) if total else 0.0,
         "exact_action_seq_match": exact_action_seq_match,
         "exact_action_seq_match_rate": round((exact_action_seq_match / total), 4) if total else 0.0,
+        "clarify": {
+            "expected": clarify_expected,
+            "hit": clarify_hit,
+            # 물어야 할 때 물었는가
+            "recall": _rate(clarify_hit, clarify_expected),
+            "nonclarify_expected": nonclarify_expected,
+            "over_clarify": over_clarify,
+            # 안 물어도 되는데 물어버린 비율 — 낮을수록 좋다
+            "over_clarify_rate": _rate(over_clarify, nonclarify_expected),
+        },
+        "by_category": {
+            name: {
+                **counts,
+                "first_action_match_rate": _rate(counts["first_action_match"], counts["total"]),
+                "exact_action_seq_match_rate": _rate(
+                    counts["exact_action_seq_match"], counts["total"]
+                ),
+            }
+            for name, counts in sorted(by_category.items())
+        },
         "latency_ms": {
             "avg": int(sum(latencies) / len(latencies)) if latencies else 0,
             "p50": _percentile(latencies, 0.50),
@@ -221,6 +281,22 @@ async def main_async() -> None:
             ),
             "parse_ok_rate": round(candidate_report["parse_ok_rate"] - baseline_report["parse_ok_rate"], 4),
             "p95_latency_ms": int(candidate_report["latency_ms"]["p95"] - baseline_report["latency_ms"]["p95"]),
+            "clarify_recall": round(
+                candidate_report["clarify"]["recall"] - baseline_report["clarify"]["recall"], 4
+            ),
+            "over_clarify_rate": round(
+                candidate_report["clarify"]["over_clarify_rate"]
+                - baseline_report["clarify"]["over_clarify_rate"],
+                4,
+            ),
+        },
+        "delta_by_category": {
+            name: round(
+                candidate_report["by_category"].get(name, {}).get("first_action_match_rate", 0.0)
+                - counts.get("first_action_match_rate", 0.0),
+                4,
+            )
+            for name, counts in baseline_report["by_category"].items()
         },
     }
     payload = {
@@ -230,7 +306,46 @@ async def main_async() -> None:
     }
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
     args.output_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    _print_table(baseline_report, candidate_report)
     print(f"[DONE] shadow eval report: {args.output_json}")
+
+
+def _print_table(baseline: dict[str, Any], candidate: dict[str, Any]) -> None:
+    def row(label: str, b: Any, c: Any) -> str:
+        return f"{label:<24} {b!s:>12} {c!s:>12}"
+
+    print()
+    print(row("지표", baseline["model"], candidate["model"]))
+    print("-" * 50)
+    print(row("건수", baseline["total"], candidate["total"]))
+    print(row("첫 액션 일치", baseline["first_action_match_rate"], candidate["first_action_match_rate"]))
+    print(
+        row(
+            "순서 완전 일치",
+            baseline["exact_action_seq_match_rate"],
+            candidate["exact_action_seq_match_rate"],
+        )
+    )
+    print(row("파싱 성공", baseline["parse_ok_rate"], candidate["parse_ok_rate"]))
+    print(row("되묻기 재현율", baseline["clarify"]["recall"], candidate["clarify"]["recall"]))
+    print(
+        row(
+            "과잉 되묻기",
+            baseline["clarify"]["over_clarify_rate"],
+            candidate["clarify"]["over_clarify_rate"],
+        )
+    )
+    print(row("p95 지연(ms)", baseline["latency_ms"]["p95"], candidate["latency_ms"]["p95"]))
+    print("-" * 50)
+    for name in sorted(baseline["by_category"]):
+        print(
+            row(
+                f"  [{name}] 첫 액션",
+                baseline["by_category"][name]["first_action_match_rate"],
+                candidate["by_category"].get(name, {}).get("first_action_match_rate", "-"),
+            )
+        )
+    print()
 
 
 def main() -> None:

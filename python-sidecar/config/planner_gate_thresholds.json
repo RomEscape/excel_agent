@@ -1,0 +1,21 @@
+{
+  "_설명": "v5r 승격 판정 기준. 근거는 개발일지 2026-08-11 항목 참조.",
+
+  "_min_parse_gain_pp": "154건에서 첫 액션 일치가 최소 5%p(약 8건) 올라야 한다. 표준오차가 약 5.7%p라 그 아래는 노이즈와 구분되지 않는다. v2->v3의 +4.76%p(1건)는 이 기준을 통과하지 못한다.",
+  "min_parse_gain_pp": 5.0,
+
+  "_max_p95_latency_ratio": "v2->v3에서 p95가 4936->8363ms로 69% 늘었는데 그냥 넘어갔다. 이번엔 20% 이상 느려지면 막는다.",
+  "max_p95_latency_ratio": 1.2,
+
+  "_max_over_clarify_rate": "되물으면 안 되는 요청에 되묻는 비율. 10건 중 1건을 넘으면 사용자가 답답해진다.",
+  "max_over_clarify_rate": 0.1,
+
+  "_max_over_clarify_increase": "v3 대비 과잉 되묻기가 5%p 넘게 늘면 되묻기를 잘못 가르친 것이다.",
+  "max_over_clarify_increase": 0.05,
+
+  "_min_clarify_recall": "정말 모호한 18건 중 절반은 되물어야 한다. v3는 clarify를 아예 모르므로 여기서 0에 가깝게 나올 것이고, 이 항목이 v5의 핵심 개선 지표다.",
+  "min_clarify_recall": 0.5,
+
+  "_max_category_drop_pp": "흔한 동작(core)을 깎아서 희귀 동작(rare)을 얻는 건 승격 사유가 아니다. 어떤 분류든 5%p 넘게 떨어지면 막는다. pivot_table을 161건에서 40건으로 줄인 조정이 역효과였는지 여기서 잡힌다.",
+  "max_category_drop_pp": 5.0
+}
