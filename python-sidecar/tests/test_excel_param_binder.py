@@ -327,6 +327,26 @@ def test_filter_without_any_column_hint_is_reported_unresolved():
     assert ("excel_live.filter_rows", "column") in unresolved
 
 
+def test_hallucinated_sort_key_does_not_clear_the_unresolved_report():
+    """플래너가 학습 데이터의 열 이름('Qty')을 지어내도 그건 기준이 될 수 없다."""
+    steps = [
+        PlanStep(
+            action="excel_live.sort_range",
+            params={"key_column": "Qty", "order": "desc", "has_header": True},
+        )
+    ]
+    _bound, notes = _bind(steps, "정렬해줘")
+    unresolved = {(n["action"], n["slot"]) for n in notes if n.get("status") == "unresolved"}
+    assert ("excel_live.sort_range", "key_column") in unresolved
+
+
+def test_sort_key_stated_in_the_message_is_not_reported_unresolved():
+    steps = [PlanStep(action="excel_live.sort_range", params={"key_column": "금액", "order": "desc"})]
+    _bound, notes = _bind(steps, "금액 열 기준 내림차순으로 정렬해줘")
+    unresolved = {(n["action"], n.get("slot")) for n in notes if n.get("status") == "unresolved"}
+    assert ("excel_live.sort_range", "key_column") not in unresolved
+
+
 def test_filter_column_inferred_from_value_is_not_reported_unresolved():
     """값이 한 열에만 있으면 기준 열이 정해진 것이니 묻지 않는다."""
     steps = [PlanStep(action="excel_live.filter_rows", params={"value": "완료"})]

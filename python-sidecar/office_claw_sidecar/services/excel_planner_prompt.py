@@ -77,6 +77,23 @@ def _reasoning_line(mode: str, complexity_score: int, reflection_note: str, prev
     )
 
 
+def render_conversation_history(original_message: str, question: str) -> str:
+    """직전에 되물은 내용을 프롬프트에 붙일 형태로 만든다.
+
+    프롬프트 조립과 마찬가지로 학습 데이터도 이 함수를 써야 한다.
+    문구가 한 글자라도 다르면 모델이 학습 때 본 적 없는 블록을 받게 된다.
+    """
+    question = str(question or "").strip()
+    if not question:
+        return ""
+    return (
+        "이전 대화:\n"
+        f"- 사용자 요청: {str(original_message or '').strip()}\n"
+        f"- 내가 되물은 질문: {question}\n"
+        "이번 사용자 메시지는 위 질문에 대한 답변이다. 둘을 합쳐 계획을 세워라.\n"
+    )
+
+
 def normalize_planner_context(context: dict[str, Any] | None) -> dict[str, Any]:
     """
     프롬프트 조립에 쓰이는 컨텍스트 값만 뽑아 정규화한다.
@@ -102,6 +119,7 @@ def normalize_planner_context(context: dict[str, Any] | None) -> dict[str, Any]:
         "previous_first_action": str(context.get("previous_first_action", "") or "").strip(),
         "personalization_hint": str(context.get("personalization_hint", "") or "").strip(),
         "workbook_digest_text": str(context.get("workbook_digest_text") or ""),
+        "conversation_history_text": str(context.get("conversation_history_text") or ""),
     }
 
 
@@ -112,6 +130,7 @@ def build_planner_prompt(
     planner_model: str = "",
     forbid_list_action: bool = False,
     require_edit_action: bool = False,
+    forbid_clarify: bool = False,
 ) -> str:
     """
     플래너 LLM에 보낼 단일 user 메시지 본문을 만든다.
@@ -145,6 +164,7 @@ def build_planner_prompt(
     return (
         "너는 Excel Live 작업 플래너다. 사용자 메시지를 실행 계획 JSON으로만 반환해라.\n"
         "허용 action:\n"
+        "- excel_live.clarify (실행하지 않고 사용자에게 되묻는다. params={\"question\":\"질문\"})\n"
         "- excel_live.list_workbooks\n"
         "- excel_live.select_workbook\n"
         "- excel_live.list_sheets\n"
@@ -176,7 +196,7 @@ def build_planner_prompt(
         "3) 각 단계는 action/params/reason 포함\n"
         "4) 범위가 없으면 __ACTIVE_SELECTION__ 또는 __ACTIVE_CELL__ 사용 가능\n"
         "4-1) context_range가 주어졌고 사용자가 '이 범위/여기/전반적으로'처럼 모호하게 말하면 context_range를 우선 사용\n"
-        "5) plan 상위에 intent를 반드시 포함한다: edit | read | navigate\n"
+        "5) plan 상위에 intent를 반드시 포함한다: edit | read | navigate | clarify\n"
         "6) intent=edit이면 첫 단계는 편집 action이어야 한다\n"
         f"   ({_EDIT_ACTION_NAMES})\n"
         f"6) forbid_list_action={str(bool(forbid_list_action)).lower()} 일 때 첫 단계를 excel_live.list_workbooks로 반환하면 안 된다\n\n"
@@ -193,12 +213,27 @@ def build_planner_prompt(
         "12) 범위를 특정할 수 있으면 __ACTIVE_SELECTION__ 대신 실제 사용범위를 써라.\n"
         "13) 사용자가 말하지 않은 편집(테두리·색칠·정렬·표 생성)을 임의로 덧붙이지 마라.\n"
         "14) 머리글이 영문이어도 사용자는 한국어로 부른다. '지역'→Region, '매출'→Sales처럼\n"
-        "    통합문서 상태의 실제 머리글로 바꿔서 params에 넣어라.\n\n"
+        "    통합문서 상태의 실제 머리글로 바꿔서 params에 넣어라.\n"
+        "15) 통합문서 상태에 없는 시트명·머리글을 지어내지 마라. 필요한 열이 거기 없으면\n"
+        "    추측해서 실행하지 말고 excel_live.clarify로 되물어라.\n"
+        "16) 되묻기(excel_live.clarify)는 추측하면 사용자 데이터가 잘못 바뀔 때만 쓴다.\n"
+        "    - 되물어야 하는 예: 기준 열을 특정할 수 없음, 지울 대상이 여럿, 대상 시트가 둘 이상\n"
+        "    - 되묻지 말아야 하는 예: 기본값으로 충분함, 통합문서 상태만 봐도 답이 하나뿐임\n"
+        "    질문에는 실제 머리글/시트명으로 만든 선택지를 넣어라.\n"
+        "    예: \"'금액'과 '수량' 중 어느 열을 기준으로 정렬할까요?\"\n"
+        "    clarify를 쓸 때는 그 한 단계만 반환하고 다른 단계를 붙이지 마라.\n"
+        "17) '이전 대화'가 있으면 사용자의 이번 답변은 그 질문에 대한 대답이다.\n"
+        "    직전 요청과 합쳐서 완성된 계획을 만들고, 같은 것을 또 묻지 마라.\n"
+        f"18) forbid_clarify={str(bool(forbid_clarify)).lower()} 일 때는 excel_live.clarify를 쓰지 말고\n"
+        "    통합문서 상태에서 가장 그럴듯한 대상을 골라 실행 계획을 세워라.\n\n"
+        f"{ctx['conversation_history_text']}"
         f"{ctx['workbook_digest_text']}"
         f"{context_line}"
         f"{personalization_line}"
         f"{reasoning_line}"
         "출력 형식:\n"
-        '{"intent":"edit","mutates_workbook":true,"action_plan":[{"action":"excel_live.fill_range","params":{"target_range":"__ACTIVE_SELECTION__","fill_color":"#FFFF00"},"reason":"범위 배경색 변경"}],"slot_fill":{},"partial_params":{},"follow_up_question":"","reason":"한 줄 한국어"}\n\n'
+        '{"intent":"edit","mutates_workbook":true,"action_plan":[{"action":"excel_live.fill_range","params":{"target_range":"__ACTIVE_SELECTION__","fill_color":"#FFFF00"},"reason":"범위 배경색 변경"}],"slot_fill":{},"partial_params":{},"follow_up_question":"","reason":"한 줄 한국어"}\n'
+        "되물을 때 출력 형식:\n"
+        '{"intent":"clarify","mutates_workbook":false,"action_plan":[{"action":"excel_live.clarify","params":{"question":"\'금액\'과 \'수량\' 중 어느 열을 기준으로 정렬할까요?"},"reason":"정렬 기준 열이 특정되지 않음"}],"slot_fill":{},"partial_params":{},"follow_up_question":"\'금액\'과 \'수량\' 중 어느 열을 기준으로 정렬할까요?","reason":"기준 열 확인 필요"}\n\n'
         f"사용자 메시지: {message}"
     )

@@ -276,6 +276,75 @@ def test_excel_live_status(monkeypatch):
     assert len(body["workbooks"]) == 1
 
 
+def test_approval_is_not_offered_for_a_sheet_that_does_not_exist(monkeypatch):
+    """플래너가 지어낸 시트로 승인 카드를 띄우면, 승인한 뒤에야 404로 죽는다."""
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+
+    async def _plan_parse(_message, llm_service, context):
+        return {
+            "intent": "edit",
+            "action_plan": [
+                {
+                    "action": "excel_live.add_column",
+                    "params": {"sheet_name": "학과운영비", "name": "담당자"},
+                    "reason": "담당자 열 추가",
+                }
+            ],
+            "reason": "학습 데이터 정답 플랜",
+        }
+
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _plan_parse)
+
+    resp = client.post(
+        "/excel-live/command",
+        json={
+            "message": "지금 학과운영비 관련 엑셀 작업을 진행",
+            "workbook_id": r"C:\work\sales.xlsx",
+            "approve": False,
+            "session_id": "sess-missing-sheet",
+        },
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["approval_required"] is False
+    assert body["action"] == "excel_live.clarify"
+    assert body["result"]["ask_follow_up"] is True
+    assert "학과운영비" in body["reason"]
+    assert "Sheet1" in body["reason"]
+
+
+def test_approval_on_a_missing_sheet_answers_instead_of_404(monkeypatch):
+    """승인까지 누른 사용자에게 404만 던지면 무엇이 잘못됐는지 알 수 없다."""
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    pending = excel_live_router._build_approval(
+        "excel_live.add_column", {"sheet_name": "없는시트", "name": "담당자"}
+    )
+    excel_live_router._pending_approvals[pending.approval_id] = excel_live_router.PendingExcelApproval(
+        action="excel_live.add_column",
+        params={"sheet_name": "없는시트", "name": "담당자"},
+        workbook_id=r"C:\work\sales.xlsx",
+        sheet_name="없는시트",
+        created_at=pending.created_at,
+    )
+
+    def _raise_missing(**_kwargs):
+        raise excel_live_router.WorksheetNotFoundError("시트를 찾을 수 없습니다: 없는시트")
+
+    monkeypatch.setattr(excel_live_router, "_execute_action", _raise_missing)
+
+    resp = client.post(
+        "/excel-live/approval",
+        json={"approval_id": pending.approval_id, "approved": True},
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is False
+    assert "없는시트" in body["reason"]
+    assert body["result"]["ask_follow_up"] is True
+
+
 def test_excel_live_backups_list(monkeypatch):
     monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
 
@@ -1841,6 +1910,62 @@ def test_command_create_table_multiturn_slot_fill_with_session(monkeypatch):
     assert body2["result"]["executed_steps"] == 2
 
 
+def test_command_create_table_accepts_column_first_size(monkeypatch):
+    """'4열*4행'처럼 열을 먼저 말해도 같은 질문으로 돌아오지 않고 표를 만든다."""
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    excel_live_router._pending_create_table_slots.clear()
+
+    async def _raise_parse(_message, llm_service, context):
+        raise ValueError("LLM parse skipped")
+
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _raise_parse)
+
+    first = client.post(
+        "/excel-live/command",
+        json={"message": "표 만들어줘", "session_id": "sess-table-colfirst", "approve": False},
+        headers=HEADERS,
+    )
+    assert first.json()["result"]["ask_follow_up"] is True
+
+    second = client.post(
+        "/excel-live/command",
+        json={"message": "4열*4행", "session_id": "sess-table-colfirst", "approve": True},
+        headers=HEADERS,
+    )
+    assert second.status_code == 200
+    body = second.json()
+    assert body["ok"] is True
+    assert body["result"].get("ask_follow_up") is not True
+    assert "sess-table-colfirst" not in excel_live_router._pending_create_table_slots
+
+
+def test_command_create_table_stops_asking_and_uses_defaults(monkeypatch):
+    """크기를 못 알아들어도 되묻기를 무한 반복하지 않고 기본값으로 만든다."""
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
+    excel_live_router._pending_create_table_slots.clear()
+
+    async def _raise_parse(_message, llm_service, context):
+        raise ValueError("LLM parse skipped")
+
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _raise_parse)
+
+    def _post(message):
+        return client.post(
+            "/excel-live/command",
+            json={"message": message, "session_id": "sess-table-loop", "approve": True},
+            headers=HEADERS,
+        ).json()
+
+    assert _post("표 만들어줘")["result"]["ask_follow_up"] is True
+    assert _post("음 잘 모르겠는데")["result"]["ask_follow_up"] is True
+
+    final = _post("그냥 알아서 해줘")
+    assert final["ok"] is True
+    assert final["result"].get("ask_follow_up") is not True
+    assert "기준으로 만들었습니다" in final["reason"]
+    assert "sess-table-loop" not in excel_live_router._pending_create_table_slots
+
+
 def test_command_table_vague_ignores_llm_1x1_guess_and_asks_follow_up(monkeypatch):
     monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: _FakeExcelService())
     excel_live_router._pending_create_table_slots.clear()
@@ -2302,4 +2427,115 @@ def test_command_formula_if_compare_multiturn_then_execute(monkeypatch):
     body = second.json()
     assert body["ok"] is True
     assert body["action"] == "excel_live.verify_formula_result"
+
+
+def _clarify_plan(question: str) -> dict:
+    return {
+        "intent": "clarify",
+        "action_plan": [
+            {
+                "action": "excel_live.clarify",
+                "params": {"question": question},
+                "reason": "기준 열을 특정할 수 없음",
+            }
+        ],
+        "reason": "되묻기",
+        "follow_up_question": question,
+    }
+
+
+def test_command_planner_clarify_asks_instead_of_executing(monkeypatch):
+    """플래너가 되묻기를 고르면 아무것도 실행하지 않고 질문만 돌려준다."""
+    fake = _FakeExcelService()
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: fake)
+    excel_live_router._pending_clarifications.clear()
+    question = "'금액'과 '수량' 중 어느 열을 기준으로 정렬할까요?"
+
+    async def _plan_parse(_message, llm_service, context):
+        return _clarify_plan(question)
+
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _plan_parse)
+
+    resp = client.post(
+        "/excel-live/command",
+        json={"message": "이거 정리해줘", "session_id": "sess-clarify", "approve": True},
+        headers=HEADERS,
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["action"] == "excel_live.clarify"
+    assert body["result"]["ask_follow_up"] is True
+    assert body["result"]["follow_up_question"] == question
+    assert body["result"]["clarify_source"] == "planner"
+
+
+def test_command_clarify_answer_turn_gets_previous_question(monkeypatch):
+    """답변 턴 프롬프트에 원래 요청과 되물은 질문이 함께 들어간다."""
+    fake = _FakeExcelService()
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: fake)
+    excel_live_router._pending_clarifications.clear()
+    question = "'금액'과 '수량' 중 어느 열을 기준으로 정렬할까요?"
+    seen: dict[str, str] = {}
+
+    async def _plan_parse(_message, llm_service, context):
+        history = str(context.get("conversation_history_text") or "")
+        if not history:
+            return _clarify_plan(question)
+        seen["history"] = history
+        return {
+            "intent": "edit",
+            "action_plan": [
+                {
+                    "action": "excel_live.sort_range",
+                    "params": {"target_range": "A1:E9", "key_column": "금액", "order": "desc"},
+                    "reason": "답변대로 금액 기준 정렬",
+                }
+            ],
+            "reason": "되묻기 답변 반영",
+        }
+
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _plan_parse)
+
+    client.post(
+        "/excel-live/command",
+        json={"message": "이거 정리해줘", "session_id": "sess-clarify-answer", "approve": True},
+        headers=HEADERS,
+    )
+    second = client.post(
+        "/excel-live/command",
+        json={"message": "금액 기준으로", "session_id": "sess-clarify-answer", "approve": True},
+        headers=HEADERS,
+    )
+
+    assert second.status_code == 200
+    assert "이거 정리해줘" in seen["history"]
+    assert question in seen["history"]
+    # 답변을 받아 실행했으면 그 대화 줄기는 닫혀야 한다.
+    assert "sess-clarify-answer" not in excel_live_router._pending_clarifications
+
+
+def test_command_stops_clarifying_after_repeated_questions(monkeypatch):
+    """되묻기가 반복되면 억제 플래그를 켜서 질문만 주고받는 상태를 끊는다."""
+    fake = _FakeExcelService()
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: fake)
+    excel_live_router._pending_clarifications.clear()
+    observed: list[bool] = []
+
+    async def _plan_parse(_message, llm_service, context):
+        observed.append(bool(context.get("forbid_clarify")))
+        return _clarify_plan("어느 열을 기준으로 할까요?")
+
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _plan_parse)
+
+    for _ in range(3):
+        client.post(
+            "/excel-live/command",
+            json={"message": "정리해줘", "session_id": "sess-clarify-loop", "approve": True},
+            headers=HEADERS,
+        )
+
+    assert observed[0] is False
+    assert observed[1] is False
+    assert observed[2] is True
 

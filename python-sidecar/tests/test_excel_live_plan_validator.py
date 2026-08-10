@@ -7,6 +7,32 @@ from office_claw_sidecar.services.excel_live_plan_validator import (
 )
 
 
+def test_validate_clarify_keeps_the_question():
+    out = validate_plan(
+        [
+            PlanStep(
+                action="excel_live.clarify",
+                params={"question": "'금액'과 '수량' 중 어느 열일까요?"},
+                reason="기준 열 불명",
+            )
+        ],
+        context=ValidationContext(message="정리해줘"),
+    )
+    assert out[0].action == "excel_live.clarify"
+    assert out[0].params["question"] == "'금액'과 '수량' 중 어느 열일까요?"
+
+
+def test_validate_clarify_without_question_is_rejected():
+    try:
+        validate_plan(
+            [PlanStep(action="excel_live.clarify", params={}, reason="")],
+            context=ValidationContext(message="정리해줘"),
+        )
+        assert False, "ValueError expected"
+    except ValueError:
+        pass
+
+
 def test_validate_create_table_clamps_rows_cols():
     out = validate_plan(
         [PlanStep(action="excel_live.create_table", params={"rows": 999, "cols": 0}, reason="")],

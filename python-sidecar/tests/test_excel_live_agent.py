@@ -270,6 +270,52 @@ def test_extract_create_table_slot_hints_with_size_and_headers():
     assert hints["headers"] == ["금액", "장소", "날짜", "요건", "비고"]
 
 
+def test_extract_create_table_slot_hints_reads_unit_suffixed_sizes():
+    """'4행 4열' 순서만 알아듣던 탓에 같은 질문이 반복됐다. 단위가 붙은 표기를 모두 읽는다."""
+    for message in ("4열*4행", "4행*4열", "4열 4행", "가로 4 세로 4", "행 4개 열 4개", "4줄 4칸"):
+        hints = extract_create_table_slot_hints(message)
+        assert hints["rows"] == 4, message
+        assert hints["cols"] == 4, message
+
+
+def test_extract_create_table_slot_hints_strips_header_suffix_from_last_token():
+    """'날짜 헤더로'가 통째로 머리글이 되던 문제."""
+    hints = extract_create_table_slot_hints("금액, 장소, 날짜 헤더로 표 만들어줘")
+    assert hints["headers"] == ["금액", "장소", "날짜"]
+
+
+def test_extract_create_table_slot_hints_reads_a_quoted_header_list():
+    """따옴표로 나열한 헤더. 쉼표로 쪼개면 앞뒤 문장이 붙고 항목 안 쉼표에서 갈라진다."""
+    hints = extract_create_table_slot_hints(
+        "헤더에는 '날짜', '사용 목적', '사용처', '법인카드 사용내역서 여부', "
+        "'금액', '법인카드, 조교카드 이체 여부', '비용 유형' 이렇게 목록을 만들어줄 수 있어?"
+    )
+
+    assert hints["headers"] == [
+        "날짜",
+        "사용 목적",
+        "사용처",
+        "법인카드 사용내역서 여부",
+        "금액",
+        "법인카드, 조교카드 이체 여부",
+        "비용 유형",
+    ]
+
+
+def test_extract_create_table_slot_hints_ignores_a_single_quoted_word():
+    """따옴표 하나짜리는 헤더 나열이 아니라 인용이다."""
+    hints = extract_create_table_slot_hints("'매출' 시트에 표 만들어줘")
+
+    assert hints["headers"] == []
+
+
+def test_extract_create_table_slot_hints_keeps_unit_size_out_of_headers():
+    hints = extract_create_table_slot_hints("4열*3행, 제목, 사양, 비고")
+    assert hints["rows"] == 3
+    assert hints["cols"] == 4
+    assert hints["headers"] == ["제목", "사양", "비고"]
+
+
 def test_extract_create_table_slot_hints_detects_template_without_table_word():
     hints = extract_create_table_slot_hints("프로젝트 진행 상황 체크리스트 만들어줘")
     assert hints["table_intent"] is True
@@ -484,4 +530,50 @@ def test_parse_excel_live_command_uses_intent_field_for_replan():
     parsed = asyncio.run(parse_excel_live_command("애매한 표현", llm))
     assert parsed["intent"] == "edit"
     assert parsed["action_plan"][0]["action"] == "excel_live.fill_range"
+
+
+def test_parse_excel_live_command_returns_planner_question_as_clarify():
+    """모델이 되묻기를 고르면 질문을 그대로 끌어올려 clarify로 돌려준다."""
+    llm = _FakeLLM(
+        '{"intent":"clarify","action_plan":[{"action":"excel_live.clarify",'
+        '"params":{"question":"\'금액\'과 \'수량\' 중 어느 열 기준으로 정렬할까요?"},'
+        '"reason":"기준 열 불명"}],"reason":"확인 필요"}'
+    )
+    parsed = asyncio.run(parse_excel_live_command("이거 정리해줘", llm))
+    assert parsed["intent"] == "clarify"
+    assert parsed["action"] == "excel_live.clarify"
+    assert "어느 열" in parsed["follow_up_question"]
+
+
+def test_parse_excel_live_command_does_not_force_edit_over_clarify():
+    """편집처럼 들리는 문장이어도 되묻기를 편집 액션으로 갈아치우지 않는다."""
+    llm = _FakeLLM(
+        '{"intent":"clarify","action_plan":[{"action":"excel_live.clarify",'
+        '"params":{"question":"어느 열을 지울까요?"},"reason":"대상 불명"}],"reason":"확인 필요"}'
+    )
+    parsed = asyncio.run(parse_excel_live_command("그 열 지워줘", llm))
+    assert parsed["action"] == "excel_live.clarify"
+    # 되묻기는 워크북을 바꾸지 않는다.
+    assert parsed["intent"] == "clarify"
+
+
+def test_parse_excel_live_command_rejects_clarify_mixed_with_execution():
+    """되묻고 나서 실행까지 하는 계획은 반려한다 — 물어본 의미가 없어진다."""
+    llm = _FakeLLM(
+        [
+            '{"intent":"edit","action_plan":['
+            '{"action":"excel_live.clarify","params":{"question":"어느 열?"},"reason":"확인"},'
+            '{"action":"excel_live.clear_range","params":{"target_range":"A:A"},"reason":"삭제"}'
+            '],"reason":"혼합"}',
+            '{"intent":"edit","action_plan":['
+            '{"action":"excel_live.clarify","params":{"question":"어느 열?"},"reason":"확인"},'
+            '{"action":"excel_live.clear_range","params":{"target_range":"A:A"},"reason":"삭제"}'
+            '],"reason":"혼합"}',
+        ]
+    )
+    try:
+        asyncio.run(parse_excel_live_command("A열 지워줘", llm))
+        assert False, "ValueError expected"
+    except ValueError:
+        pass
 

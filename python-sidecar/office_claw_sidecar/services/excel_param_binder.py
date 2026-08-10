@@ -1073,7 +1073,16 @@ def bind_plan_steps(
 
         if not column_stated:
             for slot in _REQUIRE_EXPLICIT_COLUMN.get(step.action, ()):
-                notes.append({"action": step.action, "slot": slot, "status": "unresolved"})
+                # 원문이 기준을 말하지 않았다. 플래너가 채워 둔 값은 학습 데이터에서
+                # 튀어나온 이름일 수 있으므로 "값이 있다"는 이유로 지워선 안 된다.
+                notes.append(
+                    {
+                        "action": step.action,
+                        "slot": slot,
+                        "status": "unresolved",
+                        "reason": "not_stated",
+                    }
+                )
 
         range_slot = _WHOLE_TABLE_RANGE_SLOTS.get(step.action)
         if range_slot and not _EXPLICIT_RANGE_MENTION.search(str(message or "")):
@@ -1193,6 +1202,11 @@ def bind_plan_steps(
 def _is_stale_unresolved(note: dict[str, Any], action: str, params: dict[str, Any]) -> bool:
     """이 단계에서 결국 채워진 슬롯의 미해결 보고인지."""
     if note.get("status") != "unresolved" or note.get("action") != action:
+        return False
+    if note.get("reason") == "not_stated":
+        # 원문이 기준 열을 말하지 않았다. 플래너가 채운 값도, 그 값을 다듬은 결과도
+        # 근거가 될 수 없다("Qty" → "QTY"처럼 학습 데이터의 열 이름이 그대로 나온다).
+        # 데이터가 조용히 뒤섞이느니 되묻는 편이 낫다.
         return False
     value = params.get(str(note.get("slot") or ""))
     if isinstance(value, list):

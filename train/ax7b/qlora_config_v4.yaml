@@ -1,0 +1,55 @@
+run_name: ax7b-planner-qlora-v4
+seed: 42
+
+# v4에서 고친 두 가지 학습/추론 불일치:
+#  - 프롬프트에 워크북 다이제스트가 없어 시트·열 이름을 지어내던 문제
+#    (v3 학습셋은 다이제스트 0%, 추론 시에는 항상 들어온다)
+#  - 되묻기(clarify) 정답이 한 건도 없어 애매한 지시에도 무조건 실행을 시도하던 문제
+train_jsonl: datasets/train/planner_sft_v4_train.jsonl
+eval_jsonl: datasets/train/planner_sft_v4_test.jsonl
+output_dir: artifacts/ax7b-planner-lora-v4
+
+base_model: skt/A.X-4.0-Light
+
+# verify_sft_encoding.py 실측: 실토큰 2488~2900 (다이제스트가 들어가며 v3의 1931~2095보다 길어졌다).
+# 여기서는 잘림 방지용 상한으로만 쓰인다 — 실제 패딩은 배치 최댓값까지만 한다.
+max_seq_length: 2944
+
+# QLoRA
+load_in_4bit: true
+bnb_4bit_quant_type: nf4
+bnb_4bit_compute_dtype: bfloat16
+bnb_4bit_use_double_quant: true
+lora_r: 64
+lora_alpha: 128
+lora_dropout: 0.05
+target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj
+
+# Trainer (1589건 x 2epoch, effective batch 8 -> 약 397 step, 에폭당 199 step)
+# 4060 Ti에서 스텝당 약 55초라 3epoch은 10시간이 걸린다. 마감에 맞춰 2epoch으로 자르고,
+# 홀드아웃 손실이 끝까지 내려가고 있으면 체크포인트에서 이어서 돌린다.
+num_train_epochs: 2
+learning_rate: 2.0e-4
+weight_decay: 0.01
+warmup_ratio: 0.03
+# 4060 Ti 16GB에서 batch 2는 VRAM을 다 써 오히려 느려지고,
+# gradient_checkpointing을 끄면 활성값이 30GB를 넘어 OOM이다(둘 다 실측).
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+logging_steps: 10
+# v2/v3은 최종 train loss가 1e-4대까지 떨어져 과적합이 의심됐지만 판단 근거가 없었다.
+# 홀드아웃 손실을 같은 주기로 찍어 회귀 시점을 보고 체크포인트를 고른다.
+eval_steps: 100
+save_steps: 100
+save_total_limit: 6
+gradient_checkpointing: true
+bf16: true
+fp16: false
+optim: paged_adamw_8bit

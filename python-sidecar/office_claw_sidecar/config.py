@@ -91,6 +91,11 @@ def get_unified_log_path() -> Path:
     return get_logs_dir() / "all_events.jsonl"
 
 
+def get_chat_log_path() -> Path:
+    """대화 턴별 판단·계획·실행 추적 JSONL 파일 경로."""
+    return get_logs_dir() / "chat_log.jsonl"
+
+
 def get_credentials_registry_path() -> Path:
     return get_data_dir() / "credentials_registry.json"
 

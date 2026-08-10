@@ -15,7 +15,14 @@ from typing import Any
 
 from office_claw_sidecar.services.excel_live_executor import PlanStep
 
+# 플래너만 고를 수 있고 실행기에는 내려가지 않는 액션.
+# 라우터가 실행 직전에 가로채 되묻기 응답으로 바꾼다.
+PLANNER_ONLY_ACTIONS = {
+    "excel_live.clarify",
+}
+
 SUPPORTED_ACTIONS = {
+    "excel_live.clarify",
     "excel_live.list_workbooks",
     "excel_live.select_workbook",
     "excel_live.list_sheets",
@@ -390,6 +397,14 @@ def _validate_step_body(
     preferred_range: str | None,
     lowered: str,
 ) -> PlanStep:
+
+    if action == "excel_live.clarify":
+        # 되묻기는 실행할 게 없고 질문 한 줄이 전부다. 질문이 비면 라우터가
+        # "무엇을 할까요?" 수준의 빈 되묻기를 내보내게 되므로 계획 자체를 반려한다.
+        question = str(params.get("question") or params.get("follow_up_question") or "").strip()
+        if not question:
+            raise ValueError("clarify에는 question이 필요합니다.")
+        return PlanStep(action=action, params={"question": question[:240]}, reason=reason)
 
     if action == "excel_live.select_workbook":
         workbook = str(params.get("workbook_id") or params.get("name") or "").strip()

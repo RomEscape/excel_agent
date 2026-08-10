@@ -146,6 +146,20 @@ class _FakeRange:
     def options(self, **_kwargs):
         return self
 
+    @property
+    def sheet(self):
+        return self._sheet
+
+    @property
+    def current_region(self):
+        """기준 셀이 데이터 영역 안에 있으면 그 영역, 아니면 자기 자신."""
+        used = self._sheet.used_range
+        within_rows = used.row <= self._sr < used.row + used._rows
+        within_cols = used.column <= self._sc < used.column + used._cols
+        if within_rows and within_cols:
+            return used
+        return self
+
     def resize(self, row_count: int, col_count: int):
         return _FakeRange(self._sheet, self._sr, self._sc, row_count, col_count)
 
@@ -182,6 +196,7 @@ class _FakeRangeApi:
 class _FakeSheet:
     def __init__(self, name: str):
         self.name = name
+        self.book = None
         self._sheets = None
         self._values: dict[tuple[int, int], object] = {}
         self._colors: dict[tuple[int, int], tuple[int, int, int]] = {}
@@ -218,6 +233,20 @@ class _FakeSheet:
         min_col, max_col = min(cols), max(cols)
         return _FakeRange(self, min_row, min_col, max_row - min_row + 1, max_col - min_col + 1)
 
+    @property
+    def api(self):
+        return _FakeSheetApi(self)
+
+    def delete_row(self, row_index: int) -> None:
+        for store in (self._values, self._colors, self._formulas):
+            shifted = {}
+            for (row, col), value in store.items():
+                if row == row_index:
+                    continue
+                shifted[(row - 1, col) if row > row_index else (row, col)] = value
+            store.clear()
+            store.update(shifted)
+
     def activate(self):
         if self._sheets is None:
             return
@@ -225,6 +254,23 @@ class _FakeSheet:
             self._sheets._active_index = self._sheets.index(self)
         except ValueError:
             pass
+
+
+class _FakeRowApi:
+    def __init__(self, sheet, row_index: int):
+        self._sheet = sheet
+        self._row_index = row_index
+
+    def Delete(self):
+        self._sheet.delete_row(self._row_index)
+
+
+class _FakeSheetApi:
+    def __init__(self, sheet):
+        self._sheet = sheet
+
+    def Rows(self, row_index: int):
+        return _FakeRowApi(self._sheet, row_index)
 
 
 class _FakeSheets(list):
@@ -254,6 +300,8 @@ class _FakeWorkbook:
         self.fullname = fullname
         self.sheets = _FakeSheets(sheets)
         self.saved = False
+        for sheet in self.sheets:
+            sheet.book = self
 
     def save(self):
         self.saved = True
@@ -262,6 +310,7 @@ class _FakeWorkbook:
 class _FakeApp:
     def __init__(self, books):
         self.books = books
+        self.selection = None
 
 
 class _FakeApps:
@@ -621,3 +670,48 @@ def test_save_workbook_marks_saved_and_returns_metadata():
     assert result["saved"] is True
     assert result["name"] == wb1.name
     assert wb1.saved is True
+
+
+def test_active_selection_expands_single_cell_to_data_region():
+    """커서가 한 칸에 있을 뿐인 상태를 범위로 쓰면 정렬·집계가 한 칸에만 적용된다."""
+    service, wb1, _ = _build_service()
+    sheet = service._find_sheet(wb1, "Sheet1")
+    service._app().selection = sheet.range("A1")
+
+    assert service.get_active_selection_ref(wb1.fullname, "Sheet1") == "A1:B2"
+
+
+def test_active_selection_respects_a_real_multi_cell_selection():
+    service, wb1, _ = _build_service()
+    sheet = service._find_sheet(wb1, "Sheet1")
+    service._app().selection = sheet.range("A1:A2")
+
+    assert service.get_active_selection_ref(wb1.fullname, "Sheet1") == "A1:A2"
+
+
+def test_active_selection_ignores_a_selection_on_another_sheet():
+    """선택은 사용자가 마지막에 클릭한 곳이라 대상 시트와 다를 수 있다."""
+    service, wb1, _ = _build_service()
+    other = service._find_sheet(wb1, "Sheet2")
+    service._app().selection = other.range("C1")
+
+    assert service.get_active_selection_ref(wb1.fullname, "Sheet1") == "A1:B2"
+
+
+def test_filter_rows_deletes_rows_that_do_not_match():
+    service, wb1, _ = _build_service()
+    sheet = service._find_sheet(wb1, "Sheet1")
+    sheet.seed("A1:B4", [["이름", "금액"], ["가", 100], ["나", 400], ["다", 250]])
+
+    result = service.filter_rows(
+        workbook_id=wb1.fullname,
+        sheet_name="Sheet1",
+        target_range="A1:B4",
+        column="금액",
+        operator=">=",
+        value=250,
+    )
+
+    assert result["filtered_rows"] == 2
+    assert result["removed_rows"] == 1
+    assert result["mode"] == "keep"
