@@ -1,58 +1,76 @@
-# Node / Vite
+# 제외 기준은 세 가지뿐이다. 여기에 해당하지 않으면 올린다.
+#   1. 유출되면 안 되는 것 (자격증명)
+#   2. 소스에서 다시 만들 수 있는 것 (빌드 산출물·캐시)
+#   3. 저장소에 담기엔 너무 큰 것 (모델 가중치)
+# "임시로 만든 거라 지저분해서"는 제외 사유가 아니다 — 나중에 근거를 찾을 때 필요하다.
+
+# ── 1. 자격증명 ────────────────────────────────────────────────────────────
+# 지금 이 파일들은 존재하지 않는다. 앞으로 생겼을 때를 막는 규칙이다.
+.env
+.env.local
+credentials.json
+api_keys.py
+*.pem
+*.key
+
+# ── 2. 재생성 가능한 산출물 ────────────────────────────────────────────────
+# node_modules 116MB(package-lock.json으로 복원) · target 8.9GB. 합쳐서 9GB다.
 node_modules/
 dist/
 .vite/
-
-# Rust / Tauri
 src-tauri/target/
 src-tauri/binaries/office-claw-sidecar-*
-
-# Python
-python-sidecar/__pycache__/
-python-sidecar/**/__pycache__/
 python-sidecar/*.egg-info/
 python-sidecar/dist/
 python-sidecar/build/
 python-sidecar/.eggs/
+*.spec.bak
+
+# 캐시 (ruff·pytest는 캐시 안에 자기 .gitignore를 넣지만 명시해 둔다)
+**/__pycache__/
 **/.pytest_cache/
+**/.ruff_cache/
 *.pyc
 *.pyo
 
-# PyInstaller
-*.spec.bak
-
-# Virtual environments
+# 가상환경
 .venv/
 venv/
 env/
 
-# IDE
+# 에디터·OS
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 .DS_Store
 
-# Claude Code local
-.claude/
+# ── 3. 모델 가중치 ─────────────────────────────────────────────────────────
+# artifacts/는 38GB다(LoRA 어댑터·병합 모델·GGUF). GitHub 파일 상한은 100MB라
+# 애초에 못 올린다. 배포본은 Ollama 태그로 유통한다.
+#
+# 다만 **가중치가 아닌 학습 기록은 남긴다.** 어떤 하이퍼파라미터와 데이터가 이
+# 체크포인트를 만들었는지, 손실이 어떻게 움직였는지는 다음 학습을 결정할 때
+# 필요한 근거다. 이게 없어서 v2/v3 때 "어느 체크포인트가 나았는지"를 감으로 골랐다.
+artifacts/**
+!artifacts/**/
+!artifacts/**/adapter_config.json
+!artifacts/**/trainer_state.json
+!artifacts/**/*.md
 
-# Environment / secrets
-.env
-.env.local
-credentials.json
+# ── 실행 로그 ──────────────────────────────────────────────────────────────
+# all_events.jsonl 하나가 16MB이고 실행할 때마다 계속 자란다. 사용자 명령 원문과
+# 워크북 내용도 섞여 들어간다. 커밋에 넣으면 히스토리에 영구히 쌓인다.
+logs/*
+# 평가 결과 스냅샷은 예외다. "좋아진 것 같다"로 판단해 온 게 지금까지 가장 큰
+# 실수였고, 버전별 점수는 반드시 추적 가능해야 한다.
+!logs/eval/
 
-# 개인 테스트/잔여 파일 (루트에 두지 않도록)
-api_keys.py
+# ── 임시 작업물 ────────────────────────────────────────────────────────────
+# 테스트로 만든 xlsx/pdf, 명령 출력 덤프 등. 메모(.md)는 남긴다.
+scratch/*
+!scratch/*.md
+
+# ── 개인 파일 ──────────────────────────────────────────────────────────────
 text_1.xlsx
-
-# 개발 로그 (로컬 전용 — 버전관리 제외)
-개발일지.md
-
-# 학습 산출물 — LoRA 어댑터·병합 모델·GGUF는 수십 GB라 저장소에 넣지 않는다.
-# 재현에 필요한 건 train/ax7b/의 설정과 datasets/의 학습 데이터뿐이고,
-# 배포본은 Ollama에 등록된 태그(ax7bplanner-v3)로 유통한다.
-artifacts/
-
-# 실행/평가 로그, 임시 작업물
-logs/
-scratch/
