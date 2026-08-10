@@ -92,6 +92,12 @@ class TrainConfig:
     bf16: bool = True
     fp16: bool = False
     optim: str = "paged_adamw_8bit"
+    # 옵티마이저 상태까지 살아 있는 체크포인트에서 그대로 이어 돌린다.
+    resume_from_checkpoint: str = ""
+    # 어댑터 가중치만 이어받아 새로 시작한다(옵티마이저·스케줄러는 초기화).
+    # 하드 리셋으로 체크포인트가 저장 도중에 잘렸을 때 쓰는 경로다 —
+    # 실측에서 adapter_model.safetensors는 온전한데 optimizer.pt가 잘려 있었다.
+    init_adapter_from: str = ""
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "TrainConfig":
@@ -313,15 +319,30 @@ def run_train(config: TrainConfig) -> None:
     use_ckpt = bool(config.gradient_checkpointing)
     model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=use_ckpt)
 
-    lora_cfg = LoraConfig(
-        r=int(config.lora_r),
-        lora_alpha=int(config.lora_alpha),
-        lora_dropout=float(config.lora_dropout),
-        target_modules=list(config.target_modules),
-        bias="none",
-        task_type="CAUSAL_LM",
-    )
-    model = get_peft_model(model, lora_cfg)
+    warm_start = _text(config.init_adapter_from)
+    if warm_start:
+        from peft import PeftModel
+
+        warm_dir = Path(warm_start)
+        if not (warm_dir / "adapter_model.safetensors").exists():
+            raise FileNotFoundError(f"이어받을 어댑터가 없습니다: {warm_dir}")
+        model = PeftModel.from_pretrained(model, str(warm_dir), is_trainable=True)
+        print(f"[WARM-START] 어댑터 가중치를 이어받습니다: {warm_dir}")
+    else:
+        lora_cfg = LoraConfig(
+            r=int(config.lora_r),
+            lora_alpha=int(config.lora_alpha),
+            lora_dropout=float(config.lora_dropout),
+            target_modules=list(config.target_modules),
+            bias="none",
+            task_type="CAUSAL_LM",
+        )
+        model = get_peft_model(model, lora_cfg)
+
+    trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    if trainable == 0:
+        raise RuntimeError("학습 가능한 파라미터가 0개입니다 — 어댑터가 동결된 채 로드됐습니다.")
+    print(f"[TRAINABLE] {trainable:,}")
 
     dataset = JsonlSFTDataset(rows=rows, tokenizer=tokenizer, max_seq_length=int(config.max_seq_length))
     out_dir = Path(config.output_dir)
@@ -367,7 +388,13 @@ def run_train(config: TrainConfig) -> None:
         eval_dataset=eval_dataset,  # type: ignore[arg-type]
         data_collator=PadToLongestCollator(pad_token_id=tokenizer.pad_token_id),
     )
-    trainer.train()
+    resume = _text(config.resume_from_checkpoint)
+    if resume and not (Path(resume) / "trainer_state.json").exists():
+        raise FileNotFoundError(
+            f"{resume}에 trainer_state.json이 없어 이어 돌릴 수 없습니다. "
+            "저장 도중 잘린 체크포인트라면 init_adapter_from으로 가중치만 이어받으세요."
+        )
+    trainer.train(resume_from_checkpoint=resume or None)
     trainer.save_model(str(out_dir))
     tokenizer.save_pretrained(str(out_dir))
     print(f"[DONE] adapter saved: {out_dir}")
