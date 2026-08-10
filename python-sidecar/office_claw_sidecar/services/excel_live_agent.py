@@ -12,63 +12,29 @@ import json
 import re
 from typing import Any
 
+from office_claw_sidecar.services.excel_live_plan_validator import (
+    SUPPORTED_ACTIONS as VALIDATOR_SUPPORTED_ACTIONS,
+)
 from office_claw_sidecar.services.excel_live_table_presets import match_table_preset
 from office_claw_sidecar.services.excel_planner_prompt import (
     LATER_TOOL_LINES as _LATER_TOOL_LINES,
 )
 from office_claw_sidecar.services.excel_planner_prompt import build_planner_prompt
-from office_claw_sidecar.services.llm_service import get_planner_model_name
+from office_claw_sidecar.services.llm_service import (
+    get_planner_model_name,
+    get_strong_llm_service,
+    get_strong_planner_model_name,
+)
 
 # 계획 수립은 창작이 아니다. 기본 샘플링(0.8)에서는 "Profit_Margin 열 이름을 마진율로 바꿔줘"가
 # 실행할 때마다 rename_column이 되기도 하고 노란색 칠하기가 되기도 한다.
 PLAN_TEMPERATURE = 0.0
 
-SUPPORTED_ACTIONS = {
-    "excel_live.list_workbooks",
-    "excel_live.select_workbook",
-    "excel_live.list_sheets",
-    "excel_live.select_sheet",
-    "excel_live.create_sheet",
-    "excel_live.read_range",
-    "excel_live.write_range",
-    "excel_live.create_table",
-    "excel_live.highlight_by_condition",
-    "excel_live.fill_range",
-    "excel_live.apply_border",
-    "excel_live.set_formula",
-    "excel_live.verify_formula_result",
-    "excel_live.sort_range",
-    "excel_live.filter_rows",
-    "excel_live.dedupe_rows",
-    "excel_live.find_duplicates",
-    "excel_live.pivot_table",
-    "excel_live.create_chart",
-    "excel_live.validate_data",
-    "excel_live.recalculate",
-    "excel_live.export_pdf",
-    "excel_live.save_workbook",
-    # 아래는 나중에 추가된 도구들. 레지스트리에는 오래전부터 있었지만 이 목록에 없어서
-    # 플래너가 골라도 전부 반려됐다. "열 이름 바꿔줘"가 400으로 떨어지던 이유다.
-    "excel_live.protect_sheet",
-    "excel_live.set_data_validation",
-    "excel_live.calculate_column_stat",
-    "excel_live.sort_rows",
-    "excel_live.drop_column",
-    "excel_live.rename_column",
-    "excel_live.add_column",
-    "excel_live.group_by_aggregate",
-    "excel_live.find_replace",
-    "excel_live.merge_cells",
-    "excel_live.unmerge_cells",
-    "excel_live.freeze_panes",
-    "excel_live.autofit_columns",
-    "excel_live.define_named_range",
-    "excel_live.set_print_area",
-    "excel_live.add_cell_comment",
-    "excel_live.apply_color_scale",
-    "excel_live.apply_data_bar",
-    "excel_live.set_number_format",
-}
+# 허용 액션은 검증기가 단일 소스다. 여기에 사본을 두면 한쪽만 늘어난다 —
+# 실제로 clear_range·compare_ranges·forecast_linear 등 7종이 이 사본에만 빠져 있어서,
+# 프롬프트는 쓰라고 안내하는데 플래너가 고르면 파싱 단계에서 통째로 반려됐다.
+SUPPORTED_ACTIONS = VALIDATOR_SUPPORTED_ACTIONS
+
 
 def _has_likely_edit_intent(message: str) -> bool:
     lowered = str(message or "").lower()
@@ -742,11 +708,33 @@ def _ensure_action_step(step: dict[str, Any]) -> dict[str, Any]:
     return {"action": action, "params": params, "reason": reason}
 
 
+PLAN_INTENTS = frozenset({"edit", "read", "navigate", "clarify"})
+
+
+def clarify_question_from_plan(action_plan: list[dict[str, Any]] | None) -> str:
+    """계획이 '되묻기'면 질문 문장을, 아니면 빈 문자열을 돌려준다.
+
+    되묻기는 첫 단계일 때만 인정한다. 뒤에 붙은 clarify는 "실행하고 나서 묻겠다"는
+    뜻이 되는데, 그건 이미 사용자 데이터를 바꾼 뒤라 되묻는 의미가 없다.
+    """
+    if not action_plan:
+        return ""
+    first = action_plan[0]
+    if str(first.get("action", "")).strip() != "excel_live.clarify":
+        return ""
+    params = first.get("params") if isinstance(first.get("params"), dict) else {}
+    return str(params.get("question") or params.get("follow_up_question") or "").strip()
+
+
 def _assert_action_plan_contract(action_plan: list[dict[str, Any]]) -> None:
     if not action_plan:
         raise ValueError("LLM action_plan이 비어 있습니다.")
     if len(action_plan) > 4:
         raise ValueError("LLM action_plan 단계 수가 제한(4)을 초과했습니다.")
+    if len(action_plan) > 1 and any(
+        str(step.get("action", "")).strip() == "excel_live.clarify" for step in action_plan
+    ):
+        raise ValueError("clarify는 단독 계획이어야 합니다.")
     for idx, step in enumerate(action_plan, start=1):
         action = str(step.get("action", "")).strip()
         params = step.get("params")
@@ -766,6 +754,7 @@ async def parse_command_plan_with_llm(
     context: dict[str, Any] | None = None,
     forbid_list_action: bool = False,
     require_edit_action: bool = False,
+    forbid_clarify: bool = False,
 ) -> dict[str, Any]:
     """
     LLM 기반 계획형 파서.
@@ -774,7 +763,19 @@ async def parse_command_plan_with_llm(
     - action_plan: [{"action": "...", "params": {...}, "reason": "..."}]
     """
     context = context or {}
+    # 되묻기 억제는 호출자(라우터)가 세션 상태를 보고 정하기도 하고,
+    # 아래 재계획 루프가 정하기도 한다. 둘 중 하나라도 막으면 막는다.
+    forbid_clarify = forbid_clarify or bool(context.get("forbid_clarify"))
     planner_model = str(context.get("planner_model", "") or "").strip() or get_planner_model_name()
+    # 에스컬레이션 사다리가 마지막 단계에서 강한 모델을 지목한다. 활성 프로바이더를
+    # 갈아끼우지 않고 이 호출에서만 다른 서비스를 쓴다 — 다른 요청까지 클라우드로
+    # 새어 나가면 "로컬에서만 처리한다"는 약속이 깨진다.
+    if str(context.get("planner_provider", "")).strip() == "strong":
+        strong = get_strong_llm_service()
+        if strong is None:
+            raise ValueError("강한 모델 플래너를 사용할 수 없습니다.")
+        llm_service = strong
+        planner_model = planner_model or get_strong_planner_model_name()
     # 프롬프트 조립은 excel_planner_prompt가 단일 소스 — SFT 데이터 생성도 같은 함수를 쓴다.
     prompt = build_planner_prompt(
         message,
@@ -782,9 +783,10 @@ async def parse_command_plan_with_llm(
         planner_model=planner_model,
         forbid_list_action=forbid_list_action,
         require_edit_action=require_edit_action,
+        forbid_clarify=forbid_clarify,
     )
     raw = await llm_service.chat(
-        [{"role": "user", "content": prompt}], model=planner_model, temperature=PLAN_TEMPERATURE
+        [{"role": "user", "content": prompt}], model=planner_model or None, temperature=PLAN_TEMPERATURE
     )
     match = re.search(r"\{.*\}", raw, re.DOTALL)
     if not match:
@@ -798,35 +800,46 @@ async def parse_command_plan_with_llm(
             if isinstance(raw_step, dict):
                 action_plan.append(_ensure_action_step(raw_step))
         _assert_action_plan_contract(action_plan)
+        clarify_question = clarify_question_from_plan(action_plan)
         intent = str(parsed.get("intent", "")).strip().lower()
-        if intent not in {"edit", "read", "navigate"}:
+        if clarify_question:
+            intent = "clarify"
+        elif intent not in PLAN_INTENTS:
             intent = "unknown"
         return {
             "action_plan": action_plan,
             "reason": str(parsed.get("reason", "")).strip(),
             "intent": intent,
-            "mutates_workbook": bool(parsed.get("mutates_workbook", intent == "edit")),
+            "mutates_workbook": bool(parsed.get("mutates_workbook", intent == "edit"))
+            and not clarify_question,
             "slot_fill": parsed.get("slot_fill") if isinstance(parsed.get("slot_fill"), dict) else {},
             "partial_params": (
                 parsed.get("partial_params") if isinstance(parsed.get("partial_params"), dict) else {}
             ),
-            "follow_up_question": str(parsed.get("follow_up_question", "")).strip(),
+            # 모델이 clarify 단계만 내고 상위 follow_up_question을 비워 두는 경우가 잦다.
+            # 질문은 단계 안에 이미 있으므로 그걸 끌어올린다.
+            "follow_up_question": str(parsed.get("follow_up_question", "")).strip()
+            or clarify_question,
         }
 
     # 하위 호환: action/params 단일 형태도 수용
     single = _ensure_action_step(parsed)
     _assert_action_plan_contract([single])
+    clarify_question = clarify_question_from_plan([single])
     intent = str(parsed.get("intent", "")).strip().lower()
-    if intent not in {"edit", "read", "navigate"}:
+    if clarify_question:
+        intent = "clarify"
+    elif intent not in PLAN_INTENTS:
         intent = "unknown"
     return {
         "action_plan": [single],
         "reason": str(parsed.get("reason", "")).strip(),
         "intent": intent,
-        "mutates_workbook": bool(parsed.get("mutates_workbook", intent == "edit")),
+        "mutates_workbook": bool(parsed.get("mutates_workbook", intent == "edit"))
+        and not clarify_question,
         "slot_fill": parsed.get("slot_fill") if isinstance(parsed.get("slot_fill"), dict) else {},
         "partial_params": parsed.get("partial_params") if isinstance(parsed.get("partial_params"), dict) else {},
-        "follow_up_question": str(parsed.get("follow_up_question", "")).strip(),
+        "follow_up_question": str(parsed.get("follow_up_question", "")).strip() or clarify_question,
     }
 
 
@@ -852,6 +865,21 @@ async def parse_excel_live_command(
         )
         action_plan = planned["action_plan"]
         intent = str(planned.get("intent", "unknown")).lower()
+        # 되묻기는 아래 재계획 규칙(목록 조회 금지·편집 액션 강제)의 대상이 아니다.
+        # 그 규칙들은 "실행해야 하는데 엉뚱한 걸 골랐다"를 고치는 장치인데,
+        # 되묻기는 아직 실행하지 않기로 한 판단이라 강제로 편집을 시키면 뜻이 뒤집힌다.
+        if clarify_question_from_plan(action_plan):
+            first = action_plan[0]
+            return {
+                "action_plan": action_plan,
+                "action": first["action"],
+                "params": first["params"],
+                "reason": planned.get("reason", "") or first.get("reason", ""),
+                "intent": "clarify",
+                "slot_fill": planned.get("slot_fill", {}),
+                "partial_params": planned.get("partial_params", {}),
+                "follow_up_question": planned.get("follow_up_question", ""),
+            }
         explicit_list_intent = any(
             token in lowered
             for token in [
@@ -876,6 +904,7 @@ async def parse_excel_live_command(
                 llm_service,
                 context=context,
                 forbid_list_action=True,
+                forbid_clarify=True,
             )
             action_plan = planned["action_plan"]
             if (
@@ -892,6 +921,7 @@ async def parse_excel_live_command(
                 context=context,
                 forbid_list_action=True,
                 require_edit_action=True,
+                forbid_clarify=True,
             )
             action_plan = planned["action_plan"]
             if action_plan and action_plan[0].get("action") in non_edit_actions:
@@ -1098,6 +1128,58 @@ def _extract_inline_table_values_2d(text: str) -> list[list[str]]:
     return matrix if len(matrix) >= 2 else []
 
 
+_TABLE_ROW_UNITS = ("행", "줄", "세로")
+_TABLE_COL_UNITS = ("열", "칸", "가로")
+_TABLE_AXIS_PATTERN = re.compile(
+    r"(?:(?P<count_first>\d{1,3})\s*개?\s*(?P<unit_last>행|줄|세로|열|칸|가로)"
+    r"|(?P<unit_first>행|줄|세로|열|칸|가로)\s*(?:은|는|이|가)?\s*[:=]?\s*(?P<count_last>\d{1,3})\s*개?)"
+)
+# "4*4"뿐 아니라 "4열*4행"처럼 단위가 붙은 크기 표기도 헤더 후보에서 걷어낸다.
+_TABLE_SIZE_SPEC_PATTERN = re.compile(
+    r"\d{1,3}\s*(?:\*|x|×|by)\s*\d{1,3}|\d{1,3}\s*개?\s*(?:행|줄|세로|열|칸|가로)",
+    re.IGNORECASE,
+)
+# 사람이 헤더를 나열할 때 가장 흔한 형태. 따옴표 안은 통째로 한 항목이다.
+_QUOTED_ITEM_PATTERN = re.compile(
+    r"'([^'\n]{1,60})'|\"([^\"\n]{1,60})\"|\u2018([^\u2019\n]{1,60})\u2019|\u201c([^\u201d\n]{1,60})\u201d"
+)
+
+
+def _extract_quoted_headers(text: str) -> list[str]:
+    """따옴표로 감싼 항목을 헤더 목록으로 뽑는다.
+
+    두 개 이상 있을 때만 목록으로 본다. 하나뿐이면 헤더 나열이 아니라
+    그냥 강조하거나 인용한 말일 가능성이 크다.
+    """
+    items: list[str] = []
+    for match in _QUOTED_ITEM_PATTERN.finditer(str(text or "")):
+        value = next((group for group in match.groups() if group is not None), "").strip()
+        if value:
+            items.append(value)
+    return items if len(items) >= 2 else []
+
+
+def _extract_axis_table_size(text: str) -> tuple[int | None, int | None]:
+    """
+    "4열*4행", "세로 4 가로 3", "행 4개 열 3개"처럼 단위가 붙은 크기 표기를 읽는다.
+
+    "4행 4열" 순서만 알아듣던 탓에 열을 먼저 말하면 같은 질문이 반복됐다.
+    """
+    rows: int | None = None
+    cols: int | None = None
+    for match in _TABLE_AXIS_PATTERN.finditer(text):
+        unit = match.group("unit_last") or match.group("unit_first")
+        raw_count = match.group("count_first") or match.group("count_last")
+        if not unit or not raw_count:
+            continue
+        count = int(raw_count)
+        if unit in _TABLE_ROW_UNITS and rows is None:
+            rows = max(1, min(100, count))
+        elif unit in _TABLE_COL_UNITS and cols is None:
+            cols = max(1, min(50, count))
+    return rows, cols
+
+
 def extract_create_table_slot_hints(message: str) -> dict[str, Any]:
     """
     create_table 멀티턴 슬롯필링용 힌트를 자연어에서 추출한다.
@@ -1131,25 +1213,39 @@ def extract_create_table_slot_hints(message: str) -> dict[str, Any]:
     if m:
         rows = max(1, min(100, int(m.group(1))))
         cols = max(1, min(50, int(m.group(2))))
+    if rows is None or cols is None:
+        axis_rows, axis_cols = _extract_axis_table_size(text)
+        rows = rows if rows is not None else axis_rows
+        cols = cols if cols is not None else axis_cols
 
     start_cell = _extract_range_ref(text)
     if start_cell and ":" in start_cell:
         start_cell = start_cell.split(":")[0]
 
-    # "금액, 장소, 날짜, 요건, 비고" 형태를 우선 처리한다.
-    headers: list[str] = []
-    header_source = re.sub(r"\d{1,3}\s*(?:\*|x|×)\s*\d{1,3}", "", text, flags=re.I)
+    # 따옴표로 감싼 목록이 있으면 그게 가장 확실한 헤더다.
+    # 쉼표 분해는 "'법인카드, 조교카드 이체 여부'"처럼 항목 안에 쉼표가 있으면 쪼개지고,
+    # "헤더에는 '날짜'"나 "'비용 유형' 이렇게 만들어줄 수 있어?"처럼 앞뒤 문장이 붙어 들어온다.
+    headers: list[str] = _extract_quoted_headers(text)
+    header_source = _TABLE_SIZE_SPEC_PATTERN.sub(" ", text)
     comma_tokens = [token.strip() for token in re.split(r"[,/|]", header_source) if token.strip()]
-    if len(comma_tokens) >= 2:
+    if not headers and len(comma_tokens) >= 2:
         filtered: list[str] = []
         for token in comma_tokens:
             t = token.strip()
             if not t:
                 continue
-            if re.fullmatch(r"\d{1,3}\s*(?:\*|x|×)\s*\d{1,3}", t.lower()):
+            # 크기 표기를 걷어내고 남은 "*", "로" 같은 찌꺼기는 헤더가 아니다.
+            if not re.search(r"[0-9A-Za-z가-힣]", t):
                 continue
-            t = re.sub(r"^(?:크기로|헤더는|헤더|컬럼은|컬럼)\s*", "", t, flags=re.I).strip()
-            t = re.sub(r"(?:표|테이블|table)\s*(?:로|을|를)?\s*(?:만들어줘|생성해줘|create.*)?$", "", t, flags=re.I).strip()
+            t = re.sub(r"^(?:크기로|헤더는|헤더|컬럼은|컬럼)\s*", "", t, flags=re.IGNORECASE).strip()
+            t = re.sub(
+                r"(?:표|테이블|table)\s*(?:로|을|를)?\s*(?:만들어줘|생성해줘|create.*)?$",
+                "",
+                t,
+                flags=re.IGNORECASE,
+            ).strip()
+            # "금액, 장소, 날짜 헤더로 표 만들어줘"의 마지막 토큰에 붙는 꼬리를 뗀다.
+            t = re.sub(r"\s*(?:헤더|컬럼|열)\s*(?:로|으로|는|은)?\s*$", "", t).strip()
             if t:
                 filtered.append(t)
         if len(filtered) >= 2:

@@ -222,8 +222,10 @@ python-sidecar/
 - 프론트: `React` + `Vite` + `Zustand` + `Tailwind`
 - 사이드카 API: `FastAPI` + `Pydantic` + `Uvicorn`
 - Excel 엔진:
-  - 기본(`EXCEL_LIVE_ENGINE=file`): `openpyxl` 파일 직접 편집. Excel이 설치돼 있지 않아도 동작한다.
-  - 보조(`EXCEL_LIVE_ENGINE=xlwings`): Windows COM / macOS appscript로 실행 중인 Excel 제어
+  - 기본(`EXCEL_LIVE_ENGINE=auto`): 실행 중인 Excel에 열린 문서가 있으면 `xlwings`, 없으면 `file`.
+    열려 있는 파일은 OS가 잠그기 때문에 `file` 엔진으로는 저장 자체가 불가능하다.
+  - `EXCEL_LIVE_ENGINE=file`: `openpyxl` 파일 직접 편집. Excel이 설치돼 있지 않아도 동작한다.
+  - `EXCEL_LIVE_ENGINE=xlwings`: Windows COM / macOS appscript로 실행 중인 Excel 제어
 - LLM/에이전트:
   - 로컬 추론: `Ollama`
   - 게이트웨이: `OpenClaw`
@@ -385,6 +387,46 @@ npm run tauri:dev
     - 예: `중복 지워줘` → `어떤 기준으로 중복 판단?` → `전화번호 기준`
     - 예: `완료 건수 세어줘` → `어떤 열 기준으로 셀까요?` → `B열 상태에서 완료 개수`
 
+### 플래너 에스컬레이션 사다리 (2026-08-10)
+
+`/excel-live/command`의 계획 수립은 **모델 한 대에 걸지 않는다.** 로컬 7B가 못 푼 요청을
+사용자에게 되묻는 대신 위 단계로 올린다. 소유 모듈은 `services/excel_planner_escalation.py`다.
+
+| 단계 | 이름 | 무엇을 하나 | 언제 넘어가나 |
+|---|---|---|---|
+| 0 | 규칙 | `parse_command_rule_based` · `_build_quick_action_plan` — LLM 없이 결정적 처리 | 확신 있는 매칭이 없을 때 |
+| 1 | 로컬 플래너 | 파인튜닝된 A.X 7B (`ax7bplanner-*`) | 계획이 **실행 직전 검증**을 통과하지 못할 때 |
+| 2 | 자가 수정 | 검증기가 낸 오류 문구를 프롬프트에 붙여 로컬에 1회 재시도 | 여전히 검증 실패 |
+| 3 | 강한 모델 | Claude 등으로 승격 (`get_strong_llm_service`) | 여전히 검증 실패 |
+| 4 | 되묻기 | 그때서야 사용자에게 질문 | — |
+
+설계상 중요한 점 세 가지:
+
+- **검증 실패도 승격 사유다.** JSON 파싱만 보면 "그럴듯하지만 실행 못 하는 계획"이 통과한다.
+  바인딩·검증까지 통과해야 성공으로 친다.
+- **활성 프로바이더를 갈아끼우지 않는다.** 3단계는 이 호출에서만 다른 서비스를 쓴다.
+  싱글턴을 바꾸면 그 사이 다른 요청까지 클라우드로 새어 나간다.
+- **키가 없으면 3단계를 조용히 건너뛴다.** 오프라인·로컬 전용 사용자가 막히면 안 된다.
+  `OFFICECLAW_DISABLE_STRONG_PLANNER=1`로 강제로 끌 수 있고, `OFFICECLAW_STRONG_MODEL`로 모델을 지정한다.
+
+이미 규칙 계획이나 슬롯 의도가 잡혀 있으면 2·3단계를 건너뛴다 — 어차피 폴백이 답할
+요청에 LLM을 더 태우면 지연만 늘어난다.
+
+#### 실패가 다음 학습 데이터가 된다
+
+승격·최종 실패는 전부 `logs/planner_escalations.jsonl`에 적재된다.
+로컬이 틀리고 상위 단계가 맞힌 순간이 가장 값진 증류 샘플이다.
+
+```bash
+# 큐 → 학습 후보 + 사람이 볼 미해결 목록
+python scripts/build_sft_from_escalations.py \
+    --output ../datasets/distill/excel_escalation_harvest_v1.jsonl \
+    --unsolved-output ../logs/planner_unsolved.jsonl
+```
+
+되묻기로 끝난 턴은 정답으로 수확하지 않는다 — 그걸 학습하면 "어려우면 물어봐라"를
+강화하게 되는데 원하는 건 그 반대다.
+
 ### Excel Live 지원 액션 (2026-07-07)
 
 - 기본: `list_workbooks`, `select_workbook`, `read_range`, `write_range`, `create_table`, `set_formula`, `save_workbook`
@@ -493,6 +535,50 @@ uv run python scripts/build_excel_distill_jsonl.py \
 현재 관측 이슈(복잡/러프 명령 안정화 대상):
 - 일부 러프 문장에서 슬롯 누락 시 `500` 응답(`filter_rows.value` 누락, `set_formula` 형식 누락) 발생
 - 긴 추론 케이스에서 `ReadTimeout`(8초) 빈도 존재
+
+### 플래너 학습셋 (planner_sft_v5, 2026-08-10)
+
+학습 데이터는 `scripts/build_planner_sft_jsonl.py`가 **추론과 똑같은 프롬프트**로 만든다.
+v3까지 이 파이프라인에는 세 가지 구멍이 있었고, v4·v5에서 차례로 막았다.
+
+| 문제 | 증상 | 고친 방법 |
+|---|---|---|
+| 프롬프트에 통합문서 상태가 없었다 (학습 0%, 추론 100%) | 시트·열 이름을 지어냄. 정답의 16.8%가 `Sales_Data` | `excel_workbook_fixtures.py`가 정답 계획과 아귀 맞는 다이제스트를 레코드마다 합성 |
+| 되묻기 정답이 0건 | 애매한 지시에도 무조건 실행 | `excel_clarify_cases.py`가 되묻기 1턴 + 답변 2턴 쌍을 생성 |
+| 액션 분포가 증류 로그 편향 그대로 | `pivot_table` 161건 vs `compare_ranges` 1건, **0건인 액션 3종** | `excel_action_coverage_cases.py`가 실행 가능한 49개 액션 전부에 바닥을 깔고, 빌더가 상위 액션에 상한을 건다 |
+
+v4 → v5 분포 변화 (`scripts/audit_planner_action_coverage.py`):
+
+| | v4 | v5 |
+|---|---|---|
+| 학습 예제 0건인 기능 | 3종 | **0종** |
+| 최소 / 최대 예제 수 | 0 / 161 | **16 / 66** |
+| 되묻기 비중 | 17.7% | 7.5% |
+| 통합문서 상태 포함 | 100% | 100% |
+
+커버리지 생성물은 **프로덕션 검증기를 그대로 통과**하는지 테스트한다
+(`tests/test_excel_action_coverage_cases.py`). 학습은 시켰는데 실행 단계에서 반려되는
+계획을 가르치는 것이 v1~v3의 반복된 실패였기 때문이다.
+
+```bash
+# 학습셋 재생성
+python scripts/build_planner_sft_jsonl.py \
+    --input ../datasets/distill/excel_distill_v1_verified_augmented.jsonl \
+            ../datasets/distill/planner_augment_v3.jsonl \
+            ../datasets/distill/excel_hard_manual_v1.jsonl \
+            ../datasets/distill/excel_new_tools_manual_v1.jsonl \
+            ../datasets/distill/excel_scenario_report_extract_v1.jsonl \
+    --output ../datasets/train/planner_sft_v5_train.jsonl \
+    --with-clarify --with-coverage --coverage-per-action 16 --max-per-action 40
+
+# 분포 감사
+python scripts/audit_planner_action_coverage.py \
+    --jsonl ../datasets/train/planner_sft_v5_train.jsonl --output ../scratch/coverage_v5.json
+```
+
+> **학습 중 GPU 주의**: 4060 Ti 16GB에서 QLoRA 학습은 약 10.5GB를 쓴다.
+> Ollama가 플래너 모델을 물고 있으면(약 5GB) VRAM이 꽉 차 시스템 메모리로 페이징되고,
+> 스텝 시간이 55초 → 250초로 무너진다. 학습 전에 `Stop-Process -Name ollama*`로 내려둘 것.
 
 ### 복잡 작업 100% 로드맵 (다음 단계)
 

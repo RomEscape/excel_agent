@@ -99,6 +99,30 @@ def get_planner_model_name(*, fallback: str | None = None) -> str:
     return str(_DEFAULT_CONFIG.get("model", "") or "").strip()
 
 
+def get_macro_model_name(*, fallback: str | None = None) -> str:
+    """
+    매크로 분해 전용 모델명을 반환한다.
+
+    플래너 모델(`ax7bplanner-*`)은 계획 JSON만 뱉도록 파인튜닝돼 있어 "요청을 하위 명령
+    문장으로 펼쳐라"는 다른 태스크에는 맞지 않는다. 그래서 planner_model이 아니라
+    일반 대화 모델을 기본으로 쓴다.
+    우선순위:
+      1) OFFICECLAW_MACRO_MODEL 환경변수
+      2) llm_config.json의 model
+      3) fallback / 기본값
+    """
+    env_model = str(os.getenv("OFFICECLAW_MACRO_MODEL", "")).strip()
+    if env_model:
+        return env_model
+    cfg = load_llm_config()
+    cfg_model = str(cfg.get("model", "") or "").strip()
+    if cfg_model:
+        return cfg_model
+    if fallback:
+        return str(fallback).strip()
+    return str(_DEFAULT_CONFIG.get("model", "") or "").strip()
+
+
 # ── Abstract provider ─────────────────────────────────────────────────────
 
 
@@ -228,3 +252,29 @@ def reload_llm_service() -> LLMService:
     global _llm_service_instance
     _llm_service_instance = None
     return get_llm_service()
+
+
+# ── 승격용 강한 모델 ───────────────────────────────────────────────────────
+#
+# 활성 프로바이더와 **별개**로 유지한다. 평소 대화는 로컬(Ollama)로 돌리면서
+# 계획 수립이 막혔을 때만 강한 모델로 올려야 하는데, 싱글턴 프로바이더를
+# 갈아끼우면 그 사이 들어온 다른 요청까지 클라우드로 새어 나간다.
+
+_strong_llm_service_instance: LLMService | None = None
+
+
+def get_strong_llm_service() -> LLMService | None:
+    """에스컬레이션 단계에서 쓸 강한 모델. 사용할 수 없으면 None."""
+    global _strong_llm_service_instance
+    if _strong_llm_service_instance is None:
+        try:
+            _strong_llm_service_instance = LLMService(ClaudeProvider())
+        except Exception:  # noqa: BLE001 - 키 없음 등은 정상 상황(로컬 전용 사용자)
+            logger.info("강한 모델 프로바이더를 초기화하지 못했습니다 — 로컬 단계까지만 사용합니다.")
+            return None
+    return _strong_llm_service_instance
+
+
+def get_strong_planner_model_name() -> str:
+    """승격 시 쓸 모델명. 지정이 없으면 프로바이더 기본값을 쓴다."""
+    return str(os.environ.get("OFFICECLAW_STRONG_MODEL", "")).strip()

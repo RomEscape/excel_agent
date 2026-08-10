@@ -17,11 +17,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
+import importlib
 import math
 import os
 from pathlib import Path
 import re
 import shutil
+import time
 from typing import Any
 
 from office_claw_sidecar.services.excel_header_lexicon import resolve_header
@@ -650,8 +652,17 @@ class ExcelLiveService:
         operator: str = "==",
         value: Any = None,
         has_header: bool = True,
+        mode: str = "keep",
     ) -> dict[str, Any]:
-        """범위에 자동 필터를 적용한다."""
+        """조건에 맞는 행만 남기고 나머지 행을 지운다.
+
+        `mode="remove"`면 반대로 조건에 맞는 행을 지운다 — "취소된 주문은 빼줘"처럼
+        제외를 요청한 문장용이다.
+
+        자동필터로 숨기기만 하면 파일 엔진과 같은 액션 이름이 다른 결과를 내고,
+        사용자가 저장해 남기면 숨겨진 행이 그대로 살아 있다. 두 엔진이 같은 계약을
+        지키도록 실제로 행을 지운다.
+        """
         target_id = workbook_id or self._selected_workbook_id
         if not target_id:
             raise WorkbookNotFoundError("workbook_id가 필요합니다.")
@@ -660,35 +671,42 @@ class ExcelLiveService:
         rng = self._resolve_target_range(sheet, target_range)
         values = self._normalize_values(rng.options(ndim=2).value)
         if not values:
-            return {"filtered_rows": 0, "address": str(rng.address)}
+            return {"filtered_rows": 0, "removed_rows": 0, "address": str(rng.address)}
 
         col_count = max(len(row) for row in values)
         normalized = [row + [None] * (col_count - len(row)) for row in values]
         start_col = int(getattr(rng, "column", 1) or 1)
+        start_row = int(getattr(rng, "row", 1) or 1)
         header_row = normalized[0] if has_header else None
         field_idx = self._resolve_column_selector(column, start_col, col_count, header_row)
         op = str(operator or "==").strip()
-        criteria = self._build_filter_criteria(op, value)
+        drop_matches = str(mode or "keep").strip().lower() == "remove"
 
-        api_range = getattr(rng, "api", None)
-        if api_range is None:
-            raise ExcelLiveError("필터를 적용할 수 없습니다. Excel API 객체를 찾지 못했습니다.")
-        try:
-            api_range.AutoFilter(Field=field_idx + 1, Criteria1=criteria)
-        except Exception as exc:  # pragma: no cover - COM 환경 의존
-            raise ExcelLiveError(f"필터 적용 실패: {exc}") from exc
+        body_offset = 1 if has_header else 0
+        kept = 0
+        doomed_rows: list[int] = []
+        for offset, row in enumerate(normalized[body_offset:]):
+            matches = self._matches_generic_condition(row[field_idx], op, value)
+            if matches != drop_matches:
+                kept += 1
+            else:
+                doomed_rows.append(start_row + body_offset + offset)
 
-        body_rows = normalized[1:] if has_header else normalized
-        matched = 0
-        for row in body_rows:
-            if self._matches_generic_condition(row[field_idx], op, value):
-                matched += 1
+        # 아래에서 위로 지워야 남은 행의 번호가 밀리지 않는다.
+        for row_index in reversed(doomed_rows):
+            try:
+                sheet.api.Rows(row_index).Delete()
+            except Exception as exc:  # pragma: no cover - COM 환경 의존
+                raise ExcelLiveError(f"행 삭제 실패: {exc}") from exc
+
         return {
-            "filtered_rows": matched,
+            "filtered_rows": kept,
+            "removed_rows": len(doomed_rows),
             "address": str(rng.address),
             "column_index": field_idx + 1,
             "operator": op,
             "value": value,
+            "mode": "remove" if drop_matches else "keep",
         }
 
     def read_computed_range(self, workbook_id: str | None, sheet_name: str, range_ref: str) -> dict[str, Any]:
@@ -1629,10 +1647,12 @@ class ExcelLiveService:
         sheet_name: str | None,
     ) -> str:
         """
-        현재 Excel 선택 범위를 A1 표기 문자열로 반환한다.
+        범위를 말하지 않은 명령이 대상으로 삼을 영역을 A1 표기로 반환한다.
 
-        - 사용자가 범위를 말하지 않은 자연어 명령의 기본 타깃으로 사용.
-        - 선택 정보를 얻지 못하면 A1로 폴백.
+        사용자가 여러 칸을 실제로 끌어서 선택했으면 그 선택을 존중한다. 하지만 커서가
+        한 칸에 놓여 있을 뿐이면 "범위를 지정하지 않았다"는 뜻이므로, Excel이 정렬·필터에서
+        하듯 그 셀을 둘러싼 데이터 영역으로 넓힌다. 한 칸을 그대로 돌려주면 정렬·집계·중복제거가
+        한 칸에만 적용된 채 성공으로 보고돼, 화면은 그대로인데 "처리했습니다"만 남는다.
         """
         target_id = workbook_id or self._selected_workbook_id
         if not target_id:
@@ -1640,23 +1660,58 @@ class ExcelLiveService:
 
         wb = self._find_workbook(target_id)
         sheet = self._find_sheet(wb, sheet_name) if sheet_name else wb.sheets.active
-        try:
-            app = self._app()
-            selection = getattr(app, "selection", None)
-            if selection is None:
-                return "A1"
-            address = str(getattr(selection, "address", "") or "")
-            cleaned = self._normalize_address_ref(address)
-            if cleaned:
-                return cleaned
-        except Exception:
-            pass
 
+        selected = self._selection_ref_on_sheet(sheet)
+        if ":" in selected:
+            return selected
+
+        return self._data_region_ref(sheet, selected) or selected or "A1"
+
+    def _selection_ref_on_sheet(self, sheet: Any) -> str:
+        """앱의 현재 선택이 이 시트의 것일 때만 A1 표기로 돌려준다.
+
+        선택은 사용자가 마지막으로 클릭한 곳이라 다른 통합문서·다른 시트일 수 있다.
+        그걸 그대로 쓰면 엉뚱한 시트의 주소로 편집하게 된다.
+        """
         try:
-            active = sheet.range("A1")
-            return self._normalize_address_ref(str(getattr(active, "address", "") or "")) or "A1"
-        except Exception:
-            return "A1"
+            selection = getattr(self._app(), "selection", None)
+            if selection is None:
+                return ""
+            sel_sheet = getattr(selection, "sheet", None)
+            if sel_sheet is not None:
+                if str(getattr(sel_sheet, "name", "")) != str(getattr(sheet, "name", "")):
+                    return ""
+                sel_book = getattr(sel_sheet, "book", None)
+                target_book = getattr(sheet, "book", None)
+                if (
+                    sel_book is not None
+                    and target_book is not None
+                    and str(getattr(sel_book, "name", "")) != str(getattr(target_book, "name", ""))
+                ):
+                    return ""
+            return self._normalize_address_ref(str(getattr(selection, "address", "") or ""))
+        except Exception:  # noqa: BLE001 - COM 실패는 '선택 없음'으로 본다
+            return ""
+
+    def _data_region_ref(self, sheet: Any, anchor: str) -> str:
+        """기준 셀을 둘러싼 데이터 영역. 못 구하면 시트 사용 영역으로 떨어진다."""
+        for ref in (anchor or "A1", "A1"):
+            try:
+                region = getattr(sheet.range(ref), "current_region", None)
+                if region is None:
+                    continue
+                address = self._normalize_address_ref(str(getattr(region, "address", "") or ""))
+                if ":" in address:
+                    return address
+            except Exception:  # noqa: BLE001 - 기준 셀이 비었으면 다음 후보로 넘어간다
+                continue
+        try:
+            used = getattr(sheet, "used_range", None)
+            if used is None:
+                return ""
+            return self._normalize_address_ref(str(getattr(used, "address", "") or ""))
+        except Exception:  # noqa: BLE001
+            return ""
 
     def get_used_range_ref(
         self,
@@ -2082,23 +2137,53 @@ class ExcelLiveService:
 _excel_live_service: ExcelLiveService | None = None
 _excel_live_service_engine: str | None = None
 
+# 실행 중인 Excel 탐지 결과 캐시. COM 왕복이 비싸서 짧게 재사용한다.
+_EXCEL_PROBE_TTL_SEC = 5.0
+_excel_probe_cache: tuple[float, bool] | None = None
+
+
+def _excel_app_has_open_workbook() -> bool:
+    """실행 중인 Excel에 열린 통합문서가 있는지 본다.
+
+    열려 있다면 그 파일은 OS가 잠근 상태라 openpyxl로는 저장이 불가능하다.
+    이 경우 Excel을 직접 제어하는 xlwings만이 편집을 반영할 수 있다.
+    """
+    global _excel_probe_cache
+    now = time.monotonic()
+    if _excel_probe_cache is not None and now - _excel_probe_cache[0] < _EXCEL_PROBE_TTL_SEC:
+        return _excel_probe_cache[1]
+
+    try:
+        xw = importlib.import_module("xlwings")
+        found = any(True for app in xw.apps for _ in app.books)
+    except Exception:  # noqa: BLE001 - COM/미설치 등 어떤 실패든 파일 엔진으로 떨어지면 된다
+        found = False
+
+    _excel_probe_cache = (now, found)
+    return found
+
 
 def get_excel_live_service() -> ExcelLiveService:
     """
     Excel Live 서비스 싱글톤 반환.
 
     환경변수:
-    - EXCEL_LIVE_ENGINE=file (기본): openpyxl로 파일을 직접 편집. Excel 앱이 없어도 된다.
-    - EXCEL_LIVE_ENGINE=xlwings: 실행 중인 Excel 앱을 제어. 피벗·매크로 등 앱 기능이 필요할 때.
+    - EXCEL_LIVE_ENGINE=auto (기본): Excel에 열린 문서가 있으면 xlwings, 없으면 file.
+      사용자가 엑셀을 띄워 놓고 명령하는 게 정상 사용 흐름이라 이때 file 엔진을 쓰면
+      OS 파일 잠금 때문에 저장이 통째로 실패한다. 그래서 실행 환경을 보고 고른다.
+    - EXCEL_LIVE_ENGINE=file: openpyxl로 파일을 직접 편집. Excel 앱이 없어도 된다.
+    - EXCEL_LIVE_ENGINE=xlwings: 항상 실행 중인 Excel 앱을 제어.
 
     예전 설정 파일이 쓰던 "pandas"는 "file"과 같은 뜻으로 받는다.
     """
     global _excel_live_service, _excel_live_service_engine
-    engine = str(os.getenv("EXCEL_LIVE_ENGINE", "file") or "file").strip().lower()
+    engine = str(os.getenv("EXCEL_LIVE_ENGINE", "auto") or "auto").strip().lower()
     if engine == "pandas":
         engine = "file"
-    if engine not in {"xlwings", "file"}:
-        engine = "file"
+    if engine not in {"xlwings", "file", "auto"}:
+        engine = "auto"
+    if engine == "auto":
+        engine = "xlwings" if _excel_app_has_open_workbook() else "file"
 
     if _excel_live_service is None or _excel_live_service_engine != engine:
         if engine == "file":

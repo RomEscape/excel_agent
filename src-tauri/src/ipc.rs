@@ -789,6 +789,79 @@ pub async fn excel_live_command(
     read_response(resp).await
 }
 
+/// 승인된 매크로를 한 단계 진행한다.
+///
+/// 전체를 한 번에 돌리지 않고 프론트가 한 걸음씩 당기는 구조라, 타임아웃은 명령 하나
+/// 기준으로 잡는다.
+#[tauri::command]
+pub async fn excel_live_macro_step(
+    state: State<'_, Mutex<SidecarState>>,
+    macro_id: String,
+    skip_indices: Option<Vec<i64>>,
+    answer: Option<String>,
+    skip_current: Option<bool>,
+) -> Result<String, String> {
+    let (url, client, token) = {
+        let s = state.lock().map_err(|e| e.to_string())?;
+        (
+            sidecar_url(&s, "/excel-live/macro/step"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
+    };
+
+    let body = serde_json::json!({
+        "macro_id": macro_id,
+        "skip_indices": skip_indices.unwrap_or_default(),
+        "answer": answer,
+        "skip_current": skip_current.unwrap_or(false),
+    });
+
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(180))
+        .send()
+        .await
+        .map_err(|e| format!("매크로 단계 실행 실패: {}", e))?;
+
+    read_response(resp).await
+}
+
+/// 매크로를 중단한다. rollback이면 매크로 시작 시점 백업으로 되돌린다.
+#[tauri::command]
+pub async fn excel_live_macro_abort(
+    state: State<'_, Mutex<SidecarState>>,
+    macro_id: String,
+    rollback: Option<bool>,
+) -> Result<String, String> {
+    let (url, client, token) = {
+        let s = state.lock().map_err(|e| e.to_string())?;
+        (
+            sidecar_url(&s, "/excel-live/macro/abort"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
+    };
+
+    let body = serde_json::json!({
+        "macro_id": macro_id,
+        "rollback": rollback.unwrap_or(false),
+    });
+
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(120))
+        .send()
+        .await
+        .map_err(|e| format!("매크로 중단 실패: {}", e))?;
+
+    read_response(resp).await
+}
+
 #[tauri::command]
 pub async fn excel_live_submit_approval(
     state: State<'_, Mutex<SidecarState>>,

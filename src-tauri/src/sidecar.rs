@@ -267,7 +267,7 @@ fn spawn_dev_sidecar_process(port: u16, auth_token: &str) -> Result<(), String> 
         .ok()
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| "file".to_string());
+        .unwrap_or_else(|| "auto".to_string());
     cmd.env("EXCEL_LIVE_ENGINE", excel_engine);
 
     if let Some(token) = load_gateway_token_from_openclaw_config() {

@@ -56,6 +56,7 @@ class TrainConfig:
     run_name: str = "ax7b-planner-qlora-v1"
     seed: int = 42
     train_jsonl: str = "datasets/train/ax7b_planner_sft_train.jsonl"
+    eval_jsonl: str = ""
     output_dir: str = "artifacts/ax7b-planner-lora"
     base_model: str = "skt/A.X-4.0-Light"
     max_seq_length: int = 2048
@@ -86,6 +87,7 @@ class TrainConfig:
     logging_steps: int = 20
     save_steps: int = 200
     save_total_limit: int = 3
+    eval_steps: int = 0
     gradient_checkpointing: bool = True
     bf16: bool = True
     fp16: bool = False
@@ -173,11 +175,13 @@ class JsonlSFTDataset:
             full_text = prompt_text + answer + (tokenizer.eos_token or "")
 
             prompt_len = len(tokenizer(prompt_text, add_special_tokens=False)["input_ids"])
+            # 패딩은 배치 단위로 최댓값까지만 채운다(PadToLongestCollator).
+            # max_seq_length까지 미리 채우면 4060 Ti 기준 스텝당 10% 가까이를
+            # 의미 없는 패딩 토큰의 forward/backward에 쓰게 된다.
             encoded = tokenizer(
                 full_text,
                 truncation=True,
                 max_length=max_seq_length,
-                padding="max_length",
                 add_special_tokens=False,
                 return_tensors="pt",
             )
@@ -207,6 +211,32 @@ class JsonlSFTDataset:
 
     def __getitem__(self, idx: int) -> dict[str, Any]:
         return self.items[idx]
+
+
+class PadToLongestCollator:
+    """배치 안에서 가장 긴 샘플 길이까지만 오른쪽 패딩한다."""
+
+    def __init__(self, pad_token_id: int):
+        self.pad_token_id = int(pad_token_id)
+
+    def __call__(self, features: list[dict[str, Any]]) -> dict[str, Any]:
+        import torch
+
+        longest = max(int(f["input_ids"].numel()) for f in features)
+        input_ids, attention_mask, labels = [], [], []
+        for feature in features:
+            gap = longest - int(feature["input_ids"].numel())
+            pad = (0, gap)
+            input_ids.append(
+                torch.nn.functional.pad(feature["input_ids"], pad, value=self.pad_token_id)
+            )
+            attention_mask.append(torch.nn.functional.pad(feature["attention_mask"], pad, value=0))
+            labels.append(torch.nn.functional.pad(feature["labels"], pad, value=-100))
+        return {
+            "input_ids": torch.stack(input_ids),
+            "attention_mask": torch.stack(attention_mask),
+            "labels": torch.stack(labels),
+        }
 
 
 def _dtype_from_name(torch_mod: Any, name: str) -> Any:
@@ -261,9 +291,10 @@ def run_train(config: TrainConfig) -> None:
         quantization_config=quant_cfg,
         device_map="auto",
     )
-    if bool(config.gradient_checkpointing):
-        model.gradient_checkpointing_enable()
-    model = prepare_model_for_kbit_training(model)
+    # prepare_model_for_kbit_training은 기본값이 use_gradient_checkpointing=True라,
+    # 넘겨주지 않으면 설정에서 껐어도 다시 켜진다.
+    use_ckpt = bool(config.gradient_checkpointing)
+    model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=use_ckpt)
 
     lora_cfg = LoraConfig(
         r=int(config.lora_r),
@@ -278,6 +309,17 @@ def run_train(config: TrainConfig) -> None:
     dataset = JsonlSFTDataset(rows=rows, tokenizer=tokenizer, max_seq_length=int(config.max_seq_length))
     out_dir = Path(config.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # 홀드아웃 손실이 없으면 과적합 시점을 알 수 없어 어느 체크포인트를 쓸지 감으로 정하게 된다.
+    eval_dataset = None
+    eval_steps = int(config.eval_steps)
+    eval_path = Path(_text(config.eval_jsonl)) if _text(config.eval_jsonl) else None
+    if eval_path is not None and eval_path.exists() and eval_steps > 0:
+        eval_rows = _read_sft_rows(eval_path)
+        if eval_rows:
+            eval_dataset = JsonlSFTDataset(
+                rows=eval_rows, tokenizer=tokenizer, max_seq_length=int(config.max_seq_length)
+            )
 
     train_args = TrainingArguments(
         output_dir=str(out_dir),
@@ -296,12 +338,17 @@ def run_train(config: TrainConfig) -> None:
         optim=_text(config.optim) or "paged_adamw_8bit",
         remove_unused_columns=False,
         report_to=[],
+        eval_strategy="steps" if eval_dataset is not None else "no",
+        eval_steps=eval_steps if eval_dataset is not None else None,
+        per_device_eval_batch_size=1,
     )
 
     trainer = Trainer(
         model=model,
         args=train_args,
         train_dataset=dataset,  # type: ignore[arg-type]
+        eval_dataset=eval_dataset,  # type: ignore[arg-type]
+        data_collator=PadToLongestCollator(pad_token_id=tokenizer.pad_token_id),
     )
     trainer.train()
     trainer.save_model(str(out_dir))

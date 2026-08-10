@@ -53,3 +53,40 @@ def test_plain_sheet_creation_keeps_the_quick_path():
     plan = _build_quick_action_plan(message, None)
     assert plan and plan[0]["action"] == "excel_live.create_sheet"
     assert _quick_plan_underfits_message(plan[0]["action"], message) is False
+
+
+def test_header_list_writes_the_first_row_instead_of_adding_columns():
+    """이미 만든 표에 머리글을 넣어달라는 문장. LLM에 맡기면 이름마다 열을 덧붙인다."""
+    message = (
+        "헤더에는 '날짜', '사용 목적', '사용처', '법인카드 사용내역서 여부', "
+        "'금액', '법인카드, 조교카드 이체 여부', '비용 유형' 이렇게 목록을 만들어줄 수 있어?"
+    )
+    plan = _build_quick_action_plan(message, None)
+
+    assert plan and plan[0]["action"] == "excel_live.write_range"
+    assert plan[0]["params"]["start_cell"] == "__USED_RANGE__"
+    assert plan[0]["params"]["values_2d"] == [
+        [
+            "날짜",
+            "사용 목적",
+            "사용처",
+            "법인카드 사용내역서 여부",
+            "금액",
+            "법인카드, 조교카드 이체 여부",
+            "비용 유형",
+        ]
+    ]
+
+
+def test_header_list_respects_an_explicit_start_cell():
+    plan = _build_quick_action_plan("B2부터 헤더는 이름, 금액, 날짜로 넣어줘", None)
+
+    assert plan and plan[0]["action"] == "excel_live.write_range"
+    assert plan[0]["params"]["start_cell"] == "B2"
+
+
+def test_table_creation_with_headers_still_goes_to_the_table_slot():
+    """표를 새로 만들라는 문장은 create_table 경로가 크기까지 챙겨야 한다."""
+    plan = _build_quick_action_plan("금액, 장소, 날짜 헤더로 표 만들어줘", None)
+
+    assert not plan or plan[0]["action"] != "excel_live.write_range"

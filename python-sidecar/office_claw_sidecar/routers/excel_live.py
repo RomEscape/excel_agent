@@ -8,7 +8,7 @@ import re
 import threading
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
@@ -17,6 +17,16 @@ from pydantic import BaseModel, Field
 
 from office_claw_sidecar.models.approval import ApprovalRequest, ApprovalResponse
 from office_claw_sidecar.services.audit_service import AuditService
+from office_claw_sidecar.services.decision_trace import (
+    note as trace_note,
+)
+from office_claw_sidecar.services.decision_trace import (
+    plan_summary as trace_plan,
+)
+from office_claw_sidecar.services.decision_trace import (
+    set_outcome_from_response,
+    turn_scope,
+)
 from office_claw_sidecar.services.excel_actions import execute_excel_action
 from office_claw_sidecar.services.excel_header_lexicon import (
     find_header_mentions,
@@ -25,6 +35,7 @@ from office_claw_sidecar.services.excel_header_lexicon import (
 from office_claw_sidecar.services.excel_live_agent import (
     COLUMN_LETTER_PATTERN,
     RANGE_REF_PATTERN,
+    clarify_question_from_plan,
     extract_create_table_slot_hints,
     parse_command_plan_with_llm,
     parse_command_rule_based,
@@ -44,6 +55,11 @@ from office_claw_sidecar.services.excel_live_plan_validator import (
     ValidationContext,
     validate_plan,
 )
+from office_claw_sidecar.services.excel_planner_escalation import (
+    EscalationResult,
+    plan_with_escalation,
+    record_escalation,
+)
 from office_claw_sidecar.services.excel_live_service import (
     AmbiguousWorkbookError,
     ExcelConnectionError,
@@ -54,11 +70,17 @@ from office_claw_sidecar.services.excel_live_service import (
     get_excel_live_service,
 )
 from office_claw_sidecar.services.excel_live_table_presets import get_table_preset
+from office_claw_sidecar.services.excel_macro_planner import (
+    MacroStepPlan,
+    decompose_macro_request,
+    looks_like_macro_request,
+)
 from office_claw_sidecar.services.excel_param_binder import (
     bind_plan_steps,
     resolve_sheet_from_message,
     sheet_entry,
 )
+from office_claw_sidecar.services.excel_planner_prompt import render_conversation_history
 from office_claw_sidecar.services.excel_result_verifier import verify_effect
 from office_claw_sidecar.services.excel_workbook_digest import (
     build_workbook_digest,
@@ -68,7 +90,12 @@ from office_claw_sidecar.services.excel_workbook_digest import (
 from office_claw_sidecar.services.korean_number import (
     parse_condition as parse_korean_condition,
 )
-from office_claw_sidecar.services.llm_service import LLMService, get_llm_service
+from office_claw_sidecar.services.llm_service import (
+    LLMService,
+    get_llm_service,
+    get_macro_model_name,
+    get_planner_model_name,
+)
 from office_claw_sidecar.services.tool_registry import PermissionLevel, get_tool
 from office_claw_sidecar.services.user_harness_service import (
     build_personalization_prompt,
@@ -95,6 +122,27 @@ class ExcelLiveActionRequest(BaseModel):
     workbook_id: str | None = None
     sheet_name: str | None = None
     approve: bool = False
+
+
+class ExcelLiveMacroStepRequest(BaseModel):
+    macro_id: str = Field(..., min_length=1, description="매크로 실행 ID")
+    skip_indices: list[int] = Field(
+        default_factory=list,
+        description="첫 호출에서만 반영되는 제외 항목 번호(1-based)",
+    )
+    answer: str | None = Field(
+        None,
+        description="되묻기에 대한 사용자 답변. 있으면 멈춘 단계를 그 답으로 재개한다.",
+    )
+    skip_current: bool = Field(
+        False,
+        description="멈춰 선 단계를 건너뛰고 다음으로 진행할지 여부",
+    )
+
+
+class ExcelLiveMacroAbortRequest(BaseModel):
+    macro_id: str = Field(..., min_length=1, description="매크로 실행 ID")
+    rollback: bool = Field(False, description="매크로 시작 시점 백업으로 되돌릴지 여부")
 
 
 class ExcelLiveRestoreLastRequest(BaseModel):
@@ -132,6 +180,7 @@ class PendingCreateTableSlots:
     start_cell: str | None = None
     template_key: str | None = None
     template_follow_up_question: str | None = None
+    ask_count: int = 0
     created_at_ts: float = 0.0
     updated_at_ts: float = 0.0
 
@@ -148,6 +197,62 @@ class PendingExcelOperationSlots:
 
 
 @dataclass
+class PendingClarification:
+    """플래너가 스스로 되물은 질문 한 건.
+
+    다음 턴의 문장("금액 열")은 그 질문에 대한 답변이라 그것만 보면 무슨 작업인지 알 수 없다.
+    원래 요청과 질문을 함께 프롬프트로 돌려줘야 계획이 완성된다.
+    """
+
+    session_id: str
+    original_message: str
+    question: str
+    ask_count: int = 1
+    created_at_ts: float = 0.0
+
+
+@dataclass
+class MacroStepState:
+    """매크로 하위 명령 하나의 진행 상태."""
+
+    index: int
+    command: str
+    destructive: bool = False
+    warnings: list[str] = field(default_factory=list)
+    status: str = "pending"  # pending | done | failed | skipped
+    action: str = ""
+    detail: str = ""
+
+
+@dataclass
+class MacroRun:
+    """승인받은 매크로 한 건. 프론트가 /macro/step으로 한 걸음씩 당겨 쓴다."""
+
+    macro_id: str
+    message: str
+    user_id: str | None
+    session_id: str | None
+    workbook_id: str | None
+    sheet_name: str | None
+    steps: list[MacroStepState]
+    cursor: int = 0  # 다음에 실행할 0-based 위치
+    status: str = "planned"  # planned | running | halted | done | aborted
+    backup: dict[str, Any] | None = None
+    follow_up_question: str = ""
+    created_at_ts: float = 0.0
+    updated_at_ts: float = 0.0
+
+    @property
+    def step_session_id(self) -> str:
+        """하위 명령이 공유하는 세션 키.
+
+        되묻기 슬롯이 이 키에 쌓이므로, 사용자의 답변도 같은 키로 보내야 이어진다.
+        원래 채팅 세션과 섞으면 매크로가 끝난 뒤에도 슬롯이 남는다.
+        """
+        return f"excel-live::macro::{self.macro_id}"
+
+
+@dataclass
 class ActionRollbackSnapshot:
     action: str
     workbook_id: str
@@ -159,10 +264,18 @@ class ActionRollbackSnapshot:
 _pending_approvals: dict[str, PendingExcelApproval] = {}
 _pending_create_table_slots: dict[str, PendingCreateTableSlots] = {}
 _pending_operation_slots: dict[str, PendingExcelOperationSlots] = {}
+_pending_clarifications: dict[str, PendingClarification] = {}
+# 되묻기를 이만큼 연달아 하면 더 묻지 않고 가장 그럴듯한 대상으로 실행한다.
+# 질문만 주고받는 대화는 아무것도 안 하는 것과 같다.
+_MAX_CONSECUTIVE_CLARIFICATIONS = 2
 _recent_range_by_workbook: dict[str, str] = {}
 # 세션별 직전 집계 결과 시트. "그 결과로 그래프도" 같은 다음 턴이 원본 대신 집계표를 그리게 한다.
 _last_aggregate_sheet: dict[str, str] = {}
 _SLOT_TTL_SECONDS = 300
+# 승인 대기·진행 중인 매크로. 슬롯보다 오래 사는데, 18단계를 사람이 확인하며 진행하면
+# 5분으로는 모자라기 때문이다.
+_macro_runs: dict[str, MacroRun] = {}
+_MACRO_TTL_SECONDS = 600
 
 
 def _env_float(name: str, default: float, minimum: float) -> float:
@@ -185,6 +298,10 @@ def _env_int(name: str, default: int, minimum: int) -> int:
         return max(minimum, int(default))
 
 
+# 분해는 계획보다 긴 출력을 낸다 — 실측(A.X-4.0-Light, 20단계)에서 25초가 걸렸으므로
+# 부하가 걸린 상태를 감안해 넉넉히 잡는다. 넘기면 매크로를 포기하고 기존 단일 명령
+# 경로로 떨어진다.
+_MACRO_DECOMPOSE_TIMEOUT_SECONDS = _env_float("EXCEL_LIVE_MACRO_TIMEOUT_SECONDS", 90.0, 5.0)
 _COMMAND_PARSE_TIMEOUT_SECONDS = _env_float("EXCEL_LIVE_PARSE_TIMEOUT_SECONDS", 10.0, 3.0)
 _COMMAND_PARSE_MAX_ATTEMPTS = _env_int("EXCEL_LIVE_PARSE_MAX_ATTEMPTS", 2, 1)
 _COMMAND_PARSE_RETRY_BACKOFF_SECONDS = _env_float(
@@ -462,6 +579,37 @@ def _split_sheet_qualified_range(service, workbook_id: str | None, range_ref: st
         if str(name).strip().lower() == prefix.lower():
             return str(name), cell_part
     return "", cell_part
+
+
+def _edit_target_problem(workbook_id: str | None, sheet_name: str | None) -> str:
+    """편집 대상이 실제로 존재하는지 확인하고, 아니면 되물을 문장을 만든다.
+
+    플래너는 원문에 나온 낱말을 시트 이름으로 그대로 옮겨 적는다("학과운영비 작업" →
+    sheet_name="학과운영비"). 그 시트가 없어도 승인 카드는 떠 버리고, 사용자가 승인한
+    뒤에야 404로 죽는다. 승인을 요청하기 전에 여기서 걸러야 한다.
+    """
+    target_sheet = str(sheet_name or "").strip()
+    if not target_sheet:
+        return ""
+    service = get_excel_live_service()
+    try:
+        resolved_wb = _resolve_workbook_id(service, workbook_id)
+    except ExcelLiveError as exc:
+        return f"{exc} 작업할 파일을 먼저 열거나 선택해 주세요."
+    except Exception:
+        return ""
+    try:
+        sheets = [str(name) for name in (service.list_sheets(resolved_wb).get("sheets") or [])]
+    except ExcelLiveError as exc:
+        return f"{exc} 작업할 파일을 먼저 열거나 선택해 주세요."
+    except Exception:
+        return ""
+    if not sheets or target_sheet in sheets:
+        return ""
+    return (
+        f"'{target_sheet}' 시트를 찾을 수 없습니다. 어느 시트에 작업할까요? "
+        f"현재 시트: {', '.join(sheets[:8])}"
+    )
 
 
 def _resolve_workbook_id(service, workbook_id: str | None) -> str:
@@ -743,6 +891,59 @@ def _cleanup_expired_operation_slots() -> None:
     ]
     for key in expired_keys:
         _pending_operation_slots.pop(key, None)
+
+
+def _cleanup_expired_clarifications() -> None:
+    now = time.time()
+    expired = [
+        key
+        for key, pending in _pending_clarifications.items()
+        if (now - float(pending.created_at_ts or now)) > _SLOT_TTL_SECONDS
+    ]
+    for key in expired:
+        _pending_clarifications.pop(key, None)
+
+
+def _render_conversation_history(pending: PendingClarification | None) -> str:
+    if pending is None:
+        return ""
+    return render_conversation_history(pending.original_message, pending.question)
+
+
+def _cleanup_expired_macro_runs() -> None:
+    now = time.time()
+    expired = [
+        key
+        for key, run in _macro_runs.items()
+        if (now - float(run.updated_at_ts or run.created_at_ts or now)) > _MACRO_TTL_SECONDS
+    ]
+    for key in expired:
+        _macro_runs.pop(key, None)
+
+
+def _macro_snapshot(run: MacroRun) -> dict[str, Any]:
+    """프론트가 카드를 그리는 데 필요한 만큼만 담는다."""
+    done = sum(1 for step in run.steps if step.status == "done")
+    return {
+        "macro_id": run.macro_id,
+        "status": run.status,
+        "total": len(run.steps),
+        "completed": done,
+        "cursor": run.cursor + 1 if run.cursor < len(run.steps) else len(run.steps),
+        "steps": [
+            {
+                "index": step.index,
+                "command": step.command,
+                "destructive": step.destructive,
+                "warnings": list(step.warnings),
+                "status": step.status,
+                "action": step.action,
+                "detail": step.detail,
+            }
+            for step in run.steps
+        ],
+        "backup_path": str((run.backup or {}).get("backup_path") or ""),
+    }
 
 
 def _quick_color_hex(word: str) -> str:
@@ -1634,6 +1835,34 @@ def _extract_output_sheet_from_text(text: str) -> str | None:
     return mentions[-1]
 
 
+_HEADER_INTENT_PATTERN = re.compile(r"헤더|머리글|컬럼\s*명|열\s*이름|header", re.IGNORECASE)
+_TABLE_CREATE_INTENT_PATTERN = re.compile(r"(?:표|테이블|table)\s*\S{0,4}\s*(?:만들|생성|작성|create)", re.IGNORECASE)
+
+
+def _quick_header_write_step(text: str, preferred_cell: str) -> dict[str, Any] | None:
+    """머리글 목록만 준 문장을 표 첫 행 쓰기로 바꾼다.
+
+    "헤더에는 '날짜', '금액', ... 이렇게 만들어줘"는 이미 만들어 둔 표의 첫 줄을 채우라는 뜻인데,
+    LLM에 맡기면 이름마다 add_column을 부르거나 엉뚱한 시트를 지어내서 열을 덧붙인다.
+    목록이 명시된 문장은 추론할 게 없으므로 규칙으로 확정한다.
+    """
+    if not _HEADER_INTENT_PATTERN.search(text) or _TABLE_CREATE_INTENT_PATTERN.search(text):
+        return None
+
+    headers = extract_create_table_slot_hints(text).get("headers") or []
+    if len(headers) < 2:
+        return None
+
+    return {
+        "action": "excel_live.write_range",
+        "params": {
+            "start_cell": preferred_cell or "__USED_RANGE__",
+            "values_2d": [[str(header) for header in headers]],
+        },
+        "reason": "머리글 목록을 표 첫 행에 기록",
+    }
+
+
 def _build_quick_action_plan(message: str, context_range: str | None) -> list[dict[str, Any]] | None:
     text = str(message or "").strip()
     lowered = text.lower()
@@ -1643,6 +1872,10 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
     col_range_ref = f"{str(col_match.group(1)).upper()}:{str(col_match.group(1)).upper()}" if col_match else ""
     normalized_ctx = _normalize_range_text(context_range)
     explicit_range = range_ref or col_range_ref
+
+    header_step = _quick_header_write_step(text, explicit_range or normalized_ctx)
+    if header_step is not None:
+        return [header_step]
 
     if any(
         token in lowered
@@ -3789,21 +4022,45 @@ def _merge_create_table_slots(
             _merge_payload(parsed.get("slot_fill", {}))
         if isinstance(parsed.get("partial_params"), dict):
             _merge_payload(parsed.get("partial_params", {}))
+    # 헤더를 받았으면 열 수는 물어볼 필요가 없다. 머리글 개수가 곧 열 수다.
+    if slot.cols is None and slot.headers:
+        slot.cols = max(1, min(50, len(slot.headers)))
     slot.updated_at_ts = now
     return slot
 
 
-def _build_table_follow_up(slot: PendingCreateTableSlots) -> str:
+# 같은 질문을 이 횟수만큼 하고도 크기를 못 받으면 기본값으로 만든다.
+_MAX_TABLE_FOLLOW_UPS = 2
+
+
+def _build_table_follow_up(slot: PendingCreateTableSlots, *, last_call: bool = False) -> str:
     if slot.rows is None and slot.cols is None and slot.template_follow_up_question:
         return slot.template_follow_up_question
-    if slot.rows is None or slot.cols is None:
+    tail = " (다음 답변에도 크기가 없으면 기본값으로 만들게요)" if last_call else ""
+    if slot.rows is None and slot.cols is None:
         return (
-            "표 크기와 헤더를 알려주세요. 예: 5*5, 금액, 장소, 날짜, 요건, 비고 "
-            "(기준 셀 미지정 시 A1에서 생성)"
+            "표 크기와 헤더를 알려주세요. 예: 5*5 또는 4행 3열, 금액, 장소, 날짜, 요건, 비고 "
+            "(기준 셀 미지정 시 A1에서 생성)" + tail
         )
+    if slot.rows is None:
+        return f"열은 {slot.cols}개로 잡았습니다. 행은 몇 개로 할까요? 예: 10행{tail}"
+    if slot.cols is None:
+        return f"행은 {slot.rows}개로 잡았습니다. 열은 몇 개로 할까요? 예: 5열{tail}"
     if not slot.headers:
         return f"{slot.rows}*{slot.cols} 표로 생성할게요. 헤더를 넣을까요? 예: 금액, 장소, 날짜, 요건, 비고"
     return "표 생성 정보를 확인했습니다. 생성을 진행합니다."
+
+
+def _apply_table_size_fallback(slot: PendingCreateTableSlots) -> str:
+    """크기를 끝내 못 알아들었을 때 기본값으로 채운다. 같은 질문을 무한히 반복하지 않기 위함이다."""
+    if slot.cols is None:
+        slot.cols = len(slot.headers) if slot.headers else 5
+    if slot.rows is None:
+        slot.rows = 10 if slot.headers else 5
+    return (
+        f"표 크기를 확정하지 못해 {slot.rows}행 {slot.cols}열, "
+        f"{slot.start_cell or 'A1'} 기준으로 만들었습니다. 다르면 크기를 알려주세요."
+    )
 
 
 def _build_create_table_steps(slot: PendingCreateTableSlots) -> list[dict[str, Any]]:
@@ -3942,10 +4199,15 @@ def _execute_action(
         resolved_sheet = _resolve_sheet_name(
             service, resolved_wb, str(params.get("sheet_name") or "").strip() or sheet_name
         )
-        start_cell = str(params.get("start_cell", "")).strip().upper()
-        if not start_cell or start_cell in {"__ACTIVE_CELL__", "__ACTIVE_SELECTION__"}:
-            selected = service.get_active_selection_ref(resolved_wb, resolved_sheet)
-            start_cell = _top_left_cell(selected)
+        start_cell = _resolve_runtime_range_ref(
+            service,
+            workbook_id=resolved_wb,
+            sheet_name=resolved_sheet,
+            raw_range=str(params.get("start_cell", "")),
+            for_cell=True,
+        )
+        if not start_cell:
+            start_cell = _top_left_cell(service.get_active_selection_ref(resolved_wb, resolved_sheet))
         values_2d = params.get("values_2d")
         if not isinstance(values_2d, list):
             raise ExcelLiveError("write_range에는 values_2d(2차원 배열)가 필요합니다.")
@@ -4059,9 +4321,13 @@ def _execute_action(
         resolved_wb = _resolve_workbook_id(service, workbook_id)
         sheet_hint = str(params.get("sheet_name") or "").strip() or sheet_name
         resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_hint)
-        range_ref = str(params.get("range_ref", "")).strip().upper()
-        if not range_ref or range_ref == "__ACTIVE_SELECTION__":
-            range_ref = service.get_active_selection_ref(resolved_wb, resolved_sheet)
+        range_ref = _resolve_runtime_range_ref(
+            service,
+            workbook_id=resolved_wb,
+            sheet_name=resolved_sheet,
+            raw_range=str(params.get("range_ref", "")),
+            for_cell=False,
+        ) or service.get_active_selection_ref(resolved_wb, resolved_sheet)
         formula_a1 = str(params.get("formula_a1", "")).strip()
         if not formula_a1.startswith("="):
             raise ExcelLiveError("formula_a1은 '='로 시작해야 합니다.")
@@ -4070,9 +4336,13 @@ def _execute_action(
     if action == "excel_live.verify_formula_result":
         resolved_wb = _resolve_workbook_id(service, workbook_id)
         resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
-        range_ref = str(params.get("range_ref", "")).strip().upper()
-        if not range_ref or range_ref == "__ACTIVE_SELECTION__":
-            range_ref = service.get_active_selection_ref(resolved_wb, resolved_sheet)
+        range_ref = _resolve_runtime_range_ref(
+            service,
+            workbook_id=resolved_wb,
+            sheet_name=resolved_sheet,
+            raw_range=str(params.get("range_ref", "")),
+            for_cell=False,
+        ) or service.get_active_selection_ref(resolved_wb, resolved_sheet)
         return service.verify_formula_result(
             workbook_id=resolved_wb,
             sheet_name=resolved_sheet,
@@ -5006,16 +5276,148 @@ def post_action(req: ExcelLiveActionRequest):
         raise mapped
 
 
+def _register_macro_run(
+    req: ExcelLiveCommandRequest,
+    planned: list[MacroStepPlan],
+) -> MacroRun:
+    now = time.time()
+    run = MacroRun(
+        macro_id=uuid.uuid4().hex,
+        message=req.message,
+        user_id=req.user_id,
+        session_id=req.session_id,
+        workbook_id=req.workbook_id,
+        sheet_name=req.sheet_name,
+        steps=[
+            MacroStepState(
+                index=item.index,
+                command=item.command,
+                destructive=item.destructive,
+                warnings=list(item.warnings),
+            )
+            for item in planned
+        ],
+        created_at_ts=now,
+        updated_at_ts=now,
+    )
+    _macro_runs[run.macro_id] = run
+    return run
+
+
+async def _plan_macro_response(
+    req: ExcelLiveCommandRequest,
+    llm: LLMService,
+) -> ExcelLiveActionResponse | None:
+    """
+    고수준 요청을 하위 명령으로 펼쳐 승인 카드를 돌려준다.
+
+    분해에 실패하면 None을 반환한다 — 그 경우 호출자는 기존 단일 명령 경로로 계속
+    진행한다. 매크로는 편의 계층이므로, 여기서 막히면 예전만 못한 상태가 된다.
+    """
+    try:
+        digest = build_workbook_digest(
+            get_excel_live_service(),
+            workbook_id=req.workbook_id,
+            active_sheet_hint=req.sheet_name,
+        )
+    except Exception:
+        digest = {}
+
+    try:
+        planned = await asyncio.wait_for(
+            decompose_macro_request(
+                req.message,
+                llm,
+                digest=digest,
+                digest_text=render_workbook_digest(digest) if digest else "",
+                model=get_macro_model_name(),
+            ),
+            timeout=_MACRO_DECOMPOSE_TIMEOUT_SECONDS,
+        )
+    except Exception as exc:
+        trace_note("macro_decompose_failed", error_type=type(exc).__name__, error=str(exc))
+        return None
+
+    # 한 단계짜리 분해는 매크로가 아니다. 승인 카드만 늘어나므로 기존 경로에 맡긴다.
+    if len(planned) < 2:
+        trace_note("macro_skipped", step_count=len(planned), reason="단계가 2개 미만")
+        return None
+
+    trace_note(
+        "macro_plan",
+        model=get_macro_model_name(),
+        steps=[
+            {"index": s.index, "command": s.command, "destructive": s.destructive}
+            for s in planned
+        ],
+    )
+
+    run = _register_macro_run(req, planned)
+    _audit.log(
+        action="excel.live.macro.planned",
+        target=run.macro_id,
+        detail=f"steps={len(run.steps)} workbook={req.workbook_id or ''}",
+    )
+    snapshot = _macro_snapshot(run)
+    snapshot["ask_macro_approval"] = True
+    snapshot["original_message"] = req.message
+    return ExcelLiveActionResponse(
+        ok=True,
+        action="excel_live.macro_plan",
+        reason=f"{len(run.steps)}단계로 나눴습니다. 확인 후 실행해 주세요.",
+        result=snapshot,
+    )
+
+
 @router.post("/command", response_model=ExcelLiveActionResponse)
 async def post_command(
     req: ExcelLiveCommandRequest,
     llm: LLMService = Depends(get_llm_service),
 ):
+    """자연어 명령 한 턴. 판단·계획·실행 과정은 logs/chat_log.jsonl에 한 줄로 남는다."""
+    with turn_scope(
+        endpoint="excel-live/command",
+        message=req.message,
+        session_id=_slot_session_key(req),
+        request={
+            "workbook_id": req.workbook_id,
+            "sheet_name": req.sheet_name,
+            "context_range": req.context_range,
+            "approve": req.approve,
+        },
+    ):
+        response = await _run_command(req, llm)
+        set_outcome_from_response(response)
+        return response
+
+
+async def _run_command(
+    req: ExcelLiveCommandRequest,
+    llm: LLMService,
+):
     _cleanup_expired_table_slots()
     _cleanup_expired_operation_slots()
+    _cleanup_expired_clarifications()
+    _cleanup_expired_macro_runs()
     session_key = _slot_session_key(req)
     pending_slot = _pending_create_table_slots.get(session_key)
     pending_operation = _pending_operation_slots.get(session_key)
+    pending_clarification = _pending_clarifications.get(session_key)
+
+    # "대시보드 만들어줘"류는 계획 한 번(4단계)에 담기지 않는다. 계획을 세우기 전에
+    # 갈라내야 단순 명령이 왕복 비용을 물지 않는다.
+    # 대기 슬롯이 있으면 그 문장은 되묻기에 대한 답변이고, approve=True는 매크로
+    # 실행기가 하위 명령을 돌릴 때 쓰는 경로라 둘 다 여기로 들어오면 안 된다.
+    if (
+        not req.approve
+        and pending_slot is None
+        and pending_operation is None
+        and looks_like_macro_request(req.message)
+    ):
+        macro_response = await _plan_macro_response(req, llm)
+        if macro_response is not None:
+            return macro_response
+
     hints = extract_create_table_slot_hints(req.message)
     operation_hints = _extract_operation_hints(req.message)
     user_key = resolve_user_key({"user_id": req.user_id, "session_id": req.session_id})
@@ -5029,6 +5431,17 @@ async def post_command(
         rule_based_step if isinstance(rule_based_step, dict) else None
     )
     operation_intent = str(operation_hints.get("intent") or "").strip()
+    trace_note(
+        "understand",
+        operation_intent=operation_intent or "(없음)",
+        table_intent=bool(hints.get("table_intent")),
+        table_size={"rows": hints.get("rows"), "cols": hints.get("cols")},
+        table_headers=hints.get("headers") or [],
+        rule_action=str((rule_based_step or {}).get("action", "")) or "(규칙 해석 없음)",
+        quick_plan=trace_plan(quick_action_plan),
+        pending_table_slot=pending_slot is not None,
+        pending_operation_slot=(pending_operation.intent if pending_operation else ""),
+    )
 
     def _reads_concrete_range(step: Any) -> dict[str, Any] | None:
         """ "B9 값만 읽어줘"처럼 범위를 콕 집은 단순 조회인지 판정한다."""
@@ -5277,24 +5690,45 @@ async def post_command(
         "personalization_hint": personalization_hint,
         "workbook_digest": workbook_digest,
         "workbook_digest_text": render_workbook_digest(workbook_digest),
+        "conversation_history_text": _render_conversation_history(pending_clarification),
+        # 같은 질문을 반복하지 않도록, 이미 되물은 세션에서는 되묻기를 막고 실행을 강제한다.
+        "forbid_clarify": (
+            pending_clarification is not None
+            and pending_clarification.ask_count >= _MAX_CONSECUTIVE_CLARIFICATIONS
+        ),
     }
     parse_error: Exception | None = None
     parse_timeout_count = 0
-    if should_parse_with_llm:
+
+    def _validate_for_escalation(raw_steps: Any) -> tuple[bool, str]:
+        """계획이 실행 직전 검증을 통과하는지. 실패 사유는 자가 수정 프롬프트로 간다."""
+        steps = _normalize_plan_or_empty(raw_steps)
+        if not steps:
+            return False, "계획을 실행 단계로 정규화하지 못했습니다."
+        bound, notes = _bind_steps(steps)
+        unresolved = [str(n.get("slot") or n.get("param") or "") for n in notes if n.get("status") == "unresolved"]
+        if unresolved:
+            return False, f"파라미터를 확정하지 못했습니다: {', '.join(filter(None, unresolved)) or '대상 불명확'}"
+        try:
+            _validate_steps(bound)
+        except Exception as exc:  # noqa: BLE001 - 검증기가 낸 문구를 그대로 모델에 돌려준다
+            return False, str(exc)
+        return True, ""
+
+    async def _parse_tier(_message: str, ctx: dict[str, Any]) -> dict[str, Any]:
+        """한 단계 파싱. 타임아웃 재시도는 이 안에서 소진한다."""
+        nonlocal parse_error, parse_timeout_count
+        last: Exception | None = None
         for parse_attempt in range(parse_max_attempts):
             try:
-                parsed = await asyncio.wait_for(
-                    parse_excel_live_command(
-                        req.message,
-                        llm_service=llm,
-                        context=dict(parse_context_base),
-                    ),
+                result = await asyncio.wait_for(
+                    parse_excel_live_command(req.message, llm_service=llm, context=dict(ctx)),
                     timeout=parse_timeout_seconds,
                 )
                 parse_error = None
-                break
+                return result
             except asyncio.TimeoutError as exc:
-                parse_error = exc
+                last = exc
                 parse_timeout_count += 1
                 if parse_attempt + 1 < parse_max_attempts:
                     backoff = parse_retry_backoff_seconds * float(parse_attempt + 1)
@@ -5303,8 +5737,50 @@ async def post_command(
                     continue
                 break
             except ValueError as exc:
-                parse_error = exc
+                last = exc
                 break
+        parse_error = last
+        raise last or ValueError("엑셀 명령을 해석하지 못했습니다.")
+
+    escalation: EscalationResult | None = None
+    if should_parse_with_llm:
+        # 예전에는 여기서 실패하면 곧장 사용자에게 되물었다. 이제 자가 수정 →
+        # 강한 모델까지 올라가 보고, 그래도 안 되면 그때 묻는다.
+        escalation = await plan_with_escalation(
+            req.message,
+            parse=_parse_tier,
+            validate=_validate_for_escalation,
+            context=parse_context_base,
+            local_model=get_planner_model_name(),
+            # 규칙 계획이나 슬롯 의도가 이미 잡혀 있으면 그쪽이 답한다.
+            # 그런 요청까지 LLM에 두세 번 더 태우면 지연만 늘어난다.
+            allow_repair=not (
+                bool(quick_action_plan)
+                or fallback_rule_step is not None
+                or bool(operation_hints.get("intent"))
+            ),
+        )
+        parsed = escalation.parsed or escalation.best_effort
+        if parsed is not None:
+            parse_error = None
+        record_escalation(
+            message=req.message, result=escalation, workbook_digest=workbook_digest
+        )
+
+        trace_note(
+            "planner",
+            model=get_planner_model_name(),
+            reasoning_mode=reasoning_mode,
+            complexity_score=reasoning_complexity_score,
+            timeout_count=parse_timeout_count,
+            error=str(parse_error) if parse_error else escalation.last_error,
+            intent=str((parsed or {}).get("intent", "")),
+            reason=str((parsed or {}).get("reason", "")),
+            action_plan=trace_plan((parsed or {}).get("action_plan")),
+            follow_up_question=str((parsed or {}).get("follow_up_question", "")),
+            escalation_tier=escalation.final_tier,
+            escalation_attempts=escalation.trace(),
+        )
 
         if (
             parsed is None
@@ -5344,6 +5820,37 @@ async def post_command(
                 raise HTTPException(status_code=400, detail=str(parse_error))
 
     if should_parse_with_llm and parsed is not None:
+        # 플래너가 "이대로 실행하면 위험하다"고 판단해 되물은 경우.
+        # 실행 계층으로 내려보내면 안 되므로 여기서 질문만 돌려주고 턴을 끝낸다.
+        clarify_question = clarify_question_from_plan(parsed.get("action_plan"))
+        if clarify_question:
+            _pending_clarifications[session_key] = PendingClarification(
+                session_id=session_key,
+                # 되묻기가 이어질 때 최초 요청을 잃지 않는다 — 답변만 남으면 문맥이 사라진다.
+                original_message=(
+                    pending_clarification.original_message
+                    if pending_clarification is not None
+                    else req.message
+                ),
+                question=clarify_question,
+                ask_count=(pending_clarification.ask_count + 1) if pending_clarification else 1,
+                created_at_ts=time.time(),
+            )
+            trace_note("clarify", question=clarify_question, source="planner")
+            return ExcelLiveActionResponse(
+                ok=True,
+                action="excel_live.clarify",
+                reason=str(parsed.get("reason", "")) or clarify_question,
+                result={
+                    "ask_follow_up": True,
+                    "follow_up_question": clarify_question,
+                    "operation_intent": "clarify",
+                    "clarify_source": "planner",
+                },
+            )
+        # 되묻지 않고 계획을 세웠다면 그 대화 줄기는 닫힌다.
+        _pending_clarifications.pop(session_key, None)
+
         should_reflect, reflection_reason = _should_run_reflection_before_execute(
             parsed=parsed,
             message=req.message,
@@ -5577,13 +6084,29 @@ async def post_command(
         )
         _apply_template_defaults_if_confirmed(slot, hints=hints)
         need_follow_up = slot.rows is None or slot.cols is None
+        fallback_notice = ""
+        if need_follow_up and slot.ask_count >= _MAX_TABLE_FOLLOW_UPS:
+            # 물어본 만큼 물었는데도 크기를 못 받았다. 여기서 또 되물으면 대화가 제자리를 돈다.
+            fallback_notice = _apply_table_size_fallback(slot)
+            need_follow_up = False
+        trace_note(
+            "table_slot",
+            rows=slot.rows,
+            cols=slot.cols,
+            headers=slot.headers or [],
+            start_cell=slot.start_cell or "A1",
+            ask_count=slot.ask_count,
+            need_follow_up=need_follow_up,
+            fallback=fallback_notice,
+        )
         if need_follow_up:
+            slot.ask_count += 1
             _pending_create_table_slots[session_key] = slot
             follow_up_question = (
                 str(parsed.get("follow_up_question", "")).strip()
                 if isinstance(parsed, dict)
                 else ""
-            ) or _build_table_follow_up(slot)
+            ) or _build_table_follow_up(slot, last_call=slot.ask_count >= _MAX_TABLE_FOLLOW_UPS)
             return ExcelLiveActionResponse(
                 ok=True,
                 action="excel_live.create_table",
@@ -5605,7 +6128,7 @@ async def post_command(
             "action_plan": [s.__dict__ for s in action_plan],
             "action": action_plan[0].action if action_plan else "excel_live.create_table",
             "params": action_plan[0].params if action_plan else {},
-            "reason": "대화 슬롯 기반 표 생성 계획",
+            "reason": fallback_notice or "대화 슬롯 기반 표 생성 계획",
             "intent": "edit",
         }
         _pending_operation_slots.pop(session_key, None)
@@ -5870,6 +6393,8 @@ async def post_command(
                 },
             )
 
+    trace_note("plan_final", approve=req.approve, steps=trace_plan(current_plan))
+
     execution = None
     replan_count = 0
     max_replans = 1
@@ -5891,6 +6416,23 @@ async def post_command(
                     reason="보안 정책에 의해 거부된 작업입니다.",
                 )
             if tool_def and tool_def.permission == PermissionLevel.CONFIRM and not req.approve:
+                target_problem = _edit_target_problem(
+                    req.workbook_id, params.get("sheet_name") or req.sheet_name
+                )
+                if target_problem:
+                    trace_note("target_missing", action=action, detail=target_problem)
+                    return ExcelLiveActionResponse(
+                        ok=True,
+                        action="excel_live.clarify",
+                        reason=target_problem,
+                        result={
+                            "ask_follow_up": True,
+                            "follow_up_question": target_problem,
+                            "operation_intent": "clarify",
+                            "missing_slot": "sheet_name",
+                            "blocked_action": action,
+                        },
+                    )
                 pending = _build_approval(action, params)
                 _pending_approvals[pending.approval_id] = PendingExcelApproval(
                     action=action,
@@ -6045,6 +6587,28 @@ async def post_command(
                     f"{last_step.verify_detail or ''};replan_failed:{exc}".strip(";")
                 )
             break
+
+    trace_note(
+        "executed",
+        replans=replan_count,
+        steps=[
+            {
+                "index": s.index,
+                "action": s.action,
+                "ok": not s.error,
+                "verified": s.verified,
+                "retried": s.retried,
+                "error": s.error or "",
+                "verify_detail": s.verify_detail or "",
+                "result": {
+                    key: (s.result or {}).get(key)
+                    for key in ("address", "written_cells", "applied_cells", "rows", "matched_cells")
+                    if isinstance(s.result, dict) and key in s.result
+                },
+            }
+            for s in (execution.steps if execution else [])
+        ],
+    )
 
     if execution is None or not execution.steps:
         raise HTTPException(status_code=400, detail="실행 가능한 계획(step)을 생성하지 못했습니다.")
@@ -6284,9 +6848,270 @@ def post_approval(req: ApprovalResponse):
             result=result,
             reason="승인 후 작업이 실행되었습니다.",
         )
+    except (WorkbookNotFoundError, WorksheetNotFoundError) as exc:
+        # 승인까지 누른 사용자에게 404를 던지면 "요청한 정보를 찾을 수 없습니다"만 남는다.
+        # 무엇이 없어서 못 했는지, 무엇을 알려주면 되는지 문장으로 돌려준다.
+        detail = f"{exc} 작업할 파일과 시트를 알려주시면 다시 진행하겠습니다."
+        _audit.log(
+            action="excel.live.approval.target_missing",
+            target=pending.action,
+            detail=f"approval_id={req.approval_id} {exc}",
+        )
+        return ExcelLiveActionResponse(
+            ok=False,
+            action=pending.action,
+            reason=detail,
+            result={
+                "ask_follow_up": True,
+                "follow_up_question": detail,
+                "operation_intent": "clarify",
+                "missing_slot": "sheet_name",
+                "attempted_sheet": pending.sheet_name or "",
+                "attempted_workbook": pending.workbook_id or "",
+            },
+        )
     except Exception as exc:
         mapped = _map_error(exc)
         if recovery_backup and recovery_backup.get("backup_path"):
             mapped.detail = f"{mapped.detail} (복구 백업: {recovery_backup.get('backup_path')})"
         raise mapped
+
+
+def _apply_macro_skips(run: MacroRun, skip_indices: list[int]) -> None:
+    """승인 화면에서 체크를 해제한 항목을 실행 대상에서 뺀다."""
+    wanted = {int(value) for value in skip_indices or [] if isinstance(value, (int, float))}
+    if not wanted:
+        return
+    for step in run.steps:
+        if step.index in wanted:
+            step.status = "skipped"
+            step.detail = "사용자가 제외함"
+
+
+def _clear_macro_session_slots(run: MacroRun) -> None:
+    """매크로 전용 세션에 남은 되묻기 슬롯을 치운다."""
+    _pending_create_table_slots.pop(run.step_session_id, None)
+    _pending_operation_slots.pop(run.step_session_id, None)
+
+
+def _macro_step_response(
+    run: MacroRun,
+    *,
+    reason: str,
+    ok: bool = True,
+    step_result: dict[str, Any] | None = None,
+) -> ExcelLiveActionResponse:
+    payload = _macro_snapshot(run)
+    payload["step_result"] = step_result
+    if run.status == "waiting_input" and run.follow_up_question:
+        payload["ask_follow_up"] = True
+        payload["follow_up_question"] = run.follow_up_question
+    run.updated_at_ts = time.time()
+    return ExcelLiveActionResponse(
+        ok=ok,
+        action="excel_live.macro_step",
+        reason=reason,
+        result=payload,
+    )
+
+
+def _next_macro_step(run: MacroRun) -> MacroStepState | None:
+    """아직 실행하지 않은 첫 단계로 커서를 옮기고 그 단계를 돌려준다."""
+    while run.cursor < len(run.steps) and run.steps[run.cursor].status in {
+        "done",
+        "skipped",
+        "failed",
+    }:
+        run.cursor += 1
+    if run.cursor >= len(run.steps):
+        return None
+    return run.steps[run.cursor]
+
+
+@router.post("/macro/step", response_model=ExcelLiveActionResponse)
+async def post_macro_step(
+    req: ExcelLiveMacroStepRequest,
+    llm: LLMService = Depends(get_llm_service),
+):
+    """
+    승인된 매크로를 한 단계 진행한다.
+
+    한 요청으로 전부 돌리지 않는 이유는 두 가지다. 18단계면 30초를 훌쩍 넘겨 프론트
+    타임아웃에 걸리고, 진행률을 보여줄 방법도 없다.
+    """
+    _cleanup_expired_macro_runs()
+    run = _macro_runs.get(req.macro_id)
+    if run is None:
+        raise HTTPException(
+            status_code=404,
+            detail="매크로 실행 정보를 찾을 수 없습니다. 요청을 다시 보내 주세요.",
+        )
+    if run.status in {"done", "aborted"}:
+        return _macro_step_response(run, reason="이미 종료된 매크로입니다.")
+
+    if run.status == "planned":
+        # 첫 호출이 곧 사용자의 승인이다. 되돌릴 기준점은 이때 한 번만 뜬다.
+        _apply_macro_skips(run, req.skip_indices)
+        run.backup, _ = _run_in_excel_queue(
+            "macro-backup",
+            lambda: _create_recovery_backup_if_possible(
+                workbook_id=run.workbook_id,
+                label="macro",
+            ),
+        )
+        run.status = "running"
+        _audit.log(
+            action="excel.live.macro.approved",
+            target=run.macro_id,
+            detail=f"steps={len(run.steps)} skipped={len(req.skip_indices or [])}",
+        )
+
+    answer = str(req.answer or "").strip()
+    if run.status in {"waiting_input", "halted"}:
+        if req.skip_current:
+            current = run.steps[run.cursor] if run.cursor < len(run.steps) else None
+            if current is not None and current.status == "pending":
+                current.status = "skipped"
+                current.detail = "사용자가 건너뜀"
+            run.cursor += 1
+            run.follow_up_question = ""
+            run.status = "running"
+        elif answer:
+            run.follow_up_question = ""
+            run.status = "running"
+        else:
+            # 답도 없고 건너뛰라고도 하지 않았다 — 상태만 다시 알려준다.
+            return _macro_step_response(
+                run,
+                reason=run.follow_up_question or "멈춰 있습니다. 이어서 할지 되돌릴지 알려주세요.",
+                ok=run.status != "halted",
+            )
+
+    step = _next_macro_step(run)
+    if step is None:
+        run.status = "done"
+        _clear_macro_session_slots(run)
+        done = sum(1 for item in run.steps if item.status == "done")
+        _audit.log(
+            action="excel.live.macro.completed",
+            target=run.macro_id,
+            detail=f"done={done}/{len(run.steps)}",
+        )
+        return _macro_step_response(run, reason=f"{done}단계를 마쳤습니다.")
+
+    sub_request = ExcelLiveCommandRequest(
+        message=answer or step.command,
+        user_id=run.user_id,
+        workbook_id=run.workbook_id,
+        sheet_name=run.sheet_name,
+        session_id=run.step_session_id,
+        # 매크로 승인 한 번이 하위 명령 전체의 승인이다.
+        approve=True,
+    )
+    try:
+        response = await post_command(sub_request, llm)
+    except HTTPException as exc:
+        step.status = "failed"
+        step.detail = str(exc.detail)
+        run.status = "halted"
+        _audit.log(
+            action="excel.live.macro.step_failed",
+            target=run.macro_id,
+            detail=f"index={step.index} detail={step.detail[:120]}",
+        )
+        return _macro_step_response(
+            run,
+            reason=f"{step.index}단계에서 멈췄습니다: {step.detail}",
+            ok=False,
+        )
+
+    result = response.result if isinstance(response.result, dict) else {}
+    step.action = str(response.action or "")
+
+    if result.get("ask_follow_up"):
+        question = str(result.get("follow_up_question") or response.reason or "").strip()
+        run.status = "waiting_input"
+        run.follow_up_question = question
+        return _macro_step_response(
+            run,
+            reason=question or "추가 정보가 필요합니다.",
+            step_result=result,
+        )
+
+    if not response.ok:
+        step.status = "failed"
+        step.detail = str(response.reason or "실행에 실패했습니다.")
+        run.status = "halted"
+        return _macro_step_response(
+            run,
+            reason=f"{step.index}단계에서 멈췄습니다: {step.detail}",
+            ok=False,
+            step_result=result,
+        )
+
+    step.status = "done"
+    step.detail = str(response.reason or "")
+    run.cursor += 1
+    if _next_macro_step(run) is None:
+        run.status = "done"
+        _clear_macro_session_slots(run)
+        done = sum(1 for item in run.steps if item.status == "done")
+        _audit.log(
+            action="excel.live.macro.completed",
+            target=run.macro_id,
+            detail=f"done={done}/{len(run.steps)}",
+        )
+        return _macro_step_response(run, reason=f"{done}단계를 마쳤습니다.", step_result=result)
+
+    return _macro_step_response(
+        run,
+        reason=f"{step.index}/{len(run.steps)} 완료",
+        step_result=result,
+    )
+
+
+@router.post("/macro/abort", response_model=ExcelLiveActionResponse)
+def post_macro_abort(req: ExcelLiveMacroAbortRequest):
+    """매크로를 중단한다. rollback이면 시작 시점 백업으로 되돌린다."""
+    _cleanup_expired_macro_runs()
+    run = _macro_runs.get(req.macro_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="매크로 실행 정보를 찾을 수 없습니다.")
+
+    restored: dict[str, Any] | None = None
+    if req.rollback:
+        backup_path = str((run.backup or {}).get("backup_path") or "")
+        if not backup_path:
+            raise HTTPException(
+                status_code=400,
+                detail="되돌릴 매크로 백업이 없습니다. 개별 작업 백업으로 복구해 주세요.",
+            )
+        service = get_excel_live_service()
+        try:
+            def _run_macro_rollback():
+                resolved_wb = _resolve_workbook_id(service, run.workbook_id)
+                return service.restore_workbook_from_backup(resolved_wb, backup_path=backup_path)
+
+            restored, _ = _run_in_excel_queue("macro-rollback", _run_macro_rollback)
+            invalidate_digest_cache(run.workbook_id)
+        except Exception as exc:
+            raise _map_error(exc)
+
+    run.status = "aborted"
+    snapshot = _macro_snapshot(run)
+    snapshot["rolled_back"] = bool(req.rollback)
+    snapshot["restore_result"] = restored
+    _clear_macro_session_slots(run)
+    _macro_runs.pop(run.macro_id, None)
+    _audit.log(
+        action="excel.live.macro.aborted",
+        target=run.macro_id,
+        detail=f"rollback={bool(req.rollback)}",
+    )
+    return ExcelLiveActionResponse(
+        ok=True,
+        action="excel_live.macro_abort",
+        reason="되돌렸습니다." if req.rollback else "여기서 멈췄습니다.",
+        result=snapshot,
+    )
 

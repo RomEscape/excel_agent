@@ -24,15 +24,41 @@ def _make_workbook(path):
     wb.close()
 
 
-def test_get_excel_live_service_uses_file_engine_by_default(monkeypatch, tmp_path):
+def test_get_excel_live_service_uses_file_engine_when_excel_is_not_running(monkeypatch, tmp_path):
     _make_workbook(tmp_path / "sales.xlsx")
     monkeypatch.delenv("EXCEL_LIVE_ENGINE", raising=False)
     monkeypatch.setattr(service_module, "_excel_live_service", None)
     monkeypatch.setattr(service_module, "_excel_live_service_engine", None)
+    monkeypatch.setattr(service_module, "_excel_app_has_open_workbook", lambda: False)
 
     service = service_module.get_excel_live_service()
 
     assert getattr(service, "engine", "") == "file"
+
+
+def test_get_excel_live_service_uses_xlwings_when_a_workbook_is_open(monkeypatch, tmp_path):
+    """Excel이 파일을 잠그고 있으면 file 엔진은 저장을 못 한다. 그때는 xlwings로 붙어야 한다."""
+    _make_workbook(tmp_path / "sales.xlsx")
+    monkeypatch.delenv("EXCEL_LIVE_ENGINE", raising=False)
+    monkeypatch.setattr(service_module, "_excel_live_service", None)
+    monkeypatch.setattr(service_module, "_excel_live_service_engine", None)
+    monkeypatch.setattr(service_module, "_excel_app_has_open_workbook", lambda: True)
+
+    service = service_module.get_excel_live_service()
+
+    assert getattr(service, "engine", "") == "xlwings"
+
+
+def test_excel_probe_failure_falls_back_to_file_engine(monkeypatch):
+    """COM 호출이 터져도 앱은 떠야 한다. 탐지 실패는 '열린 문서 없음'으로 본다."""
+    monkeypatch.setattr(service_module, "_excel_probe_cache", None)
+
+    def _boom(_name):
+        raise RuntimeError("COM 서버를 사용할 수 없습니다.")
+
+    monkeypatch.setattr(service_module.importlib, "import_module", _boom, raising=False)
+
+    assert service_module._excel_app_has_open_workbook() is False
 
 
 def test_legacy_pandas_engine_value_still_selects_file_engine(monkeypatch, tmp_path):

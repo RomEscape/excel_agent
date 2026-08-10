@@ -77,6 +77,8 @@ pub fn run() {
             ipc::excel_export,
             ipc::excel_live_status,
             ipc::excel_live_command,
+            ipc::excel_live_macro_step,
+            ipc::excel_live_macro_abort,
             ipc::excel_live_submit_approval,
             ipc::excel_live_save_workbook,
             ipc::excel_live_list_backups,

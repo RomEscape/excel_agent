@@ -36,6 +36,7 @@ from office_claw_sidecar.services.excel_formula_eval import (
 from office_claw_sidecar.services.excel_header_lexicon import resolve_header
 from office_claw_sidecar.services.excel_live_service import (
     AmbiguousWorkbookError,
+    ExcelConnectionError,
     ExcelLiveError,
     ExcelLiveService,
     WorkbookNotFoundError,
@@ -300,7 +301,17 @@ class FileExcelLiveService(ExcelLiveService):
         self._capture_formula_values(path)
         self._mark_full_recalc(wb)
         self._sync_table_headers(wb)
-        wb.save(str(path))
+        try:
+            wb.save(str(path))
+        except PermissionError as exc:
+            # Windows는 Excel이 연 파일을 잠근다. 이 엔진은 파일을 직접 덮어쓰므로
+            # 사용자가 화면에서 그 파일을 열어 둔 동안에는 어떤 편집도 저장되지 않는다.
+            # 원인을 그대로 알려야 사용자가 파일을 닫거나 엔진을 바꿀 수 있다.
+            raise ExcelConnectionError(
+                f"'{path.name}' 파일이 Excel에서 열려 있어 저장할 수 없습니다. "
+                "Excel에서 해당 파일을 닫고 다시 시도하거나, "
+                "열린 Excel을 직접 제어하는 xlwings 엔진으로 전환해 주세요."
+            ) from exc
         self._saved_stamp[str(path)] = self._file_stamp(path)
         if value_changed_sheet:
             if changed_rows:

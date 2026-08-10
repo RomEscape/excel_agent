@@ -45,7 +45,10 @@ import AlertDialog from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { toUserMessage } from "@/lib/errorMessages";
 import { splitExcelCompositeCommand } from "@/lib/excelCommandUtils";
+import { answerMacroFollowUp, startMacroPlan } from "@/lib/excelMacroManager";
+import ExcelMacroCard from "@/components/workspace/ExcelMacroCard";
 import useAppStore from "@/store/appStore";
+import useExcelMacroStore from "@/store/excelMacroStore";
 import {
   workspaceListFiles,
   workspaceReadFile,
@@ -763,6 +766,22 @@ function ChatSidePanel({ sidecarState }) {
     setInput("");
     addAgentMessage({ role: "user", text: trimmed });
 
+    // 매크로가 되묻는 중이면 이 문장은 새 명령이 아니라 그 질문에 대한 답이다.
+    // 여기서 갈라내지 않으면 답변이 별개 명령으로 실행되고 매크로는 멈춘 채 남는다.
+    if (useExcelMacroStore.getState().status === "waiting_input") {
+      setLoading(true);
+      setPendingTaskLabel("매크로 이어서 진행 중...");
+      try {
+        await answerMacroFollowUp(trimmed);
+      } catch (err) {
+        addAgentMessage({ role: "agent", text: null, error: toUserMessage(String(err?.message ?? err)) });
+      } finally {
+        setLoading(false);
+        setPendingTaskLabel("");
+      }
+      return;
+    }
+
     // 이미 세션이 있으면 즉시 저장. 없으면 응답 후 session_id 받고 일괄 저장.
     if (activeSessionId) {
       persistMessageSilent(activeSessionId, "user", trimmed);
@@ -799,6 +818,17 @@ function ChatSidePanel({ sidecarState }) {
             () => excelLiveCommand(cmd, null, null, activeSessionId, false, contextRangeForCmd),
             "엑셀 명령"
           );
+          // 사이드카가 "이건 한 번에 못 한다"고 판단해 하위 명령으로 펼쳐 보냈다.
+          // 승인은 카드에서 받으므로 여기서는 계획만 올리고 이 턴을 끝낸다.
+          if (excelResult?.action === "excel_live.macro_plan") {
+            startMacroPlan(excelResult.result || {}, cmd);
+            const planText = String(
+              excelResult?.reason || "작업을 여러 단계로 나눴습니다. 확인 후 실행해 주세요."
+            );
+            addAgentMessage({ role: "agent", text: planText, sourceRoute: "/excel-live/command" });
+            if (activeSessionId) persistMessageSilent(activeSessionId, "agent", planText);
+            break;
+          }
           if (excelResult?.result?.ask_follow_up) {
             const followText = String(
               excelResult?.result?.follow_up_question ||
@@ -1454,6 +1484,9 @@ function ChatSidePanel({ sidecarState }) {
           </div>
         )}
       </div>
+
+      {/* 매크로 계획·진행·실패 카드 */}
+      <ExcelMacroCard />
 
       {/* 입력 영역 */}
       {isUnavailable ? (

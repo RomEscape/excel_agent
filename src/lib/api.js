@@ -341,6 +341,36 @@ export async function excelLiveCommand(
 }
 
 /**
+ * 승인된 매크로를 한 단계 진행한다.
+ *
+ * 전체를 한 요청으로 돌리지 않는 이유는 18단계짜리가 타임아웃에 걸리고 진행률을
+ * 보여줄 수 없기 때문이다. 호출 주체는 excelMacroManager 하나로 제한한다.
+ *
+ * @param {string} macroId
+ * @param {{ skipIndices?: number[], answer?: string | null, skipCurrent?: boolean }} [options]
+ */
+export async function excelLiveMacroStep(macroId, options = {}) {
+  const raw = await call("excel_live_macro_step", {
+    macroId,
+    skipIndices: options.skipIndices ?? [],
+    answer: options.answer ?? null,
+    skipCurrent: options.skipCurrent ?? false,
+  });
+  return parseResponse(raw);
+}
+
+/**
+ * 매크로를 중단한다. rollback이면 매크로 시작 시점 백업으로 되돌린다.
+ *
+ * @param {string} macroId
+ * @param {boolean} rollback
+ */
+export async function excelLiveMacroAbort(macroId, rollback = false) {
+  const raw = await call("excel_live_macro_abort", { macroId, rollback });
+  return parseResponse(raw);
+}
+
+/**
  * Excel Live 승인 요청에 대해 승인/거부를 전달한다.
  *
  * @param {string} approvalId
