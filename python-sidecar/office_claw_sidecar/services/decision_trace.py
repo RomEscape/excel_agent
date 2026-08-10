@@ -58,6 +58,8 @@ class DecisionTurn:
 
 
 _CURRENT: ContextVar[DecisionTurn | None] = ContextVar("decision_turn", default=None)
+# 턴을 만든 주체. 사람이 앱에서 친 명령인지, 어느 테스트가 돌린 것인지 구분한다.
+_SOURCE: ContextVar[dict[str, Any] | None] = ContextVar("decision_source", default=None)
 
 
 def _now_iso() -> str:
@@ -93,6 +95,22 @@ def compact(value: Any, *, depth: int = 0) -> Any:
 
 def current_turn() -> DecisionTurn | None:
     return _CURRENT.get()
+
+
+@contextmanager
+def source(**fields: Any):
+    """이 블록 안에서 만들어지는 턴에 출처를 붙인다.
+
+    테스트와 벤치마크가 만든 턴이 사람이 친 명령과 같은 파일에 섞이면, 나중에
+    "이 실패는 누가 낸 것인가"를 되짚을 수 없다. 태그를 붙여 두면 한 파일에
+    쌓아 놓고도 `--source`로 갈라 볼 수 있다.
+    """
+    merged = {**(_SOURCE.get() or {}), **{k: v for k, v in fields.items() if v is not None}}
+    token = _SOURCE.set(merged)
+    try:
+        yield merged
+    finally:
+        _SOURCE.reset(token)
 
 
 def note(stage: str, **fields: Any) -> None:
@@ -207,6 +225,7 @@ def turn_scope(
                 "at": turn.started_at,
                 "endpoint": turn.endpoint,
                 "session_id": turn.session_id,
+                "source": compact(_SOURCE.get() or {}),
                 "message": turn.message,
                 "request": turn.request,
                 "elapsed_ms": round((time.perf_counter() - turn.started_ts) * 1000, 1),

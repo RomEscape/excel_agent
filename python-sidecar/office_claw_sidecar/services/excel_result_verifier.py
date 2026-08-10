@@ -158,6 +158,27 @@ def _same_cell(expected: Any, actual: Any) -> bool:
     return str(expected).strip() == str(actual).strip()
 
 
+def _requested_range(params: dict[str, Any]) -> str:
+    """start_cell과 값 모양으로 "써야 했던" 범위를 만든다."""
+    start = str(params.get("start_cell") or "").strip()
+    values = params.get("values_2d")
+    if not start or not isinstance(values, list) or not values:
+        return ""
+    if ":" in start:
+        return start
+    parts = _range_parts(start)
+    if parts is None:
+        return ""
+    base_col, base_row = _col_to_idx(parts[0]), parts[1]
+    rows = len(values)
+    cols = max((len(r) for r in values if isinstance(r, list)), default=0)
+    if rows < 1 or cols < 1:
+        return ""
+    if rows == 1 and cols == 1:
+        return start
+    return f"{start}:{_idx_to_col(base_col + cols - 1)}{base_row + rows - 1}"
+
+
 def _verify_write(
     params: dict[str, Any],
     result: dict[str, Any],
@@ -174,7 +195,10 @@ def _verify_write(
     expected = params.get("values_2d")
     if not isinstance(expected, list) or not expected:
         return True, ""
-    address = str(result.get("address") or "").strip()
+    # 확인할 범위는 요청에서 계산한다. 실행기가 보고한 주소를 그대로 믿으면,
+    # 주소를 좁게 보고하는 실행기 앞에서 검증도 같이 좁아진다 — 검증 대상이
+    # 준 값에 검증 범위를 맡기는 셈이다.
+    address = _requested_range(params) or str(result.get("address") or "").strip()
     if not address:
         return True, ""
 

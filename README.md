@@ -442,6 +442,15 @@ python scripts/show_turns.py            # 최근 5턴을 사람이 읽는 형태
 python scripts/show_turns.py --failed   # 실패한 턴만
 python scripts/show_turns.py --summary  # 실패 유형 집계
 python scripts/show_turns.py --prompt   # LLM에 준 프롬프트와 원본 응답까지
+python scripts/show_turns.py --human    # 사람이 친 명령만 (테스트 제외)
+```
+
+테스트가 만든 턴도 누적할 수 있다. 기본값은 임시 디렉터리이고(실행마다 660여 턴이
+실제 로그에 쌓이면 사람이 읽어야 할 기록이 묻힌다), 들여다볼 때만 켠다.
+
+```powershell
+$env:OFFICE_CLAW_TRACE_TESTS = "1"; uv run pytest -q
+python scripts/show_turns.py --log ../logs/test-runs/chat_log.jsonl --failed
 ```
 
 ```
@@ -457,6 +466,31 @@ python scripts/show_turns.py --prompt   # LLM에 준 프롬프트와 원본 응�
 - `routes`는 이 턴이 지나간 갈림길이다. 규칙으로 처리됐는지 플래너를 탔는지, 몇 번째 티어까지 올라갔는지, 재계획했는지가 한 줄로 보인다.
 - 결론(`final:ok` / `final:failed` / `final:asked_back` / `final:approval_required`)은 라우터가 어디서 반환하든 반드시 붙는다.
 - 실행 오류·플래너 파싱 실패·검증 실패·재계획 누락은 자동 분류한다. **인자 오류는 자동 분류하지 않는다** — 사용자 의도를 알아야 하므로 OBSERVATION과 PLAN을 나란히 보고 사람이 판정한다.
+
+### 검증기 변이 수트 (2026-08-11)
+
+검증기가 **잘못된 최종 상태를 잡아내는지** 재는 벤치마크다. 계획도 인자도 맞고
+실행기도 성공을 보고하는데 파일만 틀린 상황을 만들어, 검증기가 이를 통과시키는
+비율(false pass)과 멀쩡한 작업을 막는 비율(false fail)을 같이 본다.
+
+```powershell
+python scripts/run_verifier_suite.py          # V0·V1·V2 전부 + logs/에 저장
+python scripts/run_verifier_suite.py --diff   # 단계 간 변화만
+```
+
+| 단계 | 내용 | false pass | false fail |
+|---|---|---|---|
+| V0 | 검증 강화 이전 | 12/12 (100%) | 0/2 (0%) |
+| V1 | + `write_range` 상태 검증 | 6/12 (50%) | 0/2 (0%) |
+| V2 | + `clear_range` 상태 검증 | 1/12 (8%) | 0/2 (0%) |
+
+- 변이는 `write_range` 7종(wrong_value·missing_cell·partial_write·shifted_range·extra_write·wrong_shape·narrow_address), `clear_range` 5종(no_clear·partial_clear·wrong_range_clear·value_remains·formula_remains).
+- **false fail을 같이 보는 이유**: 검증기가 항상 실패를 반환하면 false pass는 0%가 되지만 멀쩡한 작업까지 롤백되어 에이전트가 망가진다.
+- 결과는 `logs/verifier_baseline.json`·`verifier_after_write_range.json`·`verifier_after_clear_range.json`에 케이스별(요청·기대 상태·실제 상태·검증 판정·정답 판정·분류)로 보존된다.
+- 아직 못 잡는 변이는 `extra_write` 하나 — 요청 범위 밖 부수 피해는 실행 전 전체 스냅샷이 있어야 보인다. `tests/test_verifier_mutants.py`의 `KNOWN_BLIND_SPOTS`가 이 목록을 고정한다.
+
+액션 전반의 넓이는 `scripts/run_verifier_gap.py`가 따로 본다(정렬·필터·차트 포함
+10종). 검증기를 손대면 둘 다 돌린다.
 
 ### 플래너 승격 게이트 (2026-08-11)
 

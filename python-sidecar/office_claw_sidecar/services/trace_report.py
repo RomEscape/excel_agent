@@ -73,6 +73,17 @@ def route_path(turn: dict[str, Any]) -> str:
     return " → ".join(name if n == 1 else f"{name}×{n}" for name, n in steps)
 
 
+def source_label(turn: dict[str, Any]) -> str:
+    """이 턴을 만든 주체를 한 조각 문자열로. 사람이 친 명령이면 빈 문자열."""
+    origin = turn.get("source") or {}
+    if not isinstance(origin, dict) or not origin:
+        return ""
+    for key in ("test", "case", "suite"):
+        if origin.get(key):
+            return str(origin[key])
+    return str(origin.get("kind", ""))
+
+
 def classify(turn: dict[str, Any]) -> Verdict:
     """트레이스만 보고 결론과 책임 지점을 정한다.
 
@@ -138,9 +149,11 @@ def render(turn: dict[str, Any], *, show_prompt: bool = False) -> str:
     outcome = turn.get("outcome") or {}
     verdict = classify(turn)
 
+    origin = turn.get("source") or {}
     lines.append(
         f"  ── {turn.get('at', '')}  turn={turn.get('turn_id', '')}  "
         f"{turn.get('elapsed_ms', 0)}ms"
+        + (f"  [{source_label(turn)}]" if origin else "")
     )
     add("[USER]", str(turn.get("message", "")))
 

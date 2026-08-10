@@ -26,6 +26,7 @@ from office_claw_sidecar.services.trace_report import (
     classify,
     read_turns,
     render,
+    source_label,
 )
 
 _OK_CODES = {"ok", "asked_back", "approval", "verify_recovered"}
@@ -38,6 +39,8 @@ def main() -> int:
     parser.add_argument("--grep", default="", help="사용자 문장에 이 말이 든 턴만")
     parser.add_argument("--turn", default="", help="turn_id로 하나만")
     parser.add_argument("--endpoint", default="", help="엔드포인트로 거르기")
+    parser.add_argument("--source", default="", help="출처로 거르기 (테스트 이름 등)")
+    parser.add_argument("--human", action="store_true", help="사람이 친 명령만 (테스트 제외)")
     parser.add_argument("--summary", action="store_true", help="본문 대신 실패 유형 집계")
     parser.add_argument("--prompt", action="store_true", help="LLM 원본 응답까지 표시")
     parser.add_argument("--log", default="", help="다른 로그 파일 경로")
@@ -55,6 +58,10 @@ def main() -> int:
         turns = [t for t in turns if args.endpoint in str(t.get("endpoint", ""))]
     if args.grep:
         turns = [t for t in turns if args.grep in str(t.get("message", ""))]
+    if args.source:
+        turns = [t for t in turns if args.source in source_label(t)]
+    if args.human:
+        turns = [t for t in turns if not (t.get("source") or {})]
     if args.failed:
         turns = [t for t in turns if classify(t).code not in _OK_CODES]
 

@@ -17,6 +17,11 @@ LLM을 쓰지 않으므로 GPU가 학습에 묶여 있어도 돌릴 수 있다.
 각 부류마다 "예전 판정(몇 칸을 건드렸나)"과 "지금 판정"을 나란히 찍는다.
 
     python scripts/run_verifier_gap.py --output-json ../logs/verifier_gap.json
+
+`run_verifier_suite.py`와 역할이 다르다. 이쪽은 **여러 액션에 걸친 넓이** —
+정렬·필터·차트까지 10종 케이스에서 두 부류를 가른다. 저쪽은 **write/clear
+사후조건의 깊이** — 값 하나가 틀린 경우, 일부만 쓰인 경우처럼 상태 변이를
+종류별로 잰다. 검증기를 손대면 둘 다 돌려야 한다.
 """
 
 from __future__ import annotations

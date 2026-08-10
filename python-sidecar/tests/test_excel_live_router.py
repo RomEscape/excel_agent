@@ -10,9 +10,25 @@ from office_claw_sidecar.main import app
 from office_claw_sidecar.routers import excel_live as excel_live_router
 from office_claw_sidecar.services.excel_live_service import AmbiguousWorkbookError
 
-
 HEADERS = {"Authorization": "Bearer dev-token"}
 client = TestClient(app)
+
+
+def _range_address(start_cell: str, rows: int, cols: int) -> str:
+    """"B2"에서 3열 1행을 쓰면 "B2:D2"."""
+    text = str(start_cell).strip().upper()
+    letters = "".join(c for c in text if c.isalpha()) or "A"
+    row = int("".join(c for c in text if c.isdigit()) or 1)
+    index = 0
+    for ch in letters:
+        index = index * 26 + (ord(ch) - 64)
+    if rows <= 1 and cols <= 1:
+        return f"{letters}{row}"
+    end_index, end = index + max(cols, 1) - 1, ""
+    while end_index > 0:
+        end_index, rem = divmod(end_index - 1, 26)
+        end = chr(65 + rem) + end
+    return f"{letters}{row}:{end}{row + max(rows, 1) - 1}"
 
 
 class _FakeExcelService:
@@ -96,9 +112,14 @@ class _FakeExcelService:
         }
 
     def write_range(self, workbook_id, sheet_name, start_cell, values_2d):
-        address = f"{start_cell}:B1"
+        # 실제 서비스는 기록한 범위 전체를 주소로 돌려준다. 더블이 좁거나 엉뚱한
+        # 주소를 주면 검증기가 그 범위만 다시 읽어서, 없는 버그가 보이거나
+        # 있는 버그가 가려진다.
+        rows = len(values_2d or [])
+        cols = max((len(row) for row in values_2d or []), default=0)
+        address = _range_address(start_cell, rows, cols)
         self._written[address.strip().upper()] = [list(row) for row in values_2d or []]
-        return {"written_cells": 2, "address": address}
+        return {"written_cells": rows * cols, "address": address}
 
     def create_table(self, workbook_id, sheet_name, start_cell, rows, cols, with_border):
         self._last_snapshot = {"row_count": int(rows), "col_count": int(cols)}
@@ -447,7 +468,7 @@ def test_action_without_workbook_id_uses_first_open_workbook(monkeypatch):
     assert resp.status_code == 200
     body = resp.json()
     assert body["ok"] is True
-    assert body["result"]["written_cells"] == 2
+    assert body["result"]["written_cells"] == 3
 
 
 def test_conditional_color_request_reaches_the_planner(monkeypatch):

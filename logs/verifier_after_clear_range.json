@@ -1,0 +1,519 @@
+{
+  "stage": "V2",
+  "label": "+ clear_range 상태 검증",
+  "at": "2026-08-11T02:39:28.414054+09:00",
+  "summary": {
+    "cases": 14,
+    "broken_states": 12,
+    "intact_states": 2,
+    "false_pass": 1,
+    "false_fail": 0,
+    "false_pass_rate": 0.0833,
+    "false_fail_rate": 0.0,
+    "missed_kinds": [
+      "extra_write"
+    ]
+  },
+  "cases": [
+    {
+      "case": "write_clean",
+      "action": "write_range",
+      "kind": "clean",
+      "description": "요청대로 정확히 기록",
+      "params": {
+        "start_cell": "A1",
+        "values_2d": [
+          [
+            1,
+            2
+          ],
+          [
+            3,
+            4
+          ]
+        ]
+      },
+      "expected": {
+        "A1": 1,
+        "B1": 2,
+        "A2": 3,
+        "B2": 4,
+        "C1": "금액",
+        "A3": "2월"
+      },
+      "actual": {
+        "A1": 1,
+        "B1": 2,
+        "A2": 3,
+        "B2": 4,
+        "C1": "금액",
+        "A3": "2월"
+      },
+      "verifier_passed": true,
+      "verifier_detail": "",
+      "ground_truth_pass": true,
+      "classification": "true_pass",
+      "error": ""
+    },
+    {
+      "case": "clear_clean",
+      "action": "clear_range",
+      "kind": "clean",
+      "description": "요청 범위를 정확히 비움",
+      "params": {
+        "target_range": "A2:B3"
+      },
+      "expected": {
+        "A2": null,
+        "B2": null,
+        "A3": null,
+        "B3": null,
+        "A1": "월",
+        "C2": 100
+      },
+      "actual": {
+        "A2": null,
+        "B2": null,
+        "A3": null,
+        "B3": null,
+        "A1": "월",
+        "C2": 100
+      },
+      "verifier_passed": true,
+      "verifier_detail": "",
+      "ground_truth_pass": true,
+      "classification": "true_pass",
+      "error": ""
+    },
+    {
+      "case": "write_wrong_value",
+      "action": "write_range",
+      "kind": "wrong_value",
+      "description": "한 칸에 다른 값이 들어감",
+      "params": {
+        "start_cell": "A1",
+        "values_2d": [
+          [
+            1,
+            2
+          ],
+          [
+            3,
+            4
+          ]
+        ]
+      },
+      "expected": {
+        "A1": 1,
+        "B1": 2,
+        "A2": 3,
+        "B2": 4,
+        "C1": "금액",
+        "A3": "2월"
+      },
+      "actual": {
+        "A1": 1,
+        "B1": 2,
+        "A2": 3,
+        "B2": "WRONG",
+        "C1": "금액",
+        "A3": "2월"
+      },
+      "verifier_passed": false,
+      "verifier_detail": "write_value_mismatch:B2 셀에 4를 쓰려 했으나 'WRONG'가 들어 있습니다",
+      "ground_truth_pass": false,
+      "classification": "true_fail",
+      "error": ""
+    },
+    {
+      "case": "write_missing_cell",
+      "action": "write_range",
+      "kind": "missing_cell",
+      "description": "한 칸을 쓰지 않아 기존 값이 남음",
+      "params": {
+        "start_cell": "A1",
+        "values_2d": [
+          [
+            1,
+            2
+          ],
+          [
+            3,
+            4
+          ]
+        ]
+      },
+      "expected": {
+        "A1": 1,
+        "B1": 2,
+        "A2": 3,
+        "B2": 4,
+        "C1": "금액",
+        "A3": "2월"
+      },
+      "actual": {
+        "A1": 1,
+        "B1": 2,
+        "A2": 3,
+        "B2": null,
+        "C1": "금액",
+        "A3": "2월"
+      },
+      "verifier_passed": false,
+      "verifier_detail": "write_value_mismatch:B2 셀에 4를 쓰려 했으나 None가 들어 있습니다",
+      "ground_truth_pass": false,
+      "classification": "true_fail",
+      "error": ""
+    },
+    {
+      "case": "write_partial_write",
+      "action": "write_range",
+      "kind": "partial_write",
+      "description": "첫 행만 기록되고 나머지는 그대로",
+      "params": {
+        "start_cell": "A1",
+        "values_2d": [
+          [
+            1,
+            2
+          ],
+          [
+            3,
+            4
+          ]
+        ]
+      },
+      "expected": {
+        "A1": 1,
+        "B1": 2,
+        "A2": 3,
+        "B2": 4,
+        "C1": "금액",
+        "A3": "2월"
+      },
+      "actual": {
+        "A1": 1,
+        "B1": 2,
+        "A2": "1월",
+        "B2": "서울",
+        "C1": "금액",
+        "A3": "2월"
+      },
+      "verifier_passed": false,
+      "verifier_detail": "write_value_mismatch:A2 셀에 3를 쓰려 했으나 '1월'가 들어 있습니다",
+      "ground_truth_pass": false,
+      "classification": "true_fail",
+      "error": ""
+    },
+    {
+      "case": "write_shifted_range",
+      "action": "write_range",
+      "kind": "shifted_range",
+      "description": "한 행 아래에 기록됨",
+      "params": {
+        "start_cell": "A1",
+        "values_2d": [
+          [
+            1,
+            2
+          ],
+          [
+            3,
+            4
+          ]
+        ]
+      },
+      "expected": {
+        "A1": 1,
+        "B1": 2,
+        "A2": 3,
+        "B2": 4,
+        "C1": "금액",
+        "A3": "2월"
+      },
+      "actual": {
+        "A1": "월",
+        "B1": "지역",
+        "A2": 1,
+        "B2": 2,
+        "C1": "금액",
+        "A3": 3
+      },
+      "verifier_passed": false,
+      "verifier_detail": "write_value_mismatch:A1 셀에 1를 쓰려 했으나 '월'가 들어 있습니다",
+      "ground_truth_pass": false,
+      "classification": "true_fail",
+      "error": ""
+    },
+    {
+      "case": "write_extra_write",
+      "action": "write_range",
+      "kind": "extra_write",
+      "description": "요청 범위 밖까지 덮어씀",
+      "params": {
+        "start_cell": "A1",
+        "values_2d": [
+          [
+            1,
+            2
+          ],
+          [
+            3,
+            4
+          ]
+        ]
+      },
+      "expected": {
+        "A1": 1,
+        "B1": 2,
+        "A2": 3,
+        "B2": 4,
+        "C1": "금액",
+        "A3": "2월"
+      },
+      "actual": {
+        "A1": 1,
+        "B1": 2,
+        "A2": 3,
+        "B2": 4,
+        "C1": "금액",
+        "A3": "침범"
+      },
+      "verifier_passed": true,
+      "verifier_detail": "",
+      "ground_truth_pass": false,
+      "classification": "false_pass",
+      "error": ""
+    },
+    {
+      "case": "write_wrong_shape",
+      "action": "write_range",
+      "kind": "wrong_shape",
+      "description": "행과 열이 뒤집혀 기록됨",
+      "params": {
+        "start_cell": "A1",
+        "values_2d": [
+          [
+            1,
+            2
+          ],
+          [
+            3,
+            4
+          ]
+        ]
+      },
+      "expected": {
+        "A1": 1,
+        "B1": 2,
+        "A2": 3,
+        "B2": 4,
+        "C1": "금액",
+        "A3": "2월"
+      },
+      "actual": {
+        "A1": 1,
+        "B1": 3,
+        "A2": 2,
+        "B2": 4,
+        "C1": "금액",
+        "A3": "2월"
+      },
+      "verifier_passed": false,
+      "verifier_detail": "write_value_mismatch:B1 셀에 2를 쓰려 했으나 3가 들어 있습니다",
+      "ground_truth_pass": false,
+      "classification": "true_fail",
+      "error": ""
+    },
+    {
+      "case": "write_narrow_address",
+      "action": "write_range",
+      "kind": "narrow_address",
+      "description": "틀리게 쓰고 보고 주소를 좁힘",
+      "params": {
+        "start_cell": "A1",
+        "values_2d": [
+          [
+            1,
+            2
+          ],
+          [
+            3,
+            4
+          ]
+        ]
+      },
+      "expected": {
+        "A1": 1,
+        "B1": 2,
+        "A2": 3,
+        "B2": 4,
+        "C1": "금액",
+        "A3": "2월"
+      },
+      "actual": {
+        "A1": 1,
+        "B1": 2,
+        "A2": 3,
+        "B2": "WRONG",
+        "C1": "금액",
+        "A3": "2월"
+      },
+      "verifier_passed": false,
+      "verifier_detail": "write_value_mismatch:B2 셀에 4를 쓰려 했으나 'WRONG'가 들어 있습니다",
+      "ground_truth_pass": false,
+      "classification": "true_fail",
+      "error": ""
+    },
+    {
+      "case": "clear_no_clear",
+      "action": "clear_range",
+      "kind": "no_clear",
+      "description": "아무것도 지우지 않음",
+      "params": {
+        "target_range": "A2:B3"
+      },
+      "expected": {
+        "A2": null,
+        "B2": null,
+        "A3": null,
+        "B3": null,
+        "A1": "월",
+        "C2": 100
+      },
+      "actual": {
+        "A2": "1월",
+        "B2": "서울",
+        "A3": "2월",
+        "B3": "부산",
+        "A1": "월",
+        "C2": 100
+      },
+      "verifier_passed": false,
+      "verifier_detail": "clear_not_applied:A2:B3 범위에 값이 4개 남아 있습니다 (['1월', '서울', '2월'])",
+      "ground_truth_pass": false,
+      "classification": "true_fail",
+      "error": ""
+    },
+    {
+      "case": "clear_partial_clear",
+      "action": "clear_range",
+      "kind": "partial_clear",
+      "description": "첫 행만 지워짐",
+      "params": {
+        "target_range": "A2:B3"
+      },
+      "expected": {
+        "A2": null,
+        "B2": null,
+        "A3": null,
+        "B3": null,
+        "A1": "월",
+        "C2": 100
+      },
+      "actual": {
+        "A2": null,
+        "B2": null,
+        "A3": "2월",
+        "B3": "부산",
+        "A1": "월",
+        "C2": 100
+      },
+      "verifier_passed": false,
+      "verifier_detail": "clear_not_applied:A2:B3 범위에 값이 2개 남아 있습니다 (['2월', '부산'])",
+      "ground_truth_pass": false,
+      "classification": "true_fail",
+      "error": ""
+    },
+    {
+      "case": "clear_wrong_range_clear",
+      "action": "clear_range",
+      "kind": "wrong_range_clear",
+      "description": "엉뚱한 범위를 지움",
+      "params": {
+        "target_range": "A2:B3"
+      },
+      "expected": {
+        "A2": null,
+        "B2": null,
+        "A3": null,
+        "B3": null,
+        "A1": "월",
+        "C2": 100
+      },
+      "actual": {
+        "A2": "1월",
+        "B2": "서울",
+        "A3": "2월",
+        "B3": "부산",
+        "A1": null,
+        "C2": 100
+      },
+      "verifier_passed": false,
+      "verifier_detail": "clear_not_applied:A2:B3 범위에 값이 4개 남아 있습니다 (['1월', '서울', '2월'])",
+      "ground_truth_pass": false,
+      "classification": "true_fail",
+      "error": ""
+    },
+    {
+      "case": "clear_value_remains",
+      "action": "clear_range",
+      "kind": "value_remains",
+      "description": "지운 자리에 값이 남음",
+      "params": {
+        "target_range": "A2:B3"
+      },
+      "expected": {
+        "A2": null,
+        "B2": null,
+        "A3": null,
+        "B3": null,
+        "A1": "월",
+        "C2": 100
+      },
+      "actual": {
+        "A2": "잔존",
+        "B2": null,
+        "A3": null,
+        "B3": null,
+        "A1": "월",
+        "C2": 100
+      },
+      "verifier_passed": false,
+      "verifier_detail": "clear_not_applied:A2:B3 범위에 값이 1개 남아 있습니다 (['잔존'])",
+      "ground_truth_pass": false,
+      "classification": "true_fail",
+      "error": ""
+    },
+    {
+      "case": "clear_formula_remains",
+      "action": "clear_range",
+      "kind": "formula_remains",
+      "description": "지운 자리에 수식이 남음",
+      "params": {
+        "target_range": "A2:B3"
+      },
+      "expected": {
+        "A2": null,
+        "B2": null,
+        "A3": null,
+        "B3": null,
+        "A1": "월",
+        "C2": 100
+      },
+      "actual": {
+        "A2": "=1+1",
+        "B2": null,
+        "A3": null,
+        "B3": null,
+        "A1": "월",
+        "C2": 100
+      },
+      "verifier_passed": false,
+      "verifier_detail": "clear_not_applied:A2:B3 범위에 값이 1개 남아 있습니다 (['=1+1'])",
+      "ground_truth_pass": false,
+      "classification": "true_fail",
+      "error": ""
+    }
+  ]
+}
