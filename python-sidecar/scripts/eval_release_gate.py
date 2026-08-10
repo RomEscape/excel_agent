@@ -67,6 +67,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-complex-pass-rate", type=float, default=0.95)
     parser.add_argument("--max-complex-critical-failures", type=int, default=0)
     parser.add_argument("--min-complex-scenarios", type=int, default=30)
+    parser.add_argument("--max-over-clarify-rate", type=float, default=0.10)
+    parser.add_argument("--max-over-clarify-increase", type=float, default=0.05)
+    parser.add_argument("--min-clarify-recall", type=float, default=0.50)
+    parser.add_argument("--max-category-drop-pp", type=float, default=5.0)
     return parser.parse_args()
 
 
@@ -85,6 +89,14 @@ def main() -> None:
         args.max_complex_critical_failures = int(overrides["max_complex_critical_failures"])
     if "min_complex_scenarios" in overrides:
         args.min_complex_scenarios = int(overrides["min_complex_scenarios"])
+    if "max_over_clarify_rate" in overrides:
+        args.max_over_clarify_rate = float(overrides["max_over_clarify_rate"])
+    if "max_over_clarify_increase" in overrides:
+        args.max_over_clarify_increase = float(overrides["max_over_clarify_increase"])
+    if "min_clarify_recall" in overrides:
+        args.min_clarify_recall = float(overrides["min_clarify_recall"])
+    if "max_category_drop_pp" in overrides:
+        args.max_category_drop_pp = float(overrides["max_category_drop_pp"])
 
     shadow = _read_json(args.shadow_report)
     baseline = shadow.get("baseline") if isinstance(shadow.get("baseline"), dict) else {}
@@ -158,12 +170,66 @@ def main() -> None:
             "candidate_p95_ms": candidate_p95,
             "passed": (latency_ratio <= float(args.max_p95_latency_ratio)) if baseline_p95 > 0 else True,
         },
-        "clarify_ratio": {
+    }
+
+    # 되묻기는 총량으로 재면 안 된다. v5는 모호한 요청에 되묻도록 학습시킨 모델이라
+    # 전체 비율은 올라가는 게 정상이다. 나쁜 건 "안 물어도 되는데 묻는" 쪽뿐이다.
+    baseline_clarify_metrics = baseline.get("clarify")
+    candidate_clarify_metrics = candidate.get("clarify")
+    if isinstance(baseline_clarify_metrics, dict) and isinstance(candidate_clarify_metrics, dict):
+        base_over = _safe_float(baseline_clarify_metrics.get("over_clarify_rate"))
+        cand_over = _safe_float(candidate_clarify_metrics.get("over_clarify_rate"))
+        base_recall = _safe_float(baseline_clarify_metrics.get("recall"))
+        cand_recall = _safe_float(candidate_clarify_metrics.get("recall"))
+        checks["over_clarify"] = {
+            "required_max_rate": float(args.max_over_clarify_rate),
+            "required_max_increase": float(args.max_over_clarify_increase),
+            "baseline": round(base_over, 4),
+            "candidate": round(cand_over, 4),
+            "passed": (
+                cand_over <= float(args.max_over_clarify_rate)
+                and (cand_over - base_over) <= float(args.max_over_clarify_increase)
+            ),
+        }
+        checks["clarify_recall"] = {
+            "required_min_rate": float(args.min_clarify_recall),
+            "baseline": round(base_recall, 4),
+            "candidate": round(cand_recall, 4),
+            "passed": cand_recall >= float(args.min_clarify_recall),
+        }
+    else:
+        # 새 지표가 없는 옛 리포트는 예전 방식으로 본다.
+        checks["clarify_ratio"] = {
             "baseline": round(baseline_clarify, 4),
             "candidate": round(candidate_clarify, 4),
             "passed": candidate_clarify <= baseline_clarify,
-        },
-    }
+        }
+
+    # 흔한 동작이 나빠지면서 얻은 희귀 동작 개선은 승격 사유가 아니다.
+    base_by_cat = baseline.get("by_category")
+    cand_by_cat = candidate.get("by_category")
+    if isinstance(base_by_cat, dict) and isinstance(cand_by_cat, dict):
+        regressions: dict[str, float] = {}
+        for name, counts in base_by_cat.items():
+            if not isinstance(counts, dict):
+                continue
+            before = _safe_float(counts.get("first_action_match_rate"))
+            after = _safe_float((cand_by_cat.get(name) or {}).get("first_action_match_rate"))
+            drop_pp = (before - after) * 100.0
+            if drop_pp > 0:
+                regressions[str(name)] = round(drop_pp, 4)
+        worst = max(regressions.values(), default=0.0)
+        guarded = {
+            name: drop
+            for name, drop in regressions.items()
+            if drop > float(args.max_category_drop_pp)
+        }
+        checks["category_regression"] = {
+            "required_max_drop_pp": float(args.max_category_drop_pp),
+            "worst_drop_pp": worst,
+            "over_budget": guarded,
+            "passed": not guarded,
+        }
     if args.complex_report is not None:
         checks["complex_scenarios"] = {
             "required_min_pass_rate": float(args.min_complex_pass_rate),
@@ -197,6 +263,16 @@ def main() -> None:
     }
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
     args.output_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    print()
+    for name, item in checks.items():
+        mark = "통과" if item.get("passed") else "실패"
+        print(f"  [{mark}] {name}")
+        for key, value in item.items():
+            if key != "passed":
+                print(f"          {key}: {value}")
+    print()
+    print("승격 가능" if passed else "승격 불가 — 위 실패 항목 확인")
     print(f"[DONE] release gate report: {args.output_json}")
 
 

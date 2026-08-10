@@ -427,6 +427,43 @@ python scripts/build_sft_from_escalations.py \
 되묻기로 끝난 턴은 정답으로 수확하지 않는다 — 그걸 학습하면 "어려우면 물어봐라"를
 강화하게 되는데 원하는 건 그 반대다.
 
+### 플래너 승격 게이트 (2026-08-11)
+
+새 플래너 모델은 **고정 평가셋 154건에서 기준선을 이겨야만** Ollama 태그로 승격된다.
+직전 v2→v3 승격은 21건 중 1건 차이로 이뤄졌고, 같은 리포트에서 p95 지연이 69%
+늘어난 것은 확인되지 않았다. 그 재발을 막는 장치다.
+
+```powershell
+# 학습·GGUF 변환·Ollama 등록을 마친 뒤 (학습 중 실행 금지 — VRAM 경합)
+.\scripts\run-planner-eval.ps1 -Candidate ax7bplanner-v5r:latest
+```
+
+평가셋(`datasets/eval/planner_eval_v1.jsonl`)의 통합문서와 문장은 **학습 자산과
+공유하지 않는다.** 같은 템플릿 생성기로 만들면 암기력을 재게 되기 때문에, 6종의
+통합문서를 새로 만들고 문장은 전부 손으로 썼다. 학습 데이터와 문장이 겹치면
+`test_planner_eval_set.py`가 실패한다.
+
+| 분류 | 건수 | 무엇을 재는가 |
+|---|---|---|
+| `core` | 52 | 매일 쓰는 동작 |
+| `rare` | 32 | 학습 예제가 적었던 액션 |
+| `clarify_yes` | 18 | 되물어야 정답인 모호한 요청 |
+| `clarify_no` | 20 | **되물으면 오답** — 과잉 질문 탐지 |
+| `multi` | 12 | 두 단계 이상 |
+| `colloquial` | 20 | 구어체·오타·생략 |
+
+승격 조건은 `python-sidecar/config/planner_gate_thresholds.json`에 근거와 함께 있다.
+그중 두 가지가 설계상 중요하다.
+
+- **되묻기는 총량이 아니라 방향으로 본다.** 모호할 때 묻는 것(`clarify_recall`)은
+  올라야 하고, 안 물어도 될 때 묻는 것(`over_clarify_rate`)만 막는다.
+- **분류별 퇴보를 따로 막는다**(`max_category_drop_pp`). 전체 점수가 올라도 `core`가
+  5%p 넘게 떨어지면 승격되지 않는다 — 흔한 동작을 깎아 희귀 동작을 얻는 건
+  개선이 아니다.
+
+액션 이름만 채점한다는 한계가 있다. 파라미터까지 맞는지는
+`run_command_battery.py`(라이브 Excel)로 따로 봐야 한다.
+
 ### Excel Live 지원 액션 (2026-07-07)
 
 - 기본: `list_workbooks`, `select_workbook`, `read_range`, `write_range`, `create_table`, `set_formula`, `save_workbook`
