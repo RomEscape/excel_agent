@@ -285,12 +285,29 @@ def run_train(config: TrainConfig) -> None:
             bnb_4bit_use_double_quant=bool(config.bnb_4bit_use_double_quant),
         )
 
+    # device_map="auto"는 **로드 시점의 여유 VRAM**을 보고 배치를 정한다. 그때 다른
+    # 프로세스(Ollama 등)가 VRAM을 쥐고 있으면 일부 레이어를 조용히 CPU로 내리고,
+    # 그 배치는 상대 프로세스가 죽은 뒤에도 그대로 남는다. 실측에서 스텝당 55초가
+    # 170초로 뛴 원인이 이것이었다 — 오류도 경고도 없이 3배 느려진다.
+    # 전부 GPU에 올리고, 안 들어가면 조용히 느려지는 대신 OOM으로 시끄럽게 실패시킨다.
+    device_map: Any = {"": 0} if torch.cuda.is_available() else "auto"
     model = AutoModelForCausalLM.from_pretrained(
         config.base_model,
         trust_remote_code=True,
         quantization_config=quant_cfg,
-        device_map="auto",
+        device_map=device_map,
     )
+    offloaded = sorted(
+        {
+            str(dev)
+            for dev in getattr(model, "hf_device_map", {}).values()
+            if str(dev) in {"cpu", "disk"}
+        }
+    )
+    if offloaded:
+        raise RuntimeError(
+            f"모델 일부가 {offloaded}로 내려갔습니다. VRAM을 쓰는 다른 프로세스를 종료한 뒤 다시 실행하세요."
+        )
     # prepare_model_for_kbit_training은 기본값이 use_gradient_checkpointing=True라,
     # 넘겨주지 않으면 설정에서 껐어도 다시 켜진다.
     use_ckpt = bool(config.gradient_checkpointing)
