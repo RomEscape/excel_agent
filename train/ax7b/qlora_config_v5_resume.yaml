@@ -1,0 +1,55 @@
+run_name: ax7b-planner-qlora-v5-resume
+seed: 43
+
+# 2026-08-10 20:31 Kernel-Power 41(하드 리셋)로 v5 학습이 step 100에서 끊겼다.
+# checkpoint-100은 저장 도중에 잘려 optimizer.pt(0.6MB)·trainer_state.json·scheduler.pt가
+# 없다. 다만 adapter_model.safetensors는 온전했다(392 텐서 / 161,480,704 파라미터 /
+# NaN·Inf 0건 검증). 그래서 정식 resume 대신 가중치만 이어받아 다시 시작한다.
+init_adapter_from: artifacts/ax7b-planner-lora-v5/checkpoint-100
+
+train_jsonl: datasets/train/planner_sft_v5_train.jsonl
+eval_jsonl: datasets/train/planner_sft_v5_test.jsonl
+output_dir: artifacts/ax7b-planner-lora-v5r
+
+base_model: skt/A.X-4.0-Light
+max_seq_length: 2944
+
+# QLoRA — checkpoint-100과 같은 형상이어야 가중치를 이어받을 수 있다.
+load_in_4bit: true
+bnb_4bit_quant_type: nf4
+bnb_4bit_compute_dtype: bfloat16
+bnb_4bit_use_double_quant: true
+lora_r: 64
+lora_alpha: 128
+lora_dropout: 0.05
+target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj
+
+# 이미 0.5 에폭을 돌았다(학습 손실 0.635 -> 0.039). 여기에 1 에폭을 더해 총 1.5 에폭으로
+# 끊는다. 2 에폭까지 밀면 새벽 7시라 하드 리셋에 또 걸릴 시간이 그만큼 길어진다.
+num_train_epochs: 1
+# 워밍업이 끝난 상태에서 이어받으므로 처음부터 2e-4로 때리지 않는다.
+learning_rate: 1.2e-4
+weight_decay: 0.01
+warmup_ratio: 0.03
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+logging_steps: 10
+
+# 크래시 대비가 이번 재시작의 핵심이다.
+# save_steps 100은 스텝당 90초 기준 2.5시간치를 한 번에 날린다 — 실제로 그렇게 날렸다.
+# 25로 줄이면 최악의 손실이 약 37분이다. 체크포인트 하나가 약 1.3GB라 4개까지만 남긴다.
+eval_steps: 50
+save_steps: 25
+save_total_limit: 4
+
+gradient_checkpointing: true
+bf16: true
+fp16: false
+optim: paged_adamw_8bit
