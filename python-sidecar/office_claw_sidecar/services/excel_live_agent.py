@@ -12,6 +12,7 @@ import re
 import time
 from typing import Any
 
+from office_claw_sidecar.services import excel_observation
 from office_claw_sidecar.services.decision_trace import (
     Long,
 )
@@ -883,12 +884,14 @@ async def parse_excel_live_command(
 ) -> dict[str, Any]:
     context = context or {}
     lowered = str(message or "").lower()
+    # 목록 조회는 어느 모드에서든 편집 요청의 답이 아니다. 관측(read_range·
+    # validate_data)만 모드에 따라 허용한다 — 그게 이번 실험의 변수다.
     non_edit_actions = {
         "excel_live.list_workbooks",
         "excel_live.select_workbook",
-        "excel_live.read_range",
-        "excel_live.validate_data",
     }
+    if not excel_observation.allows_read_first():
+        non_edit_actions |= set(excel_observation.OBSERVATION_ACTIONS)
     # 에이전트 단일 경로: 규칙 파서 없이 LLM 플래너만 사용한다.
     try:
         planned = await parse_command_plan_with_llm(

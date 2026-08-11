@@ -121,7 +121,9 @@ def main() -> int:
     parser.add_argument("--prompt", action="store_true", help="LLM 원본 응답까지 표시")
     parser.add_argument("--log", default="", help="다른 로그 파일 경로")
     parser.add_argument("--follow", action="store_true", help="새 턴이 들어올 때마다 이어서 보기")
-    parser.add_argument("--out", default="", help="--follow와 함께: 펼친 내용을 이 파일에도 쓴다")
+    # 콘솔이 CP949인 환경에서는 한글이 깨져서 로그를 읽을 수 없다. 파일로 받으면
+    # 항상 UTF-8이라 그 환경에서도 같은 내용을 본다.
+    parser.add_argument("--out", default="", help="펼친 내용을 이 파일에 UTF-8로 쓴다")
     args = parser.parse_args()
 
     path = Path(args.log) if args.log else get_chat_log_path()
@@ -146,7 +148,13 @@ def main() -> int:
         return 0
 
     shown = turns[-args.count :] if args.count > 0 else turns
-    print(f"\n  {len(shown)}/{len(turns)}턴 — {path}")
+    header = f"\n  {len(shown)}/{len(turns)}턴 — {path}"
+    body = "\n\n".join(render(turn, show_prompt=args.prompt) for turn in shown)
+    if args.out:
+        Path(args.out).write_text(f"{header}\n\n{body}\n", encoding="utf-8")
+        print(f"  {len(shown)}턴 → {args.out}")
+        return 0
+    print(header)
     for turn in shown:
         print()
         print(render(turn, show_prompt=args.prompt))

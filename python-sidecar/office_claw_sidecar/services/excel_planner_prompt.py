@@ -156,6 +156,9 @@ def normalize_planner_context(context: dict[str, Any] | None) -> dict[str, Any]:
         "failed_action": str(context.get("failed_action", "") or "").strip(),
         "failed_error": str(context.get("failed_error", "") or "").strip(),
         "failed_args": _compact_args(context.get("failed_args")),
+        # 관측 루프에서만 채워진다. 비어 있으면 프롬프트는 예전과 바이트 단위로 같다 —
+        # 이 함수는 SFT 데이터 생성과 같은 함수라 기본 경로가 흔들리면 안 된다.
+        "observation_text": str(context.get("observation_text") or ""),
     }
 
 
@@ -213,6 +216,7 @@ def build_planner_prompt(
         conversation_history=Long(ctx["conversation_history_text"]),
         context_line=context_line.strip(),
         failure_line=failure_line.strip(),
+        observation_line=Long(ctx["observation_text"]),
         reasoning_line=reasoning_line.strip(),
     )
 
@@ -286,6 +290,7 @@ def build_planner_prompt(
         f"{context_line}"
         f"{personalization_line}"
         f"{failure_line}"
+        f"{ctx['observation_text']}"
         f"{reasoning_line}"
         "출력 형식:\n"
         '{"intent":"edit","mutates_workbook":true,"action_plan":[{"action":"excel_live.fill_range","params":{"target_range":"__ACTIVE_SELECTION__","fill_color":"#FFFF00"},"reason":"범위 배경색 변경"}],"slot_fill":{},"partial_params":{},"follow_up_question":"","reason":"한 줄 한국어"}\n'

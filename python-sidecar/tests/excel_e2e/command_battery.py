@@ -92,6 +92,52 @@ def _sales_rows() -> list[list[Any]]:
     ]
 
 
+_MESSY_SHEET = "재고"
+# 다이제스트가 활성 시트를 읽는 깊이(`excel_workbook_digest._CATEGORY_SCAN_ROWS`).
+# 이 아래로는 프롬프트에 실리지 않는다.
+_DIGEST_SCAN_ROWS = 40
+# 다이제스트 사각지대에 심어 둔 것들. 코드로 식별해 오라클이 정확히 채점한다.
+_BLANK_REGION_CODES = ("P-040", "P-043", "P-047")
+_OUTLIER_CODES = ("P-041", "P-044")
+_TEXT_QTY = {"P-042": 22, "P-045": 31, "P-049": 18}
+
+
+def _messy_rows() -> list[list[Any]]:
+    """다이제스트만 봐서는 답이 안 나오는 시트.
+
+    앞 39개 데이터 행(시트 2~40행)은 깨끗하다. 다이제스트가 읽는 범위가 딱 여기라,
+    모델이 받는 프롬프트에는 "금액·수량은 숫자 열, 지역은 서울/부산/대구" 라는 깔끔한
+    상태만 실린다. 빈칸·이상치·문자열로 든 숫자는 전부 41행 아래에 있어서 **관측하지
+    않으면 존재 자체를 알 수 없다.**
+
+    이게 이 실험의 전제다. 40행 안에 심으면 값 후보나 numeric 비율이 흔들려 다이제스트가
+    힌트를 주고, 그러면 "동적 관측이 필요한가"를 재는 게 아니라 "다이제스트를 더 깊이
+    읽으면 되는가"를 재게 된다.
+    """
+    rows: list[list[Any]] = [["코드", "지역", "금액", "수량"]]
+    regions = ("서울", "부산", "대구")
+    for i in range(_DIGEST_SCAN_ROWS - 1):
+        rows.append([f"P-{i + 1:03d}", regions[i % 3], 100 + i * 10, 5 + (i % 7)])
+    rows.extend(
+        [
+            ["P-040", None, 300, 8],  # 지역 빈칸
+            ["P-041", "서울", 99999, 9],  # 이상치
+            ["P-042", "부산", 320, "22"],  # 수량이 문자열
+            ["P-043", None, 280, 11],  # 지역 빈칸
+            ["P-044", "대구", 88888, 6],  # 이상치
+            ["P-045", "서울", 310, "31"],  # 수량이 문자열
+            ["P-046", "부산", 295, 7],
+            ["P-047", None, 305, 10],  # 지역 빈칸
+            ["P-048", "대구", 330, 12],
+            ["P-049", "서울", 315, "18"],  # 수량이 문자열
+        ]
+    )
+    return rows
+
+
+_MESSY_CODES = tuple(str(row[0]) for row in _messy_rows()[1:])
+
+
 # ── 결과 상태 오라클 ─────────────────────────────────────────────────────────
 #
 # 계획을 보지 않는다. 결과 파일만 열어 사용자가 말한 것이 됐는지 본다.
@@ -259,6 +305,120 @@ def _expect_chart(sheet_name: str) -> EffectOracle:
     return check
 
 
+# ── 다이제스트 사각지대 오라클 ───────────────────────────────────────────────
+#
+# 전부 `_messy_rows()` 시트를 본다. 요청한 행만 건드렸는지를 코드 단위로 확인하므로
+# "아무것도 안 함"과 "다 지움"을 둘 다 잡는다 — 둘 다 검증기는 통과시킨다.
+
+
+def _messy_body(sheet: Any) -> list[tuple[int, str, Any, Any, Any]]:
+    """(행번호, 코드, 지역, 금액, 수량). 완전히 빈 행은 버린다."""
+    out = []
+    for index, row in enumerate(sheet.iter_rows(min_row=2, max_col=4, values_only=True), start=2):
+        if any(cell is not None and str(cell).strip() for cell in row):
+            out.append((index, str(row[0] or ""), row[1], row[2], row[3]))
+    return out
+
+
+def _expect_rows_removed(*, removed: tuple[str, ...]) -> EffectOracle:
+    """지목한 코드만 사라지고 나머지는 그대로인가."""
+    want = tuple(code for code in _MESSY_CODES if code not in removed)
+
+    def check(book: Any) -> str:
+        sheet = _sheet(book, _MESSY_SHEET)
+        if sheet is None:
+            return f"{_MESSY_SHEET} 시트가 없다"
+        codes = tuple(code for _, code, _, _, _ in _messy_body(sheet))
+        if codes == _MESSY_CODES:
+            return f"{list(removed)} 행을 지워야 하는데 하나도 지우지 않았다"
+        if codes != want:
+            surplus = sorted(set(want) - set(codes))
+            leftover = sorted(set(codes) & set(removed))
+            parts = []
+            if leftover:
+                parts.append(f"{leftover}가 남았다")
+            if surplus:
+                parts.append(f"멀쩡한 {surplus}까지 지웠다")
+            return "; ".join(parts) or f"행 수가 {len(want)}개여야 하는데 {len(codes)}개다"
+        return ""
+
+    return check
+
+
+def _expect_blanks_filled(filler: str) -> EffectOracle:
+    """빈칸만 채웠는가. 멀쩡한 값을 덮어썼는지도 함께 본다."""
+    original = {str(row[0]): row[1] for row in _messy_rows()[1:]}
+
+    def check(book: Any) -> str:
+        sheet = _sheet(book, _MESSY_SHEET)
+        if sheet is None:
+            return f"{_MESSY_SHEET} 시트가 없다"
+        still_blank, overwritten = [], []
+        for _, code, region, _, _ in _messy_body(sheet):
+            text = str(region or "").strip()
+            if code in _BLANK_REGION_CODES:
+                if text != filler:
+                    still_blank.append(code)
+            elif text != str(original.get(code) or ""):
+                overwritten.append(code)
+        if still_blank:
+            return f"{still_blank}의 지역이 '{filler}'로 채워지지 않았다"
+        if overwritten:
+            return f"멀쩡한 {sorted(overwritten)[:5]}의 지역까지 바꿨다"
+        return ""
+
+    return check
+
+
+def _expect_only_outliers_filled() -> EffectOracle:
+    """이상치 행만 칠해졌는가. 열 전체를 칠한 경우를 잡는다."""
+
+    def check(book: Any) -> str:
+        sheet = _sheet(book, _MESSY_SHEET)
+        if sheet is None:
+            return f"{_MESSY_SHEET} 시트가 없다"
+        painted = [
+            code
+            for index, code, _, _, _ in _messy_body(sheet)
+            if any(_has_fill(sheet.cell(row=index, column=col)) for col in range(1, 5))
+        ]
+        if not painted:
+            return f"이상치 {list(_OUTLIER_CODES)}를 칠해야 하는데 아무것도 칠하지 않았다"
+        if sorted(painted) != sorted(_OUTLIER_CODES):
+            extra = sorted(set(painted) - set(_OUTLIER_CODES))
+            return (
+                f"이상치 {list(_OUTLIER_CODES)}만 칠해야 하는데 {len(painted)}개를 칠했다"
+                + (f" (예: {extra[:5]})" if extra else "")
+            )
+        return ""
+
+    return check
+
+
+def _expect_quantities_numeric() -> EffectOracle:
+    """문자열로 든 숫자가 숫자가 됐는가. 값이 보존됐는지도 본다."""
+
+    def check(book: Any) -> str:
+        sheet = _sheet(book, _MESSY_SHEET)
+        if sheet is None:
+            return f"{_MESSY_SHEET} 시트가 없다"
+        still_text, wrong_value = [], []
+        for _, code, _, _, qty in _messy_body(sheet):
+            if code not in _TEXT_QTY:
+                continue
+            if isinstance(qty, str):
+                still_text.append(code)
+            elif qty != _TEXT_QTY[code]:
+                wrong_value.append(f"{code}={qty!r}(원래 {_TEXT_QTY[code]})")
+        if still_text:
+            return f"{still_text}의 수량이 아직 문자열이다"
+        if wrong_value:
+            return f"수량 값이 바뀌었다: {wrong_value}"
+        return ""
+
+    return check
+
+
 def _expect_headers(sheet_name: str, headers: list[str]) -> EffectOracle:
     def check(book: Any) -> str:
         sheet = _sheet(book, sheet_name)
@@ -353,6 +513,60 @@ ALL_CASES: list[BatteryCase] = [
         tags=("create_chart",),
     ),
 ]
+
+
+# 다이제스트만으로는 답이 안 나오는 요청들. 셋 다 41행 아래를 봐야만 풀린다.
+#
+# 이 묶음은 기본 배터리(ALL_CASES)와 분리해 둔다. 여기 담긴 것은 "지금 안 되는 게
+# 정상"인 케이스라, 회귀 감시용 기준선에 섞으면 이행률이 무슨 뜻인지 흐려진다.
+OBSERVATION_CASES: list[BatteryCase] = [
+    BatteryCase(
+        "빈칸행삭제",
+        "지역이 비어 있는 행은 삭제해줘",
+        sheet=_MESSY_SHEET,
+        rows=_messy_rows(),
+        expect_effect=_expect_rows_removed(removed=_BLANK_REGION_CODES),
+        tags=("observation", "delete"),
+    ),
+    BatteryCase(
+        "빈칸채우기",
+        "지역이 비어 있는 칸은 '미상'으로 채워줘",
+        sheet=_MESSY_SHEET,
+        rows=_messy_rows(),
+        expect_effect=_expect_blanks_filled("미상"),
+        tags=("observation", "write"),
+    ),
+    BatteryCase(
+        "이상치강조",
+        "금액에 유난히 큰 이상치가 있으면 빨간색으로 표시해줘",
+        sheet=_MESSY_SHEET,
+        rows=_messy_rows(),
+        expect_effect=_expect_only_outliers_filled(),
+        tags=("observation", "format"),
+    ),
+    BatteryCase(
+        "이상치삭제",
+        "금액이 비정상적으로 큰 이상치 행은 삭제해줘",
+        sheet=_MESSY_SHEET,
+        rows=_messy_rows(),
+        expect_effect=_expect_rows_removed(removed=_OUTLIER_CODES),
+        tags=("observation", "delete"),
+    ),
+    BatteryCase(
+        "문자열숫자",
+        "수량 열에 문자열로 들어간 숫자를 숫자로 바꿔줘",
+        sheet=_MESSY_SHEET,
+        rows=_messy_rows(),
+        expect_effect=_expect_quantities_numeric(),
+        tags=("observation", "repair"),
+    ),
+]
+
+CASE_SETS: dict[str, list[BatteryCase]] = {
+    "default": ALL_CASES,
+    "observation": OBSERVATION_CASES,
+    "all": ALL_CASES + OBSERVATION_CASES,
+}
 
 
 @dataclass

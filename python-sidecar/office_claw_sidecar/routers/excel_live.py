@@ -19,22 +19,22 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from office_claw_sidecar.models.approval import ApprovalRequest, ApprovalResponse
+from office_claw_sidecar.services import excel_observation
+from office_claw_sidecar.services import excel_rank_limit as rank_limit
 from office_claw_sidecar.services.audit_service import AuditService
 from office_claw_sidecar.services.decision_trace import (
     Long,
+    set_outcome_from_response,
+    turn_scope,
 )
 from office_claw_sidecar.services.decision_trace import (
     note as trace_note,
 )
 from office_claw_sidecar.services.decision_trace import (
-    route as trace_route,
-)
-from office_claw_sidecar.services.decision_trace import (
     plan_summary as trace_plan,
 )
 from office_claw_sidecar.services.decision_trace import (
-    set_outcome_from_response,
-    turn_scope,
+    route as trace_route,
 )
 from office_claw_sidecar.services.excel_actions import execute_excel_action
 from office_claw_sidecar.services.excel_header_lexicon import (
@@ -64,11 +64,6 @@ from office_claw_sidecar.services.excel_live_plan_validator import (
     ValidationContext,
     validate_plan,
 )
-from office_claw_sidecar.services.excel_planner_escalation import (
-    EscalationResult,
-    plan_with_escalation,
-    record_escalation,
-)
 from office_claw_sidecar.services.excel_live_service import (
     AmbiguousWorkbookError,
     ExcelConnectionError,
@@ -89,8 +84,14 @@ from office_claw_sidecar.services.excel_param_binder import (
     resolve_sheet_from_message,
     sheet_entry,
 )
-from office_claw_sidecar.services import excel_rank_limit as rank_limit
-from office_claw_sidecar.services.excel_planner_prompt import render_conversation_history
+from office_claw_sidecar.services.excel_planner_escalation import (
+    EscalationResult,
+    plan_with_escalation,
+    record_escalation,
+)
+from office_claw_sidecar.services.excel_planner_prompt import (
+    render_conversation_history,
+)
 from office_claw_sidecar.services.excel_result_verifier import verify_effect
 from office_claw_sidecar.services.excel_workbook_digest import (
     build_workbook_digest,
@@ -1196,9 +1197,37 @@ def _quick_plan_underfits_message(quick_first_action: str, text: str) -> bool:
         return True
     if quick_first_action in _RANK_LIMIT_SENSITIVE_QUICK_ACTIONS and rank_limit.detect(message):
         return True
+    if quick_first_action in _DATA_STATE_SENSITIVE_QUICK_ACTIONS and _DATA_STATE_PATTERN.search(
+        message
+    ):
+        return True
     return quick_first_action in _AGGREGATE_SENSITIVE_QUICK_ACTIONS and bool(
         _AGGREGATE_REQUEST_PATTERN.search(message)
     )
+
+
+# 대상이 **값의 상태**로 정의된 문장. 규칙은 동사 하나만 보고 범위를 통째로 잡으므로
+# 그 조건이 통째로 사라진다. "지역이 비어 있는 행은 삭제해줘"가 clear_range로 가면
+# 빈 행 3개가 아니라 멀쩡한 46행이 지워지고, 지운 셀이 있으니 성공이 보고된다
+# (2026-08-11 armA-current 실측: 3/3회).
+#
+# 어느 행이 해당하는지는 다이제스트(머리글 + 예시 3행)로도 알 수 없다. 규칙도 못 하고
+# 다이제스트도 못 하니 남는 길은 데이터를 실제로 보는 것뿐이다.
+_DATA_STATE_PATTERN = re.compile(
+    r"빈\s*칸|빈칸|비어\s*있|공란|누락"
+    r"|이상치|이상\s*값|비정상|튀는\s*값"
+    r"|문자열로|텍스트로|숫자가\s*아닌|형식이\s*다른|깨진",
+    re.IGNORECASE,
+)
+_DATA_STATE_SENSITIVE_QUICK_ACTIONS = frozenset(
+    {
+        "excel_live.fill_range",
+        "excel_live.clear_range",
+        "excel_live.apply_border",
+        "excel_live.write_range",
+        "excel_live.sort_range",
+    }
+)
 
 
 # 조건과 같은 이유로 규칙에 맡기면 안 되는 문장들. "상위 3개를 노랗게"가 fill_range로
@@ -5068,7 +5097,7 @@ def _build_xlwings_trace_entry(
     service = get_excel_live_service()
     engine_name = str(getattr(service, "engine", "xlwings") or "xlwings").strip() or "xlwings"
     action_name = str(action or "").strip()
-    method = action_name[11:] if action_name.startswith("excel_live.") else action_name
+    method = action_name.removeprefix("excel_live.")
     target_range = _normalize_range_text(
         result.get("address")
         or params.get("target_range")
@@ -5823,6 +5852,14 @@ async def _run_command(
     ):
         # 편집 의도로 분류된 요청에서 read_range 폴백은 "보여줘" 같은 표현 때문에
         # 오동작을 만들 수 있으므로 멀티턴 슬롯 경로를 우선한다.
+        fallback_rule_step = None
+
+    if fallback_rule_step and _quick_plan_underfits_message(
+        str(fallback_rule_step.get("action", "")).strip(), req.message
+    ):
+        # 규칙이 문장을 표현하지 못한다고 판단해 플래너로 넘겨 놓고, 플래너가 실패했다고
+        # 다시 그 규칙으로 돌아오면 앞의 판단이 무의미해진다. 조건을 버린 계획을
+        # 실행하느니 되묻는 편이 낫다 — 실행하면 되돌릴 수 없다.
         fallback_rule_step = None
 
     parsed: dict[str, Any] | None = None
@@ -6834,6 +6871,7 @@ async def _execute_plan_and_respond(
 
     execution = None
     replan_count = 0
+    observed_count = 0
     max_replans = 1
     recovery_backup_info: dict[str, Any] | None = None
     rollback_events: list[dict[str, Any]] = []
@@ -6929,9 +6967,12 @@ async def _execute_plan_and_respond(
                         workbook_id=req.workbook_id,
                         label="command",
                     )
+                # 관측 루프에서는 관측 단계에서 계획을 끊는다. 끊지 않으면 뒤 단계가
+                # 읽기 전에 정해진 인자로 실행돼, 재계획할 기회가 오기 전에 파일이 바뀐다.
+                planned = excel_observation.truncate_at_observation(current_plan)
                 return execute_plan(
                     steps=_chain_chart_to_pivot(
-                        _drop_trailing_verification(_drop_table_step_when_aggregating(current_plan)),
+                        _drop_trailing_verification(_drop_table_step_when_aggregating(planned)),
                         session_key=session_key,
                     ),
                     execute_action=_guarded_execute,
@@ -6956,6 +6997,46 @@ async def _execute_plan_and_respond(
             if recovery_backup_info and recovery_backup_info.get("backup_path"):
                 mapped.detail = f"{mapped.detail} (복구 백업: {recovery_backup_info.get('backup_path')})"
             raise mapped
+
+        # 관측만 하고 끝난 턴이면 그 값을 들고 다시 계획한다. 실패 재계획과 트리거가
+        # 정반대라(성공한 관측 vs 깨진 편집) 따로 둔다.
+        if excel_observation.should_replan_after_observation(execution, observed=observed_count):
+            observed_count += 1
+            observation_text = excel_observation.render_observation(execution)
+            trace_route(
+                f"observe:{observed_count}",
+                why=f"{getattr(execution.last, 'action', '')} 결과를 보고 다시 계획",
+                observed_chars=len(observation_text),
+            )
+            observe_context = dict(base_context)
+            observe_context["personalization_hint"] = personalization_hint
+            observe_context["observation_text"] = observation_text
+            observe_digest = build_workbook_digest(
+                get_excel_live_service(),
+                workbook_id=req.workbook_id,
+                active_sheet_hint=req.sheet_name,
+            )
+            observe_context["workbook_digest"] = observe_digest
+            observe_context["workbook_digest_text"] = render_workbook_digest(observe_digest)
+            try:
+                observed_plan = await parse_command_plan_with_llm(
+                    req.message,
+                    llm,
+                    context=observe_context,
+                    forbid_list_action=True,
+                    require_edit_action=True,
+                )
+                observed_steps, _ = _bind_plan_for_request(
+                    _normalize_plan_or_empty(observed_plan.get("action_plan")),
+                    digest=observe_digest,
+                    req=req,
+                )
+                current_plan = _validate_plan_for_request(observed_steps, req)
+                parsed["reason"] = observed_plan.get("reason", "") or parsed.get("reason", "")
+                continue
+            except Exception as exc:  # noqa: BLE001 - 관측은 했으므로 그 결과라도 보고한다
+                trace_route("observe:replan_failed", why=f"{type(exc).__name__}: {exc}")
+                break
 
         if not should_replan_after_execution(
             execution,

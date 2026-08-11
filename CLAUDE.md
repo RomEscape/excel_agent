@@ -45,6 +45,7 @@
 | 턴 트레이스·진단 | — | `services/decision_trace.py`(기록) · `trace_report.py`(한 턴 펼치기) · `trace_digest.py`(여러 턴 접기) | — | `scripts/show_turns.py` · `run_command_diagnostics.py` (조합만) |
 | 결과 상태 채점 | — | `tests/excel_e2e/command_battery.py`의 `expect_effect` 오라클 (결과 워크북을 직접 열어 본다) | — | `run_command_diagnostics.py`가 `.report.json`에 기록 |
 | 수량 한정어 해석 | — | `services/excel_rank_limit.py` — `detect`("몇 개를 어느 쪽으로")와 `resolve_step`(N번째 값을 파일에서 읽어 기준값으로) | — | 라우터의 목표 누락 가드가 조합만 |
+| 관측 모드 (실험) | — | `services/excel_observation.py` — `off`/`read_first`/`loop` 삼항 스위치와 그 판정(`allows_read_first`·`truncate_at_observation`·`should_replan_after_observation`·`render_observation`) | — | 라우터 실행 루프와 `excel_live_agent`가 조합만 |
 
 새 기능을 추가할 때 이 표에 한 줄이 더 늘어나야 한다.
 
@@ -76,6 +77,14 @@ uv run python scripts/show_turns.py --follow --out ../logs/turns.txt  # 에디�
 uv run python scripts/show_turns.py --follow --failed                 # 깨진 턴만
 ```
 
+한 턴에 모델을 여러 번 부르는 경로(재계획·관측 루프)를 볼 때는 `show_turns.py`로
+부족하다 — 요약하느라 **첫 호출만** 보여 준다. 두 번째 호출이 무엇을 보고 무엇을
+냈는지가 정작 알고 싶은 것이므로 이걸 쓴다.
+
+```bash
+uv run python scripts/dump_turn_llm_calls.py ../logs/diagnostics/<실행id>.jsonl <turn_id> ../logs/turn.txt
+```
+
 지킬 것:
 
 1. **주장을 코드에 대조하고 나서 고친다.** 외부 지적이 이미 구현된 기능을 가리키는
@@ -91,6 +100,19 @@ uv run python scripts/show_turns.py --follow --failed                 # 깨진 �
  아예 호출되지 않았다. 프롬프트·모델을 아무리 고쳐도 그 경로는 바뀌지 않는다
  (2026-08-11 "상위 3개"가 그랬다 — 규칙이 한정어를 버리고 열 전체를 칠했다).
  규칙이 문장의 일부를 표현하지 못하면 `_quick_plan_underfits_message`에서 놓게 한다.
+6. **구조를 의심하기 전에 학습 리터럴을 세어 본다.** 모델이 없는 열·없는 범위를 고르면
+ 그 문자열이 학습셋에 그대로 있는지 먼저 본다. 2026-08-11 관측 실험에서 모델이 계속
+ 고른 `I2:I181`은 `datasets/train/planner_sft_v3_train.jsonl` 1000건 중 27건(2.7%)에
+ 리터럴로 들어 있었다. 관측 결과를 프롬프트에 넣어 줘도 **바이트 단위로 같은 답**이
+ 나왔다 — 하네스를 아무리 고쳐도 안 바뀌는 종류다.
+
+ ```bash
+ rg -c "<모델이 고른 이상한 문자열>" datasets/train/planner_sft_v3_train.jsonl
+ ```
+7. **실험 팔을 비교하기 전에 세 팔이 같은 조건인지 본다.** 일부 케이스가
+ `quick_rule:hit`이라 LLM에 가지도 않으면, 무엇을 바꿔도 그 케이스는 안 움직인다.
+ 그 상태로 비교하면 "효과 없음"이라는 틀린 결론이 나온다. 규칙·폴백 수정은 **팔이
+ 아니라 하네스**이므로 모든 팔에 적용하고 기준선을 다시 잰다.
 
 ## 빌드/실행
 

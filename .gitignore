@@ -88,6 +88,9 @@ logs/turns.txt
 !logs/diagnostics/
 logs/diagnostics/*
 !logs/diagnostics/*.report.json
+# 관측 모드 세 팔 비교표. 만드는 스크립트가 턴 로그(.jsonl)까지 읽는데 그건 추적하지
+# 않으므로, 이 표는 저장소 안에서 다시 만들 수 없다. 결과물을 남겨야 한다.
+!logs/observation_arms.md
 
 # ── 임시 작업물 ────────────────────────────────────────────────────────────
 # 테스트로 만든 xlsx/pdf, 명령 출력 덤프 등. 메모(.md)는 남긴다.

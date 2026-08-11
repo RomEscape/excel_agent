@@ -42,7 +42,9 @@ def _run_id(label: str) -> str:
     return f"{stamp}-{label}" if label else stamp
 
 
-def _run(run_id: str, *, repeats: int, only: list[str]) -> tuple[Path, dict[str, Any]]:
+def _run(
+    run_id: str, *, repeats: int, only: list[str], case_set: str = "default"
+) -> tuple[Path, dict[str, Any]]:
     """배터리를 돌린다. 턴 로그는 이 실행 전용 파일로 보낸다."""
     import pytest
     from fastapi.testclient import TestClient
@@ -54,7 +56,7 @@ def _run(run_id: str, *, repeats: int, only: list[str]) -> tuple[Path, dict[str,
     DIAG_DIR.mkdir(parents=True, exist_ok=True)
     log_path = DIAG_DIR / f"{run_id}.jsonl"
 
-    cases = command_battery.ALL_CASES
+    cases = command_battery.CASE_SETS[case_set]
     if only:
         cases = [c for c in cases if c.case_id in only]
         if not cases:
@@ -183,6 +185,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="명령 진단 배터리")
     parser.add_argument("-n", "--repeats", type=int, default=3, help="케이스당 반복 횟수 (기본 3)")
     parser.add_argument("--case", action="append", default=[], help="이 케이스만 (여러 번 지정 가능)")
+    parser.add_argument(
+        "--set",
+        dest="case_set",
+        default="default",
+        choices=["default", "observation", "all"],
+        help="어느 묶음을 돌릴지 (observation = 다이제스트로 못 푸는 케이스)",
+    )
     parser.add_argument("--label", default="", help="실행 id에 붙일 이름")
     parser.add_argument("--analyze", default="", help="실행 id 하나를 다시 돌리지 않고 분석")
     parser.add_argument("--analyze-all", action="store_true", help="쌓인 실행 전부를 합쳐 분석")
@@ -200,7 +209,7 @@ def main() -> int:
         return 0
 
     run_id = _run_id(args.label)
-    log_path, _ = _run(run_id, repeats=args.repeats, only=args.case)
+    log_path, _ = _run(run_id, repeats=args.repeats, only=args.case, case_set=args.case_set)
     _analyze([log_path])
     print(f"  턴 로그  {log_path}")
     print(f"  집계     {DIAG_DIR / f'{run_id}.report.json'}")
