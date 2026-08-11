@@ -372,12 +372,34 @@ def verify_effect(
                 return False, "filter_no_match:조건에 맞는 행이 없습니다"
             return True, ""
 
+        if action == "excel_live.highlight_by_condition":
+            # 조건에 맞는 셀이 0개인 것은 **정상 결과**다. "50 이상만 노란색"에서
+            # 50 이상이 없으면 아무것도 안 칠하는 게 맞다.
+            #
+            # 이걸 실패로 보면 계획이 끊기고 롤백이 돌고 재계획이 뜨는데, 재계획한
+            # 모델은 "칠해진 게 없다"를 조건이 빡빡했다는 뜻으로 읽고 조건을 느슨하게
+            # 만든다. 2026-08-11 `0811-182610-armA-off` 실측: `이상치강조`가 3회 모두
+            # 이 경로로 49행 전부를 칠했다. 오탐 하나가 정상 결과를 파괴로 바꿨다.
+            #
+            # 가르는 기준은 "칠했는가"가 아니라 "대 봤는가"다.
+            scanned = result.get("scanned_cells")
+            if scanned is not None:
+                if int(scanned or 0) >= 1:
+                    return True, ""
+                return False, "empty_target_range:조건을 검사할 셀이 없습니다"
+            # 옛 실행기 결과에는 scanned_cells가 없다. 그때는 예전 기준을 쓴다.
+            changed = int(result.get("changed_cells", result.get("applied_cells", 0)) or 0)
+            if changed <= 0:
+                return False, "no_cells_changed:서식이 적용된 셀이 없습니다"
+            return True, ""
+
         if action in {
-            "excel_live.highlight_by_condition",
             "excel_live.fill_range",
             "excel_live.apply_border",
             "excel_live.set_border",
         }:
+            # 이 셋은 조건이 없다. 범위 전체를 칠하므로 changed_cells는 범위 크기와
+            # 같고, 0이면 범위를 잘못 잡았다는 뜻이라 실패가 맞다.
             changed = int(result.get("changed_cells", result.get("applied_cells", 0)) or 0)
             if changed <= 0:
                 return False, "no_cells_changed:서식이 적용된 셀이 없습니다"

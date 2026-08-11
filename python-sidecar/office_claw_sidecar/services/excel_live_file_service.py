@@ -761,6 +761,10 @@ class FileExcelLiveService(ExcelLiveService):
             fill = PatternFill(fill_type="solid", fgColor=self._to_argb(fill_color), bgColor=self._to_argb(fill_color))
             matched = 0
             changed = 0
+            # 조건을 실제로 몇 칸에 대 봤는가. 0건이 "조건에 맞는 게 없어서"인지
+            # "범위가 비어서"인지를 이 값으로만 가를 수 있다 — 전자는 정상이고
+            # 후자는 대상을 잘못 잡은 것이라 검증 판정이 정반대여야 한다.
+            scanned = 0
             evaluator = self._make_evaluator(path, wb, values, ws.title)
 
             def computed(row_idx: int, col_idx: int, fallback: Any) -> Any:
@@ -769,6 +773,7 @@ class FileExcelLiveService(ExcelLiveService):
 
             for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
                 for cell in row:
+                    scanned += 1
                     left = computed(cell.row, cell.column, cell.value)
                     if compare_letter:
                         limit_cell = ws[f"{compare_letter}{cell.row}"]
@@ -786,6 +791,7 @@ class FileExcelLiveService(ExcelLiveService):
             return {
                 "matched_cells": matched,
                 "changed_cells": changed,
+                "scanned_cells": scanned,
                 "address": self._address_from_bounds(bounds),
             }
         finally:

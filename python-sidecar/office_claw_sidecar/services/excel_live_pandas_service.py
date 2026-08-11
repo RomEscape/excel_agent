@@ -378,8 +378,11 @@ class PandasExcelLiveService(ExcelLiveService):
             fill = PatternFill(fill_type="solid", fgColor=self._to_argb(fill_color), bgColor=self._to_argb(fill_color))
             matched = 0
             changed = 0
+            # 0건이 "조건에 맞는 게 없어서"인지 "범위가 비어서"인지를 가르는 값.
+            scanned = 0
             for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
                 for cell in row:
+                    scanned += 1
                     if self._matches_condition(cell.value, operator, threshold):
                         matched += 1
                         cell.fill = fill
@@ -388,6 +391,7 @@ class PandasExcelLiveService(ExcelLiveService):
             return {
                 "matched_cells": matched,
                 "changed_cells": changed,
+                "scanned_cells": scanned,
                 "address": self._address_from_bounds(bounds),
             }
         finally:

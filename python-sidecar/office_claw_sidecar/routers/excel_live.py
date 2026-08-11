@@ -5206,7 +5206,26 @@ def _verify_step_result(
             and int(snap.get("col_count", 0)) >= max(1, expected_cols)
         )
 
-    if action in {"excel_live.highlight_by_condition", "excel_live.fill_range", "excel_live.apply_border"}:
+    if action == "excel_live.highlight_by_condition":
+        # 조건에 맞는 셀이 0개인 것은 **정상 결과**다. "50 이상인 셀만 노란색"에서
+        # 50 이상이 하나도 없으면 아무것도 안 칠하는 게 맞다. 그런데 이걸 실패로
+        # 보면 abort_on_failure로 계획이 끊기고 롤백까지 돌며, 모델은 재계획에서
+        # 조건을 느슨하게 만들어 결국 전 행을 칠한다
+        # (2026-08-11 `0811-182610-armA-off` 이상치강조: `verify:failed×2 →
+        #  replan:1` 뒤에 49행 전부 도색, 3/3회).
+        #
+        # 가르는 기준은 "칠했는가"가 아니라 "대 봤는가"다.
+        scanned = int(result.get("scanned_cells", 0) or 0)
+        if scanned >= 1:
+            return True
+        # 옛 실행기는 scanned_cells를 안 준다. 그때는 예전 기준으로 판정한다.
+        if "scanned_cells" not in result:
+            return int(result.get("changed_cells", 0) or 0) >= 1
+        return False, "empty_target_range:조건을 검사할 셀이 없습니다"
+
+    if action in {"excel_live.fill_range", "excel_live.apply_border"}:
+        # 이 둘은 조건이 없다. 범위 전체를 칠하므로 changed_cells는 범위 크기와
+        # 같고, 0이면 범위를 잘못 잡은 것이다.
         return int(result.get("changed_cells", 0) or 0) >= 1
 
     if action == "excel_live.clear_range":
@@ -7282,11 +7301,33 @@ async def _execute_plan_and_respond(
             },
         )
 
+    reason = parsed.get("reason", "") or primary.reason
+    no_match = _no_match_note(primary.action, last_result)
+    if no_match:
+        # 성공인데 파일이 안 바뀐 경우다. 말해 주지 않으면 사용자는 명령이 씹혔다고
+        # 생각하고 같은 문장을 다시 친다.
+        last_result["no_matching_cells"] = True
+        reason = f"{reason} — {no_match}" if reason else no_match
+
     return ExcelLiveActionResponse(
         ok=True,
         action=primary.action,
         result=last_result,
-        reason=parsed.get("reason", "") or primary.reason,
+        reason=reason,
+    )
+
+
+def _no_match_note(action: str, result: dict[str, Any]) -> str:
+    """조건은 제대로 검사했는데 해당하는 셀이 없었던 경우의 안내 문구."""
+    if action != "excel_live.highlight_by_condition":
+        return ""
+    if int(result.get("scanned_cells", 0) or 0) < 1:
+        return ""
+    if int(result.get("changed_cells", 0) or 0) >= 1:
+        return ""
+    return (
+        f"조건에 맞는 셀이 없어 변경된 항목이 없습니다 "
+        f"({result.get('scanned_cells')}칸을 검사했습니다)"
     )
 
 

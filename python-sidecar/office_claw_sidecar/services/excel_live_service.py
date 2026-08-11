@@ -360,8 +360,12 @@ class ExcelLiveService:
 
         matched = 0
         changed = 0
+        # 조건을 실제로 몇 칸에 대 봤는가. 0건이 "조건에 맞는 게 없어서"인지
+        # "범위가 비어서"인지를 이 값으로만 가를 수 있다.
+        scanned = 0
         for r_idx, row in enumerate(values):
             for c_idx, cell_value in enumerate(row):
+                scanned += 1
                 absolute_row = start_row + r_idx
                 limit = threshold
                 if compare_letter:
@@ -383,6 +387,7 @@ class ExcelLiveService:
         return {
             "matched_cells": matched,
             "changed_cells": changed,
+            "scanned_cells": scanned,
             "address": str(rng.address),
         }
 
