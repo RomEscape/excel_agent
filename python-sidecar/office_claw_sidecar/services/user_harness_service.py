@@ -15,8 +15,8 @@ from pathlib import Path
 from typing import Any
 
 from office_claw_sidecar.config import get_data_dir
+from office_claw_sidecar.services.traffic_origin import current_origin
 from office_claw_sidecar.services.unified_log_service import append_unified_event
-
 
 KST = timezone(timedelta(hours=9), name="KST")
 
@@ -387,6 +387,9 @@ def record_user_harness_event(
 
     event = {
         "at": _now_iso(),
+        # 나중에 학습 데이터를 수확할 때 사람이 친 명령만 골라내려면, 지금
+        # 남겨 두는 수밖에 없다. 추정으로 되돌리는 건 이미 한 번 실패했다.
+        "origin": current_origin(),
         "route": str(route or ""),
         "method": str(method or "POST"),
         "status_code": int(status_code),

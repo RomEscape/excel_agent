@@ -97,6 +97,11 @@ def current_turn() -> DecisionTurn | None:
     return _CURRENT.get()
 
 
+def current_source() -> dict[str, Any]:
+    """지금 열려 있는 출처 태그. 턴 밖에서 부르면 빈 dict."""
+    return dict(_SOURCE.get() or {})
+
+
 @contextmanager
 def source(**fields: Any):
     """이 블록 안에서 만들어지는 턴에 출처를 붙인다.

@@ -12,6 +12,8 @@ from typing import Any, Iterable
 
 from openpyxl import load_workbook
 
+from office_claw_sidecar.services.traffic_origin import classify as classify_origin
+
 KST = timezone(timedelta(hours=9), name="KST")
 SCHEMA_VERSION = "excel_distill.v1"
 
@@ -416,9 +418,11 @@ def parse_all_events(
     root: Path,
     preferred_locale: str,
     drop_non_preferred_locale: bool,
+    include_automated: bool = False,
 ) -> tuple[list[dict[str, Any]], BuildStats]:
     rows: list[dict[str, Any]] = []
     stats = BuildStats()
+    dropped_by_origin: Counter[str] = Counter()
     for idx, event in enumerate(iter_jsonl(log_path), start=1):
         if limit > 0 and len(rows) >= limit:
             break
@@ -426,6 +430,11 @@ def parse_all_events(
             continue
         payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
         if str(payload.get("route", "")).strip() != "/excel-live/command":
+            continue
+        origin = classify_origin(payload)
+        if not include_automated and not origin.is_user:
+            dropped_by_origin[origin.label] += 1
+            stats.skipped += 1
             continue
         message = normalize_text(payload.get("message", ""))
         if not message:
@@ -462,6 +471,7 @@ def parse_all_events(
                 "sheet_name": normalize_text(payload.get("sheet_name", "")),
                 "reason": normalize_text(payload.get("reason", "")),
                 "status_code": payload.get("status_code", 0),
+                "origin": origin.label,
             },
             label_status="log_observed",
             action_plan=action_plan,
@@ -472,6 +482,11 @@ def parse_all_events(
         )
         rows.append(record)
         stats.added += 1
+    if dropped_by_origin:
+        total = sum(dropped_by_origin.values())
+        print(f"[INFO] 자동화 트래픽 {total}건 제외:")
+        for label, count in dropped_by_origin.most_common():
+            print(f"       {count:>6}  {label}")
     return rows, stats
 
 
@@ -502,6 +517,11 @@ def main() -> None:
     parser.add_argument("--sheetcopilot-root", action="append", type=Path, default=[])
     parser.add_argument("--sheetrm-root", action="append", type=Path, default=[])
     parser.add_argument("--all-events", action="append", type=Path, default=[])
+    parser.add_argument(
+        "--include-automated",
+        action="store_true",
+        help="테스트·프로브가 만든 트래픽까지 포함한다 (기본은 사람 트래픽만)",
+    )
     parser.add_argument("--split", type=str, default="train")
     parser.add_argument("--preferred-locale", type=str, default="ko")
     parser.add_argument("--drop-non-preferred-locale", action="store_true")
@@ -593,6 +613,7 @@ def main() -> None:
             root=Path.cwd(),
             preferred_locale=args.preferred_locale,
             drop_non_preferred_locale=args.drop_non_preferred_locale,
+            include_automated=args.include_automated,
         )
         upsert_records(merged, rows)
         total_stats.added += stats.added

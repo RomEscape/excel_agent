@@ -678,6 +678,36 @@ python scripts/audit_planner_action_coverage.py \
     --jsonl ../datasets/train/planner_sft_v5_train.jsonl --output ../scratch/coverage_v5.json
 ```
 
+#### 학습/검증 분할 — 자동화 트래픽을 먼저 걷어낸다
+
+수확기(`build_excel_distill_jsonl.py`)는 실행 로그에서 학습 데이터를 만드는데,
+그 로그에는 pytest와 프로브 스크립트가 만든 트래픽이 함께 쌓인다. 거르지 않으면
+모델이 픽스처 문자열(`alpha123`)을 배우고, 검증셋은 자기 테스트를 채점하게 된다.
+v5 검증셋 34건 중 21건이 실제로 pytest 세션이었다.
+
+`services/traffic_origin.py`가 출처를 가른다. 기록 시점에 `origin`을 남기고,
+태그가 없는 과거 이벤트는 세션 id·통합문서 경로로 추정하되 **확인되지 않으면
+사람으로 치지 않는다.**
+
+```bash
+# 로그에 누구 트래픽이 얼마나 쌓였는지
+uv run python scripts/report_traffic_origin.py ../logs/all_events.jsonl
+
+# 오염 제거 + 중복 제거 + 출처×액션 층화 분할
+uv run python scripts/split_planner_sft.py \
+    --input ../datasets/train/planner_sft_v5_train.jsonl \
+            ../datasets/train/planner_sft_v5_test.jsonl \
+    --train-out ../datasets/train/planner_sft_v6_train.jsonl \
+    --test-out ../datasets/train/planner_sft_v6_test.jsonl
+```
+
+분할은 지시문이 양쪽에 걸치지 않고, 검증셋에 중복이 없고, 검증에만 있고 학습에
+없는 액션이 생기지 않도록 보장한다 (`tests/test_split_planner_sft.py`).
+
+> 학습 중 eval loss는 **진전 계기판**일 뿐이다. 확인된 사람 트래픽이 0건이라
+> 실사용 일반화는 아직 측정할 수 없다. 승격 판정은 손으로 쓴
+> `planner_eval_v1.jsonl` 154건이 담당한다.
+
 > **학습 중 GPU 주의**: 4060 Ti 16GB에서 QLoRA 학습은 약 10.5GB를 쓴다.
 > Ollama가 플래너 모델을 물고 있으면(약 5GB) VRAM이 꽉 차 시스템 메모리로 페이징되고,
 > 스텝 시간이 55초 → 250초로 무너진다. 학습 전에 `Stop-Process -Name ollama*`로 내려둘 것.
