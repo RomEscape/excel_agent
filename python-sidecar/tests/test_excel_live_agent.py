@@ -316,6 +316,62 @@ def test_extract_create_table_slot_hints_keeps_unit_size_out_of_headers():
     assert hints["headers"] == ["제목", "사양", "비고"]
 
 
+def test_extract_create_table_slot_hints_reads_headers_announced_after_the_request():
+    """지시문이 먼저 오고 나열이 뒤에 오면 첫 머리글에 문장 절반이 들어가던 문제.
+
+    진단 배터리에서 "2행 2열 표 만들어줘. 머리글은 이름, 점수"가
+    머리글 ["표 만들어줘. 머리글은 이름", "점수"]로 표를 만들고도 검증을 통과했다.
+    검증기는 계획된 값과 셀을 비교하므로 계획이 망가지면 같이 통과한다.
+    """
+    cases = {
+        "2행 2열 표 만들어줘. 머리글은 이름, 점수": ["이름", "점수"],
+        "3행 4열 표 만들어줘. 헤더는 이름, 나이, 지역": ["이름", "나이", "지역"],
+        "표 만들어줘. 컬럼은 날짜, 금액": ["날짜", "금액"],
+        "5행 2열 표 만들어줘, 머리글은 상품, 가격": ["상품", "가격"],
+        "표 하나 만들어줘\n머리글은 이름, 점수": ["이름", "점수"],
+        "머리글: 이름, 점수로 표 만들어줘": ["이름", "점수"],
+        "열 이름은 코드, 지역, 금액": ["코드", "지역", "금액"],
+    }
+    for message, expected in cases.items():
+        assert extract_create_table_slot_hints(message)["headers"] == expected, message
+
+
+def test_extract_create_table_slot_hints_drops_the_particle_tying_the_list_to_the_table():
+    """"이름, 점수로 표 만들어줘"의 "로"는 조사지 머리글의 일부가 아니다."""
+    assert extract_create_table_slot_hints("이름, 점수로 표 만들어줘")["headers"] == [
+        "이름",
+        "점수",
+    ]
+    assert extract_create_table_slot_hints("머리글은 이름, 점수인 표 만들어줘")["headers"] == [
+        "이름",
+        "점수",
+    ]
+
+
+def test_extract_create_table_slot_hints_keeps_headers_that_merely_end_in_a_particle():
+    """조사를 무르지 않고 떼면 "확인"이 "확"이 된다. 한 글자만 남으면 되돌린다."""
+    assert extract_create_table_slot_hints("이름, 확인 표 만들어줘")["headers"] == [
+        "이름",
+        "확인",
+    ]
+    assert extract_create_table_slot_hints("부서, 경로 표 만들어줘")["headers"] == [
+        "부서",
+        "경로",
+    ]
+
+
+def test_extract_create_table_slot_hints_keeps_a_trailing_header_word_as_a_closer():
+    """"날짜 헤더로"의 "헤더"는 나열을 여는 말이 아니라 이미 끝난 나열을 닫는 말이다.
+
+    안내말 뒤를 머리글로 삼는 규칙이 이 문장까지 삼키면 머리글이 통째로 사라진다.
+    """
+    assert extract_create_table_slot_hints("금액, 장소, 날짜 헤더로 표 만들어줘")["headers"] == [
+        "금액",
+        "장소",
+        "날짜",
+    ]
+
+
 def test_extract_create_table_slot_hints_detects_template_without_table_word():
     hints = extract_create_table_slot_hints("프로젝트 진행 상황 체크리스트 만들어줘")
     assert hints["table_intent"] is True

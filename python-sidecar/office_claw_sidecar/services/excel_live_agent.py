@@ -809,6 +809,7 @@ async def parse_command_plan_with_llm(
     parsed = extract_json_object(raw, require_keys=("action_plan", "action"))
     # 모델이 뭘 돌려줬는지 원본으로 남긴다. 파싱 실패를 "모델이 이상한 걸 뱉었다"와
     # "파서가 못 잡았다"로 갈라 보려면 이 문자열이 있어야 한다.
+    # 모델이 무엇을 보고 답했는지는 `build_planner_prompt`가 planner_context로 남긴다.
     trace_note(
         "llm_call",
         purpose="planner",
@@ -1175,6 +1176,18 @@ _TABLE_SIZE_SPEC_PATTERN = re.compile(
 _QUOTED_ITEM_PATTERN = re.compile(
     r"'([^'\n]{1,60})'|\"([^\"\n]{1,60})\"|\u2018([^\u2019\n]{1,60})\u2019|\u201c([^\u201d\n]{1,60})\u201d"
 )
+# "머리글은 이름, 점수"처럼 나열을 여는 안내말. 이 말 뒤부터가 머리글이다.
+# 조사나 콜론을 반드시 요구한다 — "4열*3행, 제목, 사양"의 "제목"처럼 나열의 항목으로
+# 쓰인 같은 낱말을 안내말로 오인하면 그 항목이 통째로 사라진다.
+# "제목"을 목록에서 뺀 이유도 같다. 머리글보다 표 이름을 가리킬 때가 많다.
+_HEADER_LEAD_IN_PATTERN = re.compile(
+    r"(?:머리글|머리말|헤더행|헤더|컬럼|칼럼|열\s*이름|필드명|필드)"
+    r"(?:\s*(?:은|는|이|가|에는|에|으로|로)|\s*[:=])\s*"
+)
+_TABLE_TAIL_PATTERN = re.compile(
+    r"(?:표|테이블|table)\s*(?:로|을|를)?\s*(?:만들어줘|생성해줘|create.*)?$",
+    re.IGNORECASE,
+)
 
 
 def _extract_quoted_headers(text: str) -> list[str]:
@@ -1189,6 +1202,63 @@ def _extract_quoted_headers(text: str) -> list[str]:
         if value:
             items.append(value)
     return items if len(items) >= 2 else []
+
+
+def _split_header_tokens(source: str) -> list[str]:
+    return [token.strip() for token in re.split(r"[,/|]", source) if token.strip()]
+
+
+def _narrow_to_header_clause(source: str) -> str:
+    """"머리글은 이름, 점수"처럼 안내말이 앞서면 그 뒤만 남긴다.
+
+    안내말 뒤에 나열이 없으면 그대로 둔다. "날짜 헤더로 표 만들어줘"의 "헤더"는
+    나열을 여는 말이 아니라 이미 끝난 나열을 닫는 말이라, 뒤만 취하면 머리글이 사라진다.
+    """
+    for match in _HEADER_LEAD_IN_PATTERN.finditer(source):
+        tail = source[match.end() :]
+        if len(_split_header_tokens(tail)) >= 2:
+            return tail
+    return source
+
+
+def _strip_list_particle(token: str) -> str:
+    """나열을 표에 잇는 조사를 뗀다 — "이름, 점수로 표 만들어줘"의 "점수로".
+
+    표를 가리키던 꼬리가 실제로 잘려 나간 토큰에만 쓴다. 아무 데나 적용하면
+    "확인"의 "인"까지 조사로 본다. 그래도 남는 위험이 있어 한 글자만 남으면 되돌린다.
+    """
+    stripped = re.sub(r"(?:으로|로|인|이렇게)$", "", token).strip()
+    return stripped if len(stripped) >= 2 else token
+
+
+def _extract_listed_headers(source: str) -> list[str]:
+    """쉼표로 나열한 머리글을 뽑는다. 앞뒤에 붙은 지시문은 걷어낸다."""
+    tokens = _split_header_tokens(_narrow_to_header_clause(source))
+    if len(tokens) < 2:
+        return []
+
+    headers: list[str] = []
+    for index, token in enumerate(tokens):
+        candidate = token
+        # 안내말 없이 "표 만들어줘. 이름, 점수"로 오면 첫 토큰에 앞 문장이 통째로 붙는다.
+        if index == 0:
+            candidate = re.split(r"[.。!?\n]", candidate)[-1].strip()
+        # 크기 표기를 걷어내고 남은 "*", "로" 같은 찌꺼기는 헤더가 아니다.
+        if not re.search(r"[0-9A-Za-z가-힣]", candidate):
+            continue
+        candidate = re.sub(
+            r"^(?:크기로|헤더는|헤더|컬럼은|컬럼)\s*", "", candidate, flags=re.IGNORECASE
+        ).strip()
+        without_tail = _TABLE_TAIL_PATTERN.sub("", candidate).strip()
+        had_table_tail = without_tail != candidate
+        candidate = without_tail
+        # "금액, 장소, 날짜 헤더로 표 만들어줘"의 마지막 토큰에 붙는 꼬리를 뗀다.
+        candidate = re.sub(r"\s*(?:헤더|컬럼|열)\s*(?:로|으로|는|은)?\s*$", "", candidate).strip()
+        if had_table_tail:
+            candidate = _strip_list_particle(candidate)
+        if candidate:
+            headers.append(candidate)
+    return headers if len(headers) >= 2 else []
 
 
 def _extract_axis_table_size(text: str) -> tuple[int | None, int | None]:
@@ -1258,30 +1328,8 @@ def extract_create_table_slot_hints(message: str) -> dict[str, Any]:
     # 쉼표 분해는 "'법인카드, 조교카드 이체 여부'"처럼 항목 안에 쉼표가 있으면 쪼개지고,
     # "헤더에는 '날짜'"나 "'비용 유형' 이렇게 만들어줄 수 있어?"처럼 앞뒤 문장이 붙어 들어온다.
     headers: list[str] = _extract_quoted_headers(text)
-    header_source = _TABLE_SIZE_SPEC_PATTERN.sub(" ", text)
-    comma_tokens = [token.strip() for token in re.split(r"[,/|]", header_source) if token.strip()]
-    if not headers and len(comma_tokens) >= 2:
-        filtered: list[str] = []
-        for token in comma_tokens:
-            t = token.strip()
-            if not t:
-                continue
-            # 크기 표기를 걷어내고 남은 "*", "로" 같은 찌꺼기는 헤더가 아니다.
-            if not re.search(r"[0-9A-Za-z가-힣]", t):
-                continue
-            t = re.sub(r"^(?:크기로|헤더는|헤더|컬럼은|컬럼)\s*", "", t, flags=re.IGNORECASE).strip()
-            t = re.sub(
-                r"(?:표|테이블|table)\s*(?:로|을|를)?\s*(?:만들어줘|생성해줘|create.*)?$",
-                "",
-                t,
-                flags=re.IGNORECASE,
-            ).strip()
-            # "금액, 장소, 날짜 헤더로 표 만들어줘"의 마지막 토큰에 붙는 꼬리를 뗀다.
-            t = re.sub(r"\s*(?:헤더|컬럼|열)\s*(?:로|으로|는|은)?\s*$", "", t).strip()
-            if t:
-                filtered.append(t)
-        if len(filtered) >= 2:
-            headers = filtered
+    if not headers:
+        headers = _extract_listed_headers(_TABLE_SIZE_SPEC_PATTERN.sub(" ", text))
 
     values_2d = _extract_inline_table_values_2d(text)
     if values_2d:
