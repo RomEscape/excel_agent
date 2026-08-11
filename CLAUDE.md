@@ -44,6 +44,7 @@
 | Excel tool-calling | — | (sidecar) `services/excel_tool_schemas.py`(함수 명세) · `excel_tool_agent.py`(루프) · `excel_actions.py`(실행) | — | WorkspacePage 채팅 (조합만) |
 | 턴 트레이스·진단 | — | `services/decision_trace.py`(기록) · `trace_report.py`(한 턴 펼치기) · `trace_digest.py`(여러 턴 접기) | — | `scripts/show_turns.py` · `run_command_diagnostics.py` (조합만) |
 | 결과 상태 채점 | — | `tests/excel_e2e/command_battery.py`의 `expect_effect` 오라클 (결과 워크북을 직접 열어 본다) | — | `run_command_diagnostics.py`가 `.report.json`에 기록 |
+| 수량 한정어 해석 | — | `services/excel_rank_limit.py` — `detect`("몇 개를 어느 쪽으로")와 `resolve_step`(N번째 값을 파일에서 읽어 기준값으로) | — | 라우터의 목표 누락 가드가 조합만 |
 
 새 기능을 추가할 때 이 표에 한 줄이 더 늘어나야 한다.
 
@@ -75,7 +76,11 @@ uv run python scripts/show_turns.py --log ../logs/diagnostics/<실행id>.jsonl -
 3. **수치는 실측만 적는다.** 실행 id(`0811-171221-after-guards`)를 함께 남겨
    나중에 같은 로그로 재확인할 수 있게 한다. 지어낸 숫자는 이 체계를 통째로 무용지물로 만든다.
 4. **프롬프트를 바꾸면 반드시 전후를 잰다.** `build_planner_prompt`는 SFT 데이터
-   생성과 **같은 함수**다. 문구를 바꾸면 이미 학습된 모델은 본 적 없는 형식을 받는다.
+ 생성과 **같은 함수**다. 문구를 바꾸면 이미 학습된 모델은 본 적 없는 형식을 받는다.
+5. **모델을 탓하기 전에 `[ROUTE]`를 본다.** `quick_rule:hit`이면 그 턴에는 LLM이
+ 아예 호출되지 않았다. 프롬프트·모델을 아무리 고쳐도 그 경로는 바뀌지 않는다
+ (2026-08-11 "상위 3개"가 그랬다 — 규칙이 한정어를 버리고 열 전체를 칠했다).
+ 규칙이 문장의 일부를 표현하지 못하면 `_quick_plan_underfits_message`에서 놓게 한다.
 
 ## 빌드/실행
 

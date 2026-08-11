@@ -215,6 +215,36 @@ def _expect_fill_only_below(sheet_name: str, limit: int) -> EffectOracle:
     return check
 
 
+def _expect_fill_only_top_k(sheet_name: str, k: int) -> EffectOracle:
+    """상위 k개 행만 칠해졌는가.
+
+    다이제스트는 머리글과 예시 3행만 준다. 상위 k개가 무엇인지는 열 전체를 읽어야
+    알 수 있으므로, 이 케이스는 "관측 없이 계획한다"가 실제로 막히는 지점인지를
+    가르는 시금석이다. 정렬로 순서를 바꿔 놓고 끝내는 것도 요청 이행이 아니다 —
+    사용자는 강조를 원했다.
+    """
+    top = sorted(_AMOUNTS, reverse=True)[:k]
+
+    def check(book: Any) -> str:
+        sheet = _sheet(book, sheet_name)
+        if sheet is None:
+            return f"{sheet_name} 시트가 없다"
+        painted = []
+        for row_index, row in enumerate(_body(sheet), start=2):
+            amount = row[2]
+            if not isinstance(amount, (int, float)):
+                continue
+            if any(_has_fill(sheet.cell(row=row_index, column=col)) for col in range(1, 5)):
+                painted.append(amount)
+        if not painted:
+            return f"아무것도 강조하지 않았다 (상위 {k}개 {top}를 칠해야 한다)"
+        if sorted(painted, reverse=True) != top:
+            return f"상위 {k}개 {top}를 칠해야 하는데 {sorted(painted, reverse=True)}를 칠했다"
+        return ""
+
+    return check
+
+
 def _expect_chart(sheet_name: str) -> EffectOracle:
     """차트 도형이 실제로 얹혔는가. 어느 시트든 하나라도 있으면 된다."""
 
@@ -295,6 +325,17 @@ ALL_CASES: list[BatteryCase] = [
         tags=("format", "threshold"),
     ),
     BatteryCase("테두리", "A1:D1에 테두리 넣어줘", rows=_sales_rows(), tags=("apply_border",)),
+    # 관측이 정말 필요한 요청. 머리글만으로는 상위 3개가 무엇인지 알 수 없고,
+    # 다이제스트가 주는 예시 3행도 상위 3개가 아니다(520·180·340). 열 전체를
+    # 읽어야만 답이 나온다 — "편집 의도면 첫 단계도 편집" 규칙이 실제로 무엇을
+    # 막는지 재는 케이스다.
+    BatteryCase(
+        "상위강조",
+        "금액이 높은 상위 3개 행을 노란색으로 강조해줘",
+        rows=_sales_rows(),
+        expect_effect=_expect_fill_only_top_k("매출", 3),
+        tags=("format", "topk", "observation"),
+    ),
     BatteryCase(
         "표만들기",
         "2행 2열 표 만들어줘. 머리글은 이름, 점수",

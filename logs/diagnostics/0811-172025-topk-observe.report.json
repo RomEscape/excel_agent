@@ -1,0 +1,52 @@
+{
+  "turns": 3,
+  "cases": 1,
+  "done_rate": 1.0,
+  "silently_wrong": 0,
+  "by_class": {
+    "done": 3
+  },
+  "by_verdict": {
+    "ok": 3
+  },
+  "case_detail": [
+    {
+      "case": "상위강조",
+      "message": "금액이 높은 상위 3개 행을 노란색으로 강조해줘",
+      "runs": 3,
+      "state": "stable_done",
+      "verdicts": {
+        "ok": 3
+      },
+      "detail": "",
+      "missed_actions": {},
+      "routes": {
+        "quick_rule:hit → final:ok": 3
+      },
+      "actions": {
+        "excel_live.fill_range": 3
+      },
+      "median_ms": 26.5,
+      "turn_ids": [
+        "f9c1e9da8f45",
+        "86d370c39b9c",
+        "694772fa996a"
+      ]
+    }
+  ],
+  "run_id": "0811-172025-topk-observe",
+  "repeats": 3,
+  "effects": {
+    "checked_cases": 1,
+    "wrong_cases": 1,
+    "by_case": {
+      "상위강조": {
+        "checked": 3,
+        "wrong": 3,
+        "details": [
+          "상위 3개 [610, 520, 430]를 칠해야 하는데 [610, 520, 430, 340, 275, 250, 180, 90]를 칠했다"
+        ]
+      }
+    }
+  }
+}

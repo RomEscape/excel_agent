@@ -1,0 +1,50 @@
+{
+  "turns": 3,
+  "cases": 1,
+  "done_rate": 1.0,
+  "silently_wrong": 0,
+  "by_class": {
+    "done": 3
+  },
+  "by_verdict": {
+    "ok": 3
+  },
+  "case_detail": [
+    {
+      "case": "상위강조",
+      "message": "금액이 높은 상위 3개 행을 노란색으로 강조해줘",
+      "runs": 3,
+      "state": "stable_done",
+      "verdicts": {
+        "ok": 3
+      },
+      "detail": "",
+      "missed_actions": {},
+      "routes": {
+        "quick_rule:miss → planner:local → final:ok": 3
+      },
+      "actions": {
+        "excel_live.highlight_by_condition": 3
+      },
+      "median_ms": 3949.6,
+      "turn_ids": [
+        "17dcb506e4b8",
+        "3367c6175239",
+        "938f725d4904"
+      ]
+    }
+  ],
+  "run_id": "0811-173055-after-topk2",
+  "repeats": 3,
+  "effects": {
+    "checked_cases": 1,
+    "wrong_cases": 0,
+    "by_case": {
+      "상위강조": {
+        "checked": 3,
+        "wrong": 0,
+        "details": []
+      }
+    }
+  }
+}

@@ -89,6 +89,7 @@ from office_claw_sidecar.services.excel_param_binder import (
     resolve_sheet_from_message,
     sheet_entry,
 )
+from office_claw_sidecar.services import excel_rank_limit as rank_limit
 from office_claw_sidecar.services.excel_planner_prompt import render_conversation_history
 from office_claw_sidecar.services.excel_result_verifier import verify_effect
 from office_claw_sidecar.services.excel_workbook_digest import (
@@ -1193,9 +1194,24 @@ def _quick_plan_underfits_message(quick_first_action: str, text: str) -> bool:
         return True
     if quick_first_action in _PREPARATION_ONLY_QUICK_ACTIONS and _message_asks_for_more_work(message):
         return True
+    if quick_first_action in _RANK_LIMIT_SENSITIVE_QUICK_ACTIONS and rank_limit.detect(message):
+        return True
     return quick_first_action in _AGGREGATE_SENSITIVE_QUICK_ACTIONS and bool(
         _AGGREGATE_REQUEST_PATTERN.search(message)
     )
+
+
+# 조건과 같은 이유로 규칙에 맡기면 안 되는 문장들. "상위 3개를 노랗게"가 fill_range로
+# 가면 "상위 3개"가 통째로 사라지고 열 전체가 칠해진다 — 실행기는 칠한 셀이 있으니
+# 성공을 보고하고, 사용자만 전부 노래진 시트를 본다.
+_RANK_LIMIT_SENSITIVE_QUICK_ACTIONS = frozenset(
+    {
+        "excel_live.fill_range",
+        "excel_live.clear_range",
+        "excel_live.apply_border",
+        "excel_live.write_range",
+    }
+)
 
 
 # 시트를 만들거나 고르는 건 보통 본 작업의 준비 단계다. 규칙이 이걸 계획 전체로 삼으면
@@ -3446,6 +3462,54 @@ def _pivot_step_from_message(message: str, digest: dict[str, Any] | None, *, she
         },
         "reason": "원문이 요청한 피벗 단계 보완",
     }
+
+
+# 대상을 좁히지 못한 채 범위 전체에 서식을 먹이는 액션들. "상위 3개"가 붙은 문장에서
+# 이 액션이 계획에 남아 있으면 한정어가 실행에 반영될 곳이 없다는 뜻이다.
+_RANK_LIMIT_FORMAT_ACTIONS = frozenset(
+    {"excel_live.fill_range", "excel_live.highlight_by_condition"}
+)
+
+
+def _rank_limited_format_plan(plan, req, *, digest):
+    """"상위 N 강조" 계획을 기준값이 박힌 한 단계로 바꾼다. 못 바꾸면 None.
+
+    계획에 서식 단계가 없으면(정렬만 요청한 경우 등) 손대지 않는다. 기준 열이
+    모호하거나 값이 N개보다 적으면 역시 None을 돌려주고, 그 경우 원래 계획이
+    그대로 간다 — 여기서 열 하나를 찍는 것은 또 다른 조용한 오답이다.
+    """
+    if not any(step.action in _RANK_LIMIT_FORMAT_ACTIONS for step in plan):
+        return None
+
+    def _read_column(range_ref: str):
+        service = get_excel_live_service()
+        resolved_wb = _resolve_workbook_id(service, req.workbook_id)
+        resolved_sheet = _resolve_sheet_name(service, resolved_wb, req.sheet_name)
+        # 실무 파일의 금액 열은 대부분 수식이다. 그대로 읽으면 "=I2*J2" 문자열이 와서
+        # 숫자가 하나도 없는 열로 보이고, 상위 N을 정할 수 없다고 판단해 버린다.
+        reader = getattr(service, "read_computed_range", None) or service.read_range
+        return (reader(resolved_wb, resolved_sheet, range_ref) or {}).get("values") or []
+
+    try:
+        return rank_limit.resolve_step(
+            req.message,
+            digest,
+            sheet_name=req.sheet_name,
+            read_column=_read_column,
+            fill_color=_rank_limit_fill_color(plan),
+        )
+    except ExcelLiveError:
+        return None
+
+
+def _rank_limit_fill_color(plan) -> str:
+    """원래 계획이 고른 색을 그대로 이어받는다. 사용자가 말한 색이 여기 들어 있다."""
+    for step in plan:
+        if step.action in _RANK_LIMIT_FORMAT_ACTIONS:
+            color = str(step.params.get("fill_color") or step.params.get("color") or "").strip()
+            if color:
+                return color
+    return "#FFFF00"
 
 
 # 원문에 나온 차트 종류 → 실행기가 받는 이름. 검증기가 받아주는 값만 둔다.
@@ -6571,6 +6635,18 @@ async def _run_command(
             extra = _bind_and_validate(_normalize_plan_or_empty([pivot_raw]))
             if extra:
                 current_plan = current_plan + extra
+
+    # "금액 높은 상위 3개를 노랗게" — 계획이 서식 단계 하나로 끝나면 "상위 3개"가
+    # 아무 데도 남지 않고 열 전체가 칠해진다. 몇 개인지는 원문이 말했고 그 경계값이
+    # 얼마인지는 파일만 안다. 모델에게 묻지 않고 여기서 실제 값으로 환산한다.
+    if pending_operation is None and rank_limit.detect(req.message):
+        narrowed = _rank_limited_format_plan(current_plan, req, digest=workbook_digest)
+        if narrowed is not None:
+            replacement = _bind_and_validate(_normalize_plan_or_empty([narrowed]))
+            if replacement:
+                current_plan = replacement + [
+                    step for step in current_plan if step.action not in _RANK_LIMIT_FORMAT_ACTIONS
+                ]
 
     # "막대 차트 만들어줘"인데 계획에 차트가 없다 — 피벗만 만들고 결과 시트 이름을
     # "차트"로 붙인 채 성공을 보고하는 일이 잦다. 원문이 분명히 그래프를 요구했으면
