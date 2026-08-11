@@ -218,6 +218,10 @@ class PendingCreateTableSlots:
     session_id: str
     workbook_id: str | None
     sheet_name: str | None
+    # 사용자가 문장에서 직접 지목한 시트. `sheet_name`은 매 턴 활성 시트로 덮이므로
+    # 여기에 따로 붙들어 둔다. 되묻기 다음 턴("3행 3열")에는 시트 언급이 없어서,
+    # 이게 없으면 "정산 시트에 표 만들어줘"의 정산이 사라지고 활성 시트를 덮어썼다.
+    explicit_sheet_name: str | None = None
     rows: int | None = None
     cols: int | None = None
     headers: list[str] | None = None
@@ -1996,6 +2000,29 @@ def _extract_output_sheet_from_text(text: str) -> str | None:
     if len(mentions) < 2:
         return None
     return mentions[-1]
+
+
+# "이 시트에", "새 시트에"의 앞말은 이름이 아니라 지시어다. 이름으로 받아들이면
+# 없는 시트를 찾아 되묻게 되고, 사용자는 눈앞에 열어 둔 시트를 두고 질문을 받는다.
+_SHEET_DEMONSTRATIVES = frozenset(
+    {
+        "이", "그", "저", "새", "새로운", "현재", "지금", "해당", "여기", "이번",
+        "다음", "이전", "위", "아래", "같은", "빈", "다른",
+        "this", "that", "new", "current", "another", "next", "previous",
+    }
+)
+
+
+def _named_sheet_in_text(text: str) -> str | None:
+    """문장이 시트를 **이름으로** 지목했으면 그 이름을 준다. 지시어뿐이면 None.
+
+    여러 개면 마지막을 쓴다 — 앞쪽은 대개 원본이라 그걸 고르면 원본을 덮어쓴다
+    (`_extract_output_sheet_from_text`와 같은 이유).
+    """
+    for name in reversed(_extract_sheet_mentions(text)):
+        if name and name.lower() not in _SHEET_DEMONSTRATIVES:
+            return name
+    return None
 
 
 _HEADER_INTENT_PATTERN = re.compile(r"헤더|머리글|컬럼\s*명|열\s*이름|header", re.IGNORECASE)
@@ -4203,6 +4230,11 @@ def _merge_create_table_slots(
     )
     slot.workbook_id = req.workbook_id or slot.workbook_id
     slot.sheet_name = req.sheet_name or slot.sheet_name
+    # 시트를 이름으로 지목한 턴에서만 갱신한다. 뒤 턴에 언급이 없다고 지우면
+    # 처음 지목이 사라진다 — 그게 바로 고치려는 버그다.
+    named_sheet = _named_sheet_in_text(req.message)
+    if named_sheet:
+        slot.explicit_sheet_name = named_sheet
     template_key = hints.get("template_key")
     if isinstance(template_key, str) and template_key.strip():
         slot.template_key = template_key.strip()
@@ -4328,6 +4360,19 @@ def _build_create_table_steps(slot: PendingCreateTableSlots) -> list[dict[str, A
     rows = max(1, min(100, max(int(slot.rows or 5), inferred_rows)))
     cols = max(1, min(50, max(int(slot.cols or 5), inferred_cols)))
     start_cell = _normalize_range_text(slot.start_cell) or "A1"
+
+    def _finish(built: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """사용자가 지목한 시트를 모든 단계에 박아 준다.
+
+        안 박으면 하류가 활성 시트로 떨어뜨린다. 되묻기를 거치면 마지막 발화에는
+        시트 언급이 없으므로, 그 경로에서 남의 시트를 말없이 덮어쓰는 사고가 났다.
+        """
+        sheet = str(slot.explicit_sheet_name or "").strip()
+        if sheet:
+            for step in built:
+                step["params"]["sheet_name"] = sheet
+        return built
+
     steps: list[dict[str, Any]] = [
         {
             "action": "excel_live.create_table",
@@ -4356,7 +4401,7 @@ def _build_create_table_steps(slot: PendingCreateTableSlots) -> list[dict[str, A
                     "reason": "표 데이터 입력",
                 }
             )
-            return steps
+            return _finish(steps)
 
     headers = [str(h).strip() for h in (slot.headers or []) if str(h).strip()]
     if headers:
@@ -4370,7 +4415,7 @@ def _build_create_table_steps(slot: PendingCreateTableSlots) -> list[dict[str, A
                 "reason": "헤더 행 입력",
             }
         )
-    return steps
+    return _finish(steps)
 
 
 def _apply_template_defaults_if_confirmed(

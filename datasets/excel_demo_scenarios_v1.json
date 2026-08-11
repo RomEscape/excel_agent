@@ -83,6 +83,33 @@
           ]
         }
       }
+    },
+    {
+      "id": "regress-slot-keeps-named-sheet",
+      "title": "되묻기를 거쳐도 문장에서 지목한 시트를 잃지 않는다",
+      "note": "회귀 방지. 활성 시트를 데이터가 든 '평가'로 두고, 문장으로만 '정산'을 지목한다. 예전에는 되묻기 다음 턴에서 정산을 잃고 평가 1~3행을 표 블록으로 덮어써 민수·지은 데이터가 경고 없이 사라졌다(2026-08-11, 3회 3회 재현).",
+      "category": "regression",
+      "difficulty": "medium",
+      "severity": "critical",
+      "sheet_name": "평가",
+      "turns": [
+        { "message": "정산 시트 만들어줘" },
+        { "message": "정산 시트에 표 만들어줘" },
+        { "message": "3행 3열, 머리글은 이름, 점수, 등급" }
+      ],
+      "oracle": {
+        "result": {
+          "assertions": [
+            { "type": "sheet_exists", "sheet": "정산" },
+            { "type": "header_equals", "sheet": "정산", "cell": "A1", "expected": "이름" },
+            { "type": "header_equals", "sheet": "정산", "cell": "B1", "expected": "점수" },
+            { "type": "header_equals", "sheet": "정산", "cell": "C1", "expected": "등급" },
+            { "type": "cell_equals", "sheet": "평가", "cell": "A2", "expected": "민수" },
+            { "type": "cell_equals", "sheet": "평가", "cell": "A3", "expected": "지은" },
+            { "type": "cell_equals", "sheet": "평가", "cell": "C1", "expected": "결과" }
+          ]
+        }
+      }
     }
   ]
 }
