@@ -30,6 +30,25 @@ from office_claw_sidecar.config import get_chat_log_path
 # 실행이 터졌으면 그게 원인이지, 그 뒤 검증 결과를 볼 필요가 없다.
 _UNKNOWN = ("unknown", "분류 불가")
 
+# 판정 코드를 세 부류로 접는다. 진단할 때 알고 싶은 것은 "성공/실패"가 아니라
+# **일을 했는가**이기 때문이다. 되물음과 승인 대기는 에러가 아니지만 사용자 입장에서
+# 아무것도 안 된 것은 같다. 이 둘을 성공 쪽에 세면 실제 이행률이 부풀려진다.
+DONE = "done"  # 요청한 변경이 실제로 들어갔다
+DEFERRED = "deferred"  # 되묻거나 승인을 기다린다 — 파일은 그대로다
+BROKEN = "broken"  # 깨졌다
+
+_OUTCOME_CLASS = {
+    "ok": DONE,
+    "verify_recovered": DONE,
+    "asked_back": DEFERRED,
+    "approval": DEFERRED,
+}
+
+
+def outcome_class(code: str) -> str:
+    """판정 코드를 done/deferred/broken 중 하나로."""
+    return _OUTCOME_CLASS.get(str(code), BROKEN)
+
 
 @dataclass(frozen=True)
 class Verdict:
@@ -59,6 +78,29 @@ def _has_route(turn: dict[str, Any], prefix: str) -> dict[str, Any] | None:
         if str(entry.get("at", "")).startswith(prefix):
             return entry
     return None
+
+
+def executed_actions(turn: dict[str, Any]) -> list[str]:
+    """이 턴이 실제로 실행한 액션 이름들. 계획이 아니라 실행 기록에서 뽑는다."""
+    steps = _stage(turn, "executed").get("steps") or []
+    return [str(s.get("action", "")) for s in steps if isinstance(s, dict) and s.get("action")]
+
+
+def goal_missed(turn: dict[str, Any]) -> str:
+    """요청이 당연히 포함해야 할 액션이 실행되지 않았으면 그 이름을 준다.
+
+    검증기는 **실행한 액션**의 사후조건을 본다. 차트를 만들라는 요청에 피벗만
+    만들고 끝내도, 피벗은 제대로 만들어졌으므로 "검증 통과 · 성공"이 된다.
+    그래서 시스템이 스스로 매기는 판정만으로는 이 실패가 영원히 보이지 않는다.
+
+    기대 액션은 턴 자신이 `source.expect`로 들고 다닌다. 진단 러너가 붙이므로
+    나중에 쌓인 로그를 다시 읽어도 판정이 재현된다.
+    """
+    origin = turn.get("source") or {}
+    expected = str(origin.get("expect", "") or "") if isinstance(origin, dict) else ""
+    if not expected:
+        return ""
+    return "" if expected in executed_actions(turn) else expected
 
 
 def route_path(turn: dict[str, Any]) -> str:
@@ -177,6 +219,12 @@ def render(turn: dict[str, Any], *, show_prompt: bool = False) -> str:
         add("[LLM]", f"{llm.get('model', '')} {llm.get('elapsed_ms', 0)}ms")
         if show_prompt:
             cont(f"prompt_chars={llm.get('prompt_chars')}")
+            # 모델이 이 턴에 실제로 본 시트 상태. 지어낸 열 이름을 만났을 때
+            # 여기가 비어 있으면 프롬프트 탓, 채워져 있으면 모델 탓이다.
+            given = _stage(turn, "planner_context")
+            cont(f"통합문서 상태={given.get('workbook_digest') or '(비어 있음)'}")
+            if given.get("conversation_history"):
+                cont(f"이전 대화={given.get('conversation_history')}")
             cont(f"raw={llm.get('raw_response', '')}")
 
     planner = _stage(turn, "planner")

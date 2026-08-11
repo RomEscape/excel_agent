@@ -23,13 +23,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from office_claw_sidecar.config import get_chat_log_path
 from office_claw_sidecar.services.trace_report import (
+    BROKEN,
     classify,
+    outcome_class,
     read_turns,
     render,
     source_label,
 )
-
-_OK_CODES = {"ok", "asked_back", "approval", "verify_recovered"}
 
 
 def main() -> int:
@@ -63,7 +63,7 @@ def main() -> int:
     if args.human:
         turns = [t for t in turns if not (t.get("source") or {})]
     if args.failed:
-        turns = [t for t in turns if classify(t).code not in _OK_CODES]
+        turns = [t for t in turns if outcome_class(classify(t).code) == BROKEN]
 
     if args.summary:
         counts = Counter(classify(t).code for t in turns)

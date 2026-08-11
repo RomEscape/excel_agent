@@ -1,0 +1,55 @@
+{
+  "turns": 2,
+  "cases": 2,
+  "done_rate": 1.0,
+  "by_class": {
+    "done": 2
+  },
+  "by_verdict": {
+    "ok": 2
+  },
+  "case_detail": [
+    {
+      "case": "값입력",
+      "message": "H3에 120 입력해줘",
+      "runs": 1,
+      "state": "stable_done",
+      "verdicts": {
+        "ok": 1
+      },
+      "detail": "",
+      "routes": {
+        "quick_rule:miss → planner:local → final:ok": 1
+      },
+      "actions": {
+        "excel_live.write_range": 1
+      },
+      "median_ms": 2875.5,
+      "turn_ids": [
+        "7ae90f9cb5bb"
+      ]
+    },
+    {
+      "case": "정렬-명확",
+      "message": "금액 열 기준 내림차순으로 정렬해줘",
+      "runs": 1,
+      "state": "stable_done",
+      "verdicts": {
+        "ok": 1
+      },
+      "detail": "",
+      "routes": {
+        "quick_rule:miss → planner:local → final:ok": 1
+      },
+      "actions": {
+        "excel_live.sort_range": 1
+      },
+      "median_ms": 2611.7,
+      "turn_ids": [
+        "8c53d6b793cf"
+      ]
+    }
+  ],
+  "run_id": "0811-153012-smoke",
+  "repeats": 1
+}

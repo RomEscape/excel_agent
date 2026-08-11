@@ -39,267 +39,32 @@
 | 시스템 상태 | `store/statusStore.js` | `lib/statusManager.js`, `lib/statusTokens.js` | — | `components/ui/status.jsx` |
 | 로컬 AI 설정 단계 | — | `lib/localAISetup.js` (buildPlan/isAllReady) | — | `components/guide/LocalAISetupWizard.jsx` (조합만) |
 | Tauri IPC | — | `lib/api.js` (모든 invoke wrapper 1곳) | `src-tauri/src/ipc.rs` | — |
-| OS 자격증명 | — | api.js의 `rustCredential*` | `src-tauri/src/keyring_svc.rs` | — (UI 없음, 아래 노트) |
+| OS 자격증명 | — | api.js의 `rustCredential*` | `src-tauri/src/keyring_svc.rs` | — |
 | 감사 로그 | — | api.js의 `rustAudit*` | `src-tauri/src/audit.rs` | — |
-| Excel tool-calling | — | (sidecar) `services/excel_tool_schemas.py`(함수 명세) · `excel_tool_agent.py`(루프) · `excel_actions.py`(실행) | — | ChatPage (조합만) |
-| 에이전트 채팅 | `store/chatStore.js`(세션 목록·진행 상태) + appStore의 `agentMessages`·`activeSessionId` | `lib/chatManager.js`(전송/세션/승인 액션) · `lib/chatSessions.js`(오늘·어제 그룹핑, 순수) · `lib/excelRangeContext.js`(범위 참조 블록, 순수) | — | `components/ui/chat.jsx`(버블·컴포저·칩) |
-| 엑셀 결과 표현 | — | `lib/excelResult.js`(action+result → 표시 모델, 순수) | — | `components/ui/result-card.jsx`(표·막대·통계 카드) |
-| 모바일 릴레이(QR 페어링) | `store/relayStore.js` | `lib/relayManager.js`(액션·상태폴링) · `lib/relayQr.js`(QR 페이로드 계약, 순수) | `ipc.rs`의 `relay_pair`/`relay_status`/`relay_disconnect` | `components/relay/RelayPairing.jsx` (조합만) |
-| 모바일 브랜드 테마 | — | (mobile) `lib/theme/brand_palette.dart`(색 토큰, 순수) · `brand_theme.dart`(ThemeData + `AgentStatusColors` 확장) · `agent_status_tokens.dart`(상태→라벨·색) | — | (mobile) `lib/widgets/brand_wordmark.dart` · `agent_status_chip.dart` (조합만) |
-| relay 페어링 보안 | — | (relay) `oc_relay/pairing.py`(code 발급·TTL·바인딩) · `oc_relay/rate_limit.py`(시도 제한, 순수) | — | — (`app.py`가 두 모듈을 결합만) |
-| 모바일 relay 주소 정책 | — | (mobile) `lib/transport/relay_url.dart`(스킴 검증·정규화 + 평문 차단, 순수) | — | — (`relay_transport.dart`·`pairing_service.dart`가 구독만) |
-| 화면 테마(라이트/다크) | `store/themeStore.js` | `lib/theme.js`(preference+OS→resolved, 순수) · `lib/themeManager.js`(`<html>.dark` 적용) | — | `components/settings/ThemePicker.jsx` (조합만) |
-| 채팅 패널 크기 | chatStore의 `panelOpen`·`panelMode` | `lib/chatPanel.js`(도킹↔플로팅 계약, 순수) | — | `components/chat/ChatPanel.jsx` (조합만) |
-| 워크스페이스 문서 | `store/documentStore.js` | `lib/documents.js`(카드 모델·`3일 전`, 순수) · `lib/documentManager.js`(목록·생성·업로드·삭제) | `ipc.rs`의 `workspace_delete_file` | `components/ui/document-card.jsx` |
-| 툴 진행 스텝 | chatStore의 `toolSteps` | `lib/toolSteps.js`(executed_actions→칩 문구, 순수) | — | `ui/chat.jsx`의 `ToolStepChip` |
-| 페어링 TTL 표시 | relayStore의 `pairingExpiresAt` | `lib/pairingCountdown.js`(남은 시간·`3:29` 포맷, 순수) | — | `components/relay/RelayPairing.jsx` (조합만) |
-| 모바일 승인 왕복 | (mobile) `ChatState.pendingApproval` | (mobile) `store/chat_controller.dart`의 `respondApproval` | — | (mobile) `main.dart`의 `_approvalBar` (조합만) |
-| 로컬 모델 선택 | statusStore의 `modules.ollama.models` | `lib/modelCatalog.js`(ID 정규화·옵션·기본값, 순수) · `hooks/useOllamaModels.js`(구독·새로고침) | `ollama.rs`의 `list_ollama_models` | `components/ui/wizard.jsx`의 `ModelSelectField` |
-| 작업 기록 | — | `lib/activityLog.js`(감사로그→표 행·KPI 4장·페이지 번호, 순수) | — | `components/activity/ActivityPage.jsx` (조합만) |
-| 글자 크기 | `store/fontScaleStore.js` | `lib/fontScale.js`(선택→루트 px, 순수) · `lib/fontScaleManager.js`(`<html>` font-size 적용) | — | `components/settings/PreferencesPage.jsx`의 폰트 크기 섹션 |
-| 대화 목록 | chatStore의 `sessions` | `lib/conversationGroups.js`(요일별·파일별 그룹, 순수) | — | `components/conversations/ConversationHistoryPage.jsx` (조합만) |
-| 범용 모달 | — | — | — | `components/ui/modal.jsx` (오버레이·Esc·헤더·footer 슬롯) |
+| Excel tool-calling | — | (sidecar) `services/excel_tool_schemas.py`(함수 명세) · `excel_tool_agent.py`(루프) · `excel_actions.py`(실행) | — | WorkspacePage 채팅 (조합만) |
+| 턴 트레이스·진단 | — | `services/decision_trace.py`(기록) · `trace_report.py`(한 턴 펼치기) · `trace_digest.py`(여러 턴 접기) | — | `scripts/show_turns.py` · `run_command_diagnostics.py` (조합만) |
 
 새 기능을 추가할 때 이 표에 한 줄이 더 늘어나야 한다.
 
 > **2026-05 Rust 보안 계층 노트**: Keyring · Audit 두 도메인은 Python sidecar의 동명 서비스와 *같은* OS Keychain·파일(`audit.jsonl`, `credentials_registry.json`)을 공유한다. 신규 코드는 Rust 경로(`rustCredential*`, `rustAudit*`)를 우선 사용하되, Python 측은 자체 라우터 안에서 자기 서비스를 계속 쓴다.
 >
 > **2026-07 LLM 경로 노트**: OpenClaw 게이트웨이 통합은 `feat/ollama-tool-calling`에서 전면 제거됐다. LLM 호출은 Ollama OpenAI 호환 API(`/v1/chat/completions`) + `tools`(function calling) 단일 경로다. Excel 함수 명세는 `excel_tool_schemas.py`가 단일 소스이며, 권한(SAFE/CONFIRM/DENIED)은 `tool_registry.py`가 계속 소유한다.
->
-> **2026-08 Claude API 경로 제거 노트**: 위 "단일 경로"를 코드로도 못박았다. **`ClaudeProvider`는 `chat()`만 구현하고 `chat_with_tools()`가 없었다** — 베이스 클래스의 기본 구현이 `LLMToolsNotSupportedError`를 던지므로, 온보딩에서 `Claude API`를 고른 사용자는 엑셀 명령을 넣을 때마다 400만 받았다. 이 앱이 하는 일이 엑셀 작업 하나인데 온보딩 첫 화면이 그걸 못 하게 만드는 선택지를 동등한 카드로 제시하고 있었다.
->
-> 지운 것 — 사이드카 `services/claude_service.py`·`llm_service.py`의 `ClaudeProvider`와 팩토리 분기·`routers/llm.py`의 `engine == "claude"` 분기, 데스크톱의 온보딩 provider 카드 2장·`Settings`의 `AI 선택` 드롭다운·`SetupGuide`의 Claude 탭·`statusTokens.getLLMStatus`의 provider 분기·`StatusBar`의 reachable 분기·`errorMessages`의 Claude 패턴.
->
-> **`provider` 필드 자체는 남긴다.** 저장된 `llm_config.json`이 이 키를 갖고 있고 앞으로 provider가 다시 늘 수 있다 — `routers/settings.py`의 화이트리스트만 `{"ollama"}`로 좁혔다. 되살리려면 **`chat_with_tools`를 먼저 구현**할 것. UI만 되돌리면 같은 함정이 그대로 재현된다.
->
-> **연쇄로 `CredentialsManager` 화면이 사라졌다.** `claude_api_key`가 마지막 남은 자격증명이었고(Gmail의 Google OAuth 키는 앞선 커밋에서 제거), 그룹이 0개인 자격증명 관리 탭은 빈 껍데기다. **키체인 백엔드는 그대로 살아 있다** — Rust IPC 8개(`store_credential`·`rustCredential*` 등), 사이드카 `routers/credentials.py` 4개 엔드포인트, `keyring_svc.rs`·`keyring_service.py`. 새 자격증명이 생기면 UI만 다시 만들면 된다. `api.js`의 래퍼 7개도 살아 있는 엔드포인트를 가리키므로 남겼다.
->
-> **`SetupGuide`는 탭 바가 없어졌다.** 안내 대상이 Ollama 설치 하나뿐이라 탭이 하나 남았기 때문이다(예전엔 5개 — 메신저 3 · Gmail · Claude). 둘 이상이 되면 탭 바를 되살릴 것.
->
-> `errorMessages.js`의 tool-calling 미지원 문구는 **지우지 않고 바꿨다** — provider 분기로는 도달 불가하지만, 사용자가 고른 Ollama 모델이 tools를 지원하지 않으면 사이드카가 같은 오류를 낸다. 그래서 "Ollama provider로 전환하세요"가 아니라 "다른 모델을 고르세요"로 고쳤다.
->
-> **2026-07 브랜드 색 노트**: 김대리 색의 단일 소스는 브랜드 SVG의 `fill`·`stop-color`다(`apps/desktop/src/assets/brand-logo-{light,dark}.svg`, `apps/mobile/assets/brand-wordmark.svg`). 모바일은 `BrandPalette.core`(#2DB400) **시드 하나**에서 M3가 라이트/다크를 전부 파생하고, 데스크톱 `index.css`의 `--primary`·`--sidebar-*`는 같은 값을 HSL로 옮긴 것이다(흰 전경 대비 4.5:1을 넘기려 명도만 24%로 낮춤). **코드에서 새 브랜드 색을 짓지 않는다** — 필요하면 SVG를 먼저 고치고 값을 옮긴다. 단, 상태색 중 `thinking`(앰버)·`remoteControlling`(바이올렛)은 "정상 동작 중"과 구분돼야 해서 의도적으로 브랜드 밖 색이다. 워드마크 SVG는 그라디언트의 어두운 끝(#0B3F0A·#015F00)이 다크 지면에서 대비 1.5:1로 사라지므로 `BrandWordmark`가 다크에서 단색(#46C642)으로 눕힌다.
->
-> **2026-07 QR 페어링 계약 노트**: QR 페이로드 `{"v":1,"relay","pairing_id","code"}`는 데스크톱 `lib/relayQr.js`와 모바일 `apps/mobile/lib/pairing/pairing_service.dart`가 공유하는 계약이다. 사이드카 `/relay/pair`는 `relay_url`로 주므로 `relay`로 **매핑**해야 한다 — 어긋나면 스캔이 조용히 실패하므로 `lib/relayQr.test.js`가 형태를 고정한다(순수 모듈로 분리한 이유).
->
-> **2026-08 페어링 code 방어 노트**: 페어링 code의 방어는 **TTL(120초) · rate-limit(IP당 10회/60초) · 엔트로피(8 hex = 2^32)** 세 가지가 곱해져야 성립한다. 하나씩은 부족하다 — TTL만 있으면 초당 1만 회 공격에 창당 약 7% 확률로 뚫리고, rate-limit만 있으면 미소비 code가 쌓여 "아무거나 하나만 맞히면 되는" 상태가 된다. **셋 중 하나를 줄이려면 나머지를 키워야 한다.** rate-limit 키는 클라이언트 IP이고, `X-Forwarded-For`는 위조 가능하므로 기본 비신뢰다 — 리버스 프록시가 들어오는 XFF를 **덮어쓰도록** 설정한 경우에만 `RELAY_TRUST_PROXY=1`로 켠다. 전역 잠금(전체 실패 N회 → 엔드포인트 차단)은 공격자가 정상 사용자의 페어링을 막는 DoS 수단이 되므로 의도적으로 넣지 않았다.
->
-> TTL 도입으로 QR은 120초 후 만료된다. `/pair/start`가 `expires_in`을 주고, 사이드카 `/relay/pair`가 그 값을 **그대로 흘려보내야** 한다 — 데스크톱이 TTL을 하드코딩해 추측하면 relay 설정이 바뀔 때 카운트다운이 실제 만료와 어긋나서 "아직 남았다"고 표시된 QR이 이미 죽어 있게 된다. 계산은 `lib/pairingCountdown.js`, 표시는 `RelayPairing.jsx`(카운트다운·재발급·스토어 배지)가 맡는다. `expires_in`이 0/없음이면 **만료 개념 없음**으로 다뤄 카운트다운을 숨긴다(구버전 relay 호환) — 0초 만료로 치면 QR을 띄우자마자 만료로 보인다.
->
-> **QR을 못 쓰는 환경**(iOS 시뮬레이터·안드로이드 에뮬레이터)이 있으므로 `RelayPairing.jsx`는 `relay_url`·`pairing_id`·`code` 세 값을 수동 입력용으로 함께 노출한다. **셋 중 `pairing_id`가 빠지면 수동 페어링 자체가 불가능하다** — 예전에는 이 값이 UI에 없어 `relay_config.json`을 직접 열어야 했다. 만료 뒤에는 감춘다(죽은 값을 복사 가능한 모습으로 두면 흐려 놓은 QR과 같은 함정이 된다).
->
-> **2026-08 데스크톱 최종 와이어프레임 노트** (구 "채팅 우선 레이아웃 노트"를 대체): 스펙 원본은 `design/desktop-shell/`(`SCREENS.md`·`TOKENS.md`·`raw/{light,dark}/Frame_*.txt`)이고, Figma는 `김대리_기획안`의 라이트 `Frame 159~172` / 다크 `Frame 145~158`이다. PR #28이 따르던 `8a6513e`의 `DesktopAppShell.jsx`는 **채택되지 않은 안**이었다 — 그 구조를 근거로 삼지 말 것.
->
-> **홈이 시작 화면이고 `currentPage: "chat"`은 그 홈을 가리킨다**(`Layout`의 `PAGE_MAP.chat = HomePage`). 홈은 채팅 스레드가 아니라 **문서 카드 그리드 + 문서 CRUD 액션 바**다(B-1). 구버전의 상태 카드 3장(보안/AI엔진/최근 대화)은 이 자리에서 빠졌다.
->
-> **채팅은 페이지가 아니라 본문 위의 390px 패널**이다(B-2/B-3). `Layout`이 소유하고 어느 페이지 위에든 뜬다. 크기는 도킹(본문을 밀어냄) ↔ 플로팅(본문 위에 겹침) 2단이고 규칙은 `lib/chatPanel.js`가 소유한다 — `reservesLayoutSpace()`가 false인데 본문 폭을 줄이면 오른쪽에 빈 띠가 생긴다.
->
-> 내비에서 **`채팅` 항목이 빠졌다** — 사이드바는 `워크스페이스 · 작업 기록 · 대화목록 · 파일 목록` + 푸터 `도움말 · 환경 설정`이다. 대신 **패널 재진입 경로를 반드시 남길 것**: 우하단 FAB(패널이 닫혔고 홈이 아닐 때) + `Cmd/Ctrl+J`. 둘 다 지우면 패널을 한 번 닫은 사용자가 보던 대화로 돌아갈 길이 없다.
->
-> **2026-08 워크스페이스 = 작업면 노트**: 내비 첫 항목 `워크스페이스`는 **새 대화를 열고 홈으로 가는 버튼**이다 — 그래서 항목 id가 라벨과 다르게 `chat`(=`HomePage`)이고, `NAV_ITEMS`의 `newChat` 플래그가 그 동작을 표시한다. 예전 `대화목록` 확장 안에 있던 **`+ 새 대화` 버튼은 없앴다**(그 자리로 올라온 것이니 되살리지 말 것). `대화목록` 확장은 이제 *이전* 대화로 돌아가는 경로만 맡는다.
->
-> 그 결과 **내비에서 빠졌지만 살아 있는 화면이 둘**이다. 전부 `Cmd/Ctrl+K`가 유일한 진입 경로이므로 팔레트 항목을 지우면 기능이 코드에만 남는다 — `workspace`(`WorkspacePage`, 폴더 탐색·미리보기: `파일 목록`에 없는 기능이라 남겼다) · `settings`(`SettingsHub`, 보안·자격증명·허용 범위·실행 기록). 셋째였던 `messenger_monitor`(`ConversationsPage`)는 메신저 봇 제거와 함께 사라졌다.
->
-> 팔레트에는 **`파일 목록`도 있다.** 이건 페이지가 아니라 사이드바 확장 목록이라 `setCurrentPage`로 갈 수가 없어서, `officeclaw:open-file-list` 커스텀 이벤트를 쏘고 `ConversationSidebar`가 받아 편다(도움말·팔레트가 이미 쓰는 `officeclaw:*` 방식과 같다). 사이드바가 접혀 있으면 먼저 편다 — 64px 레일에는 확장 목록을 그릴 자리가 없다.
->
-> **`대화목록`(`conversations`)은 `ConversationHistoryPage`이지 `ConversationsPage`가 아니다.** 이름이 비슷했지만 후자(메신저 채널 모니터링)는 메신저 봇 제거와 함께 삭제됐다. 남은 `ConversationHistoryPage`는 지난 AI 대화를 요일별/파일별로 훑는 화면이다(와이어프레임 229:3237·229:3678). **`파일별` 보기는 데이터가 없어 안내 상태로 떨어진다** — 사이드카 `list_sessions`가 `{session_id, last_message_at, message_count, preview}`만 주고 대화-파일 연결을 기록하지 않는다. 세션에 파일 필드가 생기면 `lib/conversationGroups.js`의 `fileOf()` 하나만 고치면 화면은 그대로 동작한다.
->
-> **2026-08 대시보드 폐기 노트**: `대시보드`와 `작업 검색`은 **`작업 기록` 하나로 병합됐다**(페이지 키 `activity`, 스펙은 `design/desktop-shell/raw/v2/`). 리뷰 근거 두 가지 — (1) "차단과 보안 두 영역이 분리된 이유가 궁금하다. 보안 안에도 차단된 명령이 있어 정보가 중복된다" → 보안 카드를 없애고 `자동 마스킹`을 KPI 4번째 자리로 올렸다. (2) "작업 기록과 작업 검색을 병합" → 검색은 내비 확장이 아니라 표 헤더 입력창이 맡는다. **`승인 대기` KPI도 뺐다** — 모바일은 조회 전용이고 데스크톱 앱으로 명령하면 "자리를 비운 사이"가 성립하지 않아 큐가 쌓이지 않는다는 결론이다. 되살리려면 그 전제부터 다시 확인할 것.
->
-> 표 정렬은 **받아온 페이지 안에서만** 한다. 사이드카 감사 로그 API가 정렬 파라미터를 받지 않으므로 전체 정렬인 척하면 페이지를 넘길 때 순서가 어긋난다. 서버 정렬이 생기면 `ActivityPage`의 클라이언트 `sort`를 걷어내고 쿼리로 넘길 것. 정렬 규칙 자체는 `lib/activityLog.js`의 `sortRows()`가 소유한다 — **시간 칸은 표시 문자열(`6일 전`)이 아니라 `row.ts`(원본 epoch)로 비교해야 한다.** 문자열로 비교하면 "6"과 "오"를 견주는 꼴이라 기본 정렬에서 순서가 무의미하게 뒤섞인다(실제로 그랬다).
->
-> 검색도 서버 파라미터가 없어 클라이언트가 거른다. **현재 페이지 20건만 훑으면 "검색 결과가 없습니다"가 거짓말이 된다** — 다음 페이지에 있는데도 없다고 말한다. 그래서 검색을 시작하면 최근 `SEARCH_WINDOW`(500 = API limit 상한)건을 한 번 더 받아 그 안에서 찾고, 페이지네이션을 숨긴 뒤 그 범위를 화면이 문장으로 밝힌다.
->
-> **2026-08 작업 기록 데이터 소스 노트**: 감사 로그는 **두 벌**이고 화면마다 보는 쪽이 다르다.
->
-> | 저장소 | 쓰는 곳 | 읽는 화면 | 모양 |
-> |---|---|---|---|
-> | SQLite `command_log` | `messenger/base.py` · `routers/security.py` · **`routers/excel_live.py`** | `작업 기록`(`ActivityPage`) | `grade`(SAFE/CONFIRM/DENIED) · `approved` · `source` · `tool_name` |
-> | `audit.jsonl` (`AuditService`) | 거의 모든 라우터 | 설정 허브의 `실행 기록`(`AuditLog`) · `security_stats`의 마스킹 집계 | `{timestamp, action, target, detail}` |
->
-> 원래 `command_log`에는 메신저 경로만 기록해서 **데스크톱으로만 쓰는 사용자에게는 `작업 기록` 표가 늘 비어 있었다**(그 메신저 경로마저 이후 제거돼, 지금 이 표에 기록을 넣는 곳은 `excel_live.py`와 보안 분석 엔드포인트뿐이다). 그래서 `excel_live.py`가 `_log_command()`로 여기에도 남긴다 — `/command`는 사용자의 자연어 문장을 `command`에, 실행된 툴을 `tool_name`에 넣는다. **도구를 하나도 안 쓴 턴(잡담)은 기록하지 않는다** — `작업 기록`은 대화록이 아니라 작업 목록이다.
->
-> CONFIRM은 **한 줄로만** 남는다. 승인 대기 시 `audit_id`를 `PendingExcelApproval`에 들고 있다가 `/approval`에서 `update_approval()`로 그 행을 갱신한다. 승인 후 재개 턴이 `_register_and_respond(..., log_safe=False)`인 이유가 이것이다 — True로 두면 같은 명령이 표에 두 줄로 보인다.
->
-> 프론트는 이 스키마를 그대로 읽는다. 두 가지가 특히 미끄럽다 — **등급 컬럼 이름은 `grade`**이지 `classification`이 아니고, **SQLite에 boolean이 없어 `approved`가 `1`/`0`/`null`로 온다**(`=== true`로만 비교하면 승인·거부가 전부 빠져나가 모든 행이 `대기` 배지가 된다). `source`도 `normalize_source()`가 보장하는 5개 enum(`telegram|slack|discord|agent|webui`)이라 `desktop`·`mobile`은 오지 않는다. 메신저 3값은 **새로 기록되지 않지만 enum과 라벨 매핑에 남겨둔다** — 이미 쌓인 행이 그 값을 갖고 있어 지우면 과거 기록의 디바이스 칸이 깨진다. 셋 다 `lib/activityLog.test.js`가 고정한다.
->
-> **2026-08 텍스트 회색 계단 노트**: 개선안 프레임은 글자 회색을 **5단계**로 쓰는데(`#0C1909` `#3D443C` `#6B7468` `#9AA298` `#B2B9B0` `#CACFC7`) 코드엔 `--foreground`·`--muted-foreground` **2개뿐**이었다. 둘로 뭉개면 "라벨 / 값 / 부제 / 보조설명 / 비활성"의 위계가 사라진다. 그래서 `index.css`에 `--ink-body`·`--ink-subtle`·`--ink-faint`·`--ink-disabled`를 더했고 Tailwind에 `ink` 네임스페이스로 물렸다(`text-` 유틸과 이름이 겹치지 않게 `text` 대신 `ink`). **새 화면에서 회색을 쓸 때 임의의 `text-foreground/70` 같은 알파를 쓰지 말고 이 계단에서 고를 것** — 알파는 지면 색이 바뀌면 같이 흔들린다.
->
-> 상태 배지 색(`완료` `#2DB400` on `#ECF8E8` / `차단` `#D23819` on `#F8D1C9`)도 `TOKENS.md`의 지면 5색에 없던 신규 값이라 `--status-done*`·`--status-blocked*` 토큰으로 넣었다. `lib/activityLog.js`의 `ACTIVITY_STATUS`는 이제 색값이 아니라 **토큰 클래스 이름만** 들고 있다.
->
-> `ink`와 `status`의 **다크값은 개선안 프레임에 다크 짝이 없어서 라이트의 위계를 뒤집어 만든 추정치**다. 다크 프레임이 그려지면 `index.css`의 `.dark` 블록만 고치면 된다 — 컴포넌트는 손댈 필요 없다.
->
-> **2026-08 환경 설정 노트**: 사이드바 푸터의 `환경 설정`은 **탭 허브가 아니라 단일 페이지**다(`preferences` → `components/settings/PreferencesPage.jsx`, 와이어프레임 `243:1140`). **`SettingsHub`(`settings`)를 지우지 말 것** — 와이어프레임에 없는 5개 기능(로컬 AI·자격증명·보안·에이전트 허용 범위·실행 기록)이 거기 붙어 있고, 유일한 진입 경로가 `Cmd/Ctrl+K` → 각 탭 키(`credentials` 등)다. 허브를 없애면 그 기능들이 코드에만 남고 갈 길이 사라진다.
->
-> 모달 껍데기는 **두 종류**다. `ui/dialog.jsx`의 `AlertDialog`는 확인/취소 버튼이 붙박이인 확인 다이얼로그, `ui/modal.jsx`의 `Modal`은 본문이 주인공인 범용 모달(도움말·QR 페어링). 새 모달을 만들 때 버튼이 둘 고정이면 앞의 것, 아니면 뒤의 것. **오버레이·Esc·바깥 클릭·닫기 버튼을 컴포넌트가 자기 손으로 다시 그리지 않는다** — `ShortcutHelp`가 한동안 그렇게 한 벌 더 갖고 있었고, 그런 자리는 모달 동작을 고칠 때 한쪽만 고쳐진다.
->
-> `Modal`의 `layer="top"`은 **명령 팔레트 위에 떠야 하는 모달 전용**이다. 팔레트가 `z-[1000]`인데 `Cmd/Ctrl+/`는 팔레트를 열어둔 채로도 먹으므로, 도움말이 기본 층(`z-50`)이면 팔레트 뒤에 깔린다.
->
-> **QR 페어링 모달은 `RelayPairing`을 그대로 감싼다** — QR 생성·TTL 카운트다운·재발급·스토어 배지가 전부 거기 있고 `lib/pairingCountdown.js`와 물려 있다. 모달 안에서 다시 그리면 두 벌이 되고 페어링 프로토콜이 바뀔 때 한쪽만 고쳐진다. 연결 성사 판정은 `relayStore.connected`가 **false→true로 뒤집히는 순간**만 잡는다(이미 연결된 채로 창을 열었을 때 성공 모달이 튀지 않도록).
->
-> **`내 요금제`와 `회원 정보`는 백엔드가 없는 플레이스홀더**다. 결제·플랜도 계정 시스템도 코드에 존재하지 않는다 — 버튼은 `disabled`이고 화면이 그 사실을 문장으로 밝힌다. 붙이려면 프론트가 아니라 서버부터다.
->
-> `연결된 디바이스`는 **relay가 기기 이름·접속 위치를 주지 않는다**. `relayStore`에 있는 건 단일 연결의 `connected`·`relayUrl`뿐이라, 와이어프레임의 `임재환의 Iphone 17pro / 대한민국, 서울특별시, 서초구 • 3일전`은 목업 문구로 두고 실제로 아는 값만 렌더한다. **없는 데이터를 채워 넣지 말 것** — 기기 메타데이터가 필요하면 페어링 프로토콜(`packages/protocol`)부터 늘려야 한다.
->
-> 글자 크기는 **루트 `font-size` 하나만** 바꾼다(`lib/fontScaleManager.js`). Tailwind 크기 유틸이 전부 rem이라 이걸로 글자·여백·컨트롤이 함께 커진다. 컴포넌트마다 `large:` 변형을 붙이면 새 화면을 만들 때마다 빠뜨리는 곳이 생긴다. 2단계(16px/18px)인 이유는 1.25배부터 1600×900에서 작업 기록 표의 `명령` 칸이 접히기 시작해서다.
->
-> 접힘(Cmd/Ctrl+B)은 **통째 숨김이 아니라 64px 아이콘 레일**이다 — 확장 목록만 숨고 내비는 남는다. 접힘 모양은 `ConversationSidebar`가 직접 소유하므로 `Layout`에서 조건부 언마운트하지 않는다. 와이어프레임에 없지만 남긴 것: `대화목록` 확장 안의 `+ 새 대화`(없으면 대화 중 새 주제를 못 꺼낸다).
->
-> **다크모드는 레이아웃이 아니라 토큰 작업이다** — 라이트/다크 14쌍의 노드 트리가 동일하다. `index.css`의 `:root {}` / `.dark {}` 두 블록이 전부이고 `<html>.dark` 토글은 `lib/themeManager.js`가 한다. 라이트 모드에서 **사이드바도 본문과 같은 밝기**다(예전엔 사이드바만 다크였다). 다크 프레임에 남아 있는 `#E1E6DF` AI 말풍선·`#FDFEFC` 루트 fill은 되돌리지 않은 작업 흔적이라 `TOKENS.md`의 매핑(`#E1E6DF → #535D50`)을 따랐다.
->
-> `--primary`가 브랜드 원값 `#2DB400`이 **아닌** 이유: 라이트에서 흰 글자와의 대비가 2.75:1이라 본문 기준 4.5:1에 못 미친다. 글자를 얹는 자리는 `--primary`(라이트에서 명도만 낮춘 값), 글자를 안 얹는 자리(상태 점·장식·아이콘)는 `--brand`를 쓴다.
->
-> **인라인 결과 카드(`SheetPreviewCard`·`BarChartCard`)는 제거했다** — 최종안 14화면 어디에도 없다. `lib/excelResult.js`는 `formatResultText()` 하나만 남아 문장을 돌려주고, 그 문자열에 말풍선 본문과 세션 영속화가 함께 의존한다. 진행 표현은 대신 **툴 진행 스텝 칩**(`lib/toolSteps.js`)과 **스켈레톤 로딩**이 맡는다. 그 대가로 `read_range`의 `values`는 다시 화면에 안 나온다(행×열 수는 문장에 남는다) — 표를 되살리려면 카드부터 다시 만들어야 한다.
->
-> **채팅 패널 상단 바의 저장 버튼(`saveWorkbook`)은 지우지 말 것.** 라이브 COM 편집은 통합문서를 고치기만 하고 저장하지 않아서, 이 버튼이 없으면 저장 시점을 앱 안에서 잡을 수단이 하나도 없다(사용자가 엑셀 창을 직접 찾아가야 한다). 와이어프레임 재편 때 한 번 사라졌다가 함수·IPC·사이드카 엔드포인트만 살아남은 적이 있다.
->
-> **엑셀 CONFIRM 승인은 모달이 아니라 말풍선 인라인 버튼**(`네 Y` / `아니오 N`)이다(B-6). 승인·거부는 사용자 말풍선으로 스레드에 남는다(B-7) — 기록을 되짚을 때 "누가 승인했나"가 스레드 안에 있어야 감사 로그를 따로 열지 않는다. **`ApprovalDialog` 모달은 제거됐다** — 그 큐에 넣는 곳이 메신저 경로뿐이었다(아래 메신저 제거 노트).
->
-> **2026-08 메신저 봇 제거 노트**: **Telegram·Slack·Discord 봇 기능을 전부 걷어냈다.** 최종 와이어프레임 어디에도 메신저가 없고, 원격 제어는 모바일 앱 + relay(QR 페어링)가 대신한다. 지운 것 — 사이드카 `messenger/` 패키지·`routers/{telegram,slack,discord}.py`·`services/telegram_service.py`(약 2,570줄), 파이썬 의존성 3개(`python-telegram-bot`·`slack-bolt`·`discord.py` → 전이 의존까지 14개, 설치 기준 14MB), Rust IPC 커맨드 12개, 데스크톱의 `MessengerSettings`·`ConversationsPage`·설정 허브 메신저 탭·팔레트 항목 4개·`api.js` 래퍼 12개·`appStore`의 `telegramConnected`/`selectedMessenger`·`StatusBar` 메신저 세그먼트·온보딩 메신저 2단계·`SetupGuide` 탭 2개·`CredentialsManager` 봇 토큰 그룹.
->
-> **연쇄로 함께 사라진 것이 `ApprovalDialog`다.** 사이드카 `_pending_ui_approvals` 큐에 넣는 곳이 메신저 경로뿐이었다(`POST /security/approval`은 외부용인데 아무도 부르지 않았다). 그래서 큐·엔드포인트 3개·`appStore.pendingApproval`·`App.jsx`의 5초 폴링·`Layout`의 승인 토스트를 함께 걷었다. **지금 남은 승인 경로는 둘뿐이다** — 엑셀 CONFIRM은 채팅 패널 말풍선의 인라인 버튼, 모바일은 relay 자체 승인 프레임(`relay_client._on_approval_response`). 되살리려면 큐부터 다시 만들어야 한다.
->
-> `StatusBar`의 보안 배지는 남는다 — 엑셀 CONFIRM도 `command_log`에 `approved IS NULL`로 쌓이므로 건수는 여전히 의미가 있다. 다만 클릭이 모달을 열 수 없으니 `작업 기록`으로 보낸다.
->
-> **남긴 것**: `command_audit.py`의 source enum과 `lib/activityLog.js`의 `telegram|slack|discord → 모바일` 매핑(과거 감사 로그 행 호환), `models/approval.py`의 `ApprovalResponse`(엑셀 승인이 계속 쓴다).
->
-> **2026-08 Gmail 제거 노트**: 메신저 제거 때 판단을 미뤄뒀던 **Gmail 스킬도 걷어냈다.** 봇 명령이 유일한 통로였고 엑셀 tool-calling 스키마(`excel_tool_schemas.py`)에 Gmail 함수가 없어 진입 경로가 0이었다. 지운 것 — `services/gmail_service.py`(어디서도 import되지 않던 고아), `tool_registry`의 스킬 4개(`gmail.fetch_emails`·`gmail.summarize_recent`·`gog.gmail.read`·`gog.gmail.send`)와 `TOOL_DISPLAY_NAMES` 항목, `intent_router` 분류 프롬프트의 gmail 규칙, 데스크톱의 `SetupGuide` Gmail 탭·`CredentialsManager`의 Google OAuth 그룹·`errorMessages.js`의 Gmail 문구.
->
-> **파이썬 의존성 3개(`google-auth`·`google-auth-oauthlib`·`google-api-python-client`)가 함께 빠졌다** — `gmail_service.py`가 유일한 사용처였다. 전이 의존까지 lockfile에서 17개가 사라진다.
->
-> `errorMessages.js`의 토큰 만료 문구는 **지우지 않고 자격증명 일반 문구로 바꿨다** — `invalid_grant`·refresh 실패는 Claude API 키 등 다른 자격증명에서도 난다. 반대로 `AI 답장|draft.*reply|prioritize.*email` 패턴은 없어진 "메일 AI 화면"을 가리켜서 걷어냈다.
->
-> **`gog.sheets.read`/`gog.sheets.write`는 남겼다.** 같은 OpenClaw GOG 계열이라 마찬가지로 진입 경로가 없지만, Gmail과 달리 Google Sheets는 엑셀 도메인과 겹쳐 되살릴 여지가 있다 — 지우려면 별도 판단이 필요하다. `services/intent_router.py`도 고아다(메신저 `base.py`가 유일한 호출자였다). 남긴 이유는 같다: 엑셀 밖 스킬 라우팅을 다시 붙일 때 쓰는 분류기다.
-
-> **2026-08 모바일 평문 차단 노트**: 모바일의 TLS 강제는 **매니페스트/plist가 아니라 Dart 코드**(`apps/mobile/lib/transport/relay_url.dart`)가 책임진다. 안드로이드 `usesCleartextTraffic`·네트워크 보안 설정과 iOS ATS는 *플랫폼이 소유한* 소켓에만 걸리는데, 이 앱의 통신은 `package:http`와 `web_socket_channel` 둘 다 Dart 소유 소켓이라 적용되지 않는다(Flutter 공식: "If the socket is owned by Dart/Flutter, no policy will be enforced" — flutter/flutter#106678은 not planned로 닫힘). 그래서 `kAllowInsecureRelayByDefault = !kReleaseMode`로 debug·profile만 평문을 허용하고, relay 주소는 QR·수동입력 어느 경로든 `normalizeRelayBaseUrl`을 통과시킨다. **새 네트워크 경로를 추가하면 이 함수를 반드시 태울 것** — 안 태우면 릴리스에서 평문이 그대로 나간다.
->
-> 안드로이드 `INTERNET` 권한은 별개다. 이건 플랫폼이 UID 레벨에서 막으므로 Dart 소켓도 걸린다 — Flutter 템플릿이 `src/debug`·`src/profile`에만 넣어주기 때문에 `src/main`에 직접 선언해야 릴리스 APK가 네트워크를 쓴다. iOS는 실기기에서 LAN 주소로 붙을 때 iOS 14+ 로컬 네트워크 권한 팝업이 뜨므로 `NSLocalNetworkUsageDescription`이 필요하다.
->
-> **2026-08 크로스플랫폼 노트**: 배포 타깃은 **Apple Silicon macOS + Windows x64** 둘이고, OS 분기는 층마다 주인이 다르다.
->
-> | 층 | 분기 주인 | 비고 |
-> |---|---|---|
-> | 데이터 경로 | `config.py`의 `get_data_dir()` | AppData / Application Support / `.local/share` |
-> | Excel 테두리 | `services/excel_border.py` | **COM(정수 상수) vs AppleScript(appscript 키워드)** — 유일하게 xlwings가 흡수 못 하는 영역 |
-> | 그 밖의 Excel 조작 | (분기 없음) | xlwings 고수준 API가 흡수한다 |
-> | Ollama·설치 | `src-tauri/src/{installer,ollama,shell}.rs`의 `#[cfg(target_os)]` | brew vs winget, 절대경로 탐지 |
-> | 앱 권한 | `Info.plist`(Apple Events·로컬 네트워크) · `entitlements.plist` | 각 파일 주석에 이유가 있다 |
->
-> **색은 xlwings 고수준 API로만 넘긴다** — `cell.color = (r, g, b)`. COM 정수(BGR)를 만들어 넘기면 macOS에서 예외 없이 조용히 검게 칠해진다. 그래서 `excel_live_service`에 COM 색 변환 헬퍼를 두지 않는다(예전에 쓰이지 않는 채로 남아 있던 것을 지웠다).
->
-> **플랫폼 백엔드는 우리 코드가 직접 import하지 않는다.** xlwings가 Windows에서 `pywin32`(pythoncom·win32com)를, macOS에서 `appscript`를 탄다 — 둘 다 `pyproject.toml`이 아니라 **xlwings 자신의 의존성 마커**로 들어온다(우리 쪽 `pywin32` 항목은 버전 하한선 역할). 그래서 **`pytest`로는 백엔드 누락이 절대 안 걸린다.** 그 자리를 `--smoke-test`가 맡는다(`main.py`의 `_smoke_test()`): FastAPI 앱 구성 · xlwings · 플랫폼 백엔드 · keyring 백엔드가 Null/Fail이 아닌지를 확인하고 포트는 열지 않는다.
->
-> 실측해 둔 것 — PyInstaller는 macOS 빌드에서 `appscript`·`aem`·`xlwings`·`keyring.backends.macOS`를 **정적 분석만으로 전부 담는다**. Windows의 `pythoncom`·`pywintypes`·`win32com`도 PyInstaller 내장 훅이 처리한다. 그러므로 **`--hidden-import`에 플랫폼 백엔드를 적을 필요가 없다.** 반대로 **없는 모듈을 적으면 안 된다** — `ERROR: Hidden import 'x' not found`가 찍혀 진짜 실패를 가린다(제거된 `slack_bolt`·`discord`가 그 상태로 남아 있었다).
->
-> CI는 두 갈래다. `pr-check.yml`의 `python-check`는 **ubuntu에서만** 도는데 그건 타깃 OS가 아니다 — `cross-platform-check.yml`이 Windows·macOS에서 `pytest` + 소스 스모크를 돌려 그 구멍을 메운다(경로 필터로 사이드카 변경에만 건다. macOS 러너 청구 분이 10배라 무조건 돌리지 않는다). 번들 스모크는 `workflow_dispatch`와 릴리스 빌드가 맡는다.
->
-> **2026-08 로컬 AI 엔진 용어 노트**: 화면에서는 엔진을 **`로컬 AI 엔진`**이라고 부른다. `Ollama`를 그대로 노출하면 남의 도구를 가져다 쓴 인상이 되고, 나중에 엔진을 바꾸면 문구가 전부 거짓이 된다.
->
-> **다만 전부 가리지는 않는다.** 사용자가 **앱 밖에서 직접 찾아야 하는 것**은 실제 이름을 써야 한다 — 브라우저에서 누를 버튼(`Download for Mac`), 다운로드 폴더에서 확인할 파일명(`Ollama-darwin.zip`·`OllamaSetup.exe`), 응용 프로그램 폴더의 앱 아이콘(`Ollama`), 터미널에 복사할 명령(`ollama pull ...`). 여기서까지 가리면 **안내를 따라갈 수 없다.**
->
-> 그래서 경계는 화면 단위로 갈린다.
->
-> | 자리 | 표기 |
-> |---|---|
-> | 상태 바·설정·온보딩·마법사 단계 라벨·오류 문구 | `로컬 AI 엔진` |
-> | `SetupGuide`(수동 설치 가이드) | 실제 이름 — 그 화면은 앱 밖의 일을 안내한다 |
->
-> `SetupGuide` 도입부가 **둘을 한 번 이어준다** — "아래 안내에 나오는 `Ollama`가 그 엔진의 이름이에요". 이 한 줄이 없으면 사용자는 상태 바의 `로컬 AI 엔진`과 사이트의 `Ollama`를 다른 것으로 여긴다.
->
-> **코드 식별자는 바꾸지 않는다** — `ollama_status`·`STATUS_MODULES.ollama`·`macos_ollama_exe`·`STEP.INSTALL_OLLAMA` 등은 내부 이름이고, 사이드카 API 필드명이기도 하다. 바꾸면 프론트·Rust·파이썬 세 곳이 동시에 어긋난다. **화면 문자열만** 바꿨다.
->
-> 확인 방법: `npm run build` 후 `dist/assets/*.js`에서 `Ollama`를 grep하면 **`SetupGuide` 문구만** 나와야 한다. 다른 화면에서 나오면 새 문구가 규칙을 벗어난 것이다.
-
-> **2026-08 모델 선택 단일화 노트**: 로컬 모델을 고르는 화면은 **넷**이고(온보딩 · 설치 마법사 · 설정 허브 `일반` · 환경 설정), 전부 같은 목록·같은 드롭다운을 쓴다. 단일 소스는 **`statusStore.modules.ollama.models`**(= Rust `ollama_status` → `/api/tags`, `ollama list`가 보는 것과 같은 목록)이고, 구독은 `hooks/useOllamaModels.js`가 맡는다.
->
-> 원래는 화면마다 제각각이었다 — 설치 마법사는 추천 2개를 **라디오로 하드코딩**해서 이미 받아둔 모델이 목록에 안 떴고(직접 입력에 손으로 쳐야 했다), 환경 설정의 `사용중인 AI 모델`은 셰브런이 달렸는데 **누르면 목록이 아니라 `guide` 페이지로 넘어가는** 읽기 전용 버튼이었다. 온보딩만 목록을 띄웠는데 그마저 **사이드카 `healthCheck()`**를 따로 불러서, 사이드카가 아직 안 뜬 순간에 Ollama가 멀쩡한데도 "설치되어 있지 않아요"로 보였다. 엔진 설치 여부는 로컬 판정이라 사이드카를 거칠 이유가 없다.
->
-> **모델 목록의 원본이 두 갈래이고 모양이 다르다** — Rust는 `/api/tags` 원본 그대로 `[{name, size, ...}]`(객체), 사이드카 `/health`는 `["qwen3:4b", ...]`(문자열). 한쪽만 받는 함수에 다른 쪽을 넣으면 **예외 없이 빈 목록**이 된다. 그래서 정규화(`toModelId`)를 `modelCatalog.js` 한 곳에 두고 화면은 전부 통과시킨다. `lib/modelCatalog.test.js`가 두 shape이 같은 결과를 내는지 고정한다.
->
-> **설치 마법사는 설치된 모델만 보여주면 안 된다** — 그 화면의 목적이 *아직 없는 모델을 받는 것*이라, 갓 설치한 사용자는 목록이 비어 고를 것이 하나도 없다. 그래서 `buildModelChoices(설치됨, 추가후보)`가 추천 카탈로그를 `installed: false`로 함께 올리고 `ModelSelectField`가 `미설치` 배지를 붙인다. **배지를 빼면 안 된다** — 목록에 있다는 이유로 이미 받은 것처럼 보인다. 같은 함수가 설정 화면의 반대 경우(저장된 모델이 지워져 목록에서 빠진 경우)도 처리한다.
->
-> 선택값 결정은 `pickDefaultModel(options, preferred)` 하나가 소유한다: **저장된 값 > 추천 > 첫 항목**. 예전에는 화면마다 `models[0]`을 집어넣어서 설정에서 고른 모델이 다음 화면에서 슬그머니 바뀌어 있었다. 목록 정렬도 `추천 → 설치됨 → 이름순`으로 고정했다 — `/api/tags`의 반환 순서가 보장되지 않아, 순서가 갱신마다 흔들리면 같은 자리를 누르려던 사용자가 다른 모델을 고르게 된다.
->
-> 환경 설정에는 저장 버튼이 없어 **고르는 즉시 저장**한다. 그 화면의 `모델 추가하기` 링크(→ `guide`)는 지우지 말 것 — 모델을 *받는* 곳은 설치 마법사이고, 목록이 비었을 때 사용자가 갈 곳이 그것뿐이다.
-
-> **2026-08 Ollama 설치 경로 노트**: 설치 마법사는 **패키지 매니저를 전제하지 않는다.**
->
-> 예전 macOS 경로는 `brew install ollama` / `brew services start ollama`였는데 둘 다 무너진다. (1) **Homebrew 자체가 따로 설치해야 하는 물건**이라 초기 상태의 Mac에서는 `brew: command not found`로 죽는다 — 우리 사용자는 비개발자를 상정한다. (2) 공식 앱(`Ollama.app`)으로 이미 설치한 사용자는 **탐지는 성공하고 시작만 실패**했다. `/usr/local/bin/ollama`(앱이 만드는 심볼릭 링크)가 PATH에 잡혀 "설치됨"으로 판정되는데, `brew services start ollama`는 `Error: Formula 'ollama' is not installed.`를 뱉는다 — 이미 Ollama를 설치한 사람에게는 뜻이 통하지 않는 메시지다. 실기기에서 재현·수정 후 재검증했다.
->
-> 지금은 이렇게 간다.
->
-> | 단계 | macOS | Windows |
-> |---|---|---|
-> | 설치 | `ollama.com/download/Ollama-darwin.zip`(181MB)을 받아 `ditto`로 `/Applications`에 설치 | `winget` 우선, 없으면 `OllamaSetup.exe`(1.5GB) 받아 무인 설치 |
-> | 시작 | 탐지된 `Ollama.app`을 `open -a` | 표준 경로의 `Ollama.exe` 실행 |
-> | pull | 탐지된 실행 파일의 **절대경로** | 동일 |
->
-> **`unzip`이 아니라 `ditto`를 쓴다** — macOS 네이티브라 코드 서명과 확장 속성을 보존한다. `unzip`으로 풀면 서명이 깨져 Gatekeeper가 앱을 거부할 수 있다. 실측으로 확인했다: `ditto` 설치 후 `spctl -a -vv`가 `accepted / Notarized Developer ID`를 준다.
->
-> **탐지·시작·pull이 같은 경로 목록을 본다** — `ollama.rs`의 `macos_ollama_exe`/`macos_ollama_app`(Windows는 `windows_ollama_exe`)이 단일 소스다. **한 곳이라도 맨 이름 `ollama`에 의존하면 "설치됨으로 보이는데 실행은 실패"가 재현된다.** 공식 앱은 첫 실행 때 사용자가 승인해야 CLI 심볼릭 링크를 만들기 때문에, 승인 전에는 앱이 있어도 PATH에 없다. 경로 목록에서 **앱 번들 안의 실물을 먼저** 보는 이유는 `/usr/local/bin/ollama`가 끊어진 링크로 남을 수 있어서다(`Path::exists()`가 링크를 따라가므로 끊어진 링크는 자동으로 걸러진다).
->
-> Windows에서 `winget`을 남긴 이유는 brew와 사정이 달라서다 — **OS 기본 탑재**(Win10 1709+·Win11)라 전제해도 안전하고, 1.5GB 다운로드의 재시도·검증을 대신해 준다. 폴백의 `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`는 설치 프로그램 실물에서 **Inno Setup 6.7.0**임을 확인하고 고른 스위치다. 그 경로에서 `$ProgressPreference = 'SilentlyContinue'`를 반드시 켠다 — PowerShell 5.1의 `Invoke-WebRequest`는 진행률 막대 때문에 대용량 다운로드가 수십 배 느려진다.
->
-> 진행률은 **줄 단위로** 찍어야 한다. `run_shell_streaming`이 `lines()`로 읽으므로 `curl --progress-bar`처럼 캐리지 리턴만 쓰는 출력은 화면에 한 줄도 안 나오다가 끝에 몰려 나온다. 그래서 macOS는 curl을 백그라운드로 돌리고 파일 크기를 3초마다 직접 찍는다.
->
-> `capabilities/default.json`의 `shell:allow-spawn`에서 **`brew`·`ollama` 항목을 회수했다.** 설치·시작·pull은 전부 Rust(`installer.rs`)가 `std::process::Command`로 돌리고, 프론트는 `plugin-shell`의 `open`(URL 열기)만 쓴다 — 웹뷰에 임의 spawn 권한을 남겨둘 이유가 없다. 사이드카 항목은 남는다.
->
-> 온보딩의 "방법 1: Homebrew (macOS 권장)" 안내도 지웠다. **따를 수 없는 조언**이었다 — brew가 없는 Mac에서 brew로 설치하라는 안내다.
-
-> **2026-08 배포 저장소 노트**: 릴리스 산출물은 이 저장소가 아니라 **`sadStoneTurtle/kdr_release`**로 나간다. 그래서 `release.yml`이 두 잡으로 쪼개져 있다 — `build`(매트릭스)는 빌드만 하고 workflow artifact로 올리고, `publish`(단일)가 `gh release create --repo`로 Draft를 만든다. **매트릭스 잡이 각자 릴리스를 만들면 경합이 난다**(릴리스가 둘 생기거나 한쪽이 실패). 단일 잡이라 한쪽 빌드가 깨지면 릴리스 자체가 안 생겨 반쪽 배포도 막힌다.
->
-> 기본 `GITHUB_TOKEN`은 **다른 저장소에 못 쓴다** — `KDR_RELEASE_TOKEN`(대상 저장소 contents:write PAT)이 필요하고, 없으면 `publish`가 명시적 에러로 죽는다.
->
-> 자산 이름은 `kimdaeri-<platform>-<arch>[-setup]<ext>`로 **버전을 뺀다**(랜딩 페이지가 `releases/latest/download/<고정이름>`을 영구 URL로 쓴다). 예전에는 `tauri-action`의 `releaseAssetNamePattern`이 했지만 업로드를 직접 하게 되면서 안 먹으므로, `build` 잡의 `자산 이름 정규화` 단계가 확장자 기준으로 붙인다 — **`.sig`를 `.tar.gz`보다 먼저 걸러야 한다.** 순서를 바꾸면 `*.app.tar.gz.sig`가 tar.gz 가지에 먼저 걸려 서명이 본체를 덮어쓴다.
->
-> **자동 업데이트는 아직 동작하지 않는다.** 엔드포인트만 `kdr_release`로 고쳤을 뿐 `pubkey`가 비어 있고 `latest.json`을 만드는 단계가 없다. 켜려면 키쌍 생성 + `latest.json` 생성·업로드가 함께 필요하다(`docs/build-and-release.md`).
-
-> **2026-08 앱 아이덴티티 노트**: 저장소 곳곳에 `officeclaw`·`office-claw`·`office_claw`가 남아 있는데 **전부 의도적이다. 일괄 치환하면 빌드가 깨진다.** 사용자에게 보이는 이름만 김대리고, 나머지는 내부 식별자라 그대로 둔다.
->
-> | 층 | 값 | 사용자에게 보이나 | 바꿔도 되나 |
-> |---|---|---|---|
-> | `productName` | `김대리` | **보임** — `.app` 이름·창 제목 | 자유 |
-> | `mainBinaryName` | `kimdaeri` | 보임 — `Contents/MacOS/`, 작업관리자 | 자유 |
-> | `identifier` | `com.kimdaeri.app` | 간접 — 데이터 경로·업데이트 동일성 | **릴리스 후 불가** |
-> | 앱/트레이 아이콘 | 브랜드 마크 | **보임** | 자유 |
-> | Cargo 패키지명 | `office-claw` | 안 보임 (`mainBinaryName`이 덮어씀) | 가능하나 실익 없음 |
-> | 사이드카 바이너리 | `office-claw-sidecar` | 안 보임 (번들 내부) | 4곳 동시 수정 필요 |
-> | keyring 네임스페이스 | `office_claw` | 안 보임 (OS Keychain 키) | **바꾸면 기존 자격증명 유실** |
->
-> **`identifier`는 릴리스 후 절대 바꾸지 않는다.** 바꾸면 macOS가 다른 앱으로 취급해 사용자에게 앱이 두 개 생기고(데이터 디렉터리·WebView localStorage가 identifier 단위라 설정도 초기화된다), 기존 설치본에 업데이트를 보낼 수 없다. Windows 설치 프로그램도 별개 제품으로 본다. macOS 권한 승인(Apple Events 등)도 bundle ID 단위로 기억되므로 함께 날아간다.
->
-> 사이드카 바이너리명은 **4곳이 같은 문자열을 공유**한다 — `tauri.conf.json`(`bundle.externalBin`) · `capabilities/default.json`(shell allow-spawn `name`) · `src/sidecar.rs`(`.sidecar("...")`) · `release.yml`(PyInstaller `--name`과 `binaries/` 복사 경로). 하나만 고치면 런타임에 사이드카를 못 찾는다. 사용자에게 보이지도 않으므로 건드릴 이유가 없다.
->
-> keyring 네임스페이스는 `identifier`와 **독립**이다 — `apps/desktop/src-tauri/src/keyring_svc.rs`의 `SERVICE_NAMESPACE`와 `services/sidecar/office_claw_sidecar/config.py:10`의 동명 상수가 같은 값(`office_claw`)을 써서 OS Keychain을 공유한다(위 Rust 보안 계층 노트 참조). 그래서 앱 이름을 바꿔도 저장된 자격증명은 살아남는다 — 반대로 이 상수를 바꾸면 사용자가 등록한 봇 토큰·API 키를 전부 다시 넣어야 한다.
->
-> 아이콘 소스는 브랜드 색과 같은 규칙을 따른다(위 브랜드 색 노트) — `src/assets/brand-logo-light.svg`에서 `tauri icon`으로 생성한다. 다크 변형은 `#0C1909` 타일이라 macOS Dock에서 묻혀 쓰지 않는다. **플랫폼마다 여백 규격이 달라 `tauri icon`을 두 번 돌린다**: 전체 세트는 full-bleed(Windows 작업표시줄 기준), `icon.icns`만 Apple 그리드(1024 캔버스에 824 아트박스)로 만든 여백판으로 교체한다. 한 장으로 통일하면 macOS에서 크거나 Windows에서 작아 보인다. 트레이(32px)는 여백 없이 만든다.
 
 ## 빌드/실행
 
-> **모노레포 구조 (2026-07 `feat/monorepo-relay`)**: 데스크톱 앱 = `apps/desktop/`(프론트엔드 + `src-tauri/`), Python 사이드카 = `services/sidecar/`, 중계 서버 = `services/relay/`, 공용 계약·코드 = `packages/`(`protocol`·`py-shared`). 경로 매핑: `src/`→`apps/desktop/src/`, `src-tauri/`→`apps/desktop/src-tauri/`, `python-sidecar/`→`services/sidecar/`. 아래 표의 파일 경로도 이 접두사 기준으로 읽는다.
-
-- `cd apps/desktop && npm run tauri:dev` — 전체 앱 (Rust + Vite + Tauri webview). 개발 시 기본.
-- `cd apps/desktop && npm run dev` — vite-only. UI 레이아웃만 빠르게 확인할 때.
+- `npm run tauri:dev` — 전체 앱 (Rust + Vite + Tauri webview). 개발 시 기본.
+- `npm run dev` — vite-only. UI 레이아웃만 빠르게 확인할 때.
   주의: `invoke()` 호출은 모두 실패한다 (Tauri runtime 없음 → "cannot read properties of undefined").
 - Rust 변경 후에는 `tauri:dev`를 재시작해야 새 IPC 명령이 등록된다.
-- (루트에서) `bash scripts/dev.sh` — 사이드카 + Vite + Tauri를 한 번에 기동.
-
-> **윈도우 네이티브 빌드 / 배포**: 상세 절차는 [`docs/build-and-release.md`](docs/build-and-release.md) (개발용/배포용 구분). 반복되는 함정 2가지 — (1) `tauri dev`도 `externalBin`(`binaries/office-claw-sidecar-<target>[.exe]`) 파일이 **존재**해야 빌드 통과(없으면 빈 placeholder 생성). (2) dev 모드 사이드카는 `services/sidecar/.venv`로 뜬다 → 윈도우는 `uv sync`로 venv 생성 필요(WindowsApps `python`은 가짜 스텁). 배포용 단일 설치파일은 `tauri build`/릴리스 CI가 PyInstaller 사이드카·WebView2를 번들하며 — **빌드 툴체인(Rust/MSVC/Node)은 `.exe`에 안 들어간다.**
-
-> **2026-08 배포 타깃 노트**: 릴리스는 **Apple Silicon macOS + Windows x64 두 개만** 만든다(`release.yml` 매트릭스). Intel Mac은 의도적으로 뺐다 — macOS 러너는 GitHub Actions 청구 분이 **10배 배율**이라 Intel 잡 하나가 릴리스당 약 180분을 먹고, 그것만 빼도 릴리스 비용이 절반 가까이 준다. 되살리려면 매트릭스와 **랜딩 페이지 다운로드 버튼을 함께** 늘려야 한다 — 브라우저는 Apple Silicon과 Intel Mac을 구분하지 못하므로(Safari가 호환성 때문에 Apple Silicon에서도 userAgent에 "Intel Mac OS X"를 넣는다) 자동 판별이 불가능하고 버튼을 나눠야 한다.
->
-> 자산 이름은 `releaseAssetNamePattern: kimdaeri-[platform]-[arch][ext]`로 **버전을 뺀다.** 랜딩 페이지가 `releases/latest/download/<고정이름>`을 영구 URL로 쓰기 때문이다 — 버전이 들어가면 릴리스마다 (다른 저장소에 있는) 랜딩 페이지를 고쳐야 한다. 기본 이름은 `productName`인 한글 `김대리`가 들어가 URL 인코딩도 지저분해진다.
->
-> **랜딩 페이지는 아티팩트 실제 주소를 하드코딩하지 않는다.** 자기 도메인의 `/download/mac`·`/download/windows`만 가리키고, CloudFront Function이 302로 실제 위치(GitHub Releases)로 넘긴다. 저장 백엔드를 옮겨도 랜딩 페이지를 안 고쳐도 되게 하려는 것이다.
 
 ## 커밋/푸시 전 체크 (CI 미러)
 
-`.github/workflows/pr-check.yml`에 정의된 4개 잡(`rust-check`, `python-check`, `frontend-check`, `flutter-check`)을 그대로 미러링한다. **커밋 전 영역별로 해당 명령을 직접 돌려 통과 확인.** 빠뜨리고 푸시하면 GitHub Actions에서 떨어진다.
+`.github/workflows/pr-check.yml`에 정의된 3개 잡(`rust-check`, `python-check`, `frontend-check`)을 그대로 미러링한다. **커밋 전 영역별로 해당 명령을 직접 돌려 통과 확인.** 빠뜨리고 푸시하면 GitHub Actions에서 떨어진다.
 
-### Rust (`apps/desktop/src-tauri/`)
+### Rust (`src-tauri/`)
 
 ```bash
-cd apps/desktop/src-tauri
+cd src-tauri
 cargo fmt --check                          # 또는 자동 적용: cargo fmt
 cargo clippy --all-targets -- -D warnings  # -D warnings = 경고를 에러로 승격
 ```
@@ -308,10 +73,10 @@ cargo clippy --all-targets -- -D warnings  # -D warnings = 경고를 에러로 �
 - `cargo clippy --no-deps` 만 돌리면 안 됨 — CI는 `--all-targets -- -D warnings`라서 테스트 코드의 경고까지 잡힘.
 - (참고) CI는 `binaries/office-claw-sidecar-*` 더미 파일을 만들고 clippy를 돌린다. 로컬은 PyInstaller 산출물이 있으면 그걸 쓰고, 없으면 동일하게 더미를 만들거나 `cargo check`로 컴파일 가능 여부만 봐도 됨.
 
-### Python (`services/sidecar/`)
+### Python (`python-sidecar/`)
 
 ```bash
-cd services/sidecar
+cd python-sidecar
 uvx ruff check .                           # lint
 uv run pytest -q                           # unit tests
 ```
@@ -320,10 +85,9 @@ uv run pytest -q                           # unit tests
 - 의존성 변경 시 `uv sync --frozen --extra dev` 한 번 더 (CI는 lockfile 고정).
 - macOS 로컬은 OS Keychain 백엔드가 있어 keyring 호출이 실제 동작 — CI는 `PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring` 환경변수로 no-op 처리한다는 점이 다름. 테스트가 OS Keychain에 부수효과를 남기지 않는지 확인할 것.
 
-### Frontend (`apps/desktop`)
+### Frontend (repo root)
 
 ```bash
-cd apps/desktop
 npm ci                                     # CI와 동일하게 lockfile 고정 설치
 npm run lint --if-present                  # lint 스크립트 존재 시
 npm run test:unit --if-present             # 현재: node --test src/lib/*.test.js
@@ -331,32 +95,18 @@ npm run test:unit --if-present             # 현재: node --test src/lib/*.test.
 
 - 빠른 확인이면 `npm run build`만 돌려도 import 경로 깨짐은 잡힘.
 
-### Flutter 모바일 (`apps/mobile`)
-
-```bash
-cd apps/mobile
-flutter pub get --enforce-lockfile         # CI와 동일하게 lockfile 고정 설치
-flutter analyze                            # 정적 분석 (경고도 실패로 잡힘)
-flutter test                               # unit tests
-```
-
-- CI는 Flutter **3.44.6**으로 고정돼 있다. 로컬 SDK가 다르면 analyze 결과가 갈릴 수 있으니 `flutter --version`으로 맞출 것. 올릴 때는 `pr-check.yml`의 `flutter-version`과 같이 올린다.
-- `dart format --set-exit-if-changed`는 **CI에 넣지 않았다** — 기존 파일 다수가 이미 미준수라 켜는 순간 전부 빨개진다. 넣으려면 먼저 `dart format .`으로 전체를 한 번 정리하는 별도 커밋이 필요하다. 그전까지는 새로 만드는 파일만 `dart format <파일>`로 맞춘다.
-- 빌드(APK/IPA)는 CI에서 돌리지 않는다. iOS 빌드는 macOS 러너가 필요하고 서명까지 얽혀서 PR 게이트에는 과하다.
-
 ### 한 번에 다 — 추천 alias
 
 `.zshrc` / `.bashrc`에:
 
 ```bash
 alias oc-precheck='cd /Users/skim/Desktop/project/office_claw && \
-  (cd apps/desktop/src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings) && \
-  (cd services/sidecar && uvx ruff check . && uv run pytest -q) && \
-  (cd apps/desktop && npm run test:unit --if-present) && \
-  (cd apps/mobile && flutter analyze && flutter test)'
+  (cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings) && \
+  (cd python-sidecar && uvx ruff check . && uv run pytest -q) && \
+  npm run test:unit --if-present'
 ```
 
-PR 만들기 직전 `oc-precheck` 한 번 — 넷 다 통과하면 CI도 통과.
+PR 만들기 직전 `oc-precheck` 한 번 — 셋 다 통과하면 CI도 통과.
 
 ## 한국어
 

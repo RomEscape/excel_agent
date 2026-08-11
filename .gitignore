@@ -75,6 +75,11 @@ logs/*
 !logs/approval_gate_*.json
 # json_only 켬/끔 플래너 정확도 A/B. 모델을 바꿀 때마다 다시 재야 한다.
 !logs/ab_json_only.json
+# 명령 진단 배터리. 턴 로그(.jsonl)는 워크북 내용이 섞이고 실행마다 커지니 제외하고,
+# 집계(.report.json)만 남긴다 — 실행 간 비교의 기준선이라 히스토리에 있어야 한다.
+!logs/diagnostics/
+logs/diagnostics/*
+!logs/diagnostics/*.report.json
 
 # ── 임시 작업물 ────────────────────────────────────────────────────────────
 # 테스트로 만든 xlsx/pdf, 명령 출력 덤프 등. 메모(.md)는 남긴다.

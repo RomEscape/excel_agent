@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import os
 import re
 import threading
@@ -571,6 +572,20 @@ def _in_excel_thread() -> bool:
     return threading.current_thread().name.startswith("excel-com")
 
 
+def _submit_to_excel_thread(fn):
+    """전담 스레드로 넘기되, 지금 턴의 추적 컨텍스트를 함께 들려 보낸다.
+
+    `decision_trace`는 "지금 어느 턴인가"를 `ContextVar`로 들고 다닌다. 새 스레드는
+    빈 컨텍스트로 시작하므로, 그냥 넘기면 실행부 안에서 부르는
+    `trace_route("execute:error")`·`trace_route("verify:failed")`가 조용히 버려진다.
+    하필 실패를 진단할 때 가장 필요한 두 줄이라, 없으면 "검증이 통과했다"와
+    "검증기가 안 돌았다"를 로그로 구분할 수 없다.
+
+    제출 시점의 컨텍스트를 복사하므로, 턴 밖에서 부른 작업은 어느 턴에도 붙지 않는다.
+    """
+    return _EXCEL_EXECUTOR.submit(contextvars.copy_context().run, fn)
+
+
 def _run_in_excel_queue(task_name: str, fn):
     """Excel 전담 스레드에서 `fn`을 돌리고 (결과, 큐 대기 ms)를 돌려준다.
 
@@ -584,7 +599,7 @@ def _run_in_excel_queue(task_name: str, fn):
         return fn(), 0
 
     queued_at = time.time()
-    future = _EXCEL_EXECUTOR.submit(fn)
+    future = _submit_to_excel_thread(fn)
     try:
         # 큐 대기와 실행 시간을 합쳐 기다린다. 예전에는 대기에만 상한이 있었지만,
         # 여기서 실행까지 무제한으로 두면 매달린 COM 호출을 끊을 방법이 없다.
@@ -602,7 +617,7 @@ async def _run_in_excel_queue_async(task_name: str, fn):
     붙잡힌다. 그러면 `/health` 폴링이 답을 못 받아 UI가 사이드카를 죽은 것으로 본다.
     """
     queued_at = time.time()
-    future = _EXCEL_EXECUTOR.submit(fn)
+    future = _submit_to_excel_thread(fn)
     try:
         result = await asyncio.wait_for(
             asyncio.wrap_future(future), timeout=_EXCEL_QUEUE_TIMEOUT_SECONDS

@@ -16,6 +16,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from office_claw_sidecar.services.decision_trace import Long
+from office_claw_sidecar.services.decision_trace import note as trace_note
 from office_claw_sidecar.services.excel_live_plan_validator import EDIT_ACTIONS
 
 # 프롬프트에 붙일 설명. 이름만 나열하면 소형 모델이 highlight_by_condition과 헷갈린다.
@@ -197,6 +199,21 @@ def build_planner_prompt(
         ctx["complexity_score"],
         ctx["reflection_note"],
         ctx["previous_first_action"],
+    )
+
+    # 프롬프트에서 턴마다 달라지는 부분만 따로 남긴다.
+    #
+    # 앞쪽 4천여 자는 액션 목록과 규칙이라 매번 똑같다. 그걸 통째로 로그에 넣으면
+    # 정작 필요한 뒷부분 — 이 턴에 모델이 실제로 본 시트 상태 — 이 길이 제한에
+    # 밀려 잘려 나간다. 없는 열 이름을 지어낸 계획을 만났을 때 "머리글을 보여
+    # 줬는데도 무시했다"와 "애초에 안 보여 줬다"를 가르려면 이 조각이 필요하다.
+    trace_note(
+        "planner_context",
+        workbook_digest=Long(ctx["workbook_digest_text"]),
+        conversation_history=Long(ctx["conversation_history_text"]),
+        context_line=context_line.strip(),
+        failure_line=failure_line.strip(),
+        reasoning_line=reasoning_line.strip(),
     )
 
     return (
