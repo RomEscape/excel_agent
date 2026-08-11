@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from office_claw_sidecar.services.excel_live_agent import parse_command_rule_based
+from office_claw_sidecar.services.llm_json import extract_json_object
 
 # 한 매크로가 낼 수 있는 하위 명령 수 상한. 넘으면 사용자가 검토할 수 없고,
 # 잘못된 분해가 통합문서를 크게 헤집을 수 있다.
@@ -298,12 +299,11 @@ async def decompose_macro_request(
         [{"role": "user", "content": prompt}],
         model=model,
         temperature=MACRO_TEMPERATURE,
+        json_only=True,
     )
-    match = re.search(r"\{.*\}", str(raw or ""), re.DOTALL)
-    if not match:
+    # 분해는 플래너 모델이 아니라 일반 대화 모델이 맡는다(`get_macro_model_name`).
+    # 앞뒤로 설명을 붙이거나 사고 과정을 남기는 모델일 가능성이 그만큼 크다.
+    parsed = extract_json_object(str(raw or ""), require_keys=("steps",))
+    if parsed is None:
         raise ValueError("분해 결과 JSON을 찾지 못했습니다.")
-    try:
-        parsed = json.loads(match.group(0))
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"분해 결과 JSON 파싱 실패: {exc}") from exc
     return validate_macro_steps(parsed.get("steps"), digest=digest)

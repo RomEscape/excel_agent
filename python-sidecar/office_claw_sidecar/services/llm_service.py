@@ -131,13 +131,20 @@ class LLMProvider(ABC):
 
     @abstractmethod
     async def chat(
-        self, messages: list[dict], model: str | None = None, temperature: float | None = None
+        self,
+        messages: list[dict],
+        model: str | None = None,
+        temperature: float | None = None,
+        json_only: bool = False,
     ) -> str:
         """
         Send a list of messages and return the assistant reply as a string.
 
         messages format follows the OpenAI convention:
           [{"role": "user", "content": "..."}, ...]
+
+        json_only는 "응답이 JSON이어야 한다"는 요청이지 보장이 아니다. 지원하지 않는
+        백엔드는 무시하므로, 호출부는 어느 쪽이든 파싱에 실패할 수 있다고 보고 짜야 한다.
         """
         ...
 
@@ -162,13 +169,20 @@ class OllamaProvider(LLMProvider):
         return "ollama"
 
     async def chat(
-        self, messages: list[dict], model: str | None = None, temperature: float | None = None
+        self,
+        messages: list[dict],
+        model: str | None = None,
+        temperature: float | None = None,
+        json_only: bool = False,
     ) -> str:
         # 전체 대화 히스토리를 그대로 Ollama에 전달 (멀티턴 지원)
         cfg = load_llm_config()
         default_model = str(cfg.get("model") or get_default_llm_config()["model"])
         return await self._svc.chat_messages(
-            messages, model=model or default_model, temperature=temperature
+            messages,
+            model=model or default_model,
+            temperature=temperature,
+            json_only=json_only,
         )
 
 
@@ -183,9 +197,15 @@ class ClaudeProvider(LLMProvider):
         return "claude"
 
     async def chat(
-        self, messages: list[dict], model: str | None = None, temperature: float | None = None
+        self,
+        messages: list[dict],
+        model: str | None = None,
+        temperature: float | None = None,
+        json_only: bool = False,
     ) -> str:
         # 전체 대화 히스토리를 그대로 Claude에 전달 (멀티턴 지원)
+        # json_only는 무시한다. Claude는 응답 앞뒤에 설명을 붙이는 편이라 이쪽이야말로
+        # 파서(`llm_json.extract_json_object`)에 기대는 경로다.
         return await self._svc.chat_messages(messages, model=model)
 
 
@@ -211,14 +231,23 @@ class LLMService:
         return self._provider.provider_name
 
     async def chat(
-        self, messages: list[dict], model: str | None = None, temperature: float | None = None
+        self,
+        messages: list[dict],
+        model: str | None = None,
+        temperature: float | None = None,
+        json_only: bool = False,
     ) -> str:
         """Send messages to the active provider and return the reply.
 
         temperature를 주면 그대로 넘긴다. 계획 수립처럼 같은 입력에 같은 답이 나와야 하는
         호출은 0을 쓴다 — 기본 샘플링(0.8)에서는 같은 문장이 실행마다 다른 계획이 된다.
+
+        json_only는 백엔드가 지원할 때만 적용된다(현재 Ollama). 자세한 내용은
+        `LLMProvider.chat`.
         """
-        return await self._provider.chat(messages, model=model, temperature=temperature)
+        return await self._provider.chat(
+            messages, model=model, temperature=temperature, json_only=json_only
+        )
 
 
 # ── Singleton factory ─────────────────────────────────────────────────────

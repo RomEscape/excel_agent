@@ -60,8 +60,15 @@ class _CapturingLLM:
     def __init__(self) -> None:
         self.captured: list[dict] = []
 
-    async def chat(self, messages, model=None, temperature=None):
-        self.captured.append({"messages": messages, "model": model, "temperature": temperature})
+    async def chat(self, messages, model=None, temperature=None, json_only=False):
+        self.captured.append(
+            {
+                "messages": messages,
+                "model": model,
+                "temperature": temperature,
+                "json_only": json_only,
+            }
+        )
         return json.dumps(
             {
                 "intent": "read",

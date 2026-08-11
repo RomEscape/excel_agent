@@ -8,7 +8,6 @@ Excel Live Agent — 자연어 명령을 Excel Live 작업 액션으로 변환.
 
 from __future__ import annotations
 
-import json
 import re
 import time
 from typing import Any
@@ -30,6 +29,7 @@ from office_claw_sidecar.services.excel_planner_prompt import (
     LATER_TOOL_LINES as _LATER_TOOL_LINES,
 )
 from office_claw_sidecar.services.excel_planner_prompt import build_planner_prompt
+from office_claw_sidecar.services.llm_json import extract_json_object
 from office_claw_sidecar.services.llm_service import (
     get_planner_model_name,
     get_strong_llm_service,
@@ -693,11 +693,12 @@ async def parse_command_with_llm(message: str, llm_service) -> dict[str, Any]:
         '{"action":"excel_live.read_range","params":{"range_ref":"A1:B10"},"reason":"한 줄 한국어"}\n\n'
         f"사용자 메시지: {message}"
     )
-    raw = await llm_service.chat([{"role": "user", "content": prompt}], temperature=PLAN_TEMPERATURE)
-    match = re.search(r"\{.*\}", raw, re.DOTALL)
-    if not match:
+    raw = await llm_service.chat(
+        [{"role": "user", "content": prompt}], temperature=PLAN_TEMPERATURE, json_only=True
+    )
+    parsed = extract_json_object(raw, require_keys=("action",))
+    if parsed is None:
         raise ValueError("LLM JSON 파싱 실패")
-    parsed = json.loads(match.group(0))
     action = str(parsed.get("action", "")).strip()
     if action not in SUPPORTED_ACTIONS:
         raise ValueError(f"지원하지 않는 action: {action}")
@@ -797,12 +798,17 @@ async def parse_command_plan_with_llm(
     )
     started = time.perf_counter()
     raw = await llm_service.chat(
-        [{"role": "user", "content": prompt}], model=planner_model or None, temperature=PLAN_TEMPERATURE
+        [{"role": "user", "content": prompt}],
+        model=planner_model or None,
+        temperature=PLAN_TEMPERATURE,
+        json_only=True,
     )
     elapsed_ms = round((time.perf_counter() - started) * 1000, 1)
-    match = re.search(r"\{.*\}", raw, re.DOTALL)
+    # 계획 오브젝트를 우선 집는다. 모델이 프롬프트의 출력 예시를 먼저 따라 쓰고
+    # 진짜 답을 뒤에 붙이면, 앞의 것을 집는 순간 예시를 실행하게 된다.
+    parsed = extract_json_object(raw, require_keys=("action_plan", "action"))
     # 모델이 뭘 돌려줬는지 원본으로 남긴다. 파싱 실패를 "모델이 이상한 걸 뱉었다"와
-    # "정규식이 못 잡았다"로 갈라 보려면 이 문자열이 있어야 한다.
+    # "파서가 못 잡았다"로 갈라 보려면 이 문자열이 있어야 한다.
     trace_note(
         "llm_call",
         purpose="planner",
@@ -813,12 +819,11 @@ async def parse_command_plan_with_llm(
         prompt_chars=len(prompt),
         elapsed_ms=elapsed_ms,
         raw_response=Long(raw),
-        json_found=bool(match),
+        json_found=parsed is not None,
     )
-    if not match:
+    if parsed is None:
         trace_route("planner:json_missing", why="응답에서 JSON 블록을 찾지 못함")
         raise ValueError("LLM 계획 JSON 파싱 실패")
-    parsed = json.loads(match.group(0))
 
     steps_raw = parsed.get("action_plan")
     if isinstance(steps_raw, list) and steps_raw:

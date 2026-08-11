@@ -528,6 +528,31 @@ python scripts/run_approval_gate.py --diff baseline after-plan-approval
 승격 게이트는 액션 이름만 채점하고, 검증기 변이 수트는 계획을 실행기에 직접
 주입해 승인 게이트를 건너뛴다. 이 측정이 그 사각지대를 덮는다.
 
+### 플래너 응답 JSON 파싱 (2026-08-11)
+
+LLM이 돌려준 텍스트에서 계획 JSON을 꺼내는 일은 **두 겹**으로 막는다.
+
+- **예방** — 플래너·매크로 분해 호출에는 `json_only=True`를 붙인다. Ollama의
+  `response_format={"type":"json_object"}`로 디코딩 자체가 JSON 문법에 묶인다.
+  Claude는 대응 옵션이 없어 무시한다. 그래서 이건 요청이지 보장이 아니다.
+- **방어** — `services/llm_json.py`가 중괄호 균형을 세어 최상위 오브젝트를 꺼낸다.
+  문자열 안의 중괄호는 세지 않고, 사고 블록(`<think>`)이 있으면 마지막 것 뒤만 남긴다.
+
+예전에는 `re.search(r"\{.*\}", raw, re.DOTALL)` 하나였다. 첫 `{`부터 **마지막** `}`
+까지를 통째로 집는 탐욕 매칭이라, 오브젝트가 둘 이상이거나 JSON 뒤에 중괄호를 포함한
+문장이 오면 깨진다. 기본 플래너는 맨 JSON만 뱉어 걸리지 않았지만, 설정에서 모델을
+바꿀 수 있는 이상 그 전제에 기대면 안 된다.
+
+`json_only`를 켠 것이 계획을 바꾸지는 않는지 같은 모델로 A/B 한다.
+
+```powershell
+cd python-sidecar
+uv run python scripts/ab_json_only.py --limit 40   # logs/ab_json_only.json
+uv run python scripts/probe_json_format.py         # 서버가 response_format을 받는지
+```
+
+`ax7bplanner-v5r` 40건 기준 켬/끔 모두 정확도 32/40, 계획이 갈린 케이스 0건이었다.
+
 ### 플래너 승격 게이트 (2026-08-11)
 
 새 플래너 모델은 **고정 평가셋 154건에서 기준선을 이겨야만** Ollama 태그로 승격된다.
