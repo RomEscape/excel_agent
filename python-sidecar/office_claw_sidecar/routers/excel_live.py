@@ -8,6 +8,8 @@ import re
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any
@@ -369,7 +371,6 @@ _COMMAND_REFLECTION_TIMEOUT_SECONDS = _env_float(
 )
 _COMMAND_REFLECTION_MAX_ATTEMPTS = _env_int("EXCEL_LIVE_REFLECTION_MAX_ATTEMPTS", 1, 1)
 _EXCEL_QUEUE_TIMEOUT_SECONDS = _env_float("EXCEL_LIVE_QUEUE_TIMEOUT_SECONDS", 180.0, 10.0)
-_EXCEL_QUEUE_LOCK = threading.RLock()
 _ROLLBACK_MAX_CELLS = 50000
 _SKIP_BACKUP_ACTIONS = {
     "excel_live.filter_rows",  # 뷰 필터가 중심이라 파일 백업 비용 대비 이득이 작다.
@@ -534,18 +535,84 @@ _EDIT_EXPECTED_OPERATION_INTENTS = {
 }
 
 
-def _run_in_excel_queue(task_name: str, fn):
-    queued_at = time.time()
-    acquired = _EXCEL_QUEUE_LOCK.acquire(timeout=_EXCEL_QUEUE_TIMEOUT_SECONDS)
-    if not acquired:
-        raise ExcelLiveError(
-            f"Excel 작업 큐 대기 시간이 초과되었습니다({int(_EXCEL_QUEUE_TIMEOUT_SECONDS)}초): {task_name}"
-        )
-    wait_ms = int((time.time() - queued_at) * 1000)
+def _initialize_excel_thread() -> None:
+    """COM을 이 스레드에 붙인다. Windows 밖에서는 할 일이 없다."""
     try:
-        return fn(), wait_ms
-    finally:
-        _EXCEL_QUEUE_LOCK.release()
+        import pythoncom
+    except ImportError:
+        # macOS/Linux에는 COM 자체가 없다. xlwings가 AppleScript로 간다.
+        return
+    pythoncom.CoInitialize()
+
+
+# Excel 호출을 전담하는 스레드 하나. `max_workers=1`이 두 가지를 동시에 준다.
+#
+# 1. **직렬화** — 예전에 락이 하던 일이다. 스레드가 하나뿐이라 저절로 된다.
+# 2. **COM 아파트먼트 고정** — 이쪽이 더 중요하다. COM 객체는 만들어진 스레드에
+#    묶인다. 예전에는 async 핸들러가 이벤트 루프 스레드에서, sync 핸들러가
+#    FastAPI 스레드풀의 아무 스레드에서 같은 Excel 객체를 건드렸다.
+#
+# 스레드를 미리 띄우지 않는다. Excel을 한 번도 안 쓰는 실행(테스트 대부분)에서
+# 쓸데없이 COM을 초기화할 이유가 없다.
+_EXCEL_EXECUTOR = ThreadPoolExecutor(
+    max_workers=1,
+    thread_name_prefix="excel-com",
+    initializer=_initialize_excel_thread,
+)
+
+
+def _queue_timeout_error(task_name: str) -> ExcelLiveError:
+    return ExcelLiveError(
+        f"Excel 작업 큐 대기 시간이 초과되었습니다({int(_EXCEL_QUEUE_TIMEOUT_SECONDS)}초): {task_name}"
+    )
+
+
+def _in_excel_thread() -> bool:
+    return threading.current_thread().name.startswith("excel-com")
+
+
+def _run_in_excel_queue(task_name: str, fn):
+    """Excel 전담 스레드에서 `fn`을 돌리고 (결과, 큐 대기 ms)를 돌려준다.
+
+    호출한 스레드는 끝날 때까지 블록된다. sync 라우트 핸들러용이다 — FastAPI가
+    그것들을 이미 스레드풀에서 돌리므로 이벤트 루프는 막지 않는다. `async` 안에서는
+    반드시 `_run_in_excel_queue_async`를 써야 한다.
+    """
+    if _in_excel_thread():
+        # 전담 스레드 안에서 다시 부르면 자기 자신을 기다리다 멈춘다. 이미 그
+        # 스레드에 있으니 그대로 실행하면 된다.
+        return fn(), 0
+
+    queued_at = time.time()
+    future = _EXCEL_EXECUTOR.submit(fn)
+    try:
+        # 큐 대기와 실행 시간을 합쳐 기다린다. 예전에는 대기에만 상한이 있었지만,
+        # 여기서 실행까지 무제한으로 두면 매달린 COM 호출을 끊을 방법이 없다.
+        result = future.result(timeout=_EXCEL_QUEUE_TIMEOUT_SECONDS)
+    except FuturesTimeoutError as exc:
+        future.cancel()
+        raise _queue_timeout_error(task_name) from exc
+    return result, int((time.time() - queued_at) * 1000)
+
+
+async def _run_in_excel_queue_async(task_name: str, fn):
+    """`_run_in_excel_queue`의 async 판. 기다리는 동안 이벤트 루프를 놓아준다.
+
+    이걸 안 쓰고 동기판을 `async def` 안에서 부르면 COM이 도는 내내 루프가 통째로
+    붙잡힌다. 그러면 `/health` 폴링이 답을 못 받아 UI가 사이드카를 죽은 것으로 본다.
+    """
+    queued_at = time.time()
+    future = _EXCEL_EXECUTOR.submit(fn)
+    try:
+        result = await asyncio.wait_for(
+            asyncio.wrap_future(future), timeout=_EXCEL_QUEUE_TIMEOUT_SECONDS
+        )
+    except (TimeoutError, asyncio.CancelledError) as exc:
+        future.cancel()
+        if isinstance(exc, asyncio.CancelledError):
+            raise
+        raise _queue_timeout_error(task_name) from exc
+    return result, int((time.time() - queued_at) * 1000)
 
 
 def _ambiguous_workbook_response(exc: AmbiguousWorkbookError) -> ExcelLiveActionResponse:
@@ -6728,7 +6795,9 @@ async def _execute_plan_and_respond(
                     reraise=(AmbiguousWorkbookError,),
                 )
 
-            execution, queue_wait_ms = _run_in_excel_queue("command-plan", _run_execute_once)
+            execution, queue_wait_ms = await _run_in_excel_queue_async(
+                "command-plan", _run_execute_once
+            )
             queue_wait_total_ms += queue_wait_ms
             # 파일이 바뀌었으므로 다음 턴이 낡은 다이제스트를 보지 않게 한다.
             invalidate_digest_cache(req.workbook_id)
@@ -6939,7 +7008,7 @@ async def _execute_plan_and_respond(
                     )
                     return retry_set_local, retry_verify_local
 
-                (retry_set, retry_verify), retry_queue_wait_ms = _run_in_excel_queue(
+                (retry_set, retry_verify), retry_queue_wait_ms = await _run_in_excel_queue_async(
                     "formula-retry",
                     _run_formula_retry_once,
                 )
@@ -7069,7 +7138,7 @@ async def post_approval(
                 result=raw_result,
             )
 
-        result, queue_wait_ms = _run_in_excel_queue("approval", _run_approval_once)
+        result, queue_wait_ms = await _run_in_excel_queue_async("approval", _run_approval_once)
         if isinstance(result, dict):
             result["queue_wait_ms"] = queue_wait_ms
             if recovery_backup:
@@ -7189,7 +7258,7 @@ async def post_macro_step(
     if run.status == "planned":
         # 첫 호출이 곧 사용자의 승인이다. 되돌릴 기준점은 이때 한 번만 뜬다.
         _apply_macro_skips(run, req.skip_indices)
-        run.backup, _ = _run_in_excel_queue(
+        run.backup, _ = await _run_in_excel_queue_async(
             "macro-backup",
             lambda: _create_recovery_backup_if_possible(
                 workbook_id=run.workbook_id,

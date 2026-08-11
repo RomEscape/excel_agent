@@ -553,6 +553,30 @@ uv run python scripts/probe_json_format.py         # 서버가 response_format�
 
 `ax7bplanner-v5r` 40건 기준 켬/끔 모두 정확도 32/40, 계획이 갈린 케이스 0건이었다.
 
+### Excel 호출은 전담 스레드 하나에서만 (2026-08-11)
+
+xlwings COM 호출은 `max_workers=1` executor 하나로만 나간다. `asyncio.to_thread`가
+아닌 이유는 COM 객체가 만들어진 스레드에 묶이기 때문이다 — 호출마다 다른 워커에
+떨어지면 새 문제가 생긴다. 스레드가 하나라 직렬화도 저절로 되므로 예전의 큐 락은
+제거했다.
+
+- `async` 핸들러는 `_run_in_excel_queue_async`로 **await** 한다. 동기로 부르면 COM이
+  도는 내내 이벤트 루프가 붙잡혀 `/health` 폴링이 막히고, UI는 사이드카가 죽은 것으로
+  본다. 고치기 전 측정에서 3.2초짜리 명령 동안 `/health`는 한 번만, 그것도 3.4초
+  걸려 답했다.
+- `sync` 라우트 핸들러는 동기판을 쓴다. FastAPI가 이미 스레드풀에서 돌리므로 루프는
+  막지 않지만, 아파트먼트 고정을 위해 같은 전담 스레드로 넘긴다.
+- 큐 대기 상한(`EXCEL_LIVE_QUEUE_TIMEOUT_SECONDS`, 기본 180초)은 이제 대기와 실행을
+  합쳐서 잰다. 매달린 COM 호출을 끊을 방법이 없으면 상한이 의미가 없다.
+
+```powershell
+cd python-sidecar
+uv run pytest tests/test_event_loop_block.py -q
+```
+
+두 번째 테스트는 옛 동작을 일부러 되살려 측정이 '막힘'을 잡아내는지 확인한다. 통과하는
+테스트가 실은 아무것도 재지 않는 경우를 막는다.
+
 ### 플래너 승격 게이트 (2026-08-11)
 
 새 플래너 모델은 **고정 평가셋 154건에서 기준선을 이겨야만** Ollama 태그로 승격된다.
