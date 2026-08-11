@@ -66,6 +66,16 @@ uv run python scripts/run_command_diagnostics.py -n 3 --label after-<작업이�
 uv run python scripts/show_turns.py --log ../logs/diagnostics/<실행id>.jsonl --source <케이스> --prompt
 ```
 
+앱을 켜 놓고 직접 명령을 쳐 보는 중이라면 실시간으로 흘려 본다. `logs/chat_log.jsonl`을
+에디터에서 그대로 읽지 말 것 — 한 턴이 2KB짜리 한 줄이라 눈으로 못 쫓는다.
+
+```bash
+cd python-sidecar
+uv run python scripts/show_turns.py --follow                          # 터미널
+uv run python scripts/show_turns.py --follow --out ../logs/turns.txt  # 에디터에 열어 두기
+uv run python scripts/show_turns.py --follow --failed                 # 깨진 턴만
+```
+
 지킬 것:
 
 1. **주장을 코드에 대조하고 나서 고친다.** 외부 지적이 이미 구현된 기능을 가리키는
