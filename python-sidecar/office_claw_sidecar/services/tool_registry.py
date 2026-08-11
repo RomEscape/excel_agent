@@ -180,9 +180,11 @@ TOOL_REGISTRY: list[ToolDef] = [
     ),
     ToolDef(
         name="excel_live.sort_range",
-        description="지정 범위를 열 기준으로 오름/내림차순 정렬",
+        # sort_rows와 갈리는 지점은 "범위를 말했는가" 하나뿐이다. 예시 문구가 겹치면
+        # 학습셋 라벨도 같이 겹쳐, 모델에게는 두 액션이 동전던지기가 된다.
+        description="A1:D9처럼 지정한 범위를 열 기준으로 오름/내림차순 정렬 (범위를 명시한 경우)",
         permission=PermissionLevel.CONFIRM,
-        example_triggers=["높은 순 정렬", "오름차순 정렬", "매출 내림차순"],
+        example_triggers=["A1:F87 범위를 2번째 열 기준으로 정렬", "선택한 표 3번째 열로 정렬해줘"],
     ),
     ToolDef(
         name="excel_live.filter_rows",
@@ -300,9 +302,9 @@ TOOL_REGISTRY: list[ToolDef] = [
     ),
     ToolDef(
         name="excel_live.sort_rows",
-        description="지정 열 기준으로 데이터 행 정렬 (머리글 제외, 행 순서 변경)",
+        description="머리글 이름 기준으로 시트 전체 데이터 행 정렬 (범위를 말하지 않은 경우)",
         permission=PermissionLevel.CONFIRM,
-        example_triggers=["정렬해줘", "내림차순으로", "오름차순 정렬"],
+        example_triggers=["금액 큰 순서대로", "재고금액 높은 순으로 정렬해줘", "단가 기준 내림차순으로"],
     ),
     ToolDef(
         name="excel_live.dedupe_rows",
@@ -442,7 +444,7 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "excel_live.set_formula": "Excel 수식 적용",
     "excel_live.verify_formula_result": "Excel 수식 결과 검증",
     "excel_live.sort_range": "Excel 범위 정렬",
-    "excel_live.filter_rows": "Excel 행 필터 적용",
+    "excel_live.filter_rows": "Excel 행 필터링(삭제 포함)",
     "excel_live.dedupe_rows": "Excel 중복 행 제거",
     "excel_live.pivot_table": "Excel 피벗 집계표 생성",
     "excel_live.find_duplicates": "Excel 중복 값 점검",
@@ -459,9 +461,7 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "excel_live.compare_ranges": "Excel 범위 비교",
     "excel_live.forecast_linear": "Excel 추세 예측",
     "excel_live.save_workbook": "Excel 통합문서 저장",
-    "excel_live.filter_rows": "Excel 행 필터링(삭제 포함)",
     "excel_live.sort_rows": "Excel 행 정렬",
-    "excel_live.dedupe_rows": "Excel 중복 행 제거",
     "excel_live.drop_column": "Excel 열 삭제",
     "excel_live.rename_column": "Excel 열 이름 변경",
     "excel_live.add_column": "Excel 열 추가",

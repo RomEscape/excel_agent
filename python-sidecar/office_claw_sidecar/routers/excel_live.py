@@ -3448,6 +3448,44 @@ def _pivot_step_from_message(message: str, digest: dict[str, Any] | None, *, she
     }
 
 
+# 원문에 나온 차트 종류 → 실행기가 받는 이름. 검증기가 받아주는 값만 둔다.
+# 여기 없는 말(영역·분산)은 확정하지 않고 되묻게 두는 편이 낫다.
+_CHART_KIND_WORDS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"(막대|bar|컬럼|column)", re.IGNORECASE), "bar"),
+    (re.compile(r"(원형|파이|pie|도넛|donut)", re.IGNORECASE), "pie"),
+    (re.compile(r"(선\s*그래프|꺾은|라인|line|추이)", re.IGNORECASE), "line"),
+)
+
+
+def _chart_kind_from_message(message: str) -> str:
+    text = str(message or "")
+    for pattern, kind in _CHART_KIND_WORDS:
+        if pattern.search(text):
+            return kind
+    return ""
+
+
+def _chart_step_from_message(message: str):
+    """원문이 차트를 요구했는데 계획에 차트가 없을 때 채워 넣을 단계.
+
+    작은 모델은 "지역별 금액 막대 차트 만들어줘"를 피벗 한 단계로 계획하고,
+    그 결과 시트 이름을 "차트"라고 붙인 뒤 끝낸다. 시트 이름만 차트일 뿐 도형은
+    없는데 검증기는 피벗의 사후조건만 보므로 통과시키고, 사용자는 성공했다는 말을
+    들은 채 있지도 않은 그래프를 찾게 된다.
+
+    종류를 말하지 않았으면 여기서 만들지 않는다 — 선/막대/원형은 결과물의 성격이
+    서로 다르고, 기본값으로 밀면 또 다른 조용한 오답이 된다. 그건 되묻기로 넘긴다.
+    """
+    kind = _chart_kind_from_message(message)
+    if not kind:
+        return None
+    return {
+        "action": "excel_live.create_chart",
+        "params": {"source_range": "__ACTIVE_SELECTION__", "chart_type": kind},
+        "reason": "원문이 요청한 차트 단계 보완",
+    }
+
+
 def _infer_formula_mode_from_digest(
     message: str,
     digest: dict[str, Any] | None,
@@ -6534,12 +6572,29 @@ async def _run_command(
             if extra:
                 current_plan = current_plan + extra
 
+    # "막대 차트 만들어줘"인데 계획에 차트가 없다 — 피벗만 만들고 결과 시트 이름을
+    # "차트"로 붙인 채 성공을 보고하는 일이 잦다. 원문이 분명히 그래프를 요구했으면
+    # 종류가 확정될 때만 규칙으로 채우고, 아니면 아래에서 되묻는다.
+    chart_requested = bool(_ACTION_EVIDENCE["excel_live.create_chart"].search(req.message))
+    chart_planned = any(step.action == "excel_live.create_chart" for step in current_plan)
+    if pending_operation is None and chart_requested and not chart_planned:
+        chart_raw = _chart_step_from_message(req.message)
+        if chart_raw:
+            extra = _bind_and_validate(_normalize_plan_or_empty([chart_raw]))
+            if extra:
+                current_plan = current_plan + extra
+                chart_planned = True
+
     # 차트 종류는 결과물의 성격 자체를 바꾼다. 원문에 없으면 기본값(선)으로 밀지 않고 물어본다.
     # 단 "필터 → 피벗 → 차트"처럼 차트가 파이프라인의 마지막 단계일 뿐이라면
     # 여기서 멈춰 세우면 앞 단계 작업까지 통째로 미뤄지므로 그냥 진행한다.
     chart_only = {step.action for step in current_plan if step.action in _ACTION_EVIDENCE} == {
         "excel_live.create_chart"
     }
+    # 그래프를 요구했는데 종류를 못 정해 계획에 넣지도 못했다면, 있지도 않은 차트를
+    # 만들었다고 답하는 대신 종류를 묻는다.
+    if pending_operation is None and chart_requested and not chart_planned:
+        unresolved_pairs = unresolved_pairs | {("excel_live.create_chart", "chart_type")}
     if (
         pending_operation is None
         and chart_only

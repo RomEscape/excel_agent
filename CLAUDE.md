@@ -43,12 +43,39 @@
 | 감사 로그 | — | api.js의 `rustAudit*` | `src-tauri/src/audit.rs` | — |
 | Excel tool-calling | — | (sidecar) `services/excel_tool_schemas.py`(함수 명세) · `excel_tool_agent.py`(루프) · `excel_actions.py`(실행) | — | WorkspacePage 채팅 (조합만) |
 | 턴 트레이스·진단 | — | `services/decision_trace.py`(기록) · `trace_report.py`(한 턴 펼치기) · `trace_digest.py`(여러 턴 접기) | — | `scripts/show_turns.py` · `run_command_diagnostics.py` (조합만) |
+| 결과 상태 채점 | — | `tests/excel_e2e/command_battery.py`의 `expect_effect` 오라클 (결과 워크북을 직접 열어 본다) | — | `run_command_diagnostics.py`가 `.report.json`에 기록 |
 
 새 기능을 추가할 때 이 표에 한 줄이 더 늘어나야 한다.
 
 > **2026-05 Rust 보안 계층 노트**: Keyring · Audit 두 도메인은 Python sidecar의 동명 서비스와 *같은* OS Keychain·파일(`audit.jsonl`, `credentials_registry.json`)을 공유한다. 신규 코드는 Rust 경로(`rustCredential*`, `rustAudit*`)를 우선 사용하되, Python 측은 자체 라우터 안에서 자기 서비스를 계속 쓴다.
 >
 > **2026-07 LLM 경로 노트**: OpenClaw 게이트웨이 통합은 `feat/ollama-tool-calling`에서 전면 제거됐다. LLM 호출은 Ollama OpenAI 호환 API(`/v1/chat/completions`) + `tools`(function calling) 단일 경로다. Excel 함수 명세는 `excel_tool_schemas.py`가 단일 소스이며, 권한(SAFE/CONFIRM/DENIED)은 `tool_registry.py`가 계속 소유한다.
+
+## 에이전트 동작을 고칠 때 — 로그 먼저
+
+플래너·검증기·라우터 동작을 바꾸기 전에 **먼저 재고 나중에 고친다.** 로컬 LLM은
+같은 문장에 같은 계획을 준다는 보장이 없어서, 한 번 본 실패를 코드에서 찾기
+시작하면 원인이 모델의 변덕일 때 끝없이 헤맨다.
+
+```bash
+cd python-sidecar
+uv run python scripts/run_command_diagnostics.py -n 3 --label before-<작업이름>
+# 고친 뒤
+uv run python scripts/run_command_diagnostics.py -n 3 --label after-<작업이름>
+uv run python scripts/show_turns.py --log ../logs/diagnostics/<실행id>.jsonl --source <케이스> --prompt
+```
+
+지킬 것:
+
+1. **주장을 코드에 대조하고 나서 고친다.** 외부 지적이 이미 구현된 기능을 가리키는
+   경우가 잦다(2026-08-11에 9개 중 3개가 그랬다). 반증된 것도 근거와 함께 일지에 남긴다.
+2. **모델 문제와 코드 문제를 가른다.** `--prompt`로 그 턴에 모델이 실제로 본
+   통합문서 상태를 확인한다. 머리글을 보여 줬는데도 없는 열을 골랐다면 관측이
+   아니라 모델 문제다.
+3. **수치는 실측만 적는다.** 실행 id(`0811-171221-after-guards`)를 함께 남겨
+   나중에 같은 로그로 재확인할 수 있게 한다. 지어낸 숫자는 이 체계를 통째로 무용지물로 만든다.
+4. **프롬프트를 바꾸면 반드시 전후를 잰다.** `build_planner_prompt`는 SFT 데이터
+   생성과 **같은 함수**다. 문구를 바꾸면 이미 학습된 모델은 본 적 없는 형식을 받는다.
 
 ## 빌드/실행
 

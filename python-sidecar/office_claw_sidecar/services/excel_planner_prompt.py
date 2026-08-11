@@ -24,7 +24,7 @@ from office_claw_sidecar.services.excel_live_plan_validator import EDIT_ACTIONS
 LATER_TOOL_LINES = (
     "- excel_live.calculate_column_stat (한 열의 합계/평균/최대 등을 '계산해서 알려주기'. 시트 수정 없음)\n"
     "- excel_live.group_by_aggregate (그룹별 집계를 '알려주기'만. 새 시트에 쓰려면 pivot_table)\n"
-    "- excel_live.sort_rows (머리글 이름 기준 정렬)\n"
+    "- excel_live.sort_rows (머리글 이름으로 시트 전체 데이터 행을 정렬. 범위를 말하지 않은 정렬은 이것)\n"
     "- excel_live.drop_column (열 통째로 삭제. '이 열 지워줘'는 clear_range가 아니라 이것)\n"
     "- excel_live.rename_column (열 머리글 이름만 변경)\n"
     "- excel_live.add_column (맨 뒤 또는 지정 위치에 새 열 추가)\n"
@@ -235,7 +235,7 @@ def build_planner_prompt(
         "- excel_live.apply_border\n"
         "- excel_live.set_formula\n\n"
         "- excel_live.verify_formula_result\n\n"
-        "- excel_live.sort_range\n"
+        "- excel_live.sort_range (A1:D9처럼 범위를 지정한 정렬. 범위를 말하지 않았으면 sort_rows)\n"
         "- excel_live.filter_rows\n"
         "- excel_live.dedupe_rows (중복 '제거')\n"
         "- excel_live.find_duplicates (중복을 지우지 않고 '찾기/확인')\n"

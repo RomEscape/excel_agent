@@ -1,0 +1,101 @@
+{
+  "turns": 9,
+  "cases": 3,
+  "done_rate": 1.0,
+  "silently_wrong": 0,
+  "by_class": {
+    "done": 9
+  },
+  "by_verdict": {
+    "ok": 9
+  },
+  "case_detail": [
+    {
+      "case": "정렬-명확",
+      "message": "금액 열 기준 내림차순으로 정렬해줘",
+      "runs": 3,
+      "state": "stable_done",
+      "verdicts": {
+        "ok": 3
+      },
+      "detail": "",
+      "missed_actions": {},
+      "routes": {
+        "quick_rule:miss → planner:local → final:ok": 3
+      },
+      "actions": {
+        "excel_live.sort_range": 3
+      },
+      "median_ms": 2655.5,
+      "turn_ids": [
+        "d2797c7200dc",
+        "d2c93688484e",
+        "06e1149c03d6"
+      ]
+    },
+    {
+      "case": "집계",
+      "message": "지역별 금액 합계를 집계해서 지역요약 시트에 만들어줘",
+      "runs": 3,
+      "state": "stable_done",
+      "verdicts": {
+        "ok": 3
+      },
+      "detail": "",
+      "missed_actions": {},
+      "routes": {
+        "quick_rule:miss → planner:local → final:ok": 3
+      },
+      "actions": {
+        "excel_live.pivot_table": 3
+      },
+      "median_ms": 3570.2,
+      "turn_ids": [
+        "ab053ceedbb3",
+        "38536bdbc18c",
+        "65b50ca90279"
+      ]
+    },
+    {
+      "case": "차트",
+      "message": "지역별 금액 막대 차트 만들어줘",
+      "runs": 3,
+      "state": "stable_done",
+      "verdicts": {
+        "ok": 3
+      },
+      "detail": "",
+      "missed_actions": {},
+      "routes": {
+        "quick_rule:miss → planner:local → final:ok": 3
+      },
+      "actions": {
+        "excel_live.create_chart": 3
+      },
+      "median_ms": 3552.3,
+      "turn_ids": [
+        "9c6877326d9e",
+        "6ada9fafdcff",
+        "4f1d90c832d7"
+      ]
+    }
+  ],
+  "run_id": "0811-170607-chartguard",
+  "repeats": 3,
+  "effects": {
+    "checked_cases": 2,
+    "wrong_cases": 0,
+    "by_case": {
+      "정렬-명확": {
+        "checked": 3,
+        "wrong": 0,
+        "details": []
+      },
+      "차트": {
+        "checked": 3,
+        "wrong": 0,
+        "details": []
+      }
+    }
+  }
+}

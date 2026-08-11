@@ -70,17 +70,29 @@ def _run(run_id: str, *, repeats: int, only: list[str]) -> tuple[Path, dict[str,
     done = 0
     started = time.perf_counter()
 
+    outcomes: list[Any] = []
+
     def _progress(outcome) -> None:
         nonlocal done
         done += 1
-        mark = "완료" if outcome.ok else ("되물음" if outcome.ask else "실패")
+        outcomes.append(outcome)
+        # 되물음·승인대기도 ok=True로 온다. ok를 먼저 보면 파일이 그대로인 턴이
+        # "완료"로 찍혀, 집계가 되물음이라고 말하는 것과 화면이 어긋난다.
         if outcome.approval_required:
             mark = "승인대기"
+        elif outcome.ask:
+            mark = "되물음"
+        else:
+            mark = "완료" if outcome.ok else "실패"
         print(
             f"  [{done:>3}/{total}] {outcome.case_id:<12} {mark:<6} "
             f"{outcome.action or '-':<28} {outcome.elapsed_ms:>6}ms"
             + (f"  {outcome.error}" if outcome.error else "")
         )
+        # 결과 파일이 어긋난 것은 응답만 보면 안 보인다. 그 자리에서 드러내야
+        # 로그를 뒤지지 않고도 "성공이라는데 파일은 틀렸다"를 알아챈다.
+        if outcome.effect_error:
+            print(f"          └ 결과 어긋남: {outcome.effect_error}")
 
     print(f"\n케이스 {len(cases)}개 × {repeats}회 = {total}턴 → {log_path.name}")
     print("=" * 78)
@@ -97,10 +109,52 @@ def _run(run_id: str, *, repeats: int, only: list[str]) -> tuple[Path, dict[str,
     report = trace_digest.to_report(trace_digest.build(turns))
     report["run_id"] = run_id
     report["repeats"] = repeats
+    report["effects"] = _effect_summary(outcomes)
+    _print_effects(report["effects"])
     (DIAG_DIR / f"{run_id}.report.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     return log_path, report
+
+
+def _effect_summary(outcomes: list[Any]) -> dict[str, Any]:
+    """결과 파일 채점을 케이스 단위로 접는다.
+
+    턴 로그가 아니라 실행 시점에만 알 수 있는 값이라 여기서 접어 리포트에 넣는다.
+    워크북은 케이스가 끝나면 지워지므로 나중에 로그만 다시 읽어서는 재현할 수 없다.
+    """
+    cases: dict[str, dict[str, Any]] = {}
+    for outcome in outcomes:
+        if not outcome.has_oracle:
+            continue
+        entry = cases.setdefault(outcome.case_id, {"checked": 0, "wrong": 0, "details": []})
+        entry["checked"] += 1
+        if outcome.effect_error:
+            entry["wrong"] += 1
+            if outcome.effect_error not in entry["details"]:
+                entry["details"].append(outcome.effect_error)
+    return {
+        "checked_cases": len(cases),
+        "wrong_cases": sum(1 for e in cases.values() if e["wrong"]),
+        "by_case": cases,
+    }
+
+
+def _print_effects(summary: dict[str, Any]) -> None:
+    checked = summary.get("checked_cases", 0)
+    if not checked:
+        return
+    wrong = summary.get("wrong_cases", 0)
+    print(f"\n  결과 파일 채점 — 오라클 있는 케이스 {checked}개 중 어긋남 {wrong}개")
+    if not wrong:
+        print("    전부 요청대로 됐다")
+        return
+    for case_id, entry in summary.get("by_case", {}).items():
+        if not entry["wrong"]:
+            continue
+        print(f"    {case_id:<12} {entry['wrong']}/{entry['checked']}회 어긋남")
+        for detail in entry["details"]:
+            print(f"      └ {detail}")
 
 
 def _read(path: Path):

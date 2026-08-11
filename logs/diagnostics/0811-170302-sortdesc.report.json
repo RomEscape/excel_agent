@@ -1,0 +1,339 @@
+{
+  "turns": 36,
+  "cases": 12,
+  "done_rate": 0.9167,
+  "silently_wrong": 3,
+  "by_class": {
+    "done": 33,
+    "deferred": 3
+  },
+  "by_verdict": {
+    "ok": 33,
+    "asked_back": 3
+  },
+  "case_detail": [
+    {
+      "case": "차트",
+      "message": "지역별 금액 막대 차트 만들어줘",
+      "runs": 3,
+      "state": "silent_wrong",
+      "verdicts": {
+        "ok": 3
+      },
+      "detail": "",
+      "missed_actions": {
+        "excel_live.create_chart": 3
+      },
+      "routes": {
+        "quick_rule:miss → planner:local → final:ok": 3
+      },
+      "actions": {
+        "excel_live.pivot_table": 3
+      },
+      "median_ms": 3541.1,
+      "turn_ids": [
+        "03dbf9752385",
+        "7c0c531fdf14",
+        "6fdf26ed39ea"
+      ]
+    },
+    {
+      "case": "정렬-모호",
+      "message": "정렬해줘",
+      "runs": 3,
+      "state": "stable_deferred",
+      "verdicts": {
+        "asked_back": 3
+      },
+      "detail": "어떤 열 기준으로 정렬할까요? 예: 매출 열 기준 내림차순",
+      "missed_actions": {},
+      "routes": {
+        "quick_rule:miss → planner:failed → final:asked_back": 3
+      },
+      "actions": {
+        "excel_live.sort": 3
+      },
+      "median_ms": 2318.8,
+      "turn_ids": [
+        "19aee791cea3",
+        "49b2aa3ce6ae",
+        "10b1fae52c08"
+      ]
+    },
+    {
+      "case": "값입력",
+      "message": "H3에 120 입력해줘",
+      "runs": 3,
+      "state": "stable_done",
+      "verdicts": {
+        "ok": 3
+      },
+      "detail": "",
+      "missed_actions": {},
+      "routes": {
+        "quick_rule:miss → planner:local → final:ok": 3
+      },
+      "actions": {
+        "excel_live.write_range": 3
+      },
+      "median_ms": 2482.2,
+      "turn_ids": [
+        "3588f579300e",
+        "c1f47a657215",
+        "c5256a3b1b4e"
+      ]
+    },
+    {
+      "case": "값지우기",
+      "message": "H3 지워줘",
+      "runs": 3,
+      "state": "stable_done",
+      "verdicts": {
+        "ok": 3
+      },
+      "detail": "",
+      "missed_actions": {},
+      "routes": {
+        "quick_rule:hit → final:ok": 3
+      },
+      "actions": {
+        "excel_live.write_range": 3
+      },
+      "median_ms": 48.0,
+      "turn_ids": [
+        "5a1b404467b6",
+        "5c52966d7bfd",
+        "2e2891aae095"
+      ]
+    },
+    {
+      "case": "수식",
+      "message": "H1에 금액 열 합계 수식 넣어줘",
+      "runs": 3,
+      "state": "stable_done",
+      "verdicts": {
+        "ok": 3
+      },
+      "detail": "",
+      "missed_actions": {},
+      "routes": {
+        "quick_rule:miss → planner:local → final:ok": 3
+      },
+      "actions": {
+        "excel_live.set_formula": 3
+      },
+      "median_ms": 2538.1,
+      "turn_ids": [
+        "5dc498701a2c",
+        "260a9ff6f48e",
+        "e5b809b49522"
+      ]
+    },
+    {
+      "case": "정렬-명확",
+      "message": "금액 열 기준 내림차순으로 정렬해줘",
+      "runs": 3,
+      "state": "stable_done",
+      "verdicts": {
+        "ok": 3
+      },
+      "detail": "",
+      "missed_actions": {},
+      "routes": {
+        "quick_rule:miss → planner:local → final:ok": 3
+      },
+      "actions": {
+        "excel_live.sort_range": 3
+      },
+      "median_ms": 2649.2,
+      "turn_ids": [
+        "f7cd5e1e1763",
+        "fbb93f5f4345",
+        "e23177cb71b2"
+      ]
+    },
+    {
+      "case": "조건서식",
+      "message": "금액이 300 미만인 건은 노란색으로 표시해줘",
+      "runs": 3,
+      "state": "stable_done",
+      "verdicts": {
+        "ok": 3
+      },
+      "detail": "",
+      "missed_actions": {},
+      "routes": {
+        "quick_rule:miss → planner:local → final:ok": 3
+      },
+      "actions": {
+        "excel_live.highlight_by_condition": 3
+      },
+      "median_ms": 2809.7,
+      "turn_ids": [
+        "5a8f3f1e4e10",
+        "f4e786cc5ee8",
+        "885f3eda9adc"
+      ]
+    },
+    {
+      "case": "중복제거",
+      "message": "코드 열 기준으로 중복 제거해줘",
+      "runs": 3,
+      "state": "stable_done",
+      "verdicts": {
+        "ok": 3
+      },
+      "detail": "",
+      "missed_actions": {},
+      "routes": {
+        "quick_rule:miss → planner:local → final:ok": 3
+      },
+      "actions": {
+        "excel_live.dedupe_rows": 3
+      },
+      "median_ms": 2345.6,
+      "turn_ids": [
+        "9677a58dbc47",
+        "ac95e92668c0",
+        "4e86e74016db"
+      ]
+    },
+    {
+      "case": "집계",
+      "message": "지역별 금액 합계를 집계해서 지역요약 시트에 만들어줘",
+      "runs": 3,
+      "state": "stable_done",
+      "verdicts": {
+        "ok": 3
+      },
+      "detail": "",
+      "missed_actions": {},
+      "routes": {
+        "quick_rule:miss → planner:local → final:ok": 3
+      },
+      "actions": {
+        "excel_live.pivot_table": 3
+      },
+      "median_ms": 3565.9,
+      "turn_ids": [
+        "11484ecb222e",
+        "526dfc30add1",
+        "0b211b6d2269"
+      ]
+    },
+    {
+      "case": "테두리",
+      "message": "A1:D1에 테두리 넣어줘",
+      "runs": 3,
+      "state": "stable_done",
+      "verdicts": {
+        "ok": 3
+      },
+      "detail": "",
+      "missed_actions": {},
+      "routes": {
+        "quick_rule:hit → final:ok": 3
+      },
+      "actions": {
+        "excel_live.apply_border": 3
+      },
+      "median_ms": 32.1,
+      "turn_ids": [
+        "36fd344ad78e",
+        "cc7d9a171a31",
+        "aaf985b1ad22"
+      ]
+    },
+    {
+      "case": "표만들기",
+      "message": "2행 2열 표 만들어줘. 머리글은 이름, 점수",
+      "runs": 3,
+      "state": "stable_done",
+      "verdicts": {
+        "ok": 3
+      },
+      "detail": "",
+      "missed_actions": {},
+      "routes": {
+        "quick_rule:hit → final:ok": 3
+      },
+      "actions": {
+        "excel_live.write_range": 3
+      },
+      "median_ms": 68.8,
+      "turn_ids": [
+        "b94342ba7071",
+        "6670cac08f0e",
+        "adac6ea407fc"
+      ]
+    },
+    {
+      "case": "필터",
+      "message": "금액이 300 이상인 행만 남겨줘",
+      "runs": 3,
+      "state": "stable_done",
+      "verdicts": {
+        "ok": 3
+      },
+      "detail": "",
+      "missed_actions": {},
+      "routes": {
+        "quick_rule:miss → planner:local → final:ok": 3
+      },
+      "actions": {
+        "excel_live.filter_rows": 3
+      },
+      "median_ms": 2757.7,
+      "turn_ids": [
+        "d82899cdd211",
+        "ee7f242c95ff",
+        "1dab17485d9b"
+      ]
+    }
+  ],
+  "run_id": "0811-170302-sortdesc",
+  "repeats": 3,
+  "effects": {
+    "checked_cases": 7,
+    "wrong_cases": 1,
+    "by_case": {
+      "값입력": {
+        "checked": 3,
+        "wrong": 0,
+        "details": []
+      },
+      "정렬-명확": {
+        "checked": 3,
+        "wrong": 0,
+        "details": []
+      },
+      "필터": {
+        "checked": 3,
+        "wrong": 0,
+        "details": []
+      },
+      "중복제거": {
+        "checked": 3,
+        "wrong": 0,
+        "details": []
+      },
+      "조건서식": {
+        "checked": 3,
+        "wrong": 0,
+        "details": []
+      },
+      "표만들기": {
+        "checked": 3,
+        "wrong": 0,
+        "details": []
+      },
+      "차트": {
+        "checked": 3,
+        "wrong": 3,
+        "details": [
+          "차트가 하나도 없다 (대신 만든 시트: 차트)"
+        ]
+      }
+    }
+  }
+}

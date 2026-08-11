@@ -521,7 +521,12 @@ def _validate_step_body(
         if threshold_raw is None:
             # ">=1100"처럼 연산자에 붙어 온 기준값을 회수한다.
             embedded = re.search(r"-?\d+(?:\.\d+)?", str(operator_raw))
-            threshold_raw = embedded.group(0) if embedded else 0
+            if embedded is None:
+                # 여기서 0을 채우면 ">= 0"이 되어 모든 행이 칠해진다. 실행기는 "칠한
+                # 셀 1개 이상"이라 성공을 보고하고 사후조건 검증도 통과하므로, 사용자만
+                # 전부 노랗게 칠해진 시트를 보게 된다. 기준값은 지어내면 안 된다.
+                raise ValueError("highlight_by_condition에는 기준값(threshold)이 필요합니다.")
+            threshold_raw = embedded.group(0)
         try:
             threshold = float(threshold_raw)
         except Exception as exc:
