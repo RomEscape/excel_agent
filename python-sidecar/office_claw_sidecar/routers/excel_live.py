@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Callable
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -55,6 +55,7 @@ from office_claw_sidecar.services.excel_live_executor import (
     execute_plan,
     normalize_plan_steps,
 )
+from office_claw_sidecar.services.excel_step_repair import RepairContext, repair_step
 from office_claw_sidecar.services.excel_live_plan_critic import (
     build_replan_context,
     should_replan_after_execution,
@@ -5343,6 +5344,68 @@ _VERIFY_FAILURE_MESSAGES = {
 }
 
 
+def _repair_for_request(req: Any) -> Callable[[PlanStep, Exception | str], PlanStep | None]:
+    """이 요청의 통합문서 사실을 붙들어 둔 보정기.
+
+    같은 파라미터로 다시 던지는 재시도는 한 번도 통한 적이 없다
+    (`logs/diagnostics/*.jsonl` 410단계 중 재시도 3회 · 성공 0회). 그래서 고칠 게
+    없으면 `excel_step_repair.repair_step`이 None을 돌려주고 실행기는 재시도를 접는다.
+    """
+
+    def _repair(step: PlanStep, failure: Exception | str) -> PlanStep | None:
+        try:
+            ctx = _build_repair_context(req)
+        except Exception:  # noqa: BLE001 - 보정 실패가 본 작업을 깨면 안 된다.
+            return None
+        repaired = repair_step(step, failure, ctx)
+        if repaired is not None:
+            trace_route(
+                "repair:applied",
+                why=f"{step.params} → {repaired.params}",
+                action=step.action,
+            )
+        return repaired
+
+    return _repair
+
+
+def _build_repair_context(req: Any) -> RepairContext:
+    service = get_excel_live_service()
+    sheet_names: tuple[str, ...] = ()
+    active_sheet: str | None = None
+    try:
+        listed = service.list_sheets(getattr(req, "workbook_id", None))
+        sheet_names = tuple(str(name) for name in (listed.get("sheets") or []))
+        active_sheet = listed.get("active_sheet") or None
+    except Exception:  # noqa: BLE001 - 시트 목록을 못 얻어도 범위 정규화는 할 수 있다.
+        pass
+    return RepairContext(
+        sheet_names=sheet_names,
+        active_sheet=active_sheet,
+        context_range=_normalize_range_text(getattr(req, "context_range", None)) or None,
+        active_cell=_recent_range_by_workbook.get(_context_key(getattr(req, "workbook_id", None))),
+    )
+
+
+def _step_failure_line(step: Any) -> str:
+    """실패한 단계 하나를 한국어 한 줄로. "작업에 실패했습니다"로 끝내지 않는다."""
+    action = str(getattr(step, "action", "") or "")
+    label = _ACTION_SUMMARY.get(action, action or "작업")
+    params = getattr(step, "params", None) or {}
+    where = ""
+    for key in ("target_range", "range_ref", "source_range", "start_cell"):
+        value = params.get(key)
+        if isinstance(value, str) and value.strip():
+            where = f" {value.strip()}에서"
+            break
+    cause = str(getattr(step, "error", "") or getattr(step, "verify_detail", "") or "").strip()
+    if not cause:
+        return f"{label.rstrip('.')}{where} 실패했습니다."
+    # `code:설명` 형태면 사람이 읽는 뒤쪽을 쓴다.
+    readable = cause.split(":", 1)[1].strip() if ":" in cause and not cause.startswith("http") else cause
+    return f"{label.rstrip('.')}{where} 실패했습니다 — {readable}"
+
+
 def _verification_failure_reason(detail: str) -> str:
     code = str(detail or "").split(":", 1)[0].split(";", 1)[0].strip()
     message = _VERIFY_FAILURE_MESSAGES.get(code)
@@ -6999,6 +7062,7 @@ async def _execute_plan_and_respond(
                     max_attempts=2,
                     abort_on_failure=True,
                     reraise=(AmbiguousWorkbookError,),
+                    repair=_repair_for_request(req),
                 )
 
             execution, queue_wait_ms = await _run_in_excel_queue_async(
@@ -7184,11 +7248,18 @@ async def _execute_plan_and_respond(
 
     if last.error or not last.verified:
         failure_detail = last.error or last.verify_detail or "unknown_failure"
+        # 어떤 액션이 / 어떤 범위에서 / 왜 실패했는지가 사용자에게 도달해야 한다.
+        # 등급별 정형 문구만 주면 "작업에 실패했습니다"와 다를 게 없다.
+        failure_lines = [_step_failure_line(s) for s in execution.steps if s.error or not s.verified]
+        reason = _verification_failure_reason(failure_detail)
+        if failure_lines:
+            reason = f"{failure_lines[0]} ({reason})"
         return ExcelLiveActionResponse(
             ok=False,
             action=last.action,
-            reason=_verification_failure_reason(failure_detail),
+            reason=reason,
             result={
+                "failed_steps": failure_lines,
                 "failed_action": last.action,
                 "failed_step_index": last.index,
                 "failure_detail": failure_detail,
