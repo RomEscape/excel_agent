@@ -4,6 +4,16 @@ use tauri::State;
 use crate::openclaw::OpenClawState;
 use crate::sidecar::SidecarState;
 
+/// Excel COM 큐를 타는 요청의 상한.
+///
+/// 사이드카는 COM 호출 하나를 `EXCEL_LIVE_QUEUE_TIMEOUT_SECONDS`(기본 180초)까지
+/// 기다린다. 여기가 그보다 짧거나 같으면, 안쪽이 아직 정리 중인데 바깥이 먼저 끊는다.
+/// 그러면 프론트는 실패를 보고 사용자는 편집이 안 됐다고 생각하는데 실제로는 반영된다.
+///
+/// 이 값을 바꿀 때는 `src/lib/requestPolicy.js`의 `IPC_CEILING_MS`도 같이 바꿔야 한다.
+/// 프론트는 여기보다 더 오래 기다려야 Rust의 오류 메시지가 그대로 올라온다.
+const EXCEL_QUEUE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(200);
+
 /// Helper to build the sidecar URL.
 fn sidecar_url(state: &SidecarState, path: &str) -> String {
     format!("http://127.0.0.1:{}{}", state.port, path)
@@ -781,7 +791,7 @@ pub async fn excel_live_command(
         .post(&url)
         .bearer_auth(&token)
         .json(&body)
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(EXCEL_QUEUE_TIMEOUT)
         .send()
         .await
         .map_err(|e| format!("Excel Live 명령 실행 실패: {}", e))?;
@@ -821,7 +831,7 @@ pub async fn excel_live_macro_step(
         .post(&url)
         .bearer_auth(&token)
         .json(&body)
-        .timeout(std::time::Duration::from_secs(180))
+        .timeout(EXCEL_QUEUE_TIMEOUT)
         .send()
         .await
         .map_err(|e| format!("매크로 단계 실행 실패: {}", e))?;
@@ -854,7 +864,7 @@ pub async fn excel_live_macro_abort(
         .post(&url)
         .bearer_auth(&token)
         .json(&body)
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(EXCEL_QUEUE_TIMEOUT)
         .send()
         .await
         .map_err(|e| format!("매크로 중단 실패: {}", e))?;
@@ -888,7 +898,9 @@ pub async fn excel_live_submit_approval(
         .post(&url)
         .bearer_auth(&token)
         .json(&body)
-        .timeout(std::time::Duration::from_secs(120))
+        // 승인은 이제 계획 전체를 이어서 실행한다(단일 단계가 아니다). 명령 경로와
+        // 같은 만큼 걸릴 수 있으므로 상한도 같아야 한다.
+        .timeout(EXCEL_QUEUE_TIMEOUT)
         .send()
         .await
         .map_err(|e| format!("Excel Live 승인 응답 실패: {}", e))?;
@@ -922,7 +934,9 @@ pub async fn excel_live_save_workbook(
         .post(&url)
         .bearer_auth(&token)
         .json(&body)
-        .timeout(std::time::Duration::from_secs(30))
+        // 저장 자체는 빠르지만 같은 COM 큐를 탄다. 앞선 편집이 끝나기를 기다려야
+        // 하므로 상한은 큐 기준으로 잡는다.
+        .timeout(EXCEL_QUEUE_TIMEOUT)
         .send()
         .await
         .map_err(|e| format!("Excel 저장 요청 실패: {}", e))?;
@@ -993,7 +1007,7 @@ pub async fn excel_live_restore_last_backup(
         .post(&url)
         .bearer_auth(&token)
         .json(&body)
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(EXCEL_QUEUE_TIMEOUT)
         .send()
         .await
         .map_err(|e| format!("Excel 마지막 변경 복구 실패: {}", e))?;
