@@ -6058,6 +6058,9 @@ async def _run_command(
         "sheet_name": req.sheet_name,
         "reasoning_mode": reasoning_mode,
         "complexity_score": reasoning_complexity_score,
+        # 플래너가 HTTP 상한을 우리 `wait_for` 예산보다 짧게 잡게 한다. 바깥에서만
+        # 끊으면 httpx 요청이 백그라운드에 살아남아 Ollama에 부하가 쌓인다.
+        "parse_timeout_seconds": parse_timeout_seconds,
         "personalization_hint": personalization_hint,
         "workbook_digest": workbook_digest,
         "workbook_digest_text": render_workbook_digest(workbook_digest),
@@ -6096,6 +6099,7 @@ async def _run_command(
 
     parse_error: Exception | None = None
     parse_timeout_count = 0
+    parse_started_at = time.time()
 
     def _validate_for_escalation(raw_steps: Any) -> tuple[bool, str]:
         """계획이 실행 직전 검증을 통과하는지. 실패 사유는 자가 수정 프롬프트로 간다."""
@@ -6194,17 +6198,30 @@ async def _run_command(
             and not operation_hints.get("intent")
         ):
             if isinstance(parse_error, asyncio.TimeoutError):
+                # 되묻기 문구만 주면 사용자는 "왜 못 알아들었지"로 읽는다. 실제
+                # 원인은 모델이 예산 안에 답을 못 낸 것이므로 모델·소요·시도를
+                # 함께 실어 보낸다.
+                elapsed_ms = int((time.time() - parse_started_at) * 1000)
+                planner_model = get_planner_model_name()
                 follow = _build_generic_excel_follow_up(req.message)
+                reason = (
+                    f"{follow}\n"
+                    f"(모델 {planner_model}이 {parse_timeout_seconds:.0f}초 안에 답하지 못했습니다 — "
+                    f"{max(1, parse_timeout_count)}회 시도, {elapsed_ms}ms 소요)"
+                )
                 return ExcelLiveActionResponse(
                     ok=True,
                     action="excel_live.clarify",
-                    reason=follow,
+                    reason=reason,
                     result={
                         "ask_follow_up": True,
                         "follow_up_question": follow,
                         "operation_intent": "clarify",
                         "parse_timeout": True,
                         "parse_attempts": max(1, parse_timeout_count),
+                        "parse_timeout_seconds": parse_timeout_seconds,
+                        "parse_elapsed_ms": elapsed_ms,
+                        "planner_model": planner_model,
                         "reasoning_mode": reasoning_mode,
                         "complexity_score": reasoning_complexity_score,
                     },

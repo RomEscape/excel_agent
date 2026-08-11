@@ -415,7 +415,7 @@ class _FakeLLM:
         self.models = []
         self.json_only_flags = []
 
-    async def chat(self, messages, model=None, temperature=None, json_only=False):
+    async def chat(self, messages, model=None, temperature=None, json_only=False, timeout=None):
         if messages and isinstance(messages[-1], dict):
             self.prompts.append(str(messages[-1].get("content", "")))
         self.models.append(str(model or ""))

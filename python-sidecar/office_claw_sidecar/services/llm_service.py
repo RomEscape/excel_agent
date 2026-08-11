@@ -136,6 +136,7 @@ class LLMProvider(ABC):
         model: str | None = None,
         temperature: float | None = None,
         json_only: bool = False,
+        timeout: float | None = None,
     ) -> str:
         """
         Send a list of messages and return the assistant reply as a string.
@@ -145,6 +146,9 @@ class LLMProvider(ABC):
 
         json_only는 "응답이 JSON이어야 한다"는 요청이지 보장이 아니다. 지원하지 않는
         백엔드는 무시하므로, 호출부는 어느 쪽이든 파싱에 실패할 수 있다고 보고 짜야 한다.
+
+        timeout은 HTTP 계층 상한이다. 호출자가 `asyncio.wait_for`로 감쌀 때는 그
+        예산보다 짧게 줘야 한다 — 바깥에서만 끊으면 요청은 백그라운드에 살아남는다.
         """
         ...
 
@@ -174,6 +178,7 @@ class OllamaProvider(LLMProvider):
         model: str | None = None,
         temperature: float | None = None,
         json_only: bool = False,
+        timeout: float | None = None,
     ) -> str:
         # 전체 대화 히스토리를 그대로 Ollama에 전달 (멀티턴 지원)
         cfg = load_llm_config()
@@ -183,6 +188,7 @@ class OllamaProvider(LLMProvider):
             model=model or default_model,
             temperature=temperature,
             json_only=json_only,
+            timeout=timeout,
         )
 
 
@@ -202,10 +208,12 @@ class ClaudeProvider(LLMProvider):
         model: str | None = None,
         temperature: float | None = None,
         json_only: bool = False,
+        timeout: float | None = None,
     ) -> str:
         # 전체 대화 히스토리를 그대로 Claude에 전달 (멀티턴 지원)
         # json_only는 무시한다. Claude는 응답 앞뒤에 설명을 붙이는 편이라 이쪽이야말로
         # 파서(`llm_json.extract_json_object`)에 기대는 경로다.
+        # timeout도 아직 안 받는다 — 바깥 `wait_for`가 유일한 상한이다.
         return await self._svc.chat_messages(messages, model=model)
 
 
@@ -236,6 +244,7 @@ class LLMService:
         model: str | None = None,
         temperature: float | None = None,
         json_only: bool = False,
+        timeout: float | None = None,
     ) -> str:
         """Send messages to the active provider and return the reply.
 
@@ -246,7 +255,11 @@ class LLMService:
         `LLMProvider.chat`.
         """
         return await self._provider.chat(
-            messages, model=model, temperature=temperature, json_only=json_only
+            messages,
+            model=model,
+            temperature=temperature,
+            json_only=json_only,
+            timeout=timeout,
         )
 
 

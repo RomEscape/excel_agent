@@ -41,6 +41,22 @@ from office_claw_sidecar.services.llm_service import (
 # 실행할 때마다 rename_column이 되기도 하고 노란색 칠하기가 되기도 한다.
 PLAN_TEMPERATURE = 0.0
 
+# 라우터의 `asyncio.wait_for` 예산에서 이만큼 뺀 값을 HTTP 상한으로 준다. 소켓이
+# 먼저 끊겨야 요청이 실제로 끝난다 — 바깥에서만 취소하면 httpx 요청은 백그라운드에
+# 그대로 살아 있어 Ollama에 부하가 쌓인다.
+HTTP_TIMEOUT_MARGIN_SECONDS = 2.0
+
+
+def http_budget_for(parse_timeout_seconds: Any) -> float | None:
+    """파서 예산에서 여유분을 뺀 HTTP 상한. 예산을 모르면 None(기본값 사용)."""
+    try:
+        budget = float(parse_timeout_seconds)
+    except (TypeError, ValueError):
+        return None
+    if budget <= 0:
+        return None
+    return max(1.0, budget - HTTP_TIMEOUT_MARGIN_SECONDS)
+
 # 허용 액션은 검증기가 단일 소스다. 여기에 사본을 두면 한쪽만 늘어난다 —
 # 실제로 clear_range·compare_ranges·forecast_linear 등 7종이 이 사본에만 빠져 있어서,
 # 프롬프트는 쓰라고 안내하는데 플래너가 고르면 파싱 단계에서 통째로 반려됐다.
@@ -660,55 +676,6 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
     return None
 
 
-async def parse_command_with_llm(message: str, llm_service) -> dict[str, Any]:
-    prompt = (
-        "너는 Excel Live 작업 분류기다. 사용자 메시지를 아래 JSON으로만 반환해라.\n"
-        "허용 action:\n"
-        "- excel_live.list_workbooks\n"
-        "- excel_live.select_workbook\n"
-        "- excel_live.list_sheets\n"
-        "- excel_live.select_sheet\n"
-        "- excel_live.create_sheet\n"
-        "- excel_live.read_range\n"
-        "- excel_live.write_range\n"
-        "- excel_live.create_table\n"
-        "- excel_live.highlight_by_condition\n"
-        "- excel_live.fill_range\n"
-        "- excel_live.save_workbook\n\n"
-        "- excel_live.apply_border\n"
-        "- excel_live.set_formula\n\n"
-        "- excel_live.verify_formula_result\n\n"
-        "- excel_live.sort_range\n"
-        "- excel_live.filter_rows\n"
-        "- excel_live.dedupe_rows\n"
-        "- excel_live.pivot_table\n"
-        "- excel_live.create_chart\n"
-        "- excel_live.validate_data\n"
-        f"{_LATER_TOOL_LINES}\n"
-        "규칙:\n"
-        "1) JSON 외 텍스트 금지\n"
-        "2) action은 허용 목록 중 하나\n"
-        "3) params에는 action에 필요한 값만 넣는다\n"
-        "4) 모호하면 excel_live.list_workbooks를 반환\n\n"
-        "출력 형식:\n"
-        '{"action":"excel_live.read_range","params":{"range_ref":"A1:B10"},"reason":"한 줄 한국어"}\n\n'
-        f"사용자 메시지: {message}"
-    )
-    raw = await llm_service.chat(
-        [{"role": "user", "content": prompt}], temperature=PLAN_TEMPERATURE, json_only=True
-    )
-    parsed = extract_json_object(raw, require_keys=("action",))
-    if parsed is None:
-        raise ValueError("LLM JSON 파싱 실패")
-    action = str(parsed.get("action", "")).strip()
-    if action not in SUPPORTED_ACTIONS:
-        raise ValueError(f"지원하지 않는 action: {action}")
-    params = parsed.get("params", {})
-    if not isinstance(params, dict):
-        params = {}
-    return {"action": action, "params": params, "reason": parsed.get("reason", "")}
-
-
 def _ensure_action_step(step: dict[str, Any]) -> dict[str, Any]:
     action = str(step.get("action", "")).strip()
     if action not in SUPPORTED_ACTIONS:
@@ -803,6 +770,7 @@ async def parse_command_plan_with_llm(
         model=planner_model or None,
         temperature=PLAN_TEMPERATURE,
         json_only=True,
+        timeout=http_budget_for(context.get("parse_timeout_seconds")),
     )
     elapsed_ms = round((time.perf_counter() - started) * 1000, 1)
     # 계획 오브젝트를 우선 집는다. 모델이 프롬프트의 출력 예시를 먼저 따라 쓰고
