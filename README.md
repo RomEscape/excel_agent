@@ -492,6 +492,42 @@ python scripts/run_verifier_suite.py --diff   # 단계 간 변화만
 액션 전반의 넓이는 `scripts/run_verifier_gap.py`가 따로 본다(정렬·필터·차트 포함
 10종). 검증기를 손대면 둘 다 돌린다.
 
+### 승인은 단계가 아니라 계획 단위 (2026-08-11)
+
+같은 계획을 두 경로로 태워 결과를 나란히 놓는다. **direct**(`approve:true` 단일
+호출 — 실행 루프가 전부 도는 대조군)와 **gated**(승인 요청 → `/excel-live/approval`
+— 프론트가 실제로 타는 경로)다.
+
+```powershell
+python scripts/run_approval_gate.py --save after-plan-approval
+python scripts/run_approval_gate.py --diff baseline after-plan-approval
+```
+
+| 지표 | 수정 전 | 수정 후 |
+|---|---|---|
+| 계획 이행률 | 50.0% (10단계 중 5단계 소실) | **100%** |
+| 승인 경로 파일 정합 | 3/5 | **5/5** |
+| 롤백 소실 | 1/1 | **0/1** |
+
+- 한때 실행 루프는 계획을 먼저 훑어 **첫 CONFIRM 단계에서 반환**했다. 그 하나만
+  `_pending_approvals`에 담기고 나머지는 사라졌다. `post_approval`이
+  `_execute_action`을 직접 불러 검증도 롤백도 재계획도 지나가지 않았다.
+- 지금은 계획 확정 시점의 컨텍스트(`PlanExecution`)를 통째로 보관했다가, 승인되면
+  `_execute_plan_and_respond()`로 이어 붙인다. `/command`와 `/approval`이 **같은
+  실행 루프**를 탄다.
+- 재개할 때 **플래너를 다시 부르지 않는다.** 승인 후 재계획하면 사용자가 승인한
+  것과 다른 계획이 실행될 수 있다.
+- 승인 다이얼로그는 실행할 단계를 전부 나열한다. 첫 단계만 보여주고 계획 전체를
+  승인받는 것은 승인이 아니다.
+- 손실은 종류가 다르다 — **data**(값이 빈다) · **formatting**(값은 맞고 서식만
+  사라진다) · **verification**(파일도 응답도 정상으로 보인다). 뒤로 갈수록 위험해서
+  세 가지를 따로 센다.
+- `real_create_table_flow` 케이스는 계획을 스텁하지 않는다. 라우터가 스스로
+  `[create_table, write_range]`를 만드는, 실제 사용자 경로 그대로다.
+
+승격 게이트는 액션 이름만 채점하고, 검증기 변이 수트는 계획을 실행기에 직접
+주입해 승인 게이트를 건너뛴다. 이 측정이 그 사각지대를 덮는다.
+
 ### 플래너 승격 게이트 (2026-08-11)
 
 새 플래너 모델은 **고정 평가셋 154건에서 기준선을 이겨야만** Ollama 태그로 승격된다.

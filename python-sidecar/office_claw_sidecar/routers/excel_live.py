@@ -8,7 +8,7 @@ import re
 import threading
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any
 
@@ -166,12 +166,44 @@ class ExcelLiveActionResponse(BaseModel):
 
 
 @dataclass
+class PlanExecution:
+    """계획이 확정된 시점의 스냅샷. 실행 루프가 필요로 하는 전부다.
+
+    명령 경로와 승인 경로가 **같은 실행 루프**를 타게 하려고 묶어 둔다. 승인 대기
+    중에는 이 값이 그대로 보관됐다가, 사용자가 승인하면 재계획 없이 이어서
+    실행된다. 승인 후에 다시 계획하면 사용자가 승인한 것과 다른 계획이 실행될 수
+    있어서, 확정된 계획을 그대로 들고 있는 것이 요점이다.
+    """
+
+    req: ExcelLiveCommandRequest
+    plan: list[PlanStep]
+    session_key: str
+    parsed: dict[str, Any] = field(default_factory=dict)
+    base_context: dict[str, Any] = field(default_factory=dict)
+    personalization_hint: str = ""
+    bind_notes: list[dict[str, Any]] = field(default_factory=list)
+    reasoning_mode: str = "fast"
+    reasoning_complexity_score: float = 0.0
+    reflection_attempted: bool = False
+    reflection_applied: bool = False
+    reflection_reason: str = ""
+    # 이미 승인을 받았는가. True면 CONFIRM 게이트를 다시 세우지 않는다.
+    approved: bool = False
+
+
+@dataclass
 class PendingExcelApproval:
     action: str
     params: dict[str, Any]
     workbook_id: str | None
     sheet_name: str | None
     created_at: str
+    # 승인은 "단계"가 아니라 "계획"에 대한 것이다. 첫 CONFIRM 단계만 담고 나머지를
+    # 버리면 표만 만들고 머리글은 안 넣거나, 수식만 넣고 검증은 건너뛰게 된다.
+    # 더 나쁜 건 `_execute_action`을 직접 부르느라 검증·롤백·재계획이 통째로
+    # 우회된다는 점이다. `resume`이 있으면 명령 경로와 같은 실행 루프로 이어 붙인다.
+    # 단일 액션 승인(`/action` 경로)은 resume이 없고 예전처럼 한 단계만 실행한다.
+    resume: PlanExecution | None = None
 
 
 @dataclass
@@ -5087,43 +5119,13 @@ def _verification_failure_reason(detail: str) -> str:
     return "작업 실행이 안정성 검증을 통과하지 못했습니다. 복구 정보로 원상 복원이 가능합니다."
 
 
+def _action_summary(action: str) -> str:
+    return _ACTION_SUMMARY.get(action, "엑셀 변경 작업을 실행합니다.")
+
+
 def _build_approval(action: str, params: dict[str, Any]) -> ApprovalRequest:
     approval_id = str(uuid.uuid4())
-    summary = {
-        "excel_live.write_range": "엑셀 셀 값을 수정합니다.",
-        "excel_live.create_table": "엑셀에 표를 생성합니다.",
-        "excel_live.highlight_by_condition": "조건에 맞는 셀 서식을 변경합니다.",
-        "excel_live.fill_range": "선택 범위 전체 배경색을 변경합니다.",
-        "excel_live.apply_border": "선택 범위에 경계선을 적용합니다.",
-        "excel_live.set_formula": "지정 범위에 수식을 적용합니다.",
-        "excel_live.sort_range": "지정 범위를 정렬합니다.",
-        "excel_live.filter_rows": "조건에 맞는 행만 필터링합니다.",
-        "excel_live.dedupe_rows": "중복 행을 제거합니다.",
-        "excel_live.find_duplicates": "중복 값을 삭제하지 않고 찾아서 보고합니다.",
-        "excel_live.recalculate": "수식을 다시 계산하도록 표시합니다.",
-        "excel_live.export_pdf": "시트를 PDF로 내보냅니다.",
-        "excel_live.pivot_table": "집계표(피벗 형태)를 생성합니다.",
-        "excel_live.create_chart": "차트를 생성합니다.",
-        "excel_live.protect_sheet": "시트 보호/잠금 규칙을 적용합니다.",
-        "excel_live.set_data_validation": "입력 제한(드롭다운/숫자/날짜)을 설정합니다.",
-        "excel_live.consolidate_sheets": "여러 시트를 하나로 통합합니다.",
-        "excel_live.consolidate_workbooks_from_folder": "폴더의 여러 파일을 통합합니다.",
-        "excel_live.refresh_power_query": "Power Query/연결 데이터를 새로고침합니다.",
-        "excel_live.run_vba_macro": "VBA 매크로를 실행합니다.",
-        "excel_live.compare_ranges": "두 범위를 비교해 차이를 정리합니다.",
-        "excel_live.forecast_linear": "추세 기반 예측값을 생성합니다.",
-        "excel_live.find_replace": "선택 범위에서 텍스트를 찾아 바꿉니다.",
-        "excel_live.merge_cells": "선택 범위의 셀을 병합합니다.",
-        "excel_live.unmerge_cells": "선택 범위의 병합 셀을 해제합니다.",
-        "excel_live.freeze_panes": "머리글 행/열을 고정합니다.",
-        "excel_live.autofit_columns": "열 너비를 내용에 맞게 자동 조정합니다.",
-        "excel_live.define_named_range": "선택 범위에 이름(정의된 이름)을 지정합니다.",
-        "excel_live.set_print_area": "인쇄 영역/방향/페이지 맞춤을 설정합니다.",
-        "excel_live.add_cell_comment": "셀에 메모(코멘트)를 추가합니다.",
-        "excel_live.apply_color_scale": "선택 범위에 색조 조건부 서식을 적용합니다.",
-        "excel_live.apply_data_bar": "선택 범위에 데이터 막대 조건부 서식을 적용합니다.",
-        "excel_live.set_number_format": "선택 범위의 표시 형식(숫자/퍼센트/날짜 등)을 변경합니다.",
-    }.get(action, "엑셀 변경 작업을 실행합니다.")
+    summary = _action_summary(action)
     return ApprovalRequest(
         approval_id=approval_id,
         tool_name=action,
@@ -5133,6 +5135,43 @@ def _build_approval(action: str, params: dict[str, Any]) -> ApprovalRequest:
         session_id="excel-live",
         created_at=datetime.now(timezone.utc).isoformat(),
     )
+
+
+_ACTION_SUMMARY = {
+    "excel_live.write_range": "엑셀 셀 값을 수정합니다.",
+    "excel_live.create_table": "엑셀에 표를 생성합니다.",
+    "excel_live.highlight_by_condition": "조건에 맞는 셀 서식을 변경합니다.",
+    "excel_live.fill_range": "선택 범위 전체 배경색을 변경합니다.",
+    "excel_live.apply_border": "선택 범위에 경계선을 적용합니다.",
+    "excel_live.set_formula": "지정 범위에 수식을 적용합니다.",
+    "excel_live.sort_range": "지정 범위를 정렬합니다.",
+    "excel_live.filter_rows": "조건에 맞는 행만 필터링합니다.",
+    "excel_live.dedupe_rows": "중복 행을 제거합니다.",
+    "excel_live.find_duplicates": "중복 값을 삭제하지 않고 찾아서 보고합니다.",
+    "excel_live.recalculate": "수식을 다시 계산하도록 표시합니다.",
+    "excel_live.export_pdf": "시트를 PDF로 내보냅니다.",
+    "excel_live.pivot_table": "집계표(피벗 형태)를 생성합니다.",
+    "excel_live.create_chart": "차트를 생성합니다.",
+    "excel_live.protect_sheet": "시트 보호/잠금 규칙을 적용합니다.",
+    "excel_live.set_data_validation": "입력 제한(드롭다운/숫자/날짜)을 설정합니다.",
+    "excel_live.consolidate_sheets": "여러 시트를 하나로 통합합니다.",
+    "excel_live.consolidate_workbooks_from_folder": "폴더의 여러 파일을 통합합니다.",
+    "excel_live.refresh_power_query": "Power Query/연결 데이터를 새로고침합니다.",
+    "excel_live.run_vba_macro": "VBA 매크로를 실행합니다.",
+    "excel_live.compare_ranges": "두 범위를 비교해 차이를 정리합니다.",
+    "excel_live.forecast_linear": "추세 기반 예측값을 생성합니다.",
+    "excel_live.find_replace": "선택 범위에서 텍스트를 찾아 바꿉니다.",
+    "excel_live.merge_cells": "선택 범위의 셀을 병합합니다.",
+    "excel_live.unmerge_cells": "선택 범위의 병합 셀을 해제합니다.",
+    "excel_live.freeze_panes": "머리글 행/열을 고정합니다.",
+    "excel_live.autofit_columns": "열 너비를 내용에 맞게 자동 조정합니다.",
+    "excel_live.define_named_range": "선택 범위에 이름(정의된 이름)을 지정합니다.",
+    "excel_live.set_print_area": "인쇄 영역/방향/페이지 맞춤을 설정합니다.",
+    "excel_live.add_cell_comment": "셀에 메모(코멘트)를 추가합니다.",
+    "excel_live.apply_color_scale": "선택 범위에 색조 조건부 서식을 적용합니다.",
+    "excel_live.apply_data_bar": "선택 범위에 데이터 막대 조건부 서식을 적용합니다.",
+    "excel_live.set_number_format": "선택 범위의 표시 형식(숫자/퍼센트/날짜 등)을 변경합니다.",
+}
 
 
 @router.get("/status")
@@ -5375,6 +5414,106 @@ async def _plan_macro_response(
     )
 
 
+def _normalize_plan_or_empty(raw_steps: Any) -> list[PlanStep]:
+    prepared_steps = raw_steps
+    if isinstance(raw_steps, list):
+        prepared: list[dict[str, Any]] = []
+        for step in raw_steps:
+            if isinstance(step, PlanStep):
+                action = step.action
+                params = dict(step.params)
+                reason = step.reason
+            elif isinstance(step, dict):
+                action = str(step.get("action", "")).strip()
+                params = dict(step.get("params", {}))
+                reason = str(step.get("reason", ""))
+            else:
+                continue
+            if action == "excel_live.set_formula":
+                formula = str(params.get("formula_a1", "")).strip()
+                if formula and not formula.startswith("="):
+                    params["formula_a1"] = f"={formula}"
+            prepared.append({"action": action, "params": params, "reason": reason})
+        prepared_steps = prepared
+    try:
+        return normalize_plan_steps(prepared_steps)
+    except Exception:
+        return []
+
+
+def _validate_plan_for_request(steps, req: ExcelLiveCommandRequest):
+    return validate_plan(
+        steps,
+        context=ValidationContext(
+            message=req.message,
+            workbook_id=req.workbook_id,
+            sheet_name=req.sheet_name,
+            context_range=req.context_range,
+            recent_range=_recent_range_by_workbook.get(_context_key(req.workbook_id)),
+        ),
+    )
+
+
+def _bind_plan_for_request(steps, *, digest: dict[str, Any], req: ExcelLiveCommandRequest):
+    """실행 직전에 상징적 파라미터를 실제 머리글/시트로 확정한다."""
+    try:
+        return bind_plan_steps(
+            steps,
+            digest=digest,
+            message=req.message,
+            sheet_name=req.sheet_name,
+        )
+    except Exception:
+        # 바인딩은 보조 레이어다. 실패해도 원본 플랜으로 계속 진행한다.
+        return steps, []
+
+
+def _chain_chart_to_pivot(steps: list[PlanStep], *, session_key: str) -> list[PlanStep]:
+    """피벗 다음에 오는 차트는 원본이 아니라 집계 결과를 그린다.
+
+    같은 계획 안이든("집계하고 차트도"), 다음 턴이든("그 결과로 막대 그래프도") 마찬가지다.
+    직전 집계 결과를 기억해 두지 않으면 차트가 180행짜리 원본을 그리거나 엉뚱한 시트에 붙는다.
+    """
+    pivot_sheet = ""
+    for step in steps:
+        if step.action == "excel_live.pivot_table":
+            pivot_sheet = str(step.params.get("output_sheet") or "").strip()
+        elif step.action == "excel_live.create_chart":
+            target = pivot_sheet or _last_aggregate_sheet.get(session_key, "")
+            if not target:
+                continue
+            step.params["source_sheet"] = target
+            step.params["source_range"] = "__USED_RANGE__"
+            step.params["output_sheet"] = target
+    return steps
+
+
+def _drop_table_step_when_aggregating(steps: list[PlanStep]) -> list[PlanStep]:
+    """집계 계획에 끼어든 표 생성 단계를 덜어낸다.
+
+    플래너는 "집계표를 만들어줘"를 create_table로도 해석해, 빈 5x5 표를 새 시트에 만들고
+    활성 시트를 그쪽으로 옮긴다. 그러면 뒤따르는 피벗이 빈 시트를 집계하려다 실패한다.
+    집계 결과표는 피벗이 직접 쓰므로 이 단계는 필요 없다.
+    """
+    if not any(step.action == "excel_live.pivot_table" for step in steps):
+        return steps
+    return [step for step in steps if step.action != "excel_live.create_table"]
+
+
+def _drop_trailing_verification(steps: list[PlanStep]) -> list[PlanStep]:
+    """수식과 무관한 계획 끝에 붙은 결과 검증 단계를 덜어낸다.
+
+    플래너는 색칠·정렬 계획 뒤에도 verify_formula_result를 붙이곤 한다. 각 단계는
+    어차피 실행기가 검증하므로 하는 일이 없는데, 마지막 액션이 응답의 대표 액션이라
+    "노란색으로 칠했습니다" 대신 "수식 결과를 확인했습니다"라고 답하게 된다.
+    """
+    if len(steps) < 2 or steps[-1].action != "excel_live.verify_formula_result":
+        return steps
+    if any(step.action == "excel_live.set_formula" for step in steps):
+        return steps
+    return steps[:-1]
+
+
 @router.post("/command", response_model=ExcelLiveActionResponse)
 async def post_command(
     req: ExcelLiveCommandRequest,
@@ -5502,31 +5641,6 @@ async def _run_command(
         # 오동작을 만들 수 있으므로 멀티턴 슬롯 경로를 우선한다.
         fallback_rule_step = None
 
-    def _normalize_plan_or_empty(raw_steps: Any) -> list[PlanStep]:
-        prepared_steps = raw_steps
-        if isinstance(raw_steps, list):
-            prepared: list[dict[str, Any]] = []
-            for step in raw_steps:
-                if isinstance(step, PlanStep):
-                    action = step.action
-                    params = dict(step.params)
-                    reason = step.reason
-                elif isinstance(step, dict):
-                    action = str(step.get("action", "")).strip()
-                    params = dict(step.get("params", {}))
-                    reason = str(step.get("reason", ""))
-                else:
-                    continue
-                if action == "excel_live.set_formula":
-                    formula = str(params.get("formula_a1", "")).strip()
-                    if formula and not formula.startswith("="):
-                        params["formula_a1"] = f"={formula}"
-                prepared.append({"action": action, "params": params, "reason": reason})
-            prepared_steps = prepared
-        try:
-            return normalize_plan_steps(prepared_steps)
-        except Exception:
-            return []
     parsed: dict[str, Any] | None = None
     reflection_attempted = False
     reflection_applied = False
@@ -5605,72 +5719,10 @@ async def _run_command(
             use_cache=False,
         )
     def _validate_steps(steps):
-        return validate_plan(
-            steps,
-            context=ValidationContext(
-                message=req.message,
-                workbook_id=req.workbook_id,
-                sheet_name=req.sheet_name,
-                context_range=req.context_range,
-                recent_range=_recent_range_by_workbook.get(_context_key(req.workbook_id)),
-            ),
-        )
+        return _validate_plan_for_request(steps, req)
 
     def _bind_steps(steps):
-        """실행 직전에 상징적 파라미터를 실제 머리글/시트로 확정한다."""
-        try:
-            return bind_plan_steps(
-                steps,
-                digest=workbook_digest,
-                message=req.message,
-                sheet_name=req.sheet_name,
-            )
-        except Exception:
-            # 바인딩은 보조 레이어다. 실패해도 원본 플랜으로 계속 진행한다.
-            return steps, []
-
-    def _chain_chart_to_pivot(steps: list[PlanStep]) -> list[PlanStep]:
-        """피벗 다음에 오는 차트는 원본이 아니라 집계 결과를 그린다.
-
-        같은 계획 안이든("집계하고 차트도"), 다음 턴이든("그 결과로 막대 그래프도") 마찬가지다.
-        직전 집계 결과를 기억해 두지 않으면 차트가 180행짜리 원본을 그리거나 엉뚱한 시트에 붙는다.
-        """
-        pivot_sheet = ""
-        for step in steps:
-            if step.action == "excel_live.pivot_table":
-                pivot_sheet = str(step.params.get("output_sheet") or "").strip()
-            elif step.action == "excel_live.create_chart":
-                target = pivot_sheet or _last_aggregate_sheet.get(session_key, "")
-                if not target:
-                    continue
-                step.params["source_sheet"] = target
-                step.params["source_range"] = "__USED_RANGE__"
-                step.params["output_sheet"] = target
-        return steps
-
-    def _drop_table_step_when_aggregating(steps: list[PlanStep]) -> list[PlanStep]:
-        """집계 계획에 끼어든 표 생성 단계를 덜어낸다.
-
-        플래너는 "집계표를 만들어줘"를 create_table로도 해석해, 빈 5x5 표를 새 시트에 만들고
-        활성 시트를 그쪽으로 옮긴다. 그러면 뒤따르는 피벗이 빈 시트를 집계하려다 실패한다.
-        집계 결과표는 피벗이 직접 쓰므로 이 단계는 필요 없다.
-        """
-        if not any(step.action == "excel_live.pivot_table" for step in steps):
-            return steps
-        return [step for step in steps if step.action != "excel_live.create_table"]
-
-    def _drop_trailing_verification(steps: list[PlanStep]) -> list[PlanStep]:
-        """수식과 무관한 계획 끝에 붙은 결과 검증 단계를 덜어낸다.
-
-        플래너는 색칠·정렬 계획 뒤에도 verify_formula_result를 붙이곤 한다. 각 단계는
-        어차피 실행기가 검증하므로 하는 일이 없는데, 마지막 액션이 응답의 대표 액션이라
-        "노란색으로 칠했습니다" 대신 "수식 결과를 확인했습니다"라고 답하게 된다.
-        """
-        if len(steps) < 2 or steps[-1].action != "excel_live.verify_formula_result":
-            return steps
-        if any(step.action == "excel_live.set_formula" for step in steps):
-            return steps
-        return steps[:-1]
+        return _bind_plan_for_request(steps, digest=workbook_digest, req=req)
 
     def _bind_and_validate(steps, *, require_binding_evidence: bool = False) -> list[PlanStep] | None:
         """바인딩까지 마친 뒤 실행 가능한 계획이면 돌려주고, 아니면 None.
@@ -5691,7 +5743,8 @@ async def _run_command(
             return None
         try:
             return _chain_chart_to_pivot(
-                _drop_trailing_verification(_drop_table_step_when_aggregating(_validate_steps(bound)))
+                _drop_trailing_verification(_drop_table_step_when_aggregating(_validate_steps(bound))),
+                session_key=session_key,
             )
         except Exception:
             return None
@@ -6444,6 +6497,128 @@ async def _run_command(
 
     trace_note("plan_final", approve=req.approve, steps=trace_plan(current_plan))
 
+    return await _execute_plan_and_respond(
+        PlanExecution(
+            req=req,
+            plan=current_plan,
+            session_key=session_key,
+            parsed=parsed or {},
+            base_context=base_context,
+            personalization_hint=personalization_hint,
+            bind_notes=bind_notes,
+            reasoning_mode=reasoning_mode,
+            reasoning_complexity_score=reasoning_complexity_score,
+            reflection_attempted=reflection_attempted,
+            reflection_applied=reflection_applied,
+            reflection_reason=reflection_reason,
+            approved=bool(req.approve),
+        ),
+        llm,
+    )
+
+
+def _plan_approval_gate(ctx: PlanExecution, plan: list[PlanStep]) -> ExcelLiveActionResponse | None:
+    """계획에 승인이 필요한 단계가 있으면 **계획 전체**를 승인 대기로 돌린다.
+
+    예전에는 첫 CONFIRM 단계 하나만 저장하고 나머지를 버렸다. 쓰기 계열 액션이
+    전부 CONFIRM이라, 다단계 계획은 승인 직후 첫 단계만 실행되고 끝났다.
+    승인 대상은 단계가 아니라 계획이므로 CONFIRM 단계를 한 번에 모아 보여주고,
+    승인되면 같은 실행 루프로 이어 붙인다.
+    """
+    req = ctx.req
+    for step in plan:
+        tool_def = get_tool(step.action)
+        if tool_def and tool_def.permission == PermissionLevel.DENIED:
+            return ExcelLiveActionResponse(
+                ok=False,
+                action=step.action,
+                reason="보안 정책에 의해 거부된 작업입니다.",
+            )
+
+    if ctx.approved:
+        return None
+
+    confirm_steps = [
+        step
+        for step in plan
+        if (tool := get_tool(step.action)) and tool.permission == PermissionLevel.CONFIRM
+    ]
+    if not confirm_steps:
+        return None
+
+    head = confirm_steps[0]
+    target_problem = _edit_target_problem(
+        req.workbook_id, head.params.get("sheet_name") or req.sheet_name
+    )
+    if target_problem:
+        trace_note("target_missing", action=head.action, detail=target_problem)
+        return ExcelLiveActionResponse(
+            ok=True,
+            action="excel_live.clarify",
+            reason=target_problem,
+            result={
+                "ask_follow_up": True,
+                "follow_up_question": target_problem,
+                "operation_intent": "clarify",
+                "missing_slot": "sheet_name",
+                "blocked_action": head.action,
+            },
+        )
+
+    pending = _build_approval(head.action, head.params)
+    if len(plan) > 1:
+        # 첫 단계만 보여주면 사용자는 나머지를 모른 채 승인한다. 승인 대상이
+        # 계획 전체가 된 이상, 다이얼로그도 계획 전체를 보여줘야 한다.
+        steps_text = "\n".join(
+            f"{idx}. {_action_summary(step.action)}" for idx, step in enumerate(plan, start=1)
+        )
+        pending.summary = f"다음 {len(plan)}단계를 실행합니다.\n{steps_text}"
+    _pending_approvals[pending.approval_id] = PendingExcelApproval(
+        action=head.action,
+        params=head.params,
+        workbook_id=req.workbook_id,
+        sheet_name=req.sheet_name,
+        created_at=pending.created_at,
+        resume=replace(ctx, plan=list(plan), approved=True),
+    )
+    trace_route(
+        "approval:required",
+        why=f"CONFIRM {len(confirm_steps)}단계 — 계획 {len(plan)}단계를 통째로 보관",
+        action=head.action,
+        planned_steps=len(plan),
+    )
+    return ExcelLiveActionResponse(
+        ok=True,
+        action=head.action,
+        approval_required=True,
+        pending_approval=pending,
+        reason=head.reason or "승인이 필요한 작업입니다.",
+    )
+
+
+async def _execute_plan_and_respond(
+    ctx: PlanExecution,
+    llm: LLMService,
+) -> ExcelLiveActionResponse:
+    """확정된 계획을 실행하고 응답을 만든다.
+
+    `/command`와 `/approval`이 **같은 함수**를 탄다. 승인 경로가 이 루프를 우회하던
+    시절에는 검증(`_verify_step_result`)도 스냅샷 롤백도 재계획도 지나가지 않아,
+    실행기가 거짓말해도 틀린 값이 파일에 그대로 남았다.
+    """
+    req = ctx.req
+    session_key = ctx.session_key
+    parsed = ctx.parsed
+    base_context = ctx.base_context
+    personalization_hint = ctx.personalization_hint
+    bind_notes = ctx.bind_notes
+    reasoning_mode = ctx.reasoning_mode
+    reasoning_complexity_score = ctx.reasoning_complexity_score
+    reflection_attempted = ctx.reflection_attempted
+    reflection_applied = ctx.reflection_applied
+    reflection_reason = ctx.reflection_reason
+    current_plan = list(ctx.plan)
+
     execution = None
     replan_count = 0
     max_replans = 1
@@ -6452,51 +6627,9 @@ async def _run_command(
     queue_wait_total_ms = 0
     snapshot_holder: dict[str, ActionRollbackSnapshot | None] = {"current": None}
     while True:
-        # CONFIRM이 필요한 단계가 있으면 기존 승인 UX를 유지하기 위해
-        # 첫 CONFIRM 단계에서 즉시 반환한다.
-        for step in current_plan:
-            action = step.action
-            params = step.params
-            tool_def = get_tool(action)
-            if tool_def and tool_def.permission == PermissionLevel.DENIED:
-                return ExcelLiveActionResponse(
-                    ok=False,
-                    action=action,
-                    reason="보안 정책에 의해 거부된 작업입니다.",
-                )
-            if tool_def and tool_def.permission == PermissionLevel.CONFIRM and not req.approve:
-                target_problem = _edit_target_problem(
-                    req.workbook_id, params.get("sheet_name") or req.sheet_name
-                )
-                if target_problem:
-                    trace_note("target_missing", action=action, detail=target_problem)
-                    return ExcelLiveActionResponse(
-                        ok=True,
-                        action="excel_live.clarify",
-                        reason=target_problem,
-                        result={
-                            "ask_follow_up": True,
-                            "follow_up_question": target_problem,
-                            "operation_intent": "clarify",
-                            "missing_slot": "sheet_name",
-                            "blocked_action": action,
-                        },
-                    )
-                pending = _build_approval(action, params)
-                _pending_approvals[pending.approval_id] = PendingExcelApproval(
-                    action=action,
-                    params=params,
-                    workbook_id=req.workbook_id,
-                    sheet_name=req.sheet_name,
-                    created_at=pending.created_at,
-                )
-                return ExcelLiveActionResponse(
-                    ok=True,
-                    action=action,
-                    approval_required=True,
-                    pending_approval=pending,
-                    reason=step.reason or "승인이 필요한 작업입니다.",
-                )
+        gate = _plan_approval_gate(ctx, current_plan)
+        if gate is not None:
+            return gate
 
         try:
             def _guarded_execute(action: str, params: dict[str, Any]) -> dict[str, Any]:
@@ -6585,7 +6718,8 @@ async def _run_command(
                     )
                 return execute_plan(
                     steps=_chain_chart_to_pivot(
-                        _drop_trailing_verification(_drop_table_step_when_aggregating(current_plan))
+                        _drop_trailing_verification(_drop_table_step_when_aggregating(current_plan)),
+                        session_key=session_key,
                     ),
                     execute_action=_guarded_execute,
                     verify_step=_guarded_verify,
@@ -6642,8 +6776,12 @@ async def _run_command(
                 forbid_list_action=True,
                 require_edit_action=True,
             )
-            replan_steps, _ = _bind_steps(_normalize_plan_or_empty(replanned.get("action_plan")))
-            current_plan = _validate_steps(replan_steps)
+            replan_steps, _ = _bind_plan_for_request(
+                _normalize_plan_or_empty(replanned.get("action_plan")),
+                digest=replan_digest,
+                req=req,
+            )
+            current_plan = _validate_plan_for_request(replan_steps, req)
             parsed["reason"] = replanned.get("reason", "") or parsed.get("reason", "")
         except Exception as exc:
             # 재계획은 이미 한 번 실행한 뒤의 보정 시도다. 여기서 실패했다고 400을 던지면
@@ -6857,7 +6995,10 @@ async def _run_command(
 
 
 @router.post("/approval", response_model=ExcelLiveActionResponse)
-def post_approval(req: ApprovalResponse):
+async def post_approval(
+    req: ApprovalResponse,
+    llm: LLMService = Depends(get_llm_service),
+):
     pending = _pending_approvals.pop(req.approval_id, None)
     if pending is None:
         raise HTTPException(status_code=404, detail="승인 대기 작업을 찾을 수 없습니다.")
@@ -6876,6 +7017,35 @@ def post_approval(req: ApprovalResponse):
             result={"approved": False},
         )
 
+    if pending.resume is not None:
+        # 명령 경로가 세운 계획을 그대로 이어서 실행한다. 재계획하지 않으므로
+        # 사용자가 승인한 계획과 실행되는 계획이 같다.
+        _audit.log(
+            action="excel.live.approval.executed",
+            target=pending.action,
+            detail=f"approval_id={req.approval_id} steps={len(pending.resume.plan)}",
+        )
+        with turn_scope(
+            endpoint="excel-live/approval",
+            message=pending.resume.req.message,
+            session_id=pending.resume.session_key,
+            request={
+                "approval_id": req.approval_id,
+                "workbook_id": pending.workbook_id,
+                "sheet_name": pending.sheet_name,
+                "planned_steps": len(pending.resume.plan),
+            },
+        ):
+            trace_route(
+                "approval:resumed",
+                why=f"승인된 계획 {len(pending.resume.plan)}단계를 이어서 실행",
+                action=pending.action,
+            )
+            response = await _execute_plan_and_respond(pending.resume, llm)
+            set_outcome_from_response(response)
+            return response
+
+    # 단일 액션 승인(`/action` 경로). 계획이 없으므로 예전처럼 한 단계만 실행한다.
     recovery_backup: dict[str, Any] | None = None
     try:
         def _run_approval_once():

@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from functools import lru_cache
 from typing import Any
@@ -23,6 +24,41 @@ HEADERS = {"Authorization": "Bearer dev-token"}
 client = TestClient(app)
 
 
+def _idx_to_col(index: int) -> str:
+    letters = ""
+    while index > 0:
+        index, rem = divmod(index - 1, 26)
+        letters = chr(ord("A") + rem) + letters
+    return letters or "A"
+
+
+def _parse_cell(ref: str) -> tuple[int, int] | None:
+    match = re.fullmatch(r"\$?([A-Za-z]{1,3})\$?(\d{1,7})", str(ref or "").strip())
+    if not match:
+        return None
+    col = 0
+    for ch in match.group(1).upper():
+        col = col * 26 + (ord(ch) - ord("A") + 1)
+    return col, int(match.group(2))
+
+
+def _parse_range(ref: str) -> tuple[tuple[int, int], tuple[int, int]] | None:
+    text = str(ref or "").strip()
+    if "!" in text:
+        text = text.rsplit("!", 1)[1]
+    head, _, tail = text.partition(":")
+    start = _parse_cell(head)
+    if start is None:
+        return None
+    end = _parse_cell(tail) if tail else start
+    if end is None:
+        return None
+    return (min(start[0], end[0]), min(start[1], end[1])), (
+        max(start[0], end[0]),
+        max(start[1], end[1]),
+    )
+
+
 class _FakeExcelService:
     """호출을 기록하는 가짜 Excel.
 
@@ -34,6 +70,9 @@ class _FakeExcelService:
 
     def __init__(self):
         self.calls: list[dict] = []
+        # 쓴 값을 기억한다. 검증기가 write_range 뒤에 같은 범위를 다시 읽으므로,
+        # 고정값만 돌려주면 정상적으로 쓴 명령까지 "값 불일치"로 되돌려진다.
+        self._cells: dict[tuple[str, str], object] = {}
         self._selected = r"C:\work\sales.xlsx"
         self._workbooks = [
             {
@@ -87,14 +126,53 @@ class _FakeExcelService:
 
     def read_range(self, workbook_id, sheet_name, range_ref):
         self._record("read_range", range_ref=range_ref)
+        stored = self._stored_grid(sheet_name, range_ref)
+        if stored is not None:
+            return {
+                "values": stored,
+                "address": range_ref,
+                "row_count": len(stored),
+                "col_count": len(stored[0]) if stored else 0,
+            }
         return {"values": [[1, 2]], "address": range_ref, "row_count": 1, "col_count": 2}
 
     def write_range(self, workbook_id, sheet_name, start_cell, values_2d):
         self._record("write_range", start_cell=start_cell, values_2d=values_2d)
+        base = _parse_cell(start_cell)
+        if base is not None:
+            base_col, base_row = base
+            for row_idx, row in enumerate(values_2d):
+                cells = row if isinstance(row, list) else [row]
+                for col_idx, value in enumerate(cells):
+                    ref = f"{_idx_to_col(base_col + col_idx)}{base_row + row_idx}"
+                    self._cells[(sheet_name or "", ref)] = value
         return {
             "written_cells": sum(len(r) if isinstance(r, list) else 1 for r in values_2d),
             "address": start_cell,
         }
+
+    def _stored_grid(self, sheet_name, range_ref):
+        """요청 범위의 모든 셀을 기록해 뒀을 때만 그 값을 돌려준다.
+
+        아직 쓴 적 없는 범위(사용 범위 훑기, 다이제스트 등)는 예전처럼 고정값으로
+        둔다. 안 그러면 이 가짜에 기대던 다른 시나리오가 함께 무너진다.
+        """
+        span = _parse_range(range_ref)
+        if span is None:
+            return None
+        (start_col, start_row), (end_col, end_row) = span
+        if (end_col - start_col + 1) * (end_row - start_row + 1) > 400:
+            return None
+        grid = []
+        for row in range(start_row, end_row + 1):
+            values = []
+            for col in range(start_col, end_col + 1):
+                key = (sheet_name or "", f"{_idx_to_col(col)}{row}")
+                if key not in self._cells:
+                    return None
+                values.append(self._cells[key])
+            grid.append(values)
+        return grid
 
     def highlight_by_condition(
         self,

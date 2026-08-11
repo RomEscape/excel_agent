@@ -99,7 +99,8 @@ export function AlertDialog({
         {description && (
           <p
             id="alert-dialog-desc"
-            className="mt-2 text-sm text-muted-foreground"
+            // 승인 다이얼로그는 실행할 단계를 줄 단위로 나열한다.
+            className="mt-2 whitespace-pre-line text-sm text-muted-foreground"
           >
             {description}
           </p>
