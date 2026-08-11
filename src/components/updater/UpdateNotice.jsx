@@ -61,7 +61,8 @@ export default function UpdateNotice() {
   const [modalOpen, setModalOpen] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [progress, setProgress] = useState(0); // 0~100
-  const [downloaded, setDownloaded] = useState(0);
+  // 받은 바이트는 진행률 계산용 누산기라 화면에 직접 쓰지 않는다.
+  const [, setDownloaded] = useState(0);
   const [contentLength, setContentLength] = useState(0);
   const [error, setError] = useState("");
 

@@ -13,8 +13,8 @@ source enum 정규화는 남는다 — 이미 쌓인 감사 로그가 그 값을
 import pytest
 from fastapi.testclient import TestClient
 
+from office_claw_sidecar.command_audit import get_command_audit_logger, normalize_source
 from office_claw_sidecar.main import app
-from office_claw_sidecar.command_audit import normalize_source, get_command_audit_logger
 
 client = TestClient(app)
 

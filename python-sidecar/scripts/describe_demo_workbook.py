@@ -35,7 +35,7 @@ def _build_evaluator(wb: Any) -> Any:
         cell = wb[sheet][address]
         try:
             return evaluator.value(sheet, cell.row, cell.column)
-        except Exception:  # noqa: BLE001 - 계산 실패는 원본 값으로 보고한다
+        except Exception:
             return cell.value
 
     return evaluate

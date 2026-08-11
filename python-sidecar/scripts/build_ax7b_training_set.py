@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-
 SYSTEM_PROMPT = (
     "너는 OfficeClaw Excel 플래너다. "
     "사용자의 한국어 요청을 excel_live action_plan JSON으로만 반환한다."

@@ -11,7 +11,6 @@ routers/chat.py — Sprint 5 채팅 세션 영속화 API.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -26,11 +25,11 @@ router = APIRouter()
 class SaveMessageRequest(BaseModel):
     session_id: str
     role: str                          # user | agent | system
-    text: Optional[str] = None
-    tool_calls: Optional[object] = None
+    text: str | None = None
+    tool_calls: object | None = None
     masked_count: int = 0
-    masked_types: Optional[list] = None
-    error_text: Optional[str] = None
+    masked_types: list | None = None
+    error_text: str | None = None
 
 
 @router.post("/messages")

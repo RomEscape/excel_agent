@@ -420,7 +420,7 @@ def _run_one_path(
                 ).json()
                 approved_action = str(approved.get("action") or "")
                 body = approved
-        except Exception as exc:  # noqa: BLE001 - 실행 실패도 결과다.
+        except Exception as exc:
             return (
                 PathOutcome(False, {}, 0, len(case.expected_cells), error=str(exc)),
                 approval_required,

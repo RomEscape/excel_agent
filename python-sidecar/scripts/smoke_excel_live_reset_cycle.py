@@ -11,7 +11,6 @@ from typing import Any
 
 import requests
 
-
 BASE_URL = str(os.getenv("EXCEL_E2E_BASE_URL", "http://127.0.0.1:19532") or "http://127.0.0.1:19532")
 TOKEN = str(os.getenv("EXCEL_E2E_TOKEN", "dev-token") or "dev-token")
 TIMEOUT_SECONDS = int(str(os.getenv("EXCEL_E2E_TIMEOUT_SECONDS", "60") or "60"))

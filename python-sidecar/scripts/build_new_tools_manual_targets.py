@@ -15,14 +15,16 @@ import os
 import shutil
 import tempfile
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 os.environ.setdefault("EXCEL_LIVE_ENGINE", "file")
 
 from openpyxl import load_workbook
 
+from office_claw_sidecar.routers.excel_live import _execute_action, _verify_step_result
 from office_claw_sidecar.services.excel_live_executor import (
     execute_plan,
     normalize_plan_steps,
@@ -31,7 +33,6 @@ from office_claw_sidecar.services.excel_live_plan_validator import (
     ValidationContext,
     validate_plan,
 )
-from office_claw_sidecar.routers.excel_live import _execute_action, _verify_step_result
 
 KST = timezone(timedelta(hours=9), name="KST")
 DEMO_TEMPLATE = Path("복잡한 엑셀 작업을 위한 자료/AI_Excel_Automation_Demo.xlsx")
@@ -250,7 +251,7 @@ def _run_plan_turn(
 ) -> tuple[bool, str]:
     try:
         normalized_steps = normalize_plan_steps(plan)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return False, f"normalize_failed:{exc}"
     if not normalized_steps:
         return False, "normalize_empty"
@@ -260,7 +261,7 @@ def _run_plan_turn(
             normalized_steps,
             context=ValidationContext(message=message, workbook_id=workbook_id, sheet_name=sheet_name),
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return False, f"validate_failed:{exc}"
 
     execution = execute_plan(

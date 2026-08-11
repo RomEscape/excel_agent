@@ -11,7 +11,7 @@ def test_ollama_provider_uses_saved_model_config(monkeypatch, tmp_path):
 
     captured: dict[str, str | None] = {"model": None}
 
-    async def _fake_chat_messages(self, messages, model=None, temperature=None, json_only=False, timeout=None):  # noqa: ANN001
+    async def _fake_chat_messages(self, messages, model=None, temperature=None, json_only=False, timeout=None):
         captured["model"] = model
         return "OK"
 
@@ -29,7 +29,7 @@ def test_ollama_provider_explicit_model_overrides_saved(monkeypatch, tmp_path):
 
     captured: dict[str, str | None] = {"model": None}
 
-    async def _fake_chat_messages(self, messages, model=None, temperature=None, json_only=False, timeout=None):  # noqa: ANN001
+    async def _fake_chat_messages(self, messages, model=None, temperature=None, json_only=False, timeout=None):
         captured["model"] = model
         return "OK"
 
@@ -46,7 +46,7 @@ def test_temperature_is_forwarded_to_ollama(monkeypatch):
     llm_service.save_llm_config({"provider": "ollama", "model": "ax4-light:latest"})
     captured: dict[str, float | None] = {"temperature": None}
 
-    async def _fake_chat_messages(self, messages, model=None, temperature=None, json_only=False, timeout=None):  # noqa: ANN001
+    async def _fake_chat_messages(self, messages, model=None, temperature=None, json_only=False, timeout=None):
         captured["temperature"] = temperature
         return "OK"
 

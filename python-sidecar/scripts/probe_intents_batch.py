@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from office_claw_sidecar.routers import excel_live as router  # noqa: E402
+from office_claw_sidecar.routers import excel_live as router
 
 
 def main() -> int:

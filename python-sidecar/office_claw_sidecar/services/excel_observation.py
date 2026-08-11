@@ -30,7 +30,7 @@ LLM이 없다. 그래서 계획이 `[read_range, highlight]`여도 highlight의 
 from __future__ import annotations
 
 import os
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 ENV_VAR = "EXCEL_OBSERVATION_MODE"
@@ -55,7 +55,7 @@ _MAX_COLS = 12
 _MAX_CELL_CHARS = 24
 
 
-class ObservationMode(str, Enum):
+class ObservationMode(StrEnum):
     OFF = "off"
     READ_FIRST = "read_first"
     LOOP = "loop"

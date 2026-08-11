@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime, time
+from itertools import pairwise
 from typing import Any
 
 _CELL_REF = re.compile(r"^([A-Za-z]{1,3})(\d{1,7})$")
@@ -89,7 +90,7 @@ def _is_sorted(values: list[Any], *, descending: bool) -> bool:
         keys: list[Any] = [n for n in numbers if n is not None]
     else:
         keys = [str(v).strip() for v in cleaned]
-    pairs = zip(keys, keys[1:])
+    pairs = list(pairwise(keys))
     return all(a >= b for a, b in pairs) if descending else all(a <= b for a, b in pairs)
 
 

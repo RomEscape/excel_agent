@@ -22,7 +22,7 @@ import json
 import logging
 import shutil
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from office_claw_sidecar.config import (
@@ -52,7 +52,7 @@ def _downloads_dir() -> Path:
 
 
 def _timestamp_tag() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    return datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
 
 
 def _get_keyring_keys() -> list[str]:
@@ -106,7 +106,7 @@ def export_backup() -> dict:
         # 4. manifest
         manifest = {
             "version": _MANIFEST_VERSION,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "app": "ajou-ai",
             "files": included,
         }
@@ -127,7 +127,7 @@ def _validate_zip_path(member_name: str, target_dir: Path) -> Path:
     - 최종 경로가 target_dir 밖이면 ValueError 발생
     """
     # 절대 경로 또는 '..' 포함 차단
-    if member_name.startswith("/") or member_name.startswith("\\"):
+    if member_name.startswith(("/", "\\")):
         raise ValueError(f"절대 경로 zip 멤버 거부: {member_name}")
 
     candidate = (target_dir / member_name).resolve()

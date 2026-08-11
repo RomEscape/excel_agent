@@ -15,14 +15,13 @@ LocalAISetupWizard의 최종 단계(PROMPT_TEST)가 호출하는 `agentChat()` �
 
 from __future__ import annotations
 
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from fastapi.testclient import TestClient
 
 from office_claw_sidecar.main import app
 from office_claw_sidecar.routers import agent as agent_router
 from office_claw_sidecar.services.openclaw_client import OpenClawUnavailableError
-
 
 client = TestClient(app)
 
@@ -44,8 +43,8 @@ class _FakeClient:
 
     async def send_message(
         self,
-        message: str,  # noqa: ARG002 — 호출 시그니처만 맞추면 됨
-        session_id: str | None = None,  # noqa: ARG002
+        message: str,
+        session_id: str | None = None,
     ) -> AsyncIterator[dict]:
         for frame in self._frames:
             # 첫 프레임에 sessionId 주입 (라우터가 거기서 채집함)
@@ -82,9 +81,9 @@ def test_chat_uses_llm_fallback_when_gateway_yields_no_content(monkeypatch):
     """게이트웨이 응답이 비면 LLM 직접 경로로 한 번 더 보강한다."""
     fake = _FakeClient(frames=[])  # 빈 스트림
     monkeypatch.setattr(agent_router, "get_client", lambda: fake)
-    
+
     class _FallbackLLM:
-        async def chat(self, messages, model=None):  # noqa: ARG002
+        async def chat(self, messages, model=None):
             return "fallback-ok"
 
     monkeypatch.setattr(agent_router, "get_llm_service", lambda: _FallbackLLM())
@@ -101,7 +100,7 @@ def test_chat_falls_back_to_default_when_llm_fallback_fails(monkeypatch):
     monkeypatch.setattr(agent_router, "get_client", lambda: fake)
 
     class _BrokenLLM:
-        async def chat(self, messages, model=None):  # noqa: ARG002
+        async def chat(self, messages, model=None):
             raise RuntimeError("fallback unavailable")
 
     monkeypatch.setattr(agent_router, "get_llm_service", lambda: _BrokenLLM())
@@ -125,7 +124,7 @@ def test_chat_uses_llm_fallback_on_openclaw_degraded_reply(monkeypatch):
     monkeypatch.setattr(agent_router, "get_client", lambda: fake)
 
     class _FallbackLLM:
-        async def chat(self, messages, model=None):  # noqa: ARG002
+        async def chat(self, messages, model=None):
             return "안녕하세요"
 
     monkeypatch.setattr(agent_router, "get_llm_service", lambda: _FallbackLLM())
@@ -142,7 +141,7 @@ def test_chat_returns_503_when_gateway_unavailable(monkeypatch):
     """OpenClaw 게이트웨이가 죽어있으면 사용자에게 한국어 안내를 준다."""
 
     class _DeadClient:
-        async def send_message(self, message, session_id=None):  # noqa: ARG002
+        async def send_message(self, message, session_id=None):
             raise OpenClawUnavailableError("gateway not running")
             yield  # pragma: no cover — 도달 불가, async generator 형식만 맞춤
 
@@ -162,7 +161,7 @@ def test_chat_blocks_denied_intent_before_reaching_gateway(monkeypatch):
     sent = {"called": False}
 
     class _SpyClient:
-        async def send_message(self, message, session_id=None):  # noqa: ARG002
+        async def send_message(self, message, session_id=None):
             sent["called"] = True
             yield {"type": "sessions.message", "content": "should not happen"}
 

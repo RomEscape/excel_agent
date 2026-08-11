@@ -19,17 +19,18 @@ Phase 2 추가 엔드포인트:
 from __future__ import annotations
 
 import logging
+from datetime import UTC
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from office_claw_sidecar.command_audit import get_command_audit_logger
 from office_claw_sidecar.services.audit_service import AuditService
 from office_claw_sidecar.services.masking_service import get_masking_service, reset_masking_service
 from office_claw_sidecar.services.tool_registry import (
     get_whitelist_state,
     save_whitelist,
 )
-from office_claw_sidecar.command_audit import get_command_audit_logger
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["security"])
@@ -88,8 +89,8 @@ async def security_stats() -> dict:
     week_blocked = 0
     total_blocked = len(blocked)
 
-    from datetime import datetime, timezone, timedelta
-    now = datetime.now(timezone.utc)
+    from datetime import datetime, timedelta
+    now = datetime.now(UTC)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     week_start = today_start - timedelta(days=7)
 

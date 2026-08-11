@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException
 
-from office_claw_sidecar.models.credential import CredentialStore, CredentialResponse
+from office_claw_sidecar.models.credential import CredentialResponse, CredentialStore
 from office_claw_sidecar.services.keyring_service import KeyringService
 
 router = APIRouter()

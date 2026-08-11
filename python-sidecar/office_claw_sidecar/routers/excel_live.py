@@ -9,11 +9,12 @@ import re
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timezone
-from typing import Any, Callable
+from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -55,7 +56,6 @@ from office_claw_sidecar.services.excel_live_executor import (
     execute_plan,
     normalize_plan_steps,
 )
-from office_claw_sidecar.services.excel_step_repair import RepairContext, repair_step
 from office_claw_sidecar.services.excel_live_plan_critic import (
     build_replan_context,
     should_replan_after_execution,
@@ -94,6 +94,7 @@ from office_claw_sidecar.services.excel_planner_prompt import (
     render_conversation_history,
 )
 from office_claw_sidecar.services.excel_result_verifier import verify_effect
+from office_claw_sidecar.services.excel_step_repair import RepairContext, repair_step
 from office_claw_sidecar.services.excel_workbook_digest import (
     build_workbook_digest,
     invalidate_digest_cache,
@@ -415,7 +416,6 @@ _ACTION_EVIDENCE: dict[str, re.Pattern[str]] = {
     "excel_live.forecast_linear": re.compile(r"(예측|추세|forecast|전망)", re.IGNORECASE),
     "excel_live.compare_ranges": re.compile(r"(비교|차이|diff|대조)", re.IGNORECASE),
     "excel_live.consolidate_sheets": re.compile(r"(통합|합쳐|병합|모아)", re.IGNORECASE),
-    "excel_live.protect_sheet": re.compile(r"(보호|잠금|잠가|protect|수정 ?못)", re.IGNORECASE),
     "excel_live.set_data_validation": re.compile(
         r"(드롭다운|유효성|목록|제한|validation|선택되도록)", re.IGNORECASE
     ),
@@ -1504,10 +1504,7 @@ def _contains_any_keyword(lowered: str, compact: str, keywords: list[str]) -> bo
 
 
 def _matches_any_pattern(lowered: str, patterns: list[str]) -> bool:
-    for pattern in patterns:
-        if re.search(pattern, lowered, re.IGNORECASE):
-            return True
-    return False
+    return any(re.search(pattern, lowered, re.IGNORECASE) for pattern in patterns)
 
 
 # "채널별", "영업담당자별" — 묶는 기준은 열 이름만큼 다양해서 열거할 수 없다.
@@ -3155,10 +3152,10 @@ def _extract_operation_hints(message: str) -> dict[str, Any]:
         hints["params"]["left_range"] = str(range_matches[0]).upper()
         hints["params"]["right_range"] = str(range_matches[1]).upper()
 
-    if "formula" == hints["intent"]:
+    if hints["intent"] == "formula":
         hints["params"].update(_extract_formula_common_params(text))
 
-    if "sort" == hints["intent"]:
+    if hints["intent"] == "sort":
         if any(token in lowered for token in ["높은", "내림", "내림차순", "큰 순", "많은 순"]):
             hints["params"]["order"] = "desc"
         elif any(token in lowered for token in ["낮은", "오름", "오름차순", "작은 순", "적은 순"]):
@@ -3174,7 +3171,7 @@ def _extract_operation_hints(message: str) -> dict[str, Any]:
         if key_column:
             hints["params"]["key_column"] = key_column
 
-    if "filter" == hints["intent"]:
+    if hints["intent"] == "filter":
         if "완료" in lowered:
             hints["params"]["column"] = "상태"
             hints["params"]["operator"] = "=="
@@ -3217,7 +3214,7 @@ def _extract_operation_hints(message: str) -> dict[str, Any]:
         elif "이름" in lowered:
             hints["params"]["key_columns"] = ["이름"]
 
-    if "pivot" == hints["intent"]:
+    if hints["intent"] == "pivot":
         pivot_output_sheet = _extract_output_sheet_from_text(text)
         if pivot_output_sheet:
             hints["params"]["output_sheet"] = pivot_output_sheet
@@ -3255,7 +3252,7 @@ def _extract_operation_hints(message: str) -> dict[str, Any]:
                 hints["params"]["value_field"] = "비용"
                 hints["params"]["agg"] = "sum"
 
-    if "chart" == hints["intent"]:
+    if hints["intent"] == "chart":
         if any(token in lowered for token in ["선 그래프", "추이", "변화"]):
             hints["params"]["chart_type"] = "line"
         elif any(token in lowered for token in ["막대", "비교"]):
@@ -3267,7 +3264,7 @@ def _extract_operation_hints(message: str) -> dict[str, Any]:
         if "매출" in lowered:
             hints["params"]["title"] = "매출 차트"
 
-    if "validate" == hints["intent"]:
+    if hints["intent"] == "validate":
         checks: list[str] = []
         if any(token in lowered for token in ["빈칸", "빈 값", "누락"]):
             checks.append("empty")
@@ -3285,7 +3282,7 @@ def _extract_operation_hints(message: str) -> dict[str, Any]:
         if checks:
             hints["params"]["checks"] = checks
 
-    if "protect" == hints["intent"]:
+    if hints["intent"] == "protect":
         if any(token in lowered for token in ["드롭다운", "목록", "선택", "목록에서 고르게"]):
             hints["params"]["mode"] = "validation_list"
             if any(token in lowered for token in ["완료", "진행", "지연", "보류"]):
@@ -3310,7 +3307,7 @@ def _extract_operation_hints(message: str) -> dict[str, Any]:
             ):
                 hints["params"]["unlock_range"] = hints["params"]["target_range"]
 
-    if "consolidate" == hints["intent"]:
+    if hints["intent"] == "consolidate":
         if "파일" in lowered or "폴더" in lowered:
             hints["params"]["scope"] = "workbooks"
         else:
@@ -3333,7 +3330,7 @@ def _extract_operation_hints(message: str) -> dict[str, Any]:
         if target:
             hints["params"]["output_sheet"] = target.group(1)
 
-    if "automation" == hints["intent"]:
+    if hints["intent"] == "automation":
         if "power query" in lowered or "새로고침" in lowered:
             hints["params"]["mode"] = "refresh"
         else:
@@ -3344,7 +3341,7 @@ def _extract_operation_hints(message: str) -> dict[str, Any]:
         if macro_match:
             hints["params"]["macro_name"] = str(macro_match.group(1))
 
-    if "compare" == hints["intent"]:
+    if hints["intent"] == "compare":
         sheet_matches = re.findall(r"([^\s,]+)\s*시트", text)
         if len(sheet_matches) >= 2:
             hints["params"]["left_sheet"] = sheet_matches[0]
@@ -3354,12 +3351,12 @@ def _extract_operation_hints(message: str) -> dict[str, Any]:
         if "금액" in lowered:
             hints["params"]["compare_fields"] = ["금액"]
 
-    if "forecast" == hints["intent"]:
+    if hints["intent"] == "forecast":
         horizon_match = re.search(r"(\d{1,2})\s*(개월|달|월|주)", lowered)
         if horizon_match:
             hints["params"]["horizon"] = int(horizon_match.group(1))
 
-    if "print" == hints["intent"]:
+    if hints["intent"] == "print":
         if "a4" in lowered:
             hints["params"]["paper"] = "A4"
         if "가로" in lowered:
@@ -3369,7 +3366,7 @@ def _extract_operation_hints(message: str) -> dict[str, Any]:
         if "pdf" in lowered:
             hints["params"]["output_format"] = "pdf"
 
-    if "safety" == hints["intent"]:
+    if hints["intent"] == "safety":
         if "읽기 전용" in lowered:
             hints["params"]["state"] = "read_only"
         elif "보호된 보기" in lowered:
@@ -3383,7 +3380,7 @@ def _extract_operation_hints(message: str) -> dict[str, Any]:
         elif "개인정보" in lowered:
             hints["params"]["state"] = "pii"
 
-    if "debug" == hints["intent"]:
+    if hints["intent"] == "debug":
         if "#n/a" in lowered:
             hints["params"]["error_code"] = "#N/A"
         elif "#value" in lowered:
@@ -3395,7 +3392,7 @@ def _extract_operation_hints(message: str) -> dict[str, Any]:
         if "합계" in lowered:
             hints["params"]["issue"] = "sum_mismatch"
 
-    if "performance" == hints["intent"]:
+    if hints["intent"] == "performance":
         if "피벗" in lowered:
             hints["params"]["suspect"] = "pivot_refresh"
         elif "수식" in lowered:
@@ -3403,7 +3400,7 @@ def _extract_operation_hints(message: str) -> dict[str, Any]:
         elif "조건부서식" in lowered:
             hints["params"]["suspect"] = "conditional_formatting"
 
-    if "explain" == hints["intent"]:
+    if hints["intent"] == "explain":
         if "피벗" in lowered:
             hints["params"]["topic"] = "pivot"
         elif "power query" in lowered or "파워쿼리" in lowered:
@@ -5060,12 +5057,7 @@ def _trace_params(params: dict[str, Any]) -> dict[str, Any]:
         key = str(raw_key or "").strip()
         if not key:
             continue
-        include = (
-            key in _XLWINGS_TRACE_PARAM_KEYS
-            or key.endswith("_range")
-            or key.endswith("_sheet")
-            or key.endswith("_cell")
-        )
+        include = key in _XLWINGS_TRACE_PARAM_KEYS or key.endswith(("_range", "_sheet", "_cell"))
         if not include:
             continue
         if key == "values_2d":
@@ -5355,7 +5347,7 @@ def _repair_for_request(req: Any) -> Callable[[PlanStep, Exception | str], PlanS
     def _repair(step: PlanStep, failure: Exception | str) -> PlanStep | None:
         try:
             ctx = _build_repair_context(req)
-        except Exception:  # noqa: BLE001 - 보정 실패가 본 작업을 깨면 안 된다.
+        except Exception:
             return None
         repaired = repair_step(step, failure, ctx)
         if repaired is not None:
@@ -5377,7 +5369,7 @@ def _build_repair_context(req: Any) -> RepairContext:
         listed = service.list_sheets(getattr(req, "workbook_id", None))
         sheet_names = tuple(str(name) for name in (listed.get("sheets") or []))
         active_sheet = listed.get("active_sheet") or None
-    except Exception:  # noqa: BLE001 - 시트 목록을 못 얻어도 범위 정규화는 할 수 있다.
+    except Exception:
         pass
     return RepairContext(
         sheet_names=sheet_names,
@@ -5428,7 +5420,7 @@ def _build_approval(action: str, params: dict[str, Any]) -> ApprovalRequest:
         summary=summary,
         args_preview=params,
         session_id="excel-live",
-        created_at=datetime.now(timezone.utc).isoformat(),
+        created_at=datetime.now(UTC).isoformat(),
     )
 
 
@@ -6112,7 +6104,7 @@ async def _run_command(
             return False, f"파라미터를 확정하지 못했습니다: {', '.join(filter(None, unresolved)) or '대상 불명확'}"
         try:
             _validate_steps(bound)
-        except Exception as exc:  # noqa: BLE001 - 검증기가 낸 문구를 그대로 모델에 돌려준다
+        except Exception as exc:
             return False, str(exc)
         return True, ""
 
@@ -6128,7 +6120,7 @@ async def _run_command(
                 )
                 parse_error = None
                 return result
-            except asyncio.TimeoutError as exc:
+            except TimeoutError as exc:
                 last = exc
                 parse_timeout_count += 1
                 if parse_attempt + 1 < parse_max_attempts:
@@ -6299,7 +6291,7 @@ async def _run_command(
                         parsed = reflected
                         reflection_applied = True
                     break
-                except (asyncio.TimeoutError, ValueError):
+                except (TimeoutError, ValueError):
                     if reflection_try + 1 < _COMMAND_REFLECTION_MAX_ATTEMPTS:
                         backoff = _COMMAND_DEEP_PARSE_RETRY_BACKOFF_SECONDS * float(reflection_try + 1)
                         if backoff > 0:
@@ -7059,16 +7051,19 @@ async def _execute_plan_and_respond(
                     )
                 return bool(is_ok), str(detail or "")
 
-            def _run_execute_once():
+            # 재계획 루프 안에서 정의되므로 이번 회차의 계획을 기본 인자로 묶는다.
+            # 루프 변수를 그대로 닫으면 호출 시점의 값을 읽게 되고, 나중에 호출 위치가
+            # 한 줄만 밀려도 다음 회차 계획을 실행하는 버그가 된다.
+            def _run_execute_once(plan_for_this_round: list[PlanStep] | None = current_plan):
                 nonlocal recovery_backup_info
-                if recovery_backup_info is None and _plan_needs_recovery_backup(current_plan):
+                if recovery_backup_info is None and _plan_needs_recovery_backup(plan_for_this_round):
                     recovery_backup_info = _create_recovery_backup_if_possible(
                         workbook_id=req.workbook_id,
                         label="command",
                     )
                 # 관측 루프에서는 관측 단계에서 계획을 끊는다. 끊지 않으면 뒤 단계가
                 # 읽기 전에 정해진 인자로 실행돼, 재계획할 기회가 오기 전에 파일이 바뀐다.
-                planned = excel_observation.truncate_at_observation(current_plan)
+                planned = excel_observation.truncate_at_observation(plan_for_this_round)
                 return execute_plan(
                     steps=_chain_chart_to_pivot(
                         _drop_trailing_verification(_drop_table_step_when_aggregating(planned)),
@@ -7134,7 +7129,7 @@ async def _execute_plan_and_respond(
                 current_plan = _validate_plan_for_request(observed_steps, req)
                 parsed["reason"] = observed_plan.get("reason", "") or parsed.get("reason", "")
                 continue
-            except Exception as exc:  # noqa: BLE001 - 관측은 했으므로 그 결과라도 보고한다
+            except Exception as exc:
                 trace_route("observe:replan_failed", why=f"{type(exc).__name__}: {exc}")
                 break
 

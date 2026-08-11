@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from office_claw_sidecar.services.excel_live_file_service import FileExcelLiveService  # noqa: E402
+from office_claw_sidecar.services.excel_live_file_service import FileExcelLiveService
 
 
 def excel_can_open(path: Path) -> str:
@@ -26,7 +26,7 @@ def excel_can_open(path: Path) -> str:
         book = excel.Workbooks.Open(str(path))
         book.Close(SaveChanges=False)
         return "열림"
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return f"열기 실패: {str(exc)[:120]}"
     finally:
         excel.Quit()
@@ -96,7 +96,7 @@ def main() -> int:
             try:
                 operation(target)
                 verdict = excel_can_open(target)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 verdict = f"동작 자체 실패: {str(exc)[:160]}"
             out.write(f"{label}까지 누적: {verdict}\n")
             out.flush()
@@ -110,7 +110,7 @@ def main() -> int:
         try:
             operation(target)
             verdict = excel_can_open(target)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             verdict = f"동작 자체 실패: {str(exc)[:160]}"
         out.write(f"{label}: {verdict}\n")
         out.flush()

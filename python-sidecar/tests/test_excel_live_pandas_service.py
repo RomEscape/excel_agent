@@ -7,8 +7,8 @@ from openpyxl import Workbook
 # 깨지지 않게 통째로 건너뛴다.
 pytest.importorskip("pandas")
 
-from office_claw_sidecar.services import excel_live_service as service_module  # noqa: E402
-from office_claw_sidecar.services.excel_live_pandas_service import (  # noqa: E402
+from office_claw_sidecar.services import excel_live_service as service_module
+from office_claw_sidecar.services.excel_live_pandas_service import (
     PandasExcelLiveService,
 )
 

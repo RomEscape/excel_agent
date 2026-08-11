@@ -8,13 +8,13 @@ LLM 없이 규칙 계층만 보고 싶을 때 쓴다. 실행은 하지 않는다
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from office_claw_sidecar.routers import excel_live as router  # noqa: E402
-from office_claw_sidecar.services.excel_formula_builder import parse_named_formula  # noqa: E402
+from office_claw_sidecar.routers import excel_live as router
+from office_claw_sidecar.services.excel_formula_builder import parse_named_formula
 
 
 def main() -> int:

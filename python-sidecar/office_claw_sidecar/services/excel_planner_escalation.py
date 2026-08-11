@@ -68,7 +68,7 @@ def strong_tier_enabled() -> bool:
         from office_claw_sidecar.services.keyring_service import KeyringService
 
         return bool(KeyringService().retrieve("claude_api_key"))
-    except Exception:  # noqa: BLE001 - 키링 백엔드가 없는 환경(CI 등)
+    except Exception:
         return False
 
 
@@ -141,7 +141,7 @@ async def _attempt(
 
     try:
         parsed = await parse(message, context)
-    except Exception as exc:  # noqa: BLE001 - 어떤 실패든 다음 단계로 넘긴다
+    except Exception as exc:
         return None, None, PlannerAttempt(
             tier=tier, model=model, ok=False, error=str(exc), latency_ms=_elapsed()
         )

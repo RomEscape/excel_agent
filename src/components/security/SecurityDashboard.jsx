@@ -60,26 +60,6 @@ function blockActionLabel(action) {
   }
 }
 
-/**
- * 스킬 이름에서 "DENIED." 내부 접두사를 제거하고 표시용 이름으로 변환한다.
- * 예: "DENIED.file_delete" → "[거부] 파일 삭제"
- */
-const DENIED_DISPLAY_NAMES = {
-  "DENIED.file_delete": "[거부] 파일 삭제",
-  "DENIED.shell_execute": "[거부] 셸 명령 실행",
-  "DENIED.system_modify": "[거부] 시스템 설정 변경",
-};
-
-function skillDisplayName(name) {
-  if (!name) return "-";
-  if (DENIED_DISPLAY_NAMES[name]) return DENIED_DISPLAY_NAMES[name];
-  if (name.startsWith("DENIED.")) {
-    const bare = name.slice(7).replace(/_/g, " ");
-    return `[거부] ${bare}`;
-  }
-  return name;
-}
-
 function permissionBadgeVariant(level) {
   switch (level) {
     case "safe":
@@ -107,20 +87,6 @@ function permissionLabel(level) {
 }
 
 // ── 섹션 0 (Phase 2): 명령 분석 통계 ──────────────────────────────────────────
-
-/** 등급 뱃지 색상 */
-function gradeBadgeClass(grade) {
-  switch (grade) {
-    case "SAFE":
-      return "bg-blue-100 text-blue-700 border-blue-200";
-    case "CONFIRM":
-      return "bg-orange-100 text-orange-700 border-orange-200";
-    case "DENIED":
-      return "bg-red-100 text-red-700 border-red-200";
-    default:
-      return "bg-muted text-muted-foreground border-border";
-  }
-}
 
 /** 등급 한국어 레이블 */
 function gradeLabel(grade, approved) {

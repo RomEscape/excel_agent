@@ -10,6 +10,7 @@ import time
 import uuid
 from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
@@ -435,7 +436,7 @@ def _check_assertion(wb, assertion: dict[str, Any], workbook_path: Path) -> tupl
         descending = bool(assertion.get("descending", False))
         values = [v for v in _column_values(ws, range_ref) if v is not None]
         try:
-            pairs = list(zip(values, values[1:]))
+            pairs = list(pairwise(values))
             ok = all((b <= a) if descending else (a <= b) for a, b in pairs)
         except TypeError:
             ok = False

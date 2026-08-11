@@ -9,8 +9,8 @@ verify_excel_complex_scenarios.py 가 남긴 JSON은 통과/실패가 섞여 있
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 DEFAULT_REPORT = Path(__file__).resolve().parents[2] / "logs" / "excel_complex_verify_report.json"
 

@@ -105,7 +105,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.out:
-        sys.stdout = Path(args.out).open("w", encoding="utf-8")  # noqa: SIM115
+        sys.stdout = Path(args.out).open("w", encoding="utf-8")
 
     path = Path(args.path) if args.path else get_chat_log_path()
     rows = _load(path)

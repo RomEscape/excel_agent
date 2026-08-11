@@ -196,8 +196,8 @@ async def _auto_start_telegram() -> None:
     토큰이 없거나 봇 시작에 실패하면 조용히 무시 — 사용자가 온보딩에서 설정 가능.
     """
     try:
-        from office_claw_sidecar.services.keyring_service import KeyringService
         from office_claw_sidecar.routers.telegram import telegram_svc
+        from office_claw_sidecar.services.keyring_service import KeyringService
 
         ks = KeyringService()
         token = ks.retrieve("telegram_bot_token")

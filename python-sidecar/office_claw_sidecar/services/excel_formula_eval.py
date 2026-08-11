@@ -14,8 +14,9 @@ TODAY·DATE 계열에 몰려 있었다. 지원하지 않는 함수를 만나면 
 from __future__ import annotations
 
 import re
+from collections.abc import Callable, Iterable
 from datetime import date, datetime, timedelta
-from typing import Any, Callable, Iterable
+from typing import Any
 
 __all__ = ["FormulaError", "WorkbookEvaluator", "excel_serial", "from_excel_serial"]
 
@@ -222,7 +223,7 @@ def _split_sheet(text: str) -> tuple[str | None, str]:
 class _Range:
     """함수 인자로 넘어가는 셀 범위. 스칼라 자리에서는 첫 셀처럼 취급한다."""
 
-    __slots__ = ("sheet", "row1", "col1", "row2", "col2")
+    __slots__ = ("col1", "col2", "row1", "row2", "sheet")
 
     def __init__(self, sheet: str | None, row1: int, col1: int, row2: int, col2: int) -> None:
         self.sheet = sheet
@@ -639,7 +640,7 @@ def _selected_indices(pairs: list[tuple[list[Any], Any]]) -> list[int]:
     ]
 
 
-def _apply_function(name: str, args: list[Any], ev: WorkbookEvaluator) -> Any:  # noqa: C901 - 함수 분기 모음
+def _apply_function(name: str, args: list[Any], ev: WorkbookEvaluator) -> Any:
     scalar = ev._scalar
 
     if name == "IF":

@@ -17,8 +17,8 @@ Sprint 3 사이드카 변경 통합 테스트.
 
 from fastapi.testclient import TestClient
 
-from office_claw_sidecar.main import app
 from office_claw_sidecar.command_audit import get_command_audit_logger
+from office_claw_sidecar.main import app
 
 client = TestClient(app)
 HEADERS = {"Authorization": "Bearer dev-token"}

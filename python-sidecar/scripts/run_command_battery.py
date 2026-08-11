@@ -128,7 +128,7 @@ def run_case(
             after = snapshot_live(book)
             row["changed"] = before != after
             row["new_sheets"] = [s for s in after["sheets"] if s not in before["sheets"]]
-    except Exception as exc:  # noqa: BLE001 - 진단 도구라 어떤 실패든 표에 남겨야 한다
+    except Exception as exc:
         row.update(
             {
                 "status": 0,
@@ -143,7 +143,7 @@ def run_case(
         if book is not None:
             try:
                 book.close()
-            except Exception as exc:  # noqa: BLE001 - 정리 실패가 결과를 가리면 안 된다
+            except Exception as exc:
                 print(f"[정리] 통합문서 닫기 실패: {exc}")
     row["ms"] = int((time.time() - t0) * 1000)
     return row
@@ -185,7 +185,7 @@ def main() -> None:
         if app is not None:
             try:
                 app.quit()
-            except Exception as exc:  # noqa: BLE001 - Excel 종료 실패가 결과를 가리면 안 된다
+            except Exception as exc:
                 print(f"[정리] Excel 종료 실패: {exc}")
 
     out = root / "battery_results.json"

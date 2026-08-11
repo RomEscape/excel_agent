@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-
 from fastapi.testclient import TestClient
 
 from office_claw_sidecar.main import app
@@ -517,7 +515,7 @@ def test_conditional_color_request_reaches_the_planner(monkeypatch):
 
 def test_command_rule_based_highlight(monkeypatch):
     monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
-    
+
     async def _plan_parse(_message, llm_service, context):
         return {
             "intent": "edit",
@@ -1288,7 +1286,7 @@ def test_command_parse_timeout_returns_clarify_not_400(monkeypatch):
     monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     async def _raise_timeout(_message, llm_service, context):
-        raise asyncio.TimeoutError()
+        raise TimeoutError()
 
     monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _raise_timeout)
 

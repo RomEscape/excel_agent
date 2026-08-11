@@ -96,7 +96,7 @@ async def _run_case(
                 ),
                 timeout=timeout,
             )
-        except Exception as exc:  # noqa: BLE001 - 계획 실패도 결과다.
+        except Exception as exc:
             outcome["error"] = f"plan: {exc}"
             outcome["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
             return outcome
@@ -124,7 +124,7 @@ async def _run_case(
                 workbook_id=str(path),
                 sheet_name=case.sheet,
             )
-        except Exception as exc:  # noqa: BLE001 - 실행 실패도 결과다.
+        except Exception as exc:
             outcome["error"] = f"execute: {exc}"
             return outcome
 

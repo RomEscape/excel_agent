@@ -290,7 +290,7 @@ def _run_plan_turn(
 ) -> tuple[bool, str]:
     try:
         normalized_steps = normalize_plan_steps(plan)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return False, f"normalize_failed:{exc}"
     if not normalized_steps:
         return False, "normalize_empty"
@@ -300,7 +300,7 @@ def _run_plan_turn(
             normalized_steps,
             context=ValidationContext(message=message, workbook_id=workbook_id, sheet_name=sheet_name),
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return False, f"validate_failed:{exc}"
 
     execution = execute_plan(

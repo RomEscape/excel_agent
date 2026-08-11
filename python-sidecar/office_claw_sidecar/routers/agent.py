@@ -21,11 +21,12 @@ OpenClaw 게이트웨이가 실행 중이 아닌 경우:
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from datetime import UTC
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from office_claw_sidecar.models.approval import ApprovalRequest, ApprovalResponse
 from office_claw_sidecar.services.audit_service import AuditService
 from office_claw_sidecar.services.llm_service import get_llm_service
 from office_claw_sidecar.services.masking_service import get_masking_service
@@ -39,14 +40,13 @@ from office_claw_sidecar.services.tool_registry import (
     get_tool,
     is_denied_intent,
 )
-from office_claw_sidecar.models.approval import ApprovalRequest, ApprovalResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["agent"])
 _audit = AuditService()
 
 # 승인 대기 중인 ApprovalRequest 딕셔너리: approval_id → ApprovalRequest
-_pending_approvals: dict[str, "ApprovalRequest"] = {}
+_pending_approvals: dict[str, ApprovalRequest] = {}
 _OPENCLAW_DEGRADED_REPLY_TOKENS = (
     "context overflow",
     "prompt too large for the model",
@@ -61,7 +61,7 @@ _OPENCLAW_DEGRADED_REPLY_TOKENS = (
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, description="사용자 메시지")
-    session_id: Optional[str] = Field(None, description="기존 세션 ID (None이면 새 세션 생성)")
+    session_id: str | None = Field(None, description="기존 세션 ID (None이면 새 세션 생성)")
 
 
 class ChatResponse(BaseModel):
@@ -71,7 +71,7 @@ class ChatResponse(BaseModel):
     masked_count: int = 0          # 마스킹된 항목 수 (0이면 미표시)
     masked_types: list[str] = Field(default_factory=list)  # 마스킹된 유형 목록
     approval_required: bool = False
-    pending_approval: "ApprovalRequest | None" = None
+    pending_approval: ApprovalRequest | None = None
 
 
 # ── 엔드포인트 ────────────────────────────────────────────────────────────────
@@ -151,7 +151,8 @@ async def agent_chat(req: ChatRequest) -> ChatResponse:
                 if tool_def and tool_def.permission == PermissionLevel.CONFIRM:
                     # 승인 필요: 실행 중단하고 React에 확인 요청 반환
                     import uuid as _uuid
-                    from datetime import datetime, timezone
+                    from datetime import datetime
+
                     from office_claw_sidecar.services.tool_registry import TOOL_DISPLAY_NAMES
 
                     approval_id = str(_uuid.uuid4())
@@ -171,7 +172,7 @@ async def agent_chat(req: ChatRequest) -> ChatResponse:
                         summary=_build_approval_summary(tool_name, args_preview),
                         args_preview=args_preview,
                         session_id=session_id or "",
-                        created_at=datetime.now(timezone.utc).isoformat(),
+                        created_at=datetime.now(UTC).isoformat(),
                     )
                     # 승인 대기 큐에 저장
                     _pending_approvals[approval_id] = pending_approval
@@ -358,10 +359,10 @@ async def get_pending_approvals() -> dict:
     호출 시점에 생성 후 90초(60초 타임아웃 + 30초 여유)를 초과한 항목을 자동 정리한다.
     별도 백그라운드 태스크 없이 폴링 호출 시 만료 항목을 제거한다.
     """
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta
 
     TTL_SECONDS = 90
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expired_ids = []
 
     for approval_id, req in list(_pending_approvals.items()):

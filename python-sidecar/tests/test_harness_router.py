@@ -36,7 +36,7 @@ def test_harness_feedback_endpoint(monkeypatch):
 
 
 def test_harness_replay_endpoint(monkeypatch):
-    async def _fake_parse(message, llm_service, context=None):  # noqa: ARG001
+    async def _fake_parse(message, llm_service, context=None):
         return {
             "action_plan": [
                 {
@@ -52,7 +52,7 @@ def test_harness_replay_endpoint(monkeypatch):
     monkeypatch.setattr(
         harness_router,
         "list_recent_failure_events",
-        lambda user_key, route, limit: [  # noqa: ARG005
+        lambda user_key, route, limit: [
             {
                 "message": "여기 경계 기본으로",
                 "action": "excel_live.fill_range",

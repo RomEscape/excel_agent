@@ -55,8 +55,11 @@ jobs:
       - name: 의존성 설치 (dev extras 포함, lockfile 고정)
         run: uv sync --frozen --extra dev
 
-      - name: Lint 체크 (Ruff)
-        run: uvx ruff check .
+      # `uvx ruff`가 아니라 `uv run ruff`다. uvx는 매번 최신 ruff를 받아 오기 때문에
+      # 우리가 코드를 안 건드려도 ruff 새 버전이 나오는 날 CI가 깨진다. dev extra에
+      # 고정한 버전을 쓴다.
+      - name: Lint 체크 (Ruff, 고정 버전)
+        run: uv run ruff check .
 
       - name: Unit Test 실행
         run: uv run pytest -q
@@ -77,11 +80,18 @@ jobs:
       - name: 의존성 설치
         run: npm ci
 
-      - name: Lint (스크립트 존재 시)
-        run: npm run lint --if-present
+      # `--if-present`를 뗐다. 지금까지 lint 스크립트가 없어서 이 잡은 통과가 아니라
+      # 스킵이었다 — 초록불이 "검사했다"가 아니라 "안 했다"는 뜻이었다.
+      - name: Lint (ESLint)
+        run: npm run lint
 
-      - name: Unit Test (스크립트 존재 시)
-        run: npm run test:unit --if-present
+      - name: Unit Test
+        run: npm run test:unit
+
+      # 전체 코드의 38.9%인 프론트엔드가 빌드 검증조차 안 받고 있었다.
+      # import 경로 오타 같은 건 여기서만 잡힌다.
+      - name: 빌드 검증
+        run: npm run build
 
   # 3. Rust(Tauri) 문법/린트 검증
   rust-check:

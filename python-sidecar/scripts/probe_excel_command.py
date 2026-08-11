@@ -17,10 +17,10 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from verify_excel_complex_scenarios import _build_seed_workbook  # noqa: E402
+from verify_excel_complex_scenarios import _build_seed_workbook
 
-from office_claw_sidecar.routers import excel_live as router  # noqa: E402
-from office_claw_sidecar.services.llm_service import (  # noqa: E402
+from office_claw_sidecar.routers import excel_live as router
+from office_claw_sidecar.services.llm_service import (
     get_llm_service,
     load_llm_config,
     reload_llm_service,

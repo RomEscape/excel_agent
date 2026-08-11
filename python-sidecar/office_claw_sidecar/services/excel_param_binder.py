@@ -17,7 +17,6 @@ key_column=1 처럼 근거 없는 인덱스를 채워 넣는다. 그 값이 실�
 
 from __future__ import annotations
 
-import difflib
 import re
 from typing import Any
 
@@ -315,7 +314,7 @@ def _bind_pivot(params: dict[str, Any], *, message: str, entry: dict[str, Any]) 
     value_field = None
     for hit in mentions:
         header = hit["header"]
-        if header == row_field or header == col_field:
+        if header in (row_field, col_field):
             continue
         if not _column_meta(entry, header).get("numeric"):
             continue

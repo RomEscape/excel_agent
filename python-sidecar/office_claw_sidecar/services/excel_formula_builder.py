@@ -12,8 +12,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import re
+from dataclasses import dataclass, field
 from typing import Any
 
 from .excel_header_lexicon import find_header_mentions
@@ -72,7 +72,7 @@ class NamedFormula:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "NamedFormula":
+    def from_dict(cls, data: dict[str, Any]) -> NamedFormula:
         scales = {}
         for key, value in (data.get("scales") or {}).items():
             try:

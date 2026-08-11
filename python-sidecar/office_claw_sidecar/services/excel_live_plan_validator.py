@@ -514,7 +514,7 @@ def _validate_step_body(
             target_range = preferred_range or "A:Z"
         operator_raw = params.get("operator") or params.get("condition") or ">="
         operator = _coerce_operator(operator_raw)
-        threshold_raw = params.get("threshold", params.get("value", None))
+        threshold_raw = params.get("threshold", params.get("value"))
         if threshold_raw is None:
             # operator가 객체로 온 경우 그 안의 value를 먼저 본다.
             threshold_raw = _operator_payload_value(operator_raw)

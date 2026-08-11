@@ -25,8 +25,8 @@ import os
 import sys
 import time
 import uuid
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import AsyncIterator
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +118,7 @@ class OpenClawClient:
             while True:
                 try:
                     frame = await asyncio.wait_for(queue.get(), timeout=120.0)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     break
 
                 # 다른 runId 이벤트가 섞여 들어오는 경우 필터링
@@ -573,7 +573,7 @@ class OpenClawClient:
 
         try:
             payload = await asyncio.wait_for(future, timeout=timeout)
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             self._pending.pop(req_id, None)
             raise OpenClawError(f"요청 타임아웃: {method}") from exc
 
@@ -584,7 +584,7 @@ class OpenClawClient:
         raw = (session_id or "").strip()
         if not raw:
             return ""
-        if raw.startswith("agent:") or raw.startswith("global") or raw.startswith("unknown"):
+        if raw.startswith(("agent:", "global", "unknown")):
             return raw
 
         cached = self._session_key_by_id.get(raw)
@@ -806,8 +806,9 @@ def _token_cache_path() -> Path:
 
     기존 XDG 경로에 토큰이 있는 사용자를 위해 1회 마이그레이션을 수행한다.
     """
-    from office_claw_sidecar.config import get_data_dir
     import shutil
+
+    from office_claw_sidecar.config import get_data_dir
 
     new_path = get_data_dir() / "openclaw_token.json"
 

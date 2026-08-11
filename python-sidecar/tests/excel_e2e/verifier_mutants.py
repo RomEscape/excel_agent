@@ -416,7 +416,7 @@ def run_case(case: MutationCase, *, stage: str = "V2") -> dict[str, Any]:
                     workbook_id=str(path),
                     sheet_name=case.sheet,
                 )
-            except Exception as exc:  # noqa: BLE001 - 실행 실패도 판정 결과다
+            except Exception as exc:
                 error = f"{type(exc).__name__}: {exc}"
                 verifier_passed = False
 

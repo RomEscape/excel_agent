@@ -23,7 +23,6 @@ import json
 import logging
 import sqlite3
 from pathlib import Path
-from typing import Optional
 
 from office_claw_sidecar.services.unified_log_service import append_unified_event
 
@@ -67,11 +66,11 @@ def _get_conn() -> sqlite3.Connection:
 def save_message(
     session_id: str,
     role: str,
-    text: Optional[str] = None,
-    tool_calls: Optional[object] = None,
+    text: str | None = None,
+    tool_calls: object | None = None,
     masked_count: int = 0,
-    masked_types: Optional[list] = None,
-    error_text: Optional[str] = None,
+    masked_types: list | None = None,
+    error_text: str | None = None,
 ) -> int:
     """메시지를 DB에 저장하고 생성된 id를 반환한다."""
     if role not in _ALLOWED_ROLES:

@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from augment_paraphrases import augment_rows, generate_paraphrases  # noqa: E402
+from augment_paraphrases import augment_rows, generate_paraphrases
 
 
 def test_generate_paraphrases_produces_unique_non_empty_variants():

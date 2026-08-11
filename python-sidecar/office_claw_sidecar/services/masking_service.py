@@ -17,8 +17,8 @@ LLM에 메시지를 전달하기 전에 아래 유형을 자동 마스킹한다:
 
 from __future__ import annotations
 
-import re
 import logging
+import re
 from typing import Final
 
 from office_claw_sidecar.models.masking import Detection, MaskResult

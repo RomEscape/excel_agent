@@ -17,7 +17,6 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-
 # ── 결과 타입 ─────────────────────────────────────────────────────────────────
 
 @dataclass

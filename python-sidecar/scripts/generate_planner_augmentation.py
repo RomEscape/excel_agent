@@ -265,7 +265,7 @@ def load_reserved_instructions() -> frozenset[str]:
     sys.path.insert(0, str(tests_dir))
     try:
         import test_excel_live_50_commands as suite
-    except Exception:  # noqa: BLE001 - 테스트가 없어도 생성은 되어야 한다
+    except Exception:
         return frozenset()
     return frozenset(str(s["message"]).strip() for s in suite.SCENARIOS)
 

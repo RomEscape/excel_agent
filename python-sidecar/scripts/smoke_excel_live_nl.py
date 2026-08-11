@@ -10,7 +10,6 @@ from typing import Any
 
 import requests
 
-
 BASE_URL = "http://127.0.0.1:19532"
 TOKEN = "dev-token"
 TIMEOUT_SECONDS = 8

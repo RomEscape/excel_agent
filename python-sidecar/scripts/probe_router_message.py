@@ -8,9 +8,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests"))
 
-from test_excel_live_50_commands import HEADERS, _FakeExcelService, client  # noqa: E402
+from test_excel_live_50_commands import HEADERS, _FakeExcelService, client
 
-from office_claw_sidecar.routers import excel_live as excel_live_router  # noqa: E402
+from office_claw_sidecar.routers import excel_live as excel_live_router
 
 excel_live_router.get_excel_live_service = lambda: _FakeExcelService()
 

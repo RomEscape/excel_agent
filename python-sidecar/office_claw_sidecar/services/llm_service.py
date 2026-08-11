@@ -311,7 +311,7 @@ def get_strong_llm_service() -> LLMService | None:
     if _strong_llm_service_instance is None:
         try:
             _strong_llm_service_instance = LLMService(ClaudeProvider())
-        except Exception:  # noqa: BLE001 - 키 없음 등은 정상 상황(로컬 전용 사용자)
+        except Exception:
             logger.info("강한 모델 프로바이더를 초기화하지 못했습니다 — 로컬 단계까지만 사용합니다.")
             return None
     return _strong_llm_service_instance

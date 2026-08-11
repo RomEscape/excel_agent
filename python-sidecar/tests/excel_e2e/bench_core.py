@@ -370,7 +370,7 @@ def run_plan_with_verification(
                 workbook_id=str(path),
                 sheet_name=case.sheet,
             )
-        except Exception as exc:  # noqa: BLE001 - 실행 실패도 결과다.
+        except Exception as exc:
             return VerifierOutcome(
                 case.case_id, False, False, " | ".join(details), "", error=str(exc)
             )
@@ -411,7 +411,7 @@ def run_plan(
                 workbook_id=str(path),
                 sheet_name=case.sheet,
             )
-        except Exception as exc:  # noqa: BLE001 - 실행 실패도 벤치마크 결과다.
+        except Exception as exc:
             return RunOutcome(case.case_id, False, "", error=str(exc), steps=len(plan))
 
         result = case.expectation.check(path, case.sheet)

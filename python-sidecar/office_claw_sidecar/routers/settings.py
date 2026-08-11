@@ -9,8 +9,8 @@ from pydantic import BaseModel, field_validator
 
 from office_claw_sidecar.services.llm_service import (
     load_llm_config,
-    save_llm_config,
     reload_llm_service,
+    save_llm_config,
 )
 
 logger = logging.getLogger(__name__)

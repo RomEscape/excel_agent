@@ -648,7 +648,7 @@ def run_once(client, monkeypatch, case: BatteryCase, *, run: int, suite: str) ->
                 response = client.post("/excel-live/command", json=payload, headers=HEADERS)
                 status = response.status_code
                 body = response.json() if status == 200 else {}
-            except Exception as exc:  # noqa: BLE001 - 진단 도구라 어떤 실패든 남겨야 한다
+            except Exception as exc:
                 error = f"{type(exc).__name__}: {exc}"
         elapsed = int((time.perf_counter() - started) * 1000)
 
@@ -683,11 +683,11 @@ def _check_effect(case: BatteryCase, workbook: Path) -> str:
         return ""
     try:
         book = load_workbook(workbook, data_only=False)
-    except Exception as exc:  # noqa: BLE001 - 진단 도구
+    except Exception as exc:
         return f"[오라클 오류] 결과 파일을 열지 못함: {type(exc).__name__}: {exc}"
     try:
         return oracle(book)
-    except Exception as exc:  # noqa: BLE001 - 진단 도구
+    except Exception as exc:
         return f"[오라클 오류] {type(exc).__name__}: {exc}"
     finally:
         book.close()

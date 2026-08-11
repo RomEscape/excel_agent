@@ -71,7 +71,7 @@ async def main() -> None:
             label = "response_format=json_object" if json_mode else "(없음)"
             try:
                 result = await call(model, json_mode=json_mode)
-            except Exception as exc:  # noqa: BLE001 - 프로브라 원인만 찍고 계속
+            except Exception as exc:
                 print(f"  {label:28} 예외: {type(exc).__name__}: {exc}")
                 continue
             print(f"  {label:28} {result}")

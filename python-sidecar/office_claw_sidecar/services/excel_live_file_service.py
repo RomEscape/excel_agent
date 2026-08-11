@@ -332,7 +332,7 @@ class FileExcelLiveService(ExcelLiveService):
             for table in getattr(ws, "tables", {}).values():
                 try:
                     min_col, min_row, max_col, _max_row = range_boundaries(table.ref)
-                except Exception:  # noqa: BLE001 - 표 참조가 깨졌으면 건드리지 않는다
+                except Exception:
                     continue
                 if not getattr(table, "headerRowCount", 1):
                     continue
@@ -1728,7 +1728,7 @@ class FileExcelLiveService(ExcelLiveService):
             address = self._address_from_bounds(bounds)
             # 병합은 왼쪽 위 셀 값만 남기고 나머지를 지운다 — 병합 전 값이 여러 개면
             # 표시상 하나만 보이는 게 openpyxl/Excel 동작과 같다. 첫 값을 보존한다.
-            min_row, min_col, max_row, max_col = bounds
+            min_row, min_col, max_row, _max_col = bounds
             keep_value = ws.cell(row=min_row, column=min_col).value
             ws.merge_cells(address)
             ws.cell(row=min_row, column=min_col, value=keep_value)

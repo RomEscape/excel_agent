@@ -15,15 +15,15 @@ MVP Day 1 범위:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import date, datetime
 import importlib
 import math
 import os
-from pathlib import Path
 import re
 import shutil
 import time
+from dataclasses import dataclass
+from datetime import date, datetime
+from pathlib import Path
 from typing import Any
 
 from office_claw_sidecar.services.excel_header_lexicon import resolve_header
@@ -1225,7 +1225,7 @@ class ExcelLiveService:
         body_rows = 0
         for sname in source_sheets:
             ws = self._find_sheet(wb, sname)
-            values = self._normalize_values(getattr(ws, "used_range").options(ndim=2).value)
+            values = self._normalize_values(ws.used_range.options(ndim=2).value)
             if not values:
                 continue
             header = values[0]
@@ -1293,7 +1293,7 @@ class ExcelLiveService:
                     ws_in = self._find_sheet(wb_in, source_sheet)
                 else:
                     ws_in = wb_in.sheets[0]
-                values = self._normalize_values(getattr(ws_in, "used_range").options(ndim=2).value)
+                values = self._normalize_values(ws_in.used_range.options(ndim=2).value)
                 if not values:
                     continue
                 header = values[0]
@@ -1772,7 +1772,7 @@ class ExcelLiveService:
                 ):
                     return ""
             return self._normalize_address_ref(str(getattr(selection, "address", "") or ""))
-        except Exception:  # noqa: BLE001 - COM 실패는 '선택 없음'으로 본다
+        except Exception:
             return ""
 
     def _data_region_ref(self, sheet: Any, anchor: str) -> str:
@@ -1785,14 +1785,14 @@ class ExcelLiveService:
                 address = self._normalize_address_ref(str(getattr(region, "address", "") or ""))
                 if ":" in address:
                     return address
-            except Exception:  # noqa: BLE001 - 기준 셀이 비었으면 다음 후보로 넘어간다
+            except Exception:
                 continue
         try:
             used = getattr(sheet, "used_range", None)
             if used is None:
                 return ""
             return self._normalize_address_ref(str(getattr(used, "address", "") or ""))
-        except Exception:  # noqa: BLE001
+        except Exception:
             return ""
 
     def get_used_range_ref(
@@ -1842,7 +1842,7 @@ class ExcelLiveService:
     @staticmethod
     def _active_sheet_name(workbook: Any) -> str:
         try:
-            sheet = getattr(workbook, "sheets").active
+            sheet = workbook.sheets.active
             return str(getattr(sheet, "name", "") or "")
         except Exception:
             return ""
@@ -2238,7 +2238,7 @@ def _excel_app_has_open_workbook() -> bool:
     try:
         xw = importlib.import_module("xlwings")
         found = any(True for app in xw.apps for _ in app.books)
-    except Exception:  # noqa: BLE001 - COM/미설치 등 어떤 실패든 파일 엔진으로 떨어지면 된다
+    except Exception:
         found = False
 
     _excel_probe_cache = (now, found)

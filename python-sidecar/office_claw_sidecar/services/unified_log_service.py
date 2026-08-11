@@ -42,9 +42,8 @@ def append_unified_event(event_type: str, payload: dict[str, Any] | None = None)
     path = get_unified_log_path()
     try:
         raw = json.dumps(entry, ensure_ascii=False, default=str)
-        with _LOCK:
-            with path.open("a", encoding="utf-8") as f:
-                f.write(raw + "\n")
+        with _LOCK, path.open("a", encoding="utf-8") as f:
+            f.write(raw + "\n")
     except Exception as exc:
         logger.warning("통합 로그 기록 실패(무시): %s", exc)
 

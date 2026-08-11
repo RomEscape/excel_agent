@@ -1,6 +1,6 @@
 // 실행 중인 앱의 sidecar에 실제 명령을 넣어 동작을 확인한다.
 // 사용: node scripts/probe-live-app.mjs <워크북경로> [시트명]
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 
 const base = "http://127.0.0.1:19532";
 const headers = {

@@ -106,7 +106,7 @@ async def measure(
             started = time.perf_counter()
             try:
                 await client.get(probe_path, timeout=10)
-            except Exception as exc:  # noqa: BLE001 - 기준선 수집이라 실패해도 계속
+            except Exception as exc:
                 result.idle_errors.append(f"{type(exc).__name__}: {exc}")
             result.idle_latencies_ms.append((time.perf_counter() - started) * 1000)
 
@@ -119,7 +119,7 @@ async def measure(
                 try:
                     await client.get(probe_path, timeout=work_seconds * 3 + 5)
                     result.answered += 1
-                except Exception:  # noqa: BLE001 - 실패도 관측 대상이다
+                except Exception:
                     result.unanswered += 1
                 now = time.perf_counter()
                 result.probe_times.append(now - origin)

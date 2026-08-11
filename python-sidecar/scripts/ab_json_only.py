@@ -68,7 +68,7 @@ async def _run(rows: list[dict], model: str, *, json_only: bool) -> list[dict]:
             )
             got = _actions(plan)
             error = ""
-        except Exception as exc:  # noqa: BLE001 - 실패도 결과의 일부다
+        except Exception as exc:
             got = []
             error = f"{type(exc).__name__}: {exc}"
         out.append({"record_id": row["record_id"], "actions": got, "error": error})

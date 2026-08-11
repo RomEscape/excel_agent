@@ -10,7 +10,7 @@ Storage locations:
 import json
 import logging
 from collections import defaultdict
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 from office_claw_sidecar.config import get_audit_log_path
 from office_claw_sidecar.services.unified_log_service import append_unified_event
@@ -47,7 +47,7 @@ class AuditService:
 
         entries = []
         try:
-            with open(self._log_path, "r", encoding="utf-8") as f:
+            with open(self._log_path, encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if line:
@@ -68,7 +68,7 @@ class AuditService:
             return []
         entries: list[dict] = []
         try:
-            with open(self._log_path, "r", encoding="utf-8") as f:
+            with open(self._log_path, encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if line:

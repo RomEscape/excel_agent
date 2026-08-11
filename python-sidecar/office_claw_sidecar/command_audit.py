@@ -23,11 +23,10 @@ DB 위치: ~/PrivateClaw/audit.db
 
 from __future__ import annotations
 
-import sqlite3
 import logging
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
 
 from office_claw_sidecar.services.unified_log_service import append_unified_event
 
@@ -134,11 +133,11 @@ class CommandAuditLogger:
         reason: str,
         lang: str = "",
         pattern: str = "",
-        approved: Optional[bool] = None,
+        approved: bool | None = None,
         user_id: str = "",
         source: str = "agent",
-        tool_name: Optional[str] = None,
-        session_id: Optional[str] = None,
+        tool_name: str | None = None,
+        session_id: str | None = None,
     ) -> int:
         """
         새 감사 항목을 기록하고 삽입된 row의 id를 반환한다.
@@ -158,7 +157,7 @@ class CommandAuditLogger:
         """
         ts = datetime.now(KST).isoformat()
         cmd_short = (command or "")[:500]
-        approved_int: Optional[int] = None
+        approved_int: int | None = None
         if approved is True:
             approved_int = 1
         elif approved is False:
@@ -206,7 +205,7 @@ class CommandAuditLogger:
         self,
         row_id: int,
         approved: bool,
-        rejection_reason: Optional[str] = None,
+        rejection_reason: str | None = None,
     ) -> None:
         """
         기존 CONFIRM 항목의 승인/거부 결과를 업데이트한다.
@@ -259,7 +258,7 @@ class CommandAuditLogger:
             logger.error("CommandAuditLogger.get_recent 실패: %s", e)
             return []
 
-    def get_by_id(self, row_id: int) -> Optional[dict]:
+    def get_by_id(self, row_id: int) -> dict | None:
         """특정 항목을 id로 조회한다."""
         try:
             conn = _get_conn()

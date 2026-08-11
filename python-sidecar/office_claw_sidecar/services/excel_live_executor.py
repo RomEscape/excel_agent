@@ -109,7 +109,7 @@ def execute_plan(
                 out = execute_action(current.action, current.params)
             except reraise:
                 raise
-            except Exception as exc:  # noqa: BLE001 - 실행기에서 예외를 결과로 구조화한다.
+            except Exception as exc:
                 error_text = str(exc)
                 failure = exc
             else:

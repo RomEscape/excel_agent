@@ -480,8 +480,8 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
 
 # ── 화이트리스트 오버라이드 (런타임에 사용자가 변경 가능) ─────────────────────
 
-import json as _json  # noqa: E402
-import logging as _logging  # noqa: E402
+import json as _json
+import logging as _logging
 
 _wl_logger = _logging.getLogger(__name__)
 

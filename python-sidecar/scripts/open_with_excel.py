@@ -12,7 +12,7 @@ def main() -> int:
     path = sys.argv[1]
     try:
         import win32com.client  # type: ignore[import-not-found]
-    except Exception:  # noqa: BLE001
+    except Exception:
         print("검사 불가(win32com 없음)")
         return 0
 
@@ -23,7 +23,7 @@ def main() -> int:
         book = excel.Workbooks.Open(path)
         book.Close(SaveChanges=False)
         print("열림")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"열기 실패: {str(exc)[:100]}")
     finally:
         excel.Quit()

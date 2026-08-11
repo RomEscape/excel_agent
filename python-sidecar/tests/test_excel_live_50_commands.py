@@ -19,7 +19,6 @@ from fastapi.testclient import TestClient
 from office_claw_sidecar.main import app
 from office_claw_sidecar.routers import excel_live as excel_live_router
 
-
 HEADERS = {"Authorization": "Bearer dev-token"}
 client = TestClient(app)
 

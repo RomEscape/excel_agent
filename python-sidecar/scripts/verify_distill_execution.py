@@ -15,7 +15,7 @@ from office_claw_sidecar.services.excel_live_plan_validator import ValidationCon
 
 # 검증 스크립트는 파일 기반 안정성을 위해 pandas 엔진으로 강제한다.
 os.environ.setdefault("EXCEL_LIVE_ENGINE", "file")
-from office_claw_sidecar.routers.excel_live import _execute_action, _verify_step_result  # noqa: E402
+from office_claw_sidecar.routers.excel_live import _execute_action, _verify_step_result
 
 KST = timezone(timedelta(hours=9), name="KST")
 

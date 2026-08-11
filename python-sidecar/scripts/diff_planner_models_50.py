@@ -61,7 +61,7 @@ def run_model(model: str) -> list[dict]:
             )
             actual = resp.json().get("action", "") if resp.status_code == 200 else ""
             error = "" if resp.status_code == 200 else f"HTTP {resp.status_code}"
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             actual, error = "", str(exc)[:120]
 
         results.append(

@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import random
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -134,7 +133,7 @@ def stable_shuffle(rows: list[dict[str, Any]], *, seed: int) -> list[dict[str, A
         record_id = _text(row.get("record_id")) or hashlib.sha1(
             json.dumps(row, ensure_ascii=False, sort_keys=True).encode("utf-8")
         ).hexdigest()
-        digest = hashlib.sha1(f"{seed}|{record_id}".encode("utf-8")).hexdigest()
+        digest = hashlib.sha1(f"{seed}|{record_id}".encode()).hexdigest()
         keyed.append((digest, row))
     keyed.sort(key=lambda item: item[0])
     return [row for _, row in keyed]

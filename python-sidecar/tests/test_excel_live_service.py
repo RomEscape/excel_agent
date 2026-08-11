@@ -5,7 +5,6 @@ import pytest
 from office_claw_sidecar.services import excel_border
 from office_claw_sidecar.services.excel_live_service import (
     ExcelConnectionError,
-    ExcelLiveError,
     ExcelLiveService,
     WorkbookNotFoundError,
     WorksheetNotFoundError,

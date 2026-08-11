@@ -7,7 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ.setdefault("EXCEL_LIVE_ENGINE", "file")
 
-from office_claw_sidecar.services.excel_live_file_service import FileExcelLiveService  # noqa: E402
+from office_claw_sidecar.services.excel_live_file_service import FileExcelLiveService
 
 out = open(Path(os.environ["TEMP"]) / "_rels.txt", "w", encoding="utf-8")
 source = Path(sys.argv[1])
