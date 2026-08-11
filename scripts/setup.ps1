@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch]$BuildSidecar,
     [switch]$DryRun,
     [switch]$NoAutoInstallTools,

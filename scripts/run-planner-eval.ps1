@@ -1,4 +1,4 @@
-# 플래너 회귀 평가 — v3(기준선) vs 새 후보 모델을 같은 154건으로 재고 승격 여부를 판정한다.
+﻿# 플래너 회귀 평가 — v3(기준선) vs 새 후보 모델을 같은 154건으로 재고 승격 여부를 판정한다.
 #
 #   .\scripts\run-planner-eval.ps1 -Candidate ax7bplanner-v5r:latest
 #

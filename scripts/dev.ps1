@@ -1,4 +1,4 @@
-# Development script for Windows: run Python sidecar + Tauri dev
+﻿# Development script for Windows: run Python sidecar + Tauri dev
 $ErrorActionPreference = "Stop"
 
 $ProjectDir = Split-Path -Parent $PSScriptRoot

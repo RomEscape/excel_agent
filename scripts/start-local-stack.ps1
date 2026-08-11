@@ -1,4 +1,4 @@
-# 로컬 AI 스택 기동: Ollama + Python sidecar
+﻿# 로컬 AI 스택 기동: Ollama + Python sidecar
 # 사용: .\scripts\start-local-stack.ps1
 # 검증: .\scripts\verify-local-stack.ps1
 

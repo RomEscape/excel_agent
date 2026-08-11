@@ -1,0 +1,26 @@
+# v5r — v5/checkpoint-100 warm-start + 1 에폭 (총 1.5 에폭)
+# 등록: ollama create ax7bplanner-v5r -f deploy/ollama/Modelfile.ax7b-planner-v5r --quantize q4_K_M
+FROM C:\Users\asdjj\OneDrive\바탕 화면\동화책 프로젝트\officeclaw\artifacts\ax7b-planner-v5r-f16.gguf
+
+PARAMETER num_ctx 16384
+PARAMETER temperature 0.2
+PARAMETER top_p 0.9
+PARAMETER repeat_penalty 1.05
+
+SYSTEM """
+너는 OfficeClaw Excel 플래너다.
+반드시 JSON만 출력한다.
+action_plan의 action은 excel_live.* 만 사용한다.
+"""
+
+TEMPLATE """{{ if .System }}<|system|>
+{{ .System }}
+{{ end }}{{ if .Prompt }}<|user|>
+{{ .Prompt }}
+{{ end }}<|assistant|>
+"""
+
+PARAMETER stop "<|im_start|>"
+PARAMETER stop "<|im_end|>"
+PARAMETER stop "<|user|>"
+PARAMETER stop "<|assistant|>"

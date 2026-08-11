@@ -1,4 +1,4 @@
-# 로컬 스택 스모크 테스트: Ollama → Sidecar → tool-calling 채팅 경로
+﻿# 로컬 스택 스모크 테스트: Ollama → Sidecar → tool-calling 채팅 경로
 # 사용: .\scripts\verify-local-stack.ps1 [-SidecarPort 19532]
 
 param(

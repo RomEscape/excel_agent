@@ -529,6 +529,33 @@ python scripts/run_verifier_suite.py --diff   # 단계 간 변화만
 액션 이름만 채점한다는 한계가 있다. 파라미터까지 맞는지는
 `run_command_battery.py`(라이브 Excel)로 따로 봐야 한다.
 
+**Windows PowerShell 5.1은 BOM 없는 `.ps1`을 cp949로 읽는다.** 한글 주석·문자열이
+깨지면서 닫는 따옴표까지 삼켜 `ParserError`로 죽으므로, `scripts/*.ps1`은 반드시
+UTF-8 **BOM 포함**으로 저장한다.
+
+첫 실행 결과(v3 기준선 vs v5r, `logs/eval_gate_ax7bplanner-v5r-latest.json`):
+승격 불가. 되묻기 재현율은 0% → 100%로 올랐지만 `parse_gain`이 +2.6pp(기준 +5.0pp)에
+그쳤고 `multi`가 41.7%p 떨어졌다. 다만 `core` 회귀 대부분은 실력 저하가 아니라
+`sort_range`/`sort_rows` 라벨 충돌이었다 — 아래 참조.
+
+#### 겹치는 액션이 채점을 망친다
+
+`sort_range`와 `sort_rows`는 둘 다 등록된 액션이고 예시 트리거가 사실상 같다
+("오름차순 정렬"이 양쪽에 있다). 학습셋에도 36 : 37로 반반 들어가 있어 모델이
+어느 쪽을 낼지는 동전 던지기다. v3은 `sort_range`, v5r은 `sort_rows`에 안착했고,
+평가셋 정답이 `sort_range`라서 v5r만 12건을 잃었다.
+
+이름만 다른 문제가 아니다. 라우터 배선이 다르다.
+
+| | `sort_range` | `sort_rows` |
+|---|---|---|
+| 실패 시 롤백 스냅샷 | 뜬다 | **안 뜬다** |
+| 기준 열 모호하면 되묻기 | 한다 | **안 한다** |
+
+즉 모델이 `sort_rows`로 기울면 정렬은 되지만 되돌리기와 되묻기를 잃는다. 새
+액션을 추가할 때는 기존 액션과 트리거가 겹치지 않는지, 겹친다면 안전 배선
+(`_ROLLBACK_SNAPSHOT_ACTIONS` · `_AMBIGUITY_SENSITIVE_SLOTS`)이 같은지 확인한다.
+
 ### Excel Live 지원 액션 (2026-07-07)
 
 - 기본: `list_workbooks`, `select_workbook`, `read_range`, `write_range`, `create_table`, `set_formula`, `save_workbook`
