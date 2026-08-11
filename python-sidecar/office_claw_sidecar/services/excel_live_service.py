@@ -77,6 +77,29 @@ class WorkbookInfo:
         }
 
 
+# VBA 식별자는 문자로 시작하고 문자·숫자·밑줄만 쓴다. `Module1.Macro`처럼 모듈로
+# 한정하는 것까지 허용한다.
+_MACRO_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$")
+
+
+def _validate_macro_name(macro_name: str | None) -> str:
+    """실행 문자열에 끼어들 수 있는 이름을 막는다.
+
+    매크로 이름은 `'파일명'!매크로` 문자열로 조립돼 `Application.Run`에 들어간다.
+    이름에 `!`나 따옴표나 경로 구분자가 들어오면 우리가 못 박아 둔 대상 한정을
+    빠져나가 다른 파일의 매크로를 부를 수 있다.
+    """
+    macro = str(macro_name or "").strip()
+    if not macro:
+        raise ExcelLiveError("macro_name이 필요합니다.")
+    if not _MACRO_NAME_PATTERN.match(macro):
+        raise ExcelLiveError(
+            f"매크로 이름 '{macro}'을 쓸 수 없습니다. "
+            "영문·숫자·밑줄과 모듈 한정(`모듈.매크로`)만 허용합니다."
+        )
+    return macro
+
+
 class ExcelLiveService:
     """실행 중인 Excel 제어 서비스(xlwings 기반)."""
 
@@ -1329,21 +1352,75 @@ class ExcelLiveService:
         macro_name: str,
         args: list[Any] | None = None,
     ) -> dict[str, Any]:
-        """VBA 매크로를 실행한다."""
+        """VBA 매크로를 **지정한 통합문서 안에서** 실행한다.
+
+        `Application.Run("매크로명")`은 이름을 ActiveWorkbook·PERSONAL.XLSB 등
+        열려 있는 아무 통합문서에서 해석한다. 사용자가 "A 파일에서 실행"을
+        승인했는데 B 파일의 동명 매크로가 도는 일이 가능했다 — 승인한 대상과
+        실행된 대상이 다르면 승인 자체가 무의미하다. `'파일명'!매크로` 형태로
+        대상을 못 박는다.
+        """
         target_id = workbook_id or self._selected_workbook_id
         if not target_id:
             raise WorkbookNotFoundError("workbook_id가 필요합니다.")
-        self._find_workbook(target_id)
+        wb = self._find_workbook(target_id)
         app = self._app()
-        macro = str(macro_name or "").strip()
-        if not macro:
-            raise ExcelLiveError("macro_name이 필요합니다.")
+        macro = _validate_macro_name(macro_name)
+        wb_name = str(getattr(wb, "name", "") or "")
+        if not wb_name:
+            raise ExcelLiveError("대상 통합문서 이름을 확인할 수 없어 매크로를 실행하지 않았습니다.")
+        if not self._workbook_has_macro(wb, macro):
+            raise ExcelLiveError(
+                f"'{wb_name}'에 매크로 '{macro}'가 없습니다. 대상 파일과 매크로 이름을 확인해 주세요."
+            )
+        # 작은따옴표로 감싸야 공백이 든 파일명도 한 토큰으로 읽힌다.
+        qualified = f"'{wb_name}'!{macro}"
         macro_args = list(args or [])
         try:
-            app.api.Run(macro, *macro_args)
+            app.api.Run(qualified, *macro_args)
         except Exception as exc:
             raise ExcelLiveError(f"VBA 매크로 실행 실패: {exc}") from exc
-        return {"executed": True, "macro_name": macro, "args_count": len(macro_args)}
+        return {
+            "executed": True,
+            "macro_name": macro,
+            "qualified_macro": qualified,
+            "workbook_name": wb_name,
+            "args_count": len(macro_args),
+        }
+
+    @staticmethod
+    def _workbook_has_macro(wb: Any, macro: str) -> bool:
+        """대상 통합문서의 VBA 프로젝트에 그 프로시저가 있는가.
+
+        VBA 프로젝트 접근이 막힌 환경(신뢰 설정 off)에서는 확인할 방법이 없다.
+        그때는 통과시킨다 — 여기서 막으면 정상 매크로도 못 돌린다. 대상 한정은
+        호출 문자열이 이미 보장한다.
+        """
+        module_name = str(macro).split(".", 1)[0] if "." in macro else None
+        procedure = str(macro).rsplit(".", 1)[-1]
+        try:
+            components = wb.api.VBProject.VBComponents
+        except Exception:
+            return True
+        # `CodeModule.Find`는 인자가 ByRef라 COM 경유로 부르기 까다롭다.
+        # 소스를 그대로 읽어 선언부를 찾는 편이 환경을 덜 탄다.
+        declaration = re.compile(
+            rf"^\s*(?:public\s+|private\s+|friend\s+)?(?:static\s+)?(?:sub|function)\s+{re.escape(procedure)}\b",
+            re.IGNORECASE | re.MULTILINE,
+        )
+        try:
+            for component in components:
+                if module_name and str(getattr(component, "Name", "")) != module_name:
+                    continue
+                code = component.CodeModule
+                line_count = int(getattr(code, "CountOfLines", 0) or 0)
+                if line_count <= 0:
+                    continue
+                if declaration.search(str(code.Lines(1, line_count) or "")):
+                    return True
+            return False
+        except Exception:
+            return True
 
     def compare_ranges(
         self,
