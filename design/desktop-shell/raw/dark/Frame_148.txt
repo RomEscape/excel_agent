@@ -1,0 +1,100 @@
+﻿ <FRAME> Frame 148 [1600x900] fill=#0C1909
+   TEXT [268x30] "설치할 AI 모델을 선택해주세요."
+   <FRAME> Frame 98 [467x30]
+     <FRAME> Frame 96 [467x12]
+       <RECTANGLE> Rectangle 24 [467x12] fill=#E1E6DF
+       <RECTANGLE> Rectangle 25 [5x12]
+     <FRAME> Frame 97 [467x13]
+       TEXT [100x13] "현재 파일명 abcdefg.."
+       TEXT [101x13] "10200/10200(100%)"
+   <FRAME> Frame 71 [120x36] fill=#2DB400
+     TEXT [25x20] "확인"
+   <FRAME> Frame 99 [441x40] fill=#535D50
+     <FRAME> Frame 112 [417x24]
+       <FRAME> Frame 110 [100x20]
+         <FRAME> material-icon-theme:google [16x16] fill=#FFFFFF
+           <GROUP> Group [14x14]
+             <VECTOR> Vector [11x6] fill=#F44336
+             <VECTOR> Vector [3x6] fill=#FFC107
+             <VECTOR> Vector [7x7] fill=#448AFF
+             <VECTOR> Vector [11x6] fill=#43A047
+         TEXT [72x20] "Gemma 4.0"
+       <FRAME> Frame 111 [53x24]
+         TEXT [21x16] "추천"
+         <FRAME> tabler:chevron-down [24x24] fill=#FFFFFF
+           <VECTOR> Vector [12x6]
+   <FRAME> Frame 117 [431x132] fill=#6B7468
+     <FRAME> Frame 113 [407x20]
+       <FRAME> Frame 110 [85x20]
+         <FRAME> material-icon-theme:claude [16x16] fill=#FFFFFF
+           <GROUP> Group [14x14]
+             <VECTOR> Vector [7x2] fill=#FF7043
+             <VECTOR> Vector [5x7] fill=#FF7043
+             <VECTOR> Vector [2x6] fill=#FF7043
+             <VECTOR> Vector [4x7] fill=#FF7043
+             <VECTOR> Vector [6x5] fill=#FF7043
+             <VECTOR> Vector [7x1] fill=#FF7043
+             <VECTOR> Vector [6x5] fill=#FF7043
+             <VECTOR> Vector [5x6] fill=#FF7043
+             <VECTOR> Vector [2x6] fill=#FF7043
+             <VECTOR> Vector [4x6] fill=#FF7043
+             <VECTOR> Vector [5x5] fill=#FF7043
+             <VECTOR> Vector [6x3] fill=#FF7043
+         TEXT [57x20] "Opus 4.0"
+       <FRAME> Frame 111 [21x16]
+         TEXT [21x16] "추천"
+     <FRAME> Frame 114 [407x20]
+       <FRAME> Frame 110 [91x20]
+         <FRAME> logos:deepseek-icon [16x12] fill=#FFFFFF
+           <VECTOR> Vector [16x12] fill=#4D6BFE
+         TEXT [63x20] "Deepseek"
+       <FRAME> Frame 111 [21x16]
+         TEXT [21x16] "추천"
+     <FRAME> Frame 116 [407x20]
+       <FRAME> Frame 110 [100x20]
+         <FRAME> material-icon-theme:google [16x16] fill=#FFFFFF
+           <GROUP> Group [14x14]
+             <VECTOR> Vector [11x6] fill=#F44336
+             <VECTOR> Vector [3x6] fill=#FFC107
+             <VECTOR> Vector [7x7] fill=#448AFF
+             <VECTOR> Vector [11x6] fill=#43A047
+         TEXT [72x20] "Gemma 3.0"
+       <FRAME> Frame 111 [21x16]
+         TEXT [21x16] "추천"
+     <FRAME> Frame 115 [407x20]
+       <FRAME> Frame 110 [56x20]
+         <FRAME> simple-icons:kimi [16x16] fill=#FFFFFF
+           <VECTOR> Vector [16x16] fill=#092400
+         TEXT [28x20] "KIMI"
+       <FRAME> Frame 111 [21x16]
+         TEXT [21x16] "추천"
+   TEXT [240x20] "AI 모델은 추후에 언제든 변경이 가능합니다."
+   <FRAME> 김대리_dark 2 [36x36] fill=#0C1909
+     <VECTOR> Vector [36x36] fill=#0C1909
+     <GROUP> Group [31x31]
+       <VECTOR> Vector [24x9]
+       <GROUP> Group [6x12]
+         <VECTOR> Vector [6x12]
+         <VECTOR> Vector [6x12] fill=#141312
+       <VECTOR> Vector [12x6]
+       <VECTOR> Vector [9x24]
+       <VECTOR> Vector [9x11]
+       <VECTOR> Vector [26x9]
+       <VECTOR> Vector [5x6]
+       <GROUP> Group [6x4]
+         <VECTOR> Vector [6x4]
+         <VECTOR> Vector [6x4] fill=#092400
+   <FRAME> Frame 109 [265x16]
+     <FRAME> Frame 106 [65x16]
+       <FRAME> Frame 105 [16x16] fill=#56C331
+         <VECTOR> 1 [3x8] fill=#FFFFFF
+       TEXT [41x13] "파일 설치"
+     <FRAME> Frame 107 [65x16]
+       <FRAME> Frame 104 [16x16] fill=#243021
+         <VECTOR> 2 [5x8] fill=#56C331
+       TEXT [41x13] "모델 설치"
+     <FRAME> Frame 108 [103x16]
+       <FRAME> Frame 103 [16x16] fill=#243021
+         <VECTOR> 3 [5x8] fill=#56C331
+       TEXT [79x13] "워크스페이스 지정"
+

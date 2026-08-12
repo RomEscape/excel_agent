@@ -1,0 +1,42 @@
+﻿ <FRAME> Frame 151 [1600x900] fill=#0C1909
+   TEXT [298x30] "워크스페이스 위치를 지정해주세요."
+   <FRAME> Frame 71 [120x36] fill=#2DB400
+     TEXT [25x20] "확인"
+   <FRAME> Frame 99 [441x40] fill=#535D50
+     <FRAME> Frame 112 [417x24]
+       <FRAME> Frame 110 [85x24]
+         <FRAME> Frame 118 [24x24]
+           <GROUP> Group 2 [20x17]
+             <VECTOR> Rectangle 27 [12x5] fill=#56C331
+             <RECTANGLE> Rectangle 26 [20x14] fill=#46C642
+         TEXT [49x20] "바탕화면"
+   TEXT [300x20] "워크스페이스 위치는 추후에 언제든 변경이 가능합니다."
+   <FRAME> 김대리_dark 2 [36x36] fill=#0C1909
+     <VECTOR> Vector [36x36] fill=#0C1909
+     <GROUP> Group [31x31]
+       <VECTOR> Vector [24x9]
+       <GROUP> Group [6x12]
+         <VECTOR> Vector [6x12]
+         <VECTOR> Vector [6x12] fill=#141312
+       <VECTOR> Vector [12x6]
+       <VECTOR> Vector [9x24]
+       <VECTOR> Vector [9x11]
+       <VECTOR> Vector [26x9]
+       <VECTOR> Vector [5x6]
+       <GROUP> Group [6x4]
+         <VECTOR> Vector [6x4]
+         <VECTOR> Vector [6x4] fill=#092400
+   <FRAME> Frame 109 [265x16]
+     <FRAME> Frame 106 [65x16]
+       <FRAME> Frame 105 [16x16] fill=#56C331
+         <VECTOR> 1 [3x8] fill=#FFFFFF
+       TEXT [41x13] "파일 설치"
+     <FRAME> Frame 107 [65x16]
+       <FRAME> Frame 104 [16x16] fill=#243021
+         <VECTOR> 2 [5x8] fill=#56C331
+       TEXT [41x13] "모델 설치"
+     <FRAME> Frame 108 [103x16]
+       <FRAME> Frame 103 [16x16] fill=#243021
+         <VECTOR> 3 [5x8] fill=#56C331
+       TEXT [79x13] "워크스페이스 지정"
+
