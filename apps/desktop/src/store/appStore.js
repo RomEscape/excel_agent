@@ -36,8 +36,9 @@ const useAppStore = create(
   persist(
     (set) => ({
       /**
-       * 시작 페이지는 채팅이다 — 앱의 주 작업면이 대화이고, 대시보드/워크스페이스는
-       * 대화 사이드바 푸터에서 언제든 열 수 있다.
+       * 시작 페이지는 홈이다 — `chat` 키가 홈(문서 그리드)을 가리킨다.
+       * 최종 와이어프레임 B-1에서 시작 화면은 채팅 스레드가 아니라 문서 관리
+       * 지면이고, 채팅은 그 위에 뜨는 패널(components/chat/ChatPanel.jsx)이다.
        * @type {Page}
        */
       currentPage: "chat",
@@ -157,7 +158,7 @@ const useAppStore = create(
         set({ activeSessionId: sessionId }),
 
       /**
-       * 에이전트 채팅 메시지 목록. 렌더는 ChatPage, 액션은 lib/chatManager.js가 맡고
+       * 에이전트 채팅 메시지 목록. 렌더는 ChatPanel, 액션은 lib/chatManager.js가 맡고
        * 여기서는 상태만 소유한다(세션 목록·진행 상태는 store/chatStore.js).
        * system 메시지는 타임아웃 거부 등 시스템 이벤트를 채팅 히스토리에 영구 기록한다.
        * @type {ChatMessage[]}

@@ -25,8 +25,10 @@ import {
   Trash2,
   AlertCircle,
   CornerDownLeft,
+  SunMoon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toggleTheme } from "@/lib/themeManager";
 import useAppStore from "@/store/appStore";
 import useToast from "@/hooks/useToast";
 import {
@@ -80,7 +82,7 @@ async function restartMessenger(kind, notify) {
 
 const buildCommands = ({ tgConfigured, slackConfigured, discordConfigured } = {}) => [
   // 그룹: 페이지
-  { id: "nav.chat", group: "페이지", label: "채팅", hint: "김대리와 대화 / 엑셀 작업", icon: Bot, run: ({ setCurrentPage, close }) => { setCurrentPage("chat"); close(); } },
+  { id: "nav.home", group: "페이지", label: "홈", hint: "문서 목록 / 김대리에게 명령", icon: Bot, run: ({ setCurrentPage, close }) => { setCurrentPage("chat"); close(); } },
   { id: "nav.dashboard", group: "페이지", label: "대시보드", hint: "작업 요약 / 핵심 상태", icon: LayoutDashboard, run: ({ setCurrentPage, close }) => { setCurrentPage("dashboard"); close(); } },
   { id: "nav.workspace", group: "페이지", label: "워크스페이스", hint: "파일 탐색기", icon: FolderOpen, run: ({ setCurrentPage, close }) => { setCurrentPage("workspace"); close(); } },
   { id: "nav.conversations", group: "페이지", label: "대화", hint: "메신저 모니터링", icon: MessagesSquare, run: ({ setCurrentPage, close }) => { setCurrentPage("conversations"); close(); } },
@@ -96,6 +98,17 @@ const buildCommands = ({ tgConfigured, slackConfigured, discordConfigured } = {}
   { id: "settings.audit", group: "설정", label: "실행 기록", icon: ClipboardList, run: ({ setCurrentPage, close }) => { setCurrentPage("audit"); close(); } },
 
   // 그룹: 액션
+  {
+    id: "action.toggle_theme",
+    group: "액션",
+    label: "화면 테마 전환 (라이트 ↔ 다크)",
+    hint: "Cmd/Ctrl+Shift+L",
+    icon: SunMoon,
+    run: ({ close }) => {
+      toggleTheme();
+      close();
+    },
+  },
   {
     id: "action.local_ai_settings",
     group: "액션",

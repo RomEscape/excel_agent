@@ -18,8 +18,13 @@ import { create } from "zustand";
 const useRelayStore = create((set) => ({
   /** @type {RelayPhase} */
   phase: "idle",
-  /** @type {{pairing_id: string, code: string, relay_url: string}|null} QR에 담을 페어링 정보 */
+  /** @type {{pairing_id: string, code: string, relay_url: string, expires_in?: number}|null} QR에 담을 페어링 정보 */
   pairing: null,
+  /**
+   * 페어링 code 만료 시각 (epoch ms). null이면 만료 개념 없음(구버전 relay).
+   * 계산은 lib/pairingCountdown.js가 하고, 여기는 값만 갖는다.
+   */
+  pairingExpiresAt: null,
   enabled: false,
   connected: false,
   /** @type {string|null} */
@@ -28,11 +33,12 @@ const useRelayStore = create((set) => ({
   lastError: null,
 
   setPhase: (phase) => set({ phase }),
-  setPairing: (pairing) => set({ pairing }),
+  setPairing: (pairing, pairingExpiresAt = null) => set({ pairing, pairingExpiresAt }),
   setStatus: ({ enabled, connected, relayUrl }) =>
     set({ enabled, connected, relayUrl }),
   setError: (lastError) => set({ lastError, phase: "error" }),
-  reset: () => set({ phase: "idle", pairing: null, lastError: null }),
+  reset: () =>
+    set({ phase: "idle", pairing: null, pairingExpiresAt: null, lastError: null }),
 }));
 
 export default useRelayStore;

@@ -921,6 +921,24 @@ pub async fn workspace_read_file(
     .await
 }
 
+/// 워크스페이스 내 파일 하나를 삭제한다. 홈 화면의 `문서 삭제`가 쓴다.
+#[tauri::command]
+pub async fn workspace_delete_file(
+    state: State<'_, Mutex<SidecarState>>,
+    path: String,
+) -> Result<String, String> {
+    let endpoint = format!("/workspace/file?path={}", urlencoding::encode(&path));
+    sidecar_request(
+        &state,
+        Method::DELETE,
+        &endpoint,
+        None,
+        Some(Duration::from_secs(10)),
+        "파일 삭제 실패",
+    )
+    .await
+}
+
 /// 워크스페이스 내 파일에 내용을 쓴다.
 #[tauri::command]
 pub async fn workspace_write_file(

@@ -5,6 +5,7 @@
  * 모든 IPC는 `lib/api.js`를 경유한다(단일 진입점 규칙).
  */
 import { relayDisconnect, relayPair, relayStatus } from "./api";
+import { toExpiryTime } from "./pairingCountdown";
 import useRelayStore from "../store/relayStore";
 
 // QR 페이로드 계약은 순수 모듈(relayQr)이 소유 — 유닛테스트로 고정된다.
@@ -14,14 +15,19 @@ export { buildQrPayload, QR_PAYLOAD_VERSION } from "./relayQr";
 /**
  * 페어링 개시 → QR 정보 확보(phase=waiting).
  *
+ * code는 relay에서 TTL(기본 120초)로 만료되므로, 받은 `expires_in`을 만료 시각으로
+ * 바꿔 함께 저장한다 — UI가 카운트다운·재발급을 그 값으로 그린다.
+ *
  * @param {string} [relayUrl] 지정 시 relay 주소를 이 값으로 갱신하고 사용
- * @returns {Promise<{pairing_id: string, code: string, relay_url: string}>}
+ * @returns {Promise<{pairing_id: string, code: string, relay_url: string, expires_in?: number}>}
  */
 export async function startPairing(relayUrl) {
   useRelayStore.getState().setPhase("pairing");
   try {
     const info = await relayPair(relayUrl);
-    useRelayStore.getState().setPairing(info);
+    useRelayStore
+      .getState()
+      .setPairing(info, toExpiryTime(info?.expires_in, Date.now()));
     useRelayStore.getState().setPhase("waiting");
     return info;
   } catch (e) {

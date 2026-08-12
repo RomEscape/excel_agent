@@ -132,6 +132,61 @@ async def write_file(req: WriteFileRequest):
     return {"ok": True, "path": req.path}
 
 
+@router.delete("/file")
+async def delete_file(path: str = Query(..., description="워크스페이스 기준 상대 경로")):
+    """
+    워크스페이스 내 파일 하나를 삭제한다.
+
+    홈 화면의 `문서 삭제` 액션이 쓴다.
+
+    디렉토리는 받지 않는다 — 폴더 삭제는 하위 내용을 통째로 날리는 동작이라
+    파일 삭제와 같은 확인 절차로 묶을 수 없다. 필요해지면 별도 엔드포인트로
+    낸다.
+
+    Parameters
+    ----------
+    path:
+        워크스페이스 기준 상대 경로.
+
+    Returns
+    -------
+    {"ok": true, "path": str}
+
+    Raises
+    ------
+    400: 경로가 비었거나 디렉토리임
+    403: 워크스페이스 외부 경로
+    404: 파일이 존재하지 않음
+    """
+    raw_path = str(path or "").strip()
+    if not raw_path:
+        raise HTTPException(status_code=400, detail="파일 경로가 비어 있습니다.")
+
+    try:
+        if not sandbox.is_path_safe(raw_path):
+            raise PermissionError(f"접근 거부: 워크스페이스 외부 경로입니다. ({raw_path})")
+
+        resolved = (sandbox.WORKSPACE_ROOT / Path(raw_path)).resolve()
+        if not resolved.exists():
+            raise FileNotFoundError(f"파일을 찾을 수 없습니다: {raw_path}")
+        if resolved.is_dir():
+            raise IsADirectoryError(f"디렉토리는 삭제할 수 없습니다: {raw_path}")
+
+        resolved.unlink()
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except IsADirectoryError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"파일 삭제 실패: {e}")
+
+    return {"ok": True, "path": raw_path}
+
+
 @router.post("/excel-file")
 async def create_excel_file(req: CreateExcelFileRequest):
     """

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Cpu, Save, Loader2, CheckCircle2, FolderOpen, Trash2, Info, ChevronDown, ChevronUp, ExternalLink, Monitor, Apple, Archive, Upload, Download, AlertTriangle } from "lucide-react";
+import { Cpu, Save, Loader2, CheckCircle2, FolderOpen, Trash2, Info, ChevronDown, ChevronUp, ExternalLink, Monitor, Apple, Archive, Upload, Download, AlertTriangle, Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +20,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import AlertDialog from "@/components/ui/dialog";
 import OllamaModelPicker from "@/components/settings/OllamaModelPicker";
+import ThemePicker from "@/components/settings/ThemePicker";
 import useAppStore from "@/store/appStore";
 import useStatusStore from "@/store/statusStore";
 import { getLLMSettings, saveLLMSettings, maintenanceCleanup, backupExport, backupImport } from "@/lib/api";
@@ -223,6 +224,23 @@ export default function Settings() {
           AI 엔진과 앱 환경을 설정해요
         </p>
       </div>
+
+      {/* 화면 테마 — 와이어프레임 라이트/다크 두 벌에 대응 */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Palette className="h-4 w-4 text-primary" />
+            <CardTitle className="text-base">화면 테마</CardTitle>
+          </div>
+          <CardDescription>
+            앱 전체의 밝기를 정해요. 운영체제 설정을 따르게 두면 시스템이 다크로
+            바뀔 때 앱도 같이 바뀌어요.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ThemePicker />
+        </CardContent>
+      </Card>
 
       {/* AI Engine settings */}
       <Card>

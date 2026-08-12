@@ -5,7 +5,7 @@
  *   - 파일 row hover 액션: "텔레그램으로 명령 예시 보내기" — 템플릿 클립보드 복사 + 봇 딥링크
  *
  * 에이전트 채팅은 더 이상 여기 붙어 있지 않다. 채팅이 앱의 주 작업면이 되면서
- * 독립 페이지(components/chat/ChatPage.jsx)로 승격됐고, 그 로직은
+ * 어느 페이지 위에든 뜨는 패널(components/chat/ChatPanel.jsx)이 됐고, 그 로직은
  * lib/chatManager.js + store/chatStore.js가 소유한다.
  *
  * 본 페이지는 full-bleed (max-width 적용 안 함) — 데스크탑 와이드스크린 활용.
@@ -500,7 +500,7 @@ export default function WorkspacePage() {
 
   return (
     <div className="flex h-full">
-      {/* 파일 영역 — 에이전트 채팅은 별도 페이지(components/chat/ChatPage.jsx)로 분리됐다 */}
+      {/* 파일 영역 — 에이전트 채팅은 Layout이 띄우는 패널(components/chat/ChatPanel.jsx)이다 */}
       <div className="flex flex-col flex-1 min-w-0 gap-4">
         {/* 툴바 */}
         <div className="flex items-center justify-between gap-3 flex-wrap">

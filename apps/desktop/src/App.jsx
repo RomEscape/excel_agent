@@ -5,6 +5,7 @@ import LocalAISetupWizard from "@/components/guide/LocalAISetupWizard";
 import ApprovalDialog from "@/components/security/ApprovalDialog";
 import useAppStore from "@/store/appStore";
 import { useStatusPoller } from "@/hooks/useStatusPoller";
+import { initTheme } from "@/lib/themeManager";
 import { telegramStatus, telegramStart, securityGetPendingApprovals, securityRespondApproval } from "@/lib/api";
 
 /**
@@ -35,6 +36,10 @@ export default function App() {
   // 시스템 상태 중앙 폴러 — ollama 모듈 상태를 30초마다 자동 갱신.
   // Dashboard/StatusBar/LocalAISetupWizard는 모두 statusStore에서 동일한 데이터를 읽는다.
   useStatusPoller();
+
+  // 테마 적용 — OS 선호를 읽어 <html>에 .dark를 붙이고 이후 변경도 따라간다.
+  // 가장 먼저 돌아야 첫 페인트에서 라이트로 번쩍이지 않는다.
+  useEffect(() => initTheme(), []);
 
   // Phase 2: 보안 UI 승인 상태
   const [pendingSecurityApproval, setPendingSecurityApproval] = useState(null);

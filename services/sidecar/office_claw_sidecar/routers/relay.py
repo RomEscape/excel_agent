@@ -37,6 +37,10 @@ class PairStartResponse(BaseModel):
     pairing_id: str
     code: str  # 모바일이 스캔할 QR에 담을 일회성 코드
     relay_url: str
+    # code가 몇 초 뒤에 만료되는지. relay가 알려주는 값을 그대로 흘린다 —
+    # 데스크톱이 TTL을 하드코딩해 추측하면 relay 설정이 바뀔 때 카운트다운이
+    # 실제 만료와 어긋나서, 아직 남았다고 표시된 QR이 이미 죽어 있게 된다.
+    expires_in: int = 0
 
 
 class RelayStatusResponse(BaseModel):
@@ -77,7 +81,11 @@ async def start_pairing(
     await start_relay_client(request.app)
 
     return PairStartResponse(
-        pairing_id=pairing_id, code=data["code"], relay_url=relay_url
+        pairing_id=pairing_id,
+        code=data["code"],
+        relay_url=relay_url,
+        # 구버전 relay는 이 필드를 주지 않는다 — 0이면 UI가 카운트다운을 숨긴다.
+        expires_in=int(data.get("expires_in", 0) or 0),
     )
 
 

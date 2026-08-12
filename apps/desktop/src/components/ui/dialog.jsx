@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
  *   confirmLabel?: string;
  *   cancelLabel?: string;
  *   confirmVariant?: 'default'|'destructive'|'outline'|'secondary'|'ghost';
+ *   children?: React.ReactNode;
  *   onConfirm: () => void;
  *   onCancel: () => void;
  * }} props
@@ -40,17 +41,20 @@ export function AlertDialog({
   confirmLabel = "확인",
   cancelLabel = "취소",
   confirmVariant = "default",
+  children,
   onConfirm,
   onCancel,
 }) {
   const cancelRef = useRef(null);
 
-  // Focus cancel button when dialog opens (safe default action)
+  // 확인만 받는 다이얼로그는 취소에 포커스를 준다 (안전한 기본 동작).
+  // 입력을 받는 경우(children)는 건드리지 않는다 — 여기서 포커스를 가져가면
+  // children의 autoFocus 입력이 곧바로 포커스를 뺏겨 타이핑이 안 된다.
   useEffect(() => {
-    if (open) {
+    if (open && !children) {
       cancelRef.current?.focus();
     }
-  }, [open]);
+  }, [open, children]);
 
   // Close on Escape key
   useEffect(() => {
@@ -100,6 +104,8 @@ export function AlertDialog({
             {description}
           </p>
         )}
+
+        {children}
 
         <div className="mt-5 flex justify-end gap-2">
           <Button

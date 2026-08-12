@@ -361,6 +361,18 @@ export async function workspaceWriteFile(path, content) {
 }
 
 /**
+ * 워크스페이스 내 파일 하나를 삭제한다. 홈 화면의 `문서 삭제`가 쓴다.
+ * 디렉토리는 sidecar가 400으로 거부한다.
+ *
+ * @param {string} path - 워크스페이스 기준 상대 경로
+ * @returns {Promise<{ ok: boolean, path: string }>}
+ */
+export async function workspaceDeleteFile(path) {
+  const raw = await call("workspace_delete_file", { path });
+  return parseResponse(raw);
+}
+
+/**
  * 워크스페이스에 새 엑셀(.xlsx) 파일을 생성한다.
  *
  * @param {string} path - 파일 경로 (확장자 .xlsx는 생략 가능)
