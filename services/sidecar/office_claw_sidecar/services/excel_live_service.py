@@ -19,6 +19,8 @@ from dataclasses import dataclass
 import re
 from typing import Any
 
+from office_claw_sidecar.services import excel_border
+
 
 class ExcelLiveError(Exception):
     """Excel Live 서비스 기본 예외."""
@@ -253,22 +255,19 @@ class ExcelLiveService:
         sheet = self._find_sheet(wb, sheet_name)
         rng = self._resolve_target_range(sheet, target_range)
         api_range = getattr(rng, "api", None)
-        if api_range is None:
-            raise ExcelLiveError("경계선을 적용할 수 없습니다. Excel API 객체를 찾지 못했습니다.")
 
-        # Excel COM 상수 (late binding)
-        style_map = {"continuous": 1}
-        weight_map = {"thin": 2, "medium": -4138, "thick": 4}
-        line_style_value = style_map.get((line_style or "").strip().lower(), 1)
-        weight_value = weight_map.get((weight or "").strip().lower(), 2)
-        border_color = self._rgb_to_excel_color(self._hex_to_rgb(color))
-        edges = (7, 8, 9, 10, 11, 12)  # left, top, bottom, right, inside_v, inside_h
-
-        for edge in edges:
-            border = api_range.Borders(edge)
-            border.LineStyle = line_style_value
-            border.Weight = weight_value
-            border.Color = border_color
+        # 테두리는 Windows(COM)와 macOS(AppleScript)의 API가 완전히 달라서
+        # excel_border 모듈이 플랫폼 분기를 전부 흡수한다. 특히 색은 COM 정수를
+        # macOS에 그대로 넘기면 예외 없이 검정이 되므로 여기서 변환하지 않는다.
+        try:
+            excel_border.apply_borders(
+                api_range,
+                line_style=line_style,
+                weight=weight,
+                rgb=self._hex_to_rgb(color),
+            )
+        except excel_border.BorderUnsupportedError as exc:
+            raise ExcelLiveError(str(exc)) from exc
 
         rows_obj = getattr(rng, "rows", None)
         cols_obj = getattr(rng, "columns", None)
@@ -936,35 +935,19 @@ class ExcelLiveService:
             int(value[4:6], 16),
         )
 
+    #: 강조 셀 주위에 그리는 연회색 격자.
+    _GRIDLINE_RGB = (217, 217, 217)
+
     @staticmethod
     def _ensure_visual_gridline(cell: Any, rgb: tuple[int, int, int]) -> None:
-        """셀 경계선이 비어 있으면 얇은 보더를 적용해 시인성을 높인다."""
-        try:
-            api_range = getattr(cell, "api", None)
-            if api_range is None:
-                return
-            # Excel COM 상수 (late binding 용 숫자 상수 사용)
-            xl_edge_left = 7
-            xl_edge_top = 8
-            xl_edge_bottom = 9
-            xl_edge_right = 10
-            xl_continuous = 1
-            xl_thin = 2
-            xl_line_style_none = -4142
-            border_color = ExcelLiveService._rgb_to_excel_color((217, 217, 217))
+        """셀 경계선이 비어 있으면 얇은 보더를 적용해 시인성을 높인다.
 
-            for edge in (xl_edge_left, xl_edge_top, xl_edge_bottom, xl_edge_right):
-                border = api_range.Borders(edge)
-                # 기존 보더가 이미 있으면 유지한다.
-                line_style = getattr(border, "LineStyle", xl_line_style_none)
-                if line_style not in (None, 0, xl_line_style_none):
-                    continue
-                border.LineStyle = xl_continuous
-                border.Weight = xl_thin
-                border.Color = border_color
-        except Exception:
-            # COM/테마 환경에 따라 보더 설정 실패 가능 — 비치명적
-            return
+        플랫폼 분기는 excel_border가 소유한다 — 이전에는 COM 전용이라
+        macOS에서 조용히 건너뛰었다.
+        """
+        excel_border.apply_outline_if_absent(
+            getattr(cell, "api", None), ExcelLiveService._GRIDLINE_RGB
+        )
 
     @staticmethod
     def _rgb_to_excel_color(rgb: tuple[int, int, int]) -> int:

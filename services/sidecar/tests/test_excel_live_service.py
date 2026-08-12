@@ -1,5 +1,8 @@
 """Excel Live Service 단위 테스트."""
 
+import pytest
+
+from office_claw_sidecar.services import excel_border
 from office_claw_sidecar.services.excel_live_service import (
     ExcelConnectionError,
     ExcelLiveError,
@@ -7,6 +10,19 @@ from office_claw_sidecar.services.excel_live_service import (
     WorkbookNotFoundError,
     WorksheetNotFoundError,
 )
+
+
+@pytest.fixture(autouse=True)
+def _force_com_border_path(monkeypatch):
+    """이 파일의 가짜 Excel은 COM API 형태(`Borders(idx)`)로 만들어져 있다.
+
+    테두리 경로가 플랫폼별로 갈리면서, 개발자 맥에서 그냥 돌리면 macOS(appscript)
+    경로를 타서 가짜 객체와 맞지 않아 실패한다. CI는 ubuntu라 통과해버려 로컬에서만
+    깨지는 형태가 된다 — 그래서 플랫폼을 명시적으로 고정한다.
+
+    macOS 경로와 색 변환은 tests/test_excel_border.py가 따로 덮는다.
+    """
+    monkeypatch.setattr(excel_border, "is_macos", lambda: False)
 
 
 def _col_to_idx(col: str) -> int:

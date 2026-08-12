@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS 전용 Info.plist 추가분. Tauri가 번들 생성 시 자기 Info.plist에 병합한다.
+
+  NSAppleEventsUsageDescription 이 왜 필수인가:
+    이 앱의 엑셀 실시간 제어는 xlwings → AppleScript(Apple Events)로 Excel을
+    조종한다. macOS는 Apple Events 전송을 TCC로 통제하는데, 이 키가 없으면
+    권한 프롬프트가 **뜨지도 않고 조용히 실패**한다. 사용자는 이유 없는
+    "엑셀을 찾을 수 없습니다"만 보게 된다.
+
+    문자열은 프롬프트에 그대로 노출되므로 왜 필요한지 사용자 언어로 쓴다.
+
+  주의: 이 키는 서명 여부와 무관하게 필요하다. 반면 entitlements.plist 의
+  automation.apple-events 는 hardened runtime(서명)에서만 의미가 있다.
+-->
+<plist version="1.0">
+<dict>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>김대리가 엑셀 파일을 직접 열고 편집하려면 Microsoft Excel 제어 권한이 필요합니다. 데이터는 이 컴퓨터 밖으로 나가지 않습니다.</string>
+
+    <!--
+      LAN의 릴레이 서버로 붙을 때 iOS/macOS 14+ 로컬 네트워크 권한 프롬프트가 뜬다.
+      모바일 페어링(QR)에서 데스크톱이 릴레이 주소를 광고하는 경로가 여기 걸린다.
+    -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>휴대폰과 페어링해 원격으로 업무를 지시하려면 같은 네트워크의 기기를 찾아야 합니다.</string>
+</dict>
+</plist>
