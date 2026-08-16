@@ -1916,6 +1916,20 @@ class ExcelLiveService:
             "active_sheet": self._active_sheet_name(reopened),
         }
 
+    def _resolve_workbook(self, workbook_id: str | None):
+        """대상 통합문서를 찾는다. 지목이 없으면 **활성 통합문서**로 떨어진다.
+
+        2026-08-16 실측: 예전에는 `workbook_id`도 `_selected_workbook_id`도 없으면
+        곧장 "A1"을 돌려줬다. 그런데 앱은 workbook_id를 안 보내고(요청이 null),
+        사용자가 `/excel-live/select-workbook`을 부른 적도 없다 — 즉 **평소 경로가
+        전부 그 폴백을 탔다.** Excel의 실제 선택이 `$A$1:$G$8`인데 `A1`이 반환돼
+        드래그한 영역이 통째로 무시됐고, "표 크기를 알려주세요"로 되물었다.
+        """
+        target_id = workbook_id or self._selected_workbook_id
+        if target_id:
+            return self._find_workbook(target_id)
+        return self._app().books.active
+
     def get_active_selection_ref(
         self,
         workbook_id: str | None,
@@ -1929,11 +1943,10 @@ class ExcelLiveService:
         하듯 그 셀을 둘러싼 데이터 영역으로 넓힌다. 한 칸을 그대로 돌려주면 정렬·집계·중복제거가
         한 칸에만 적용된 채 성공으로 보고돼, 화면은 그대로인데 "처리했습니다"만 남는다.
         """
-        target_id = workbook_id or self._selected_workbook_id
-        if not target_id:
+        try:
+            wb = self._resolve_workbook(workbook_id)
+        except Exception:
             return "A1"
-
-        wb = self._find_workbook(target_id)
         sheet = self._find_sheet(wb, sheet_name) if sheet_name else wb.sheets.active
 
         selected = self._selection_ref_on_sheet(sheet)
@@ -1999,11 +2012,10 @@ class ExcelLiveService:
         - "전체 지우기/초기화"처럼 범위를 명시하지 않은 명령의 기본 타깃으로 사용.
         - used_range를 얻지 못하면 A1로 폴백.
         """
-        target_id = workbook_id or self._selected_workbook_id
-        if not target_id:
+        try:
+            wb = self._resolve_workbook(workbook_id)
+        except Exception:
             return "A1"
-
-        wb = self._find_workbook(target_id)
         sheet = self._find_sheet(wb, sheet_name) if sheet_name else wb.sheets.active
         try:
             used = getattr(sheet, "used_range", None)
@@ -2051,22 +2063,30 @@ class ExcelLiveService:
                 return False
 
         try:
-            wb = self._find_workbook(workbook_id or self.get_selected_workbook_id() or "")
+            # 지목이 없으면 활성 통합문서로 떨어진다. 예전에는 빈 문자열로 조회해
+            # 예외가 나고 플래그가 통째로 비었다 — 즉 보호 상태를 **한 번도 못 읽었다**.
+            wb = self._resolve_workbook(workbook_id)
         except Exception:
             return flags
         wb_api = getattr(wb, "api", None)
         if wb_api is None:
             return flags
-        # COM의 ReadOnly만 믿으면 안 된다 (2026-08-16 실측).
+        # `wb.api.ReadOnly`를 그대로 믿는다 (2026-08-16, 두 번 재고 나서 확정).
         #
-        # 갓 만들어 저장한 파일도, 앱 자체 Workspace 폴더의 쓰기 가능한 파일도
-        # `wb.api.ReadOnly`가 True로 나왔다(디스크는 os.access(W_OK)=True).
-        # 보호된 보기·자동화 열기 등 실제 쓰기 가능 여부와 무관한 이유로 켜진다.
-        # 이걸 그대로 차단 근거로 쓰면 **xlwings 경로의 모든 편집이 막힌다** —
-        # 가장 비싼 오탐이다. 그래서 디스크가 실제로 쓰기 불가일 때만 인정한다.
-        com_read_only = _flag(wb_api, "ReadOnly")
-        flags["com_read_only"] = com_read_only
-        flags["workbook_read_only"] = com_read_only and self._path_is_unwritable(wb_api)
+        # 처음엔 이걸 오탐으로 봤다 — 갓 만들어 저장한 파일도 ReadOnly=True인데
+        # 디스크는 os.access(W_OK)=True였기 때문이다. 그래서 디스크와 교차 검증하게
+        # 고쳤는데, **실제로 써 보지 않고 내린 판단이었다.**
+        #
+        # 다시 재 보니 그 상태에서 쓰기를 시도하면 정확히 이렇게 실패한다:
+        #   (-2147352567, '예외가 발생했습니다.',
+        #    (0, 'Microsoft Excel', '파일이 읽기 전용인 경우에는 이 작업을 수행할 수 없습니다.', …))
+        # 즉 ReadOnly=True는 처음부터 정확했다. 이 PC의 Excel이 정품 인증이 안 된
+        # 무료 버전이라 여는 통합문서가 전부 읽기 전용인 것이다.
+        #
+        # 교차 검증을 두면 이 경우를 통과시켜, 사용자는 위의 날 COM 예외 덤프를 본다.
+        # 파일시스템 신호는 참고용으로만 남긴다.
+        flags["workbook_read_only"] = _flag(wb_api, "ReadOnly")
+        flags["path_unwritable"] = self._path_is_unwritable(wb_api)
         flags["structure_protected"] = _flag(wb_api, "ProtectStructure")
         flags["marked_final"] = _flag(wb_api, "Final")
 

@@ -105,15 +105,15 @@ class TestStructureProtection:
         assert _block({"structure_protected": True}, action=WRITE).ok
 
 
-class TestComReadOnlyIsCrossChecked:
-    """COM의 ReadOnly만으로 편집을 막으면 안 된다 (2026-08-16 Excel 실측).
+class TestReadOnlyPathSignal:
+    """파일시스템 신호는 참고용이다 — 차단 근거는 COM의 ReadOnly다.
 
-    갓 만들어 저장한 파일도, 앱 자체 Workspace 폴더의 쓰기 가능한 파일도
-    `wb.api.ReadOnly`가 True로 나왔다(디스크는 `os.access(W_OK)=True`).
-    그대로 차단 근거로 쓰면 xlwings 경로의 **모든 편집이 막힌다**.
-
-    그래서 디스크가 실제로 쓰기 불가일 때만 인정한다. 반대 방향 오차(진짜 읽기
-    전용으로 열렸는데 통과시킴)는 실행 시 실패로 드러나므로 훨씬 싸다.
+    2026-08-16, 두 번 재고 나서 확정: 처음엔 `wb.api.ReadOnly`를 오탐으로 봤다.
+    갓 만들어 저장한 파일도 True인데 `os.access(W_OK)`는 True였기 때문이다.
+    **그런데 실제로 써 보지 않고 내린 판단이었다.** 그 상태에서 쓰기를 시도하면
+    "파일이 읽기 전용인 경우에는 이 작업을 수행할 수 없습니다"로 정확히 실패한다.
+    이 PC의 Excel이 정품 인증이 안 된 무료 버전이라 여는 통합문서가 전부 읽기
+    전용인 것이다 — ReadOnly는 처음부터 맞았다.
     """
 
     def _unwritable(self, full_name):
