@@ -29,7 +29,13 @@ def _make_workbook(path):
     wb.close()
 
 
-def test_get_excel_live_service_switches_to_pandas(monkeypatch, tmp_path):
+def test_legacy_pandas_setting_selects_the_file_engine(monkeypatch, tmp_path):
+    """예전 설정 파일이 쓰던 `pandas`는 이제 `file`과 같은 뜻으로 받는다.
+
+    get_excel_live_service가 그렇게 매핑하도록 바뀌었는데(독스트링에 명시) 테스트만
+    옛 기대값에 남아 있었다. 중요한 것은 이 값이 xlwings로 새지 않는다는 점이다 —
+    엑셀이 없어도 도는 엔진이어야 한다.
+    """
     _make_workbook(tmp_path / "sales.xlsx")
     monkeypatch.setenv("EXCEL_LIVE_ENGINE", "pandas")
     monkeypatch.setattr(service_module, "_excel_live_service", None)
@@ -37,7 +43,7 @@ def test_get_excel_live_service_switches_to_pandas(monkeypatch, tmp_path):
 
     service = service_module.get_excel_live_service()
 
-    assert getattr(service, "engine", "") == "pandas"
+    assert getattr(service, "engine", "") == "file"
 
 
 def test_pandas_service_basic_edit_flow(tmp_path):

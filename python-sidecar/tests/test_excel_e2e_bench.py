@@ -78,4 +78,6 @@ def test_tool_calling_dispatcher_drift_is_documented():
     assert {"sort_range", "clear_range", "fill_range"} <= missing, (
         "격차가 메워졌다면 이 테스트를 갱신하세요."
     )
-    assert len(missing) == 32, f"디스패처 격차가 {len(missing)}종으로 변했습니다: {sorted(missing)}"
+    # 2026-08-16: 라우터에 액션이 늘어 격차가 32 -> 37종이 됐다. 격차 자체는 알려진 상태이고
+    # (tool-calling 경로만 영향), 이 핀은 "모르는 사이에 더 벌어지는 것"을 막는 용도다.
+    assert len(missing) == 37, f"디스패처 격차가 {len(missing)}종으로 변했습니다: {sorted(missing)}"
