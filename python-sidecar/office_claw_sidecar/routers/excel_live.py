@@ -89,6 +89,7 @@ from office_claw_sidecar.services.excel_live_service import (
     WorkbookNotFoundError,
     WorksheetNotFoundError,
     get_excel_live_service,
+    invalidate_excel_engine_cache,
 )
 from office_claw_sidecar.services.excel_live_table_presets import get_table_preset
 from office_claw_sidecar.services.excel_macro_coverage import parse_rect
@@ -111,6 +112,11 @@ from office_claw_sidecar.services.excel_planner_escalation import (
 )
 from office_claw_sidecar.services.excel_planner_prompt import (
     render_conversation_history,
+)
+from office_claw_sidecar.services.excel_readonly_bridge import (
+    can_bridge,
+    release_workbook,
+    restore_workbook,
 )
 from office_claw_sidecar.services.excel_result_verifier import verify_effect
 from office_claw_sidecar.services.excel_selection_context import (
@@ -4848,6 +4854,7 @@ def _execute_action(
     params: dict[str, Any],
     workbook_id: str | None,
     sheet_name: str | None,
+    _bridged_path: str | None = None,
 ) -> dict[str, Any]:
     service = get_excel_live_service()
 
@@ -4855,14 +4862,41 @@ def _execute_action(
     # openpyxl은 시트 보호를 강제하지 않아 보호된 시트에 쓰고 저장까지 성공하므로,
     # file 엔진에서는 이 점검이 유일한 방어선이다.
     if action in EDIT_ACTIONS:
-        block = evaluate_write_block(
-            action=action,
-            flags=read_protection_flags(
-                service, workbook_id=workbook_id, sheet_name=sheet_name
-            ),
-            is_edit_action=True,
+        flags = read_protection_flags(
+            service, workbook_id=workbook_id, sheet_name=sheet_name
         )
+        block = evaluate_write_block(action=action, flags=flags, is_edit_action=True)
         if block.blocked:
+            # 읽기 전용이면 사용자에게 "Excel을 닫아 주세요"라고 부탁하는 대신
+            # 우리가 처리한다. 읽기 전용에는 저장되지 않은 변경이 있을 수 없으므로
+            # 닫아도 잃을 게 없고, Excel이 파일을 붙들고 있는 한 openpyxl조차
+            # PermissionError로 막히기 때문에 닫는 것 말고는 길이 없다.
+            if _bridged_path is None and can_bridge(flags):
+                bridge = release_workbook(service, workbook_id=workbook_id)
+                if bridge.released:
+                    invalidate_excel_engine_cache()
+                    invalidate_workbook_digest()
+                    try:
+                        # **경로를 반드시 넘긴다.** 통합문서를 닫은 뒤에는 file
+                        # 엔진이 대상을 스스로 못 고른다 — 워크스페이스에 여러
+                        # 파일이 있으면 엉뚱한 파일을 편집하거나 되묻는다.
+                        # (2026-08-16 실측: 경로 없이 돌렸더니 병합 셀이 있는
+                        #  다른 파일을 잡아 MergedCell 오류로 죽었다.)
+                        return _execute_action(
+                            action=action,
+                            params=params,
+                            workbook_id=bridge.path,
+                            sheet_name=sheet_name,
+                            _bridged_path=bridge.path,
+                        )
+                    finally:
+                        # 편집 결과를 사용자가 바로 보게 다시 열어 준다. 실패해도
+                        # 편집은 이미 파일에 저장돼 있다.
+                        invalidate_excel_engine_cache()
+                        # 복구는 반드시 원래 xlwings 서비스로 한다 —
+                        # 지금 get_excel_live_service()는 file 엔진을 돌려준다.
+                        restore_workbook(service, bridge.path)
+                        invalidate_workbook_digest()
             raise ExcelEditBlockedError(block.reason, code=block.code)
 
     if action == "excel_live.list_workbooks":

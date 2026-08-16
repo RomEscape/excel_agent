@@ -2046,6 +2046,53 @@ class ExcelLiveService:
         except Exception:
             return False
 
+    def get_workbook_path(self, workbook_id: str | None = None) -> str:
+        """대상 통합문서의 실제 파일 경로. 저장된 적 없으면 빈 문자열."""
+        try:
+            wb = self._resolve_workbook(workbook_id)
+            full = str(getattr(wb.api, "FullName", "") or "")
+        except Exception:
+            return ""
+        return full if os.path.isabs(full) else ""
+
+    def close_workbook_without_saving(self, workbook_id: str | None = None) -> str:
+        """Excel에서 통합문서를 닫는다(저장하지 않음). 닫은 파일 경로를 돌려준다.
+
+        **읽기 전용 통합문서에만 쓴다.** 읽기 전용이면 저장되지 않은 변경이 있을 수
+        없으므로 닫아도 사용자가 잃는 것이 없다. 편집 가능한 통합문서에 이걸 쓰면
+        작업 중이던 내용이 사라진다 — 호출부가 반드시 상태를 확인해야 한다.
+
+        왜 필요한가 (2026-08-16 실측): 이 PC의 Excel은 정품 인증이 안 돼 여는 파일이
+        전부 읽기 전용이다. 그 상태에서 Excel은 파일에 **배타적 잠금**을 걸어
+        openpyxl조차 못 쓴다(PermissionError). 즉 Excel이 파일을 붙들고 있는 한
+        어떤 방법으로도 편집이 불가능하다. 닫아야 길이 열린다.
+        """
+        path = self.get_workbook_path(workbook_id)
+        try:
+            wb = self._resolve_workbook(workbook_id)
+            wb.close()
+        except Exception:
+            return ""
+        return path
+
+    def open_workbook_in_excel(self, path: str) -> bool:
+        """파일을 Excel에서 다시 연다. 편집 결과를 사용자가 바로 보게 하기 위함.
+
+        마지막 통합문서를 닫으면 **Excel 앱 자체가 종료된다** — 그러면
+        `xw.apps.active`가 None이라 `self._app()`이 실패한다(2026-08-16 실측:
+        브리지가 편집은 성공했는데 창이 안 돌아왔다). 살아 있는 인스턴스가 없으면
+        새로 띄운다.
+        """
+        try:
+            xw = self._xw_module()
+            apps = list(getattr(xw, "apps", []) or [])
+            app = apps[0] if apps else xw.App(visible=True, add_book=False)
+            app.visible = True
+            app.books.open(str(path))
+            return True
+        except Exception:
+            return False
+
     def get_write_protection(
         self, workbook_id: str | None, sheet_name: str | None = None
     ) -> dict[str, Any]:
@@ -2531,6 +2578,19 @@ def _excel_app_has_open_workbook() -> bool:
 
     _excel_probe_cache = (now, found)
     return found
+
+
+def invalidate_excel_engine_cache() -> None:
+    """엔진 선택 캐시를 버린다.
+
+    엔진은 "Excel에 열린 통합문서가 있는가"로 골라지고 그 판정에 5초 TTL 캐시가
+    붙어 있다. 읽기 전용 브리지가 통합문서를 닫은 직후에는 그 캐시가 거짓이 되므로
+    (여전히 xlwings를 고른다) 반드시 버려야 file 엔진으로 넘어간다.
+    """
+    global _excel_probe_cache, _excel_live_service, _excel_live_service_engine
+    _excel_probe_cache = None
+    _excel_live_service = None
+    _excel_live_service_engine = None
 
 
 def get_excel_live_service() -> ExcelLiveService:
