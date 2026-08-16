@@ -105,6 +105,7 @@ from office_claw_sidecar.services.excel_step_repair import RepairContext, repair
 from office_claw_sidecar.services.excel_workbook_digest import (
     build_workbook_digest,
     invalidate_digest_cache,
+    invalidate_workbook_digest,
     render_workbook_digest,
 )
 from office_claw_sidecar.services.korean_number import (
@@ -7776,6 +7777,9 @@ async def _execute_plan_and_respond(
     address = _normalize_range_text(last_result.get("address"))
     if address:
         _recent_range_by_workbook[_context_key(req.workbook_id)] = address
+    # 방금 파일을 건드렸다. 다이제스트 캐시(TTL 20초)를 버리지 않으면 다음 단계가
+    # 앞 단계의 결과를 못 본다 — 매크로는 2~3초 간격으로 돈다.
+    invalidate_workbook_digest(req.workbook_id)
     if rollback_events:
         last_result["auto_rollbacks"] = list(rollback_events)
     if recovery_backup_info:

@@ -180,6 +180,22 @@ def build_workbook_digest(
     return digest
 
 
+def invalidate_workbook_digest(workbook_id: str | None = None) -> None:
+    """통합문서를 건드린 직후 캐시를 버린다.
+
+    캐시 TTL이 20초인데 매크로는 2~3초 간격으로 단계를 돌린다. 버리지 않으면 뒤 단계가
+    **앞 단계가 방금 쓴 결과를 못 본다** — 2026-08-16 실측에서 열을 추가하고 굵게·수식을
+    넣었는데 다음 다이제스트가 옛 사용범위와 빈 서식을 그대로 돌려줬다. 값만 보던 시절에는
+    티가 덜 났지만, 서식까지 읽게 된 지금은 "자기가 만든 것을 보고 다듬는" 흐름이 통째로 막힌다.
+    """
+    if workbook_id is None:
+        _digest_cache.clear()
+        return
+    _digest_cache.pop(str(workbook_id), None)
+    # 선택된 통합문서로 담긴 항목도 같은 파일일 수 있다. 애매하면 버리는 쪽이 안전하다.
+    _digest_cache.pop("__selected__", None)
+
+
 def render_workbook_digest(digest: dict[str, Any], *, max_chars: int = 1600) -> str:
     """프롬프트에 넣을 수 있는 짧은 텍스트로 변환한다."""
     sheets = digest.get("sheets") or []
