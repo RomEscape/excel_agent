@@ -23,6 +23,11 @@ from office_claw_sidecar.models.approval import ApprovalRequest, ApprovalRespons
 from office_claw_sidecar.services import excel_observation
 from office_claw_sidecar.services import excel_rank_limit as rank_limit
 from office_claw_sidecar.services.audit_service import AuditService
+from office_claw_sidecar.services.chat_routing_guard import (
+    CRISIS_REPLY,
+    classify_off_topic,
+    detect_crisis_intent,
+)
 from office_claw_sidecar.services.decision_trace import (
     Long,
     set_outcome_from_response,
@@ -41,6 +46,11 @@ from office_claw_sidecar.services.decision_trace import (
     route as trace_route,
 )
 from office_claw_sidecar.services.excel_actions import execute_excel_action
+from office_claw_sidecar.services.excel_edit_precheck import (
+    ExcelEditBlockedError,
+    evaluate_write_block,
+    read_protection_flags,
+)
 from office_claw_sidecar.services.excel_header_lexicon import (
     find_header_mentions,
     resolve_header,
@@ -102,6 +112,7 @@ from office_claw_sidecar.services.excel_planner_prompt import (
     render_conversation_history,
 )
 from office_claw_sidecar.services.excel_result_verifier import verify_effect
+from office_claw_sidecar.services.excel_selection_context import resolve_context_range
 from office_claw_sidecar.services.excel_step_repair import RepairContext, repair_step
 from office_claw_sidecar.services.excel_workbook_digest import (
     build_workbook_digest,
@@ -1033,6 +1044,21 @@ def _restore_action_snapshot(snapshot: ActionRollbackSnapshot | None) -> bool:
 
 def _context_key(workbook_id: str | None) -> str:
     return str(workbook_id or "__selected__").strip().lower() or "__selected__"
+
+
+def _not_excel_response(message: str, why: str) -> ExcelLiveActionResponse:
+    """이 문장은 엑셀 작업이 아니다 — 프론트가 /agent/chat으로 내려보내야 한다.
+
+    HTTPException(400)으로 알리면 안 된다. Rust의 read_response가 4xx를 Err로 바꿔
+    프론트 catch로 떨어뜨리므로(src-tauri/src/ipc.rs), 프론트가 "실패"와 "엑셀 일이
+    아님"을 구분할 수 없다. 200 응답 본문으로 돌려줘야 폴백을 만들 수 있다.
+    """
+    return ExcelLiveActionResponse(
+        ok=True,
+        action="excel_live.not_excel_request",
+        reason="엑셀 작업으로 볼 수 없는 요청입니다.",
+        result={"route_to_chat": True, "why": why, "original_message": message},
+    )
 
 
 def _slot_session_key(req: ExcelLiveCommandRequest) -> str:
@@ -4793,6 +4819,20 @@ def _execute_action(
 ) -> dict[str, Any]:
     service = get_excel_live_service()
 
+    # 쓰기 전에 대상이 쓸 수 있는 상태인지 본다(F-08). 상태를 못 읽으면 막지 않는다.
+    # openpyxl은 시트 보호를 강제하지 않아 보호된 시트에 쓰고 저장까지 성공하므로,
+    # file 엔진에서는 이 점검이 유일한 방어선이다.
+    if action in EDIT_ACTIONS:
+        block = evaluate_write_block(
+            action=action,
+            flags=read_protection_flags(
+                service, workbook_id=workbook_id, sheet_name=sheet_name
+            ),
+            is_edit_action=True,
+        )
+        if block.blocked:
+            raise ExcelEditBlockedError(block.reason, code=block.code)
+
     if action == "excel_live.list_workbooks":
         return {"workbooks": service.list_workbooks()}
 
@@ -6349,6 +6389,39 @@ async def _run_command(
     req: ExcelLiveCommandRequest,
     llm: LLMService,
 ):
+    # 입구 게이트 — LLM을 부르기 전에 결정론으로 거른다.
+    #
+    # 라우팅 기본값이 "워크북이 열려 있으면 엑셀 경로"로 바뀌면서 이제 **모든 문장이**
+    # 여기로 들어온다. 그런데 이 엔드포인트에는 안전 계층이 없었고(is_denied_intent·
+    # 마스킹 모두 /agent/chat 전용), 되묻기 생성기가 catch-all이라 실측에서
+    # "우울해 죽고 싶어"에도 "어떤 작업을 원하시는지 한 단계만 더 구체화해 주세요"를
+    # 돌려줬다. 승인 경로(approve=True)는 이미 통과한 계획의 실행이라 건너뛴다.
+    if not req.approve:
+        if detect_crisis_intent(req.message):
+            return ExcelLiveActionResponse(
+                ok=True,
+                action="excel_live.safety_stop",
+                reason=CRISIS_REPLY,
+                result={"route_to_chat": False, "safety": True},
+            )
+
+    # 지금 끌어 둔 영역이 옛 주소를 이긴다.
+    #
+    # 프론트가 보내는 context_range는 `lastExcelRangeRef` — **직전 명령의 결과 주소**다.
+    # 사용자가 Excel에서 새로 드래그하고 "여기에 표 만들어줘"라고 해도 옛 주소가
+    # 계획에 들어갔다. 매번 "A3:J4"처럼 좌표를 부르게 하지 않으려면 여기서 뒤집어야
+    # 한다. 문장에 범위가 적혀 있으면(A1:C5) 그건 건드리지 않는다.
+    if not req.approve:
+        resolved = resolve_context_range(
+            get_excel_live_service(),
+            message=req.message,
+            context_range=req.context_range,
+            workbook_id=req.workbook_id,
+            sheet_name=req.sheet_name,
+        )
+        if resolved != req.context_range:
+            req = req.model_copy(update={"context_range": resolved})
+
     _cleanup_expired_table_slots()
     _cleanup_expired_operation_slots()
     _cleanup_expired_clarifications()
@@ -6357,6 +6430,21 @@ async def _run_command(
     pending_slot = _pending_create_table_slots.get(session_key)
     pending_operation = _pending_operation_slots.get(session_key)
     pending_clarification = _pending_clarifications.get(session_key)
+
+    # 업무 외 판정은 **대기 슬롯을 조회한 뒤에** 한다.
+    #
+    # 되묻기를 걸어 놓은 턴의 답변은 그 자체로는 엑셀 문장처럼 안 보인다("일별로",
+    # "두 번째 걸로", "응 그렇게"). 슬롯을 보기 전에 업무 외로 판정해 채팅으로
+    # 내려보내면 F-07에서 고친 문맥 유실이 다른 경로로 되살아난다.
+    if (
+        not req.approve
+        and pending_slot is None
+        and pending_operation is None
+        and pending_clarification is None
+    ):
+        verdict = classify_off_topic(req.message)
+        if verdict.off_topic:
+            return _not_excel_response(req.message, verdict.why)
 
     # "대시보드 만들어줘"류는 계획 한 번(4단계)에 담기지 않는다. 계획을 세우기 전에
     # 갈라내야 단순 명령이 왕복 비용을 물지 않는다.

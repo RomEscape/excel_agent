@@ -2017,6 +2017,43 @@ class ExcelLiveService:
             pass
         return "A1"
 
+    def get_write_protection(
+        self, workbook_id: str | None, sheet_name: str | None = None
+    ) -> dict[str, Any]:
+        """편집을 막아야 하는 보호 상태를 읽는다(F-08).
+
+        COM 속성은 Excel 버전에 따라 없을 수 있으므로 하나씩 getattr로 감싼다.
+        하나가 없다고 전체를 포기하면 나머지 방어까지 사라진다.
+        """
+        flags: dict[str, Any] = {"sheet_name": sheet_name or ""}
+
+        def _flag(obj: Any, name: str) -> bool:
+            try:
+                return bool(getattr(obj, name))
+            except Exception:
+                return False
+
+        try:
+            wb = self._find_workbook(workbook_id or self.get_selected_workbook_id() or "")
+        except Exception:
+            return flags
+        wb_api = getattr(wb, "api", None)
+        if wb_api is None:
+            return flags
+        flags["workbook_read_only"] = _flag(wb_api, "ReadOnly")
+        flags["structure_protected"] = _flag(wb_api, "ProtectStructure")
+        flags["marked_final"] = _flag(wb_api, "Final")
+
+        try:
+            ws = self._find_sheet(wb, sheet_name) if sheet_name else wb.sheets.active
+            ws_api = getattr(ws, "api", None)
+            if ws_api is not None:
+                flags["sheet_protected"] = _flag(ws_api, "ProtectContents")
+                flags["sheet_name"] = str(getattr(ws, "name", sheet_name or ""))
+        except Exception:
+            pass
+        return flags
+
     def _find_workbook(self, workbook_id_or_name: str):
         candidate = (workbook_id_or_name or "").strip().lower()
         for wb in self._app().books:

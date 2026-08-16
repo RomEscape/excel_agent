@@ -8,6 +8,7 @@ OpenPyXL 기반 파일 편집 Excel 서비스.
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 from datetime import date, datetime, time
@@ -177,6 +178,43 @@ class FileExcelLiveService(ExcelLiveService):
         files = list(rows.values())
         files.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0.0, reverse=True)
         return files[: max(1, min(1000, int(limit)))]
+
+    def get_write_protection(
+        self, workbook_id: str | None, sheet_name: str | None = None
+    ) -> dict[str, Any]:
+        """파일 엔진의 보호 상태(F-08).
+
+        openpyxl은 시트 보호를 **강제하지 않는다** — 보호된 시트에 값을 쓰고 저장까지
+        성공한다(2026-08-16 실측). 그래서 이 조회가 file 엔진의 유일한 방어선이다.
+
+        한계: `os.access(W_OK)`는 Windows의 읽기 전용 **속성**만 반영한다. NTFS ACL이나
+        네트워크 공유 권한으로 인한 쓰기 불가는 저장 시점 PermissionError로만 드러난다.
+        """
+        flags: dict[str, Any] = {"sheet_name": sheet_name or ""}
+        try:
+            path = self._resolve_workbook_path(workbook_id)
+        except Exception:
+            return flags
+        try:
+            flags["workbook_read_only"] = path.exists() and not os.access(path, os.W_OK)
+        except Exception:
+            pass
+        try:
+            wb = self._load_wb(path)
+            try:
+                security = getattr(wb, "security", None)
+                flags["structure_protected"] = bool(
+                    getattr(security, "lockStructure", False)
+                )
+                ws = wb[sheet_name] if sheet_name else wb.active
+                protection = getattr(ws, "protection", None)
+                flags["sheet_protected"] = bool(getattr(protection, "sheet", False))
+                flags["sheet_name"] = str(getattr(ws, "title", sheet_name or ""))
+            finally:
+                wb.close()
+        except Exception:
+            pass
+        return flags
 
     def _resolve_workbook_path(self, workbook_id_or_name: str | None) -> Path:
         raw = str(workbook_id_or_name or "").strip()

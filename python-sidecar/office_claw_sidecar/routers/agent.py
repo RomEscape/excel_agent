@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 
 from office_claw_sidecar.models.approval import ApprovalRequest, ApprovalResponse
 from office_claw_sidecar.services.audit_service import AuditService
+from office_claw_sidecar.services.chat_persona import build_persona_messages
 from office_claw_sidecar.services.llm_service import get_llm_service
 from office_claw_sidecar.services.masking_service import get_masking_service
 from office_claw_sidecar.services.openclaw_client import (
@@ -426,13 +427,18 @@ def _is_openclaw_degraded_reply(text: str) -> bool:
 
 
 async def _fallback_chat_via_llm(masked_message: str) -> str:
+    """게이트웨이가 답을 못 냈을 때 로컬 모델로 직접 답한다.
+
+    2026-08-16 실측: 여기서 system 메시지를 안 보내던 탓에 모델이 베이스 페르소나로
+    돌아가 "저는 SK텔레콤에서 개발한 AI 비서입니다"라고 답하고, 엑셀 승인을 다시
+    요청한 사용자에게 사업 아이디어를 제안했다. 상시 경로는 아니지만 드물지도
+    않다 — 실사용 세션 84건 중 12건(14.3%)이 이 폴백을 탔다.
+    """
     try:
         llm = get_llm_service()
-        reply = await llm.chat(
-            [
-                {"role": "user", "content": masked_message},
-            ]
-        )
+        # 인자를 늘리지 않는다. 테스트의 가짜 LLM이 `chat(self, messages, model=None)`
+        # 시그니처라, 키워드를 더하면 TypeError가 아래 except에 먹혀 조용히 빈 응답이 된다.
+        reply = await llm.chat(build_persona_messages(masked_message))
         return str(reply or "").strip()
     except Exception as exc:
         logger.warning("[agent] LLM fallback 실패: %s", exc)

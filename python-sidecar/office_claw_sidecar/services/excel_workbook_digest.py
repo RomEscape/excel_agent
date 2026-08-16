@@ -63,10 +63,18 @@ def _clamp_range(range_ref: str, *, max_rows: int, max_cols: int) -> str:
     return f"{start_col}{start_row}:{_idx_to_col(col_end_idx)}{row_end}"
 
 
+# 다이제스트는 줄 단위 포맷이다. 셀 값에 개행이 있으면 "- 시트 …", "  열: …" 같은
+# 구조 줄을 셀 하나가 위조할 수 있다 — 2026-08-16 실측에서 A1 한 칸이 프롬프트에
+# 가짜 시트 줄을 만들어 냈다. 24자 절단은 표시 제한이지 방어가 아니다(24자면 한국어
+# 지시문 한 문장이 들어간다). 여기서 구조 문자를 없애는 건 **프롬프트 문구를 안
+# 바꾸므로** SFT 학습 형식과 무관하다(CLAUDE.md §3.5).
+_STRUCTURE_CHARS = re.compile(r"[\r\n\t\x00-\x1f\x7f]+")
+
+
 def _cell_text(value: Any) -> str:
     if value is None:
         return ""
-    text = str(value).strip()
+    text = _STRUCTURE_CHARS.sub(" ", str(value)).strip()
     if len(text) > _MAX_CELL_TEXT:
         text = text[: _MAX_CELL_TEXT - 1] + "…"
     return text
