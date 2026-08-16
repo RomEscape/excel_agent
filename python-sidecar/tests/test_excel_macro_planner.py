@@ -91,11 +91,29 @@ def test_building_a_dashboard_is_still_a_macro_request():
 
 
 def test_prompt_carries_the_measured_dashboard_example():
-    """검증된 18개 명령이 few-shot에서 빠지면 분해 품질이 그만큼 떨어진다."""
+    """검증된 명령 목록이 few-shot에서 빠지면 분해 품질이 그만큼 떨어진다.
+
+    2026-08-16: 제목 행을 1행 단독으로 빼고 KPI를 3행부터 두도록 예시를 다시 짰다.
+    값이 든 칸 위에서 병합하면 그 값이 사라지기 때문이다(A1:C1 병합이 B1의 총매출을 삼켰다).
+    그래서 지역별 표가 A6:A11 -> A8:A13으로 내려갔다.
+    """
     prompt = build_macro_prompt("대시보드 만들어줘", digest_text="시트 Sales_Data")
-    assert "=SUMIF(Sales_Data!$C$2:$C$61,A6,Sales_Data!$J$2:$J$61)" in prompt
+    assert "=SUMIF(Sales_Data!$C$2:$C$61,A8,Sales_Data!$J$2:$J$61)" in prompt
     assert "시트 Sales_Data" in prompt
     assert str(MAX_MACRO_STEPS) in prompt
+
+
+def test_prompt_allows_the_formatting_pass():
+    """규칙 5가 서식을 금지하면 대시보드가 민무늬로 나온다.
+
+    2026-08-16 실측: 금지 상태에서 Dashboard의 굵게·배경색·경계선·병합·숫자서식이 전부 0칸이었다.
+    액션은 전부 구현돼 있는데 프롬프트만 "만들 수 없다"고 적혀 있었다.
+    """
+    prompt = build_macro_prompt("대시보드 만들어줘", digest_text="시트 Sales_Data")
+    for phrase in ("병합해줘", "배경색", "글자 굵게", "경계선 적용", "숫자 형식"):
+        assert phrase in prompt, phrase
+    # 아직 반영되지 않는 것은 계속 막아 둔다.
+    assert "글자 크기" in prompt and "넣지 않는 것" in prompt
 
 
 def test_validation_numbers_and_trims_commands():

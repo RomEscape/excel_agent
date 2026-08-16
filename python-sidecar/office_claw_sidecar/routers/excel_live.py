@@ -1112,6 +1112,8 @@ def _macro_snapshot(run: MacroRun) -> dict[str, Any]:
 
 def _quick_color_hex(word: str) -> str:
     token = str(word or "").strip().lower()
+    if re.fullmatch(r"#[0-9a-f]{6}", token):
+        return token.upper()
     if token in {"노란색", "노랑", "노란", "yellow"}:
         return "#FFFF00"
     if token in {"빨간색", "빨강", "red"}:
@@ -1126,8 +1128,10 @@ def _quick_color_hex(word: str) -> str:
 
 
 def _quick_extract_colors(text: str) -> list[str]:
+    # `#1F4E79` 같은 코드도 받는다. 대시보드 배색은 이름으로 부를 수 없는 색이 대부분이라,
+    # 코드를 못 읽으면 전부 기본값(노랑)으로 칠해진다(2026-08-16 실측: 남색 제목 바가 노랗게 나왔다).
     matches = re.findall(
-        r"(노란색|노랑|노란|yellow|빨간색|빨강|빨간|red|파란색|파랑|blue|초록색|초록|green|흰색|하얀색|하양|white|화이트|백색)",
+        r"(#[0-9a-fA-F]{6}|노란색|노랑|노란|yellow|빨간색|빨강|빨간|red|파란색|파랑|blue|초록색|초록|green|흰색|하얀색|하양|white|화이트|백색)",
         str(text or ""),
         re.IGNORECASE,
     )

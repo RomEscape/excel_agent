@@ -146,6 +146,11 @@ def _extract_target_range_from_text(text: str) -> str | None:
 
 def _normalize_color(word: str) -> str:
     normalized = word.strip().lower()
+    # `#1F4E79` 처럼 코드로 준 색. 대시보드 배색은 이름으로 부를 수 없는 색이 대부분인데,
+    # 이걸 못 읽으면 전부 기본값(노랑)으로 칠해진다(2026-08-16 실측: 남색 제목 바가 노랗게 나왔다).
+    hex_match = re.fullmatch(r"#?([0-9a-f]{6})", normalized)
+    if hex_match:
+        return f"#{hex_match.group(1).upper()}"
     if normalized in {"노란색", "노랑", "노란", "yellow"}:
         return "#FFFF00"
     if normalized in {"빨간색", "빨강", "빨간", "red"}:
@@ -584,7 +589,7 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
         target_range = _extract_target_range_from_text(lowered) or (f"{col}:{col}" if col else "__USED_RANGE__")
         formula_col = col or "A"
         color_match = re.search(
-            r"(노란색|노랑|yellow|빨간색|빨강|red|초록색|초록|green|파란색|파랑|blue)",
+            r"(#?[0-9a-fA-F]{6}|노란색|노랑|yellow|빨간색|빨강|red|초록색|초록|green|파란색|파랑|blue)",
             lowered,
         )
         fill = _normalize_color(color_match.group(1)) if color_match else "#FFC7CE"
@@ -602,7 +607,7 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
     if re.search(r"(칠해|강조|표시|highlight|색|채워|배경|바꿔)", lowered):
         op_threshold = _parse_operator_threshold(lowered)
         color_match = re.search(
-            r"(노란색|노랑|yellow|빨간색|빨강|red|초록색|초록|green|파란색|파랑|blue)",
+            r"(#?[0-9a-fA-F]{6}|노란색|노랑|yellow|빨간색|빨강|red|초록색|초록|green|파란색|파랑|blue)",
             lowered,
         )
         if op_threshold is None and text_equals:

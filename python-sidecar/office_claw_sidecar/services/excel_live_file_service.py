@@ -649,6 +649,23 @@ class FileExcelLiveService(ExcelLiveService):
             wb_data.close()
             wb_formula.close()
 
+    def describe_sheet_layout(self, workbook_id: str | None, sheet_name: str) -> dict[str, Any]:
+        """시트의 수식·서식·병합·표 블록을 요약한다.
+
+        다이제스트가 값만 보여 주면 모델은 자기가 방금 칠한 색도, 어느 열이 수식인지도
+        모른다. 여러 턴에 걸쳐 다듬으려면 매 턴 파일에서 다시 읽어야 한다.
+        여는 일만 여기서 하고 요약은 excel_sheet_layout이 맡는다.
+        """
+        from office_claw_sidecar.services.excel_sheet_layout import describe_worksheet
+
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            return describe_worksheet(ws)
+        finally:
+            wb.close()
+
     def get_range_snapshot(self, workbook_id: str | None, sheet_name: str | None, range_ref: str) -> dict[str, Any]:
         path = self._resolve_workbook_path(workbook_id)
         wb = self._load_wb(path)

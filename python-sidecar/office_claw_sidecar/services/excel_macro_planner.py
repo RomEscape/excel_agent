@@ -132,23 +132,34 @@ def _fewshot_block() -> str:
         "Sales_Data 시트 K1에 이익 입력",
         "Sales_Data 시트 K2:K61에 수식 =J2-(H2*F2) 적용",
         "Dashboard 시트 만들어줘",
-        "Dashboard 시트 A1:A3에 총매출,총이익,평균주문금액 입력",
-        "Dashboard 시트 B1에 수식 =SUM(Sales_Data!J2:J61) 적용",
-        "Dashboard 시트 B2에 수식 =SUM(Sales_Data!K2:K61) 적용",
-        "Dashboard 시트 B3에 수식 =AVERAGE(Sales_Data!J2:J61) 적용",
-        "Dashboard 시트 A5:C5에 지역,매출,이익 입력",
-        "Dashboard 시트 A6:A11에 서울,경기,충청,영남,호남,강원 입력",
+        # 제목은 1행 단독. KPI는 3행부터 — 값이 든 칸 위에서 병합하면 그 값이 사라진다.
+        "Dashboard 시트 A1에 2026 매출 대시보드 입력",
+        "Dashboard 시트 A3:A5에 총매출,총이익,평균주문금액 입력",
+        "Dashboard 시트 B3에 수식 =SUM(Sales_Data!J2:J61) 적용",
+        "Dashboard 시트 B4에 수식 =SUM(Sales_Data!K2:K61) 적용",
+        "Dashboard 시트 B5에 수식 =AVERAGE(Sales_Data!J2:J61) 적용",
+        "Dashboard 시트 A7:C7에 지역,매출,이익 입력",
+        "Dashboard 시트 A8:A13에 서울,경기,충청,영남,호남,강원 입력",
         (
-            "Dashboard 시트 B6:B11에 수식 "
-            "=SUMIF(Sales_Data!$C$2:$C$61,A6,Sales_Data!$J$2:$J$61) 적용"
+            "Dashboard 시트 B8:B13에 수식 "
+            "=SUMIF(Sales_Data!$C$2:$C$61,A8,Sales_Data!$J$2:$J$61) 적용"
         ),
         (
-            "Dashboard 시트 C6:C11에 수식 "
-            "=SUMIF(Sales_Data!$C$2:$C$61,A6,Sales_Data!$K$2:$K$61) 적용"
+            "Dashboard 시트 C8:C13에 수식 "
+            "=SUMIF(Sales_Data!$C$2:$C$61,A8,Sales_Data!$K$2:$K$61) 적용"
         ),
-        "Dashboard 시트 A5:C11로 막대 차트 만들어줘",
+        "Dashboard 시트 A7:C13로 막대 차트 만들어줘",
         "Sales_Data 시트 J2:J61에 데이터 막대 적용해줘",
         "Sales_Data 시트 틀 고정해줘",
+        # 마무리 서식 — 데이터·수식·차트가 다 들어간 뒤에 모아서 한다.
+        "Dashboard 시트 A1:C1 병합해줘",
+        "Dashboard 시트 A1:C1 배경색 #1F4E79로 칠해줘",
+        "Dashboard 시트 A1 글자 굵게 해줘",
+        "Dashboard 시트 A7:C7 배경색 #DDEBF7로 칠해줘",
+        "Dashboard 시트 A7:C7 글자 굵게 해줘",
+        "Dashboard 시트 A7:C13 범위에 경계선 적용해줘",
+        "Dashboard 시트 B3:B5에 숫자 형식 #,##0 적용",
+        "Dashboard 시트 B8:C13에 숫자 형식 #,##0 적용",
         "Dashboard 시트 열 너비 자동 맞춤",
         "Sales_Data 시트 J2:K61에 숫자 형식 #,##0 적용",
     ]
@@ -174,8 +185,15 @@ def build_macro_prompt(message: str, *, digest_text: str = "") -> str:
         "   나쁨: \"매출 계산해줘\"  좋음: \"Sales_Data 시트 J2:J61에 수식 =E2*F2 적용\"\n"
         "3) 한 명령이 너무 커지면 안 된다. 명령 하나는 4단계 이내로 끝나야 한다.\n"
         "4) 위 통합문서 상태에 실제로 있는 시트명과 열만 쓴다. 없는 열을 지어내지 않는다.\n"
-        "5) 만들 수 없는 것은 계획에 넣지 않는다 — Excel 표(ListObject), 수식 기반 "
-        "조건부 서식, 글꼴/굵게 같은 글자 스타일.\n"
+        "5) 보기 좋게 만드는 서식도 계획에 넣는다. 데이터·수식·차트를 다 넣은 뒤 마지막에 모은다.\n"
+        "   쓸 수 있는 것과 문구(이 형태를 그대로 쓴다):\n"
+        "     - 제목 병합: \"<시트> 시트 A1:F2 병합해줘\"\n"
+        "     - 배경색:   \"<시트> 시트 A1:F2 배경색 #1F4E79로 칠해줘\"\n"
+        "     - 굵게:     \"<시트> 시트 A5:C5 글자 굵게 해줘\"\n"
+        "     - 경계선:   \"<시트> 시트 A5:C11 범위에 경계선 적용해줘\"\n"
+        "     - 숫자 형식: \"<시트> 시트 B6:C11에 숫자 형식 #,##0 적용\"\n"
+        "     - 조건부 서식: \"<시트> 시트 F2:F9가 발주필요면 빨간 배경 조건부서식 넣어줘\"\n"
+        "   넣지 않는 것: Excel 표(ListObject), 글자 크기·글자색 지정(아직 반영되지 않는다).\n"
         "6) 사용자가 지우라고 하지 않았으면 기존 데이터를 지우거나 덮어쓰지 않는다.\n"
         f"7) 명령은 최대 {MAX_MACRO_STEPS}개까지.\n"
         "8) 순서가 중요하다. 값을 먼저 넣고 그 값을 참조하는 수식·차트를 뒤에 둔다.\n"

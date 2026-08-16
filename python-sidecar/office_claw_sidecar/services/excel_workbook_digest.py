@@ -15,6 +15,8 @@ import re
 import time
 from typing import Any
 
+from office_claw_sidecar.services.excel_sheet_layout import render_layout
+
 _MAX_SHEETS = 8
 # 실무 시트는 12열을 쉽게 넘는다(데모 파일의 Sales_Data는 17열). 뒤쪽 열을 잘라내면
 # 바인더가 "매출이익" 같은 열을 아예 못 찾아 되묻기로 떨어진다.
@@ -162,6 +164,15 @@ def build_workbook_digest(
             body = [list(row[:_MAX_COLS]) for row in values[1:]]
             entry["sample_rows"] = [[_cell_text(cell) for cell in row] for row in body[:_SAMPLE_ROWS]]
             _summarize_columns(entry["columns"], body)
+
+        # 값만으로는 "지금 어떻게 보이는가"를 알 수 없다. 수식·서식·블록을 함께 읽어
+        # 다음 턴이 자기가 만든 것을 보고 다듬을 수 있게 한다. 엔진이 못 하면 조용히 건너뛴다.
+        describe = getattr(service, "describe_sheet_layout", None)
+        if callable(describe):
+            try:
+                entry["layout"] = describe(workbook_id, name)
+            except Exception:
+                pass
         digest["sheets"].append(entry)
 
     if use_cache:
@@ -189,6 +200,9 @@ def render_workbook_digest(digest: dict[str, Any], *, max_chars: int = 1600) -> 
         sample = sheet.get("sample_rows") or []
         if sample:
             lines.append(f"  예시행: {' | '.join(sample[0])}")
+        # 활성 시트만 서식까지 보여 준다 — 전 시트를 다 적으면 프롬프트가 터진다.
+        if name == active:
+            lines.extend(render_layout(sheet.get("layout") or {}))
         if name == active:
             for col in columns:
                 categories = col.get("categories") or []
