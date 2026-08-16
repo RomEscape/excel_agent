@@ -21,11 +21,14 @@ from office_claw_sidecar.services.llm_json import extract_json_object
 # 한 매크로가 낼 수 있는 하위 명령 수 상한. 넘으면 사용자가 검토할 수 없고,
 # 잘못된 분해가 통합문서를 크게 헤집을 수 있다.
 #
-# 2026-08-16: 30 -> 45. 서식까지 계획에 넣게 된 뒤 단일 시트 대시보드가 이미 25단계를 쓴다.
-# 상세 시트를 한 장 더 만들려면 8~10단계가 더 필요한데 여유가 5뿐이라 잘려 나갔다.
-# 대가는 승인 화면이 길어지는 것인데, 승인 카드가 단계별 경고까지 함께 보여 주므로
-# 검토는 여전히 가능하다. 그래도 무한정 늘리지는 않는다 — 잘못된 분해의 폭이 그만큼 커진다.
-MAX_MACRO_STEPS = 45
+# 2026-08-16: 30 -> 45 -> 36. 서식까지 계획에 넣게 된 뒤 단일 시트 대시보드가 이미
+# 25단계를 쓰고, 상세 시트 한 장에 8~10단계가 더 든다. 그래서 30으로는 상세 시트가 잘렸다.
+#
+# 45로 올렸더니 이번엔 **모델이 못 버텼다** — 열이 13개인 통합문서로 재 보니 4회 중 1회만
+# 성공했다(90초 타임아웃 1회, 출력이 잘려 JSON 파싱 실패 1회, ReadTimeout 1회).
+# 45단계짜리 한국어 문장 목록은 4.4GB 로컬 모델이 제한 시간 안에 온전히 뱉기 어렵다.
+# 36은 실측에서 안정적으로 나온 크기다(매출 대시보드 36단계 36/36 완주).
+MAX_MACRO_STEPS = 36
 
 MACRO_TEMPERATURE = 0.0
 
@@ -195,8 +198,23 @@ def _fewshot_block() -> str:
     )
 
 
-def build_macro_prompt(message: str, *, digest_text: str = "") -> str:
-    """분해 프롬프트를 만든다."""
+def build_macro_prompt(
+    message: str,
+    *,
+    digest_text: str = "",
+    phase: str = "",
+    done_steps: list[str] | None = None,
+) -> str:
+    """분해 프롬프트를 만든다.
+
+    `phase`를 주면 그 단계에 해당하는 명령만 내라고 요구한다. 한 번에 36단계를 뱉게 하면
+    4.4GB 로컬 모델이 제한 시간 안에 온전한 JSON을 못 낸다 — 2026-08-16 실측에서 열이
+    13개인 통합문서로 5회 중 4회가 타임아웃이거나 출력 절단이었다. 반으로 쪼개면
+    한 번에 낼 길이가 절반이라 안정적으로 끝난다.
+
+      structure — 값·수식·차트·시트 생성 (뼈대)
+      format    — 병합·배경색·굵게·경계선·숫자서식 (마무리)
+    """
     digest_block = f"{digest_text}\n" if str(digest_text or "").strip() else ""
     return (
         "너는 Excel 작업 분해기다. 사용자의 큰 요청을 하나씩 실행 가능한 한국어 명령 "
@@ -235,8 +253,37 @@ def build_macro_prompt(message: str, *, digest_text: str = "") -> str:
         "    상세 시트도 머리글 + 집계 수식 + 서식까지 갖춘 완결된 표여야 한다.\n"
         "    단계가 모자라면 상세 시트를 아예 넣지 않는다 — 반쯤 만든 시트가 더 나쁘다.\n\n"
         f"{_fewshot_block()}\n\n"
+        f"{_phase_block(phase, done_steps)}"
         f"요청: {message}"
     )
+
+
+# 한 번에 다 뱉게 하면 로컬 모델이 못 버틴다. 두 번에 나눠 부르고 이어 붙인다.
+MACRO_PHASES: tuple[str, ...] = ("structure", "format")
+
+_PHASE_INSTRUCTIONS: dict[str, str] = {
+    "structure": (
+        "이번 호출에서는 **뼈대만** 낸다 — 시트 생성, 값 입력, 수식, 차트.\n"
+        "서식(병합·배경색·굵게·경계선·숫자서식·글자색)은 **한 줄도 넣지 마라.** 다음 호출에서 받는다.\n\n"
+    ),
+    "format": (
+        "이번 호출에서는 **마무리 서식만** 낸다 — 병합, 배경색, 굵게, 글자 크기·색, 경계선,\n"
+        "숫자 형식, 조건부 서식, 열 너비 자동 맞춤, 틀 고정.\n"
+        "값·수식·차트·시트 생성은 이미 끝났으니 **한 줄도 넣지 마라.**\n"
+        "아래는 앞 호출이 이미 만들어 둔 명령 목록이다. 이 배치에 맞춰 서식을 입혀라.\n"
+        "{done}\n\n"
+    ),
+}
+
+
+def _phase_block(phase: str, done_steps: list[str] | None = None) -> str:
+    template = _PHASE_INSTRUCTIONS.get(str(phase or ""), "")
+    if not template:
+        return ""
+    if "{done}" not in template:
+        return template
+    listed = "\n".join(f"- {s}" for s in (done_steps or [])[:MAX_MACRO_STEPS])
+    return template.replace("{done}", listed or "- (없음)")
 
 
 def _sheet_names(digest: dict[str, Any] | None) -> set[str]:
@@ -350,6 +397,7 @@ def validate_macro_steps(
         parsed = _parse_or_none(command)
         # 읽기 판정을 먼저 한다 — 한 단계가 자기가 참조하는 셀을 스스로 채울 수는 없다.
         warnings.extend(coverage.check(command, parsed, fallback_sheet=active_sheet))
+        warnings.extend(coverage.check_overwrite(command, parsed, fallback_sheet=active_sheet))
         coverage.record(command, parsed, fallback_sheet=active_sheet)
 
         steps.append(
@@ -373,18 +421,43 @@ async def decompose_macro_request(
     digest: dict[str, Any] | None = None,
     digest_text: str = "",
     model: str | None = None,
+    timeout: float | None = None,
 ) -> list[MacroStepPlan]:
-    """고수준 요청을 하위 명령 목록으로 펼친다."""
-    prompt = build_macro_prompt(message, digest_text=digest_text)
-    raw = await llm_service.chat(
-        [{"role": "user", "content": prompt}],
-        model=model,
-        temperature=MACRO_TEMPERATURE,
-        json_only=True,
-    )
-    # 분해는 플래너 모델이 아니라 일반 대화 모델이 맡는다(`get_macro_model_name`).
-    # 앞뒤로 설명을 붙이거나 사고 과정을 남기는 모델일 가능성이 그만큼 크다.
-    parsed = extract_json_object(str(raw or ""), require_keys=("steps",))
-    if parsed is None:
-        raise ValueError("분해 결과 JSON을 찾지 못했습니다.")
-    return validate_macro_steps(parsed.get("steps"), digest=digest)
+    """고수준 요청을 하위 명령 목록으로 펼친다.
+
+    `timeout`을 안 주면 ollama_service의 기본값(120초)이 쓰인다. 호출자가 그보다 긴
+    `wait_for` 예산을 잡아도 소켓이 먼저 끊겨 예산이 의미를 잃는다(2026-08-16 실측:
+    바깥 180초, 안쪽 120초 → 124초에 ReadTimeout).
+    """
+    async def ask(phase: str, done: list[str]) -> list[str]:
+        prompt = build_macro_prompt(
+            message, digest_text=digest_text, phase=phase, done_steps=done
+        )
+        raw = await llm_service.chat(
+            [{"role": "user", "content": prompt}],
+            model=model,
+            temperature=MACRO_TEMPERATURE,
+            json_only=True,
+            timeout=timeout,
+        )
+        # 분해는 플래너 모델이 아니라 일반 대화 모델이 맡는다(`get_macro_model_name`).
+        # 앞뒤로 설명을 붙이거나 사고 과정을 남기는 모델일 가능성이 그만큼 크다.
+        parsed = extract_json_object(str(raw or ""), require_keys=("steps",))
+        if parsed is None:
+            raise ValueError("분해 결과 JSON을 찾지 못했습니다.")
+        raw_steps = parsed.get("steps")
+        if not isinstance(raw_steps, list):
+            raise TypeError("분해 결과가 목록이 아닙니다.")
+        return [" ".join(str(s or "").split()).strip() for s in raw_steps if str(s or "").strip()]
+
+    # 뼈대를 먼저 받는다. 이건 실패하면 매크로 자체가 성립하지 않는다.
+    commands = await ask(MACRO_PHASES[0], [])
+
+    # 서식은 있으면 좋고 없어도 쓸 수 있다. 실패해도 뼈대는 살린다 —
+    # 민무늬 대시보드가 "아무것도 없음"보다 낫다.
+    try:
+        commands.extend(await ask(MACRO_PHASES[1], commands))
+    except Exception:
+        pass
+
+    return validate_macro_steps(commands, digest=digest)

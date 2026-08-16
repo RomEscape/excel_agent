@@ -36,6 +36,10 @@ _SHEET_QUALIFIED_REF = re.compile(
 _LOCAL_CELL_REF = re.compile(r"(?<![A-Za-z0-9_$:!])(\$?)([A-Z]{1,3})(\$?)(\d{1,7})(?![\d:(])")
 _FORMULA_IN_TEXT = re.compile(r"=\s*[A-Za-z(\$]")
 _CREATES_SHEET = re.compile(r"시트\s*(?:를\s*)?(?:만들|생성|추가)")
+# 값을 실제로 바꾸는 문장. 서식(배경색·굵게)은 값을 지우지 않으므로 뺀다.
+_WRITES_VALUES = re.compile(r"(입력|기입|써|쓰|넣|적어|채워|수식|적용|write|set)", re.IGNORECASE)
+# 병합은 좌상단만 남기고 나머지 값을 **없앤다.** 서식 중 유일하게 파괴적이다.
+_MERGES = re.compile(r"병합", re.IGNORECASE)
 
 # 결과 표를 통째로 쓰는 액션. 크기를 미리 알 수 없으므로 시트 전체를 '채워짐'으로 둔다.
 _WHOLE_SHEET_WRITERS = frozenset(
@@ -73,6 +77,13 @@ def idx_to_col(index: int) -> str:
         n, rem = divmod(n - 1, 26)
         out = chr(65 + rem) + out
     return out
+
+
+def rect_to_ref(r1: int, c1: int, r2: int, c2: int) -> str:
+    """(행, 열) 사각형을 A1 표기로. 한 칸이면 `A1`, 아니면 `A1:C3`."""
+    if r1 == r2 and c1 == c2:
+        return f"{idx_to_col(c1)}{r1}"
+    return f"{idx_to_col(c1)}{r1}:{idx_to_col(c2)}{r2}"
 
 
 def parse_rect(ref: str) -> Rect | None:
@@ -145,12 +156,16 @@ class CoverageTracker:
         # 비었는지 찼는지 알 수 없으므로 경고하지 않는다 — 모르는 것을 결함으로
         # 단정하면 멀쩡한 계획이 경고로 뒤덮인다(검증기와 같은 원칙).
         self._known: set[str] = set()
+        # 계획을 실행하기 **전부터** 데이터가 있던 자리. 여기를 덮어쓰면 원본이 사라진다.
+        # `_filled`는 계획이 채운 것까지 섞이므로 따로 들고 있어야 한다.
+        self._preexisting: dict[str, Rect] = {}
         for sheet in (digest or {}).get("sheets") or []:
             name = str((sheet or {}).get("name") or "").strip().lower()
             rect = parse_rect(str((sheet or {}).get("used_range") or ""))
             if name and rect:
                 self._filled.setdefault(name, []).append(rect)
                 self._known.add(name)
+                self._preexisting[name] = rect
 
     def _key(self, command: str, fallback: str = "") -> str:
         return (sheet_in_command(command) or fallback).strip().lower()
@@ -175,6 +190,49 @@ class CoverageTracker:
         rect = parse_rect(ref)
         if rect:
             self._filled.setdefault(key, []).append(rect)
+
+    def check_overwrite(
+        self, command: str, parsed: dict[str, Any] | None, *, fallback_sheet: str = ""
+    ) -> list[str]:
+        """원래 있던 데이터를 덮어쓰거나 병합으로 없애는 단계를 잡는다.
+
+        2026-08-16 실측: 물류 통합문서(사용범위 A1:M201)에 분해가 낸 1단계가
+        `배송_데이터 시트 A1:M201 병합해줘`였다. 201행 전체가 한 칸으로 합쳐져 원본이
+        통째로 사라졌고, 그 뒤 단계는 `MergedCell ... read-only`로 죽었다.
+        few-shot 예시가 J·K열이 비어 있는 워크북 기준이라, 이미 데이터가 있는 J~M에도
+        그대로 베껴 쓴 것이다.
+
+        읽기 커버리지(check)는 이걸 못 잡는다 — 그쪽은 "참조하는 칸이 채워졌나"만 본다.
+        """
+        text = str(command or "")
+        key = self._key(text, fallback_sheet)
+        original = self._preexisting.get(key)
+        if not original:
+            return []
+
+        merges = bool(_MERGES.search(text))
+        if not merges and not _WRITES_VALUES.search(text):
+            return []  # 배경색·굵게 같은 순수 서식은 값을 지우지 않는다.
+
+        ref = target_range_in_command(text) or str((parsed or {}).get("range_ref") or "")
+        rect = parse_rect(ref)
+        if not rect:
+            return []
+        r1, c1, r2, c2 = rect
+        o1, oc1, o2, oc2 = original
+        # 겹치는 칸이 있는가
+        rows = min(r2, o2) - max(r1, o1) + 1
+        cols = min(c2, oc2) - max(c1, oc1) + 1
+        if rows <= 0 or cols <= 0:
+            return []
+        overlap = rows * cols
+        # 한 칸만 겹치는 건 제목을 다시 쓰는 경우가 많아 굳이 막지 않는다.
+        if overlap <= 1 and not merges:
+            return []
+        where = rect_to_ref(max(r1, o1), max(c1, oc1), min(r2, o2), min(c2, oc2))
+        if merges:
+            return [f"{where}를 병합하면 그 안의 기존 데이터 {overlap}칸이 사라집니다."]
+        return [f"{where}의 기존 데이터 {overlap}칸을 덮어씁니다."]
 
     def check(self, command: str, parsed: dict[str, Any] | None, *, fallback_sheet: str = "") -> list[str]:
         """이 단계가 읽는 셀 중 앞 단계가 채우지 않은 것들을 경고 문구로 돌려준다."""

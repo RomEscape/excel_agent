@@ -359,7 +359,13 @@ def _env_int(name: str, default: int, minimum: int) -> int:
 # 분해는 계획보다 긴 출력을 낸다 — 실측(A.X-4.0-Light, 20단계)에서 25초가 걸렸으므로
 # 부하가 걸린 상태를 감안해 넉넉히 잡는다. 넘기면 매크로를 포기하고 기존 단일 명령
 # 경로로 떨어진다.
-_MACRO_DECOMPOSE_TIMEOUT_SECONDS = _env_float("EXCEL_LIVE_MACRO_TIMEOUT_SECONDS", 90.0, 5.0)
+#
+# 2026-08-16: 90 -> 180. 상한을 45단계로 올리고 열이 13개인 통합문서로 재 보니
+# 3회 중 1회만 성공했다 — 1회는 90초 타임아웃, 1회는 출력이 잘려 JSON 파싱 실패였다.
+# 45단계짜리 한국어 문장 목록은 20단계의 배가 넘는 토큰을 뱉는다.
+# 폴백이 더 나쁘다는 점이 중요하다 — 매크로를 포기하면 플래너가 "차트 종류를
+# 선택해 주세요" 같은 엉뚱한 되묻기를 낸다. 기다리는 편이 낫다.
+_MACRO_DECOMPOSE_TIMEOUT_SECONDS = _env_float("EXCEL_LIVE_MACRO_TIMEOUT_SECONDS", 180.0, 5.0)
 _COMMAND_PARSE_TIMEOUT_SECONDS = _env_float("EXCEL_LIVE_PARSE_TIMEOUT_SECONDS", 10.0, 3.0)
 _COMMAND_PARSE_MAX_ATTEMPTS = _env_int("EXCEL_LIVE_PARSE_MAX_ATTEMPTS", 2, 1)
 _COMMAND_PARSE_RETRY_BACKOFF_SECONDS = _env_float(
@@ -6176,6 +6182,9 @@ async def _plan_macro_response(
                 digest=digest,
                 digest_text=render_workbook_digest(digest) if digest else "",
                 model=get_macro_model_name(),
+                # 소켓 예산을 바깥 예산보다 짧게 준다. 안 그러면 기본값(120초)이 먼저
+                # 끊겨 바깥 wait_for가 아무 의미도 없어진다.
+                timeout=max(5.0, _MACRO_DECOMPOSE_TIMEOUT_SECONDS - 10.0),
             ),
             timeout=_MACRO_DECOMPOSE_TIMEOUT_SECONDS,
         )

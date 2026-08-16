@@ -139,3 +139,56 @@ class TestTrackerOnRealPlans:
             digest={"sheets": [{"name": "Sales_Data"}]},
         )
         assert [w for s in steps for w in s.warnings if "참조하는" in w] == []
+
+
+class TestOverwriteGuard:
+    """원본 데이터를 덮어쓰거나 병합으로 없애는 계획을 실행 전에 잡는다.
+
+    2026-08-16 실측: 물류 통합문서(사용범위 A1:M201)에 분해가 낸 1단계가
+    `배송_데이터 시트 A1:M201 병합해줘`였다. 201행이 한 칸으로 합쳐져 원본이 통째로
+    사라졌고 뒤 단계는 MergedCell read-only로 죽었다. few-shot 예시가 J·K열이 비어 있는
+    워크북 기준이라, 이미 데이터가 있는 열에도 그대로 베껴 쓴 것이다.
+    """
+
+    BIG = {
+        "active_sheet": "배송_데이터",
+        "sheets": [{"name": "배송_데이터", "used_range": "A1:M201", "columns": []}],
+    }
+
+    def _warn(self, plan, digest=None):
+        steps = validate_macro_steps(plan, digest=digest or self.BIG)
+        return {s.index: s.warnings for s in steps if s.warnings}
+
+    def test_merging_over_data_is_flagged(self):
+        warned = self._warn(["배송_데이터 시트 A1:M201 병합해줘"])
+        assert 1 in warned
+        assert "사라집니다" in warned[1][0]
+
+    def test_writing_over_data_is_flagged(self):
+        warned = self._warn(["배송_데이터 시트 J2:J201에 수식 =SUM(K2:K2) 적용"])
+        assert 1 in warned
+        assert "덮어씁니다" in warned[1][0]
+
+    def test_plain_formatting_is_not_flagged(self):
+        # 배경색·굵게는 값을 지우지 않는다. 여기 경고를 붙이면 정상 계획이 경고로 뒤덮인다.
+        assert self._warn([
+            "배송_데이터 시트 A1:M201 배경색 #F5F5F5로 칠해줘",
+            "배송_데이터 시트 A1:M1 글자 굵게 해줘",
+            "배송_데이터 시트 틀 고정해줘",
+        ]) == {}
+
+    def test_writing_outside_the_used_range_is_fine(self):
+        # 빈 열에 파생 값을 만드는 건 정상 작업이다.
+        assert self._warn(["배송_데이터 시트 N2:N201에 수식 =A2 적용"]) == {}
+
+    def test_a_new_sheet_is_never_flagged(self):
+        assert self._warn([
+            "대시보드 시트 만들어줘",
+            "대시보드 시트 A1에 물류 관제 입력",
+            "대시보드 시트 A1:C1 병합해줘",
+        ]) == {}
+
+    def test_an_unknown_sheet_is_not_flagged(self):
+        # 사용 범위를 모르면 덮어쓰는지도 알 수 없다.
+        digest = {"active_sheet": "X", "sheets": [{"name": "X"}]}
+        assert self._warn(["X 시트 A1:M201 병합해줘"], digest) == {}
