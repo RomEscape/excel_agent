@@ -210,6 +210,40 @@ class TestActiveSelection:
         )
         assert repair_step(step, "x", RepairContext()) is None
 
+    def test_table_scoped_actions_keep_the_sentinel(self):
+        """표 전체가 대상인 액션은 직전 턴이 남긴 좁은 범위를 물려받으면 안 된다.
+
+        2026-08-16 실측: 차트를 G1:G4로 만든 다음 "지역별 매출을 집계해서 새 시트로
+        만들어줘"를 하면, 보정기가 `__ACTIVE_SELECTION__`을 그 G1:G4로 바꿔 놓아
+        피벗이 Product 열 4칸을 sum하려다 죽었다. 센티널을 남겨 둬야 라우터가
+        시트의 사용 영역으로 편다.
+        """
+        step = PlanStep(
+            action="excel_live.pivot_table",
+            params={
+                "source_range": "__ACTIVE_SELECTION__",
+                "row_field": "Region",
+                "value_field": "Sales",
+            },
+        )
+        out = repair_step(step, "x", RepairContext(active_cell="G1:G4"))
+        assert out is None, "피벗의 센티널을 직전 범위로 바꿔치기했다"
+
+    def test_a_chart_keeps_the_sentinel_too(self):
+        step = PlanStep(
+            action="excel_live.create_chart", params={"source_range": "__ACTIVE_SELECTION__"}
+        )
+        assert repair_step(step, "x", RepairContext(context_range="B2:B5")) is None
+
+    def test_cell_scoped_actions_still_resolve_the_sentinel(self):
+        """칸 단위 서식은 직전 범위를 물려받는 게 맞다 — 그 경로를 없애지 않았다."""
+        step = PlanStep(
+            action="excel_live.fill_range", params={"target_range": "__ACTIVE_SELECTION__"}
+        )
+        out = repair_step(step, "x", RepairContext(context_range="B2:D5"))
+        assert out is not None
+        assert out.params["target_range"] == "B2:D5"
+
 
 class TestFailureLineReachesTheUser:
     def test_it_names_the_action_the_range_and_the_cause(self):

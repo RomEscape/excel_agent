@@ -157,6 +157,76 @@ def _normalize_color(word: str) -> str:
     return "#FFFF00"
 
 
+_TEXT_EQUALS_SKIP = frozenset(
+    {
+        "노란",
+        "노랑",
+        "노란색",
+        "빨간",
+        "빨강",
+        "빨간색",
+        "파란",
+        "파랑",
+        "파란색",
+        "초록",
+        "초록색",
+        "흰",
+        "하얀",
+        "흰색",
+        "검정",
+        "검은",
+        "yellow",
+        "red",
+        "blue",
+        "green",
+        "white",
+        "black",
+        "조건부",
+        "서식",
+        "배경",
+        "하이라이트",
+    }
+)
+_TEXT_EQUALS_PATTERN = re.compile(
+    r"([가-힣A-Za-z0-9_]{2,20})(?:이면|면|인\s*행|인\s*셀|일\s*때)"
+)
+_CONVERT_EXISTING_TABLE_PATTERN = re.compile(
+    r"(엑셀\s*표|테이블로\s*(?:만들|변환|바꿔)|표로\s*(?:변환|바꿔)|listobject)",
+    re.IGNORECASE,
+)
+
+
+def parse_text_equals_condition(message: str) -> str | None:
+    """'발주필요인 행' / '미납이면'처럼 값 동등 조건을 뽑는다."""
+    for match in _TEXT_EQUALS_PATTERN.finditer(str(message or "")):
+        token = str(match.group(1) or "").strip()
+        if not token or token.casefold() in _TEXT_EQUALS_SKIP:
+            continue
+        if re.fullmatch(r"-?\d+(?:\.\d+)?", token):
+            continue
+        return token
+    return None
+
+
+def looks_like_existing_table_convert(message: str) -> bool:
+    """이미 있는 데이터 범위를 Excel 표로 바꾸라는 문장인지.
+
+    create_table은 빈 n×m 격자다. '엑셀 표로 만들어줘'를 그 슬롯에 넣으면
+    크기 질문만 하고 ListObject는 안 생긴다.
+    """
+    text = str(message or "")
+    lowered = text.lower()
+    if re.search(r"집계표|피벗\s*테이블|피벗테이블|pivot\s*table", lowered):
+        return False
+    if not _CONVERT_EXISTING_TABLE_PATTERN.search(text):
+        return False
+    if re.search(r"\d{1,3}\s*(?:\*|x|×)\s*\d{1,3}", lowered):
+        return False
+    if re.search(r"\d{1,3}\s*(?:행|열|by)", lowered):
+        return False
+    return True
+
+
 def _parse_operator_threshold(text: str) -> tuple[str, float] | None:
     op_map = {
         "이상": ">=",
@@ -315,6 +385,36 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
                 "reason": "새 시트 생성 요청",
             }
 
+    rename_sheet_match = re.search(
+        r"([A-Za-z0-9_가-힣]+)\s*(?:시트|sheet|탭)\s*(?:이름(?:을|를)?)?\s*(?:을|를)?\s*"
+        r"([A-Za-z0-9_가-힣]+)\s*(?:으로|로)\s*(?:바꿔|변경|고쳐|rename)",
+        text,
+        re.IGNORECASE,
+    )
+    if rename_sheet_match:
+        old_name = str(rename_sheet_match.group(1)).strip().strip("\"'")
+        new_name = str(rename_sheet_match.group(2)).strip().strip("\"'")
+        if old_name and new_name:
+            return {
+                "action": "excel_live.rename_sheet",
+                "params": {"sheet_name": old_name, "new_name": new_name},
+                "reason": "시트 이름 변경 요청",
+            }
+
+    delete_sheet_match = re.search(
+        r"([A-Za-z0-9_가-힣]+)\s*(?:시트|sheet|탭)\s*(?:을|를)?\s*(?:삭제|제거|없애)",
+        text,
+        re.IGNORECASE,
+    )
+    if delete_sheet_match:
+        sheet_name = str(delete_sheet_match.group(1)).strip().strip("\"'")
+        if sheet_name:
+            return {
+                "action": "excel_live.delete_sheet",
+                "params": {"sheet_name": sheet_name},
+                "reason": "시트 삭제 요청",
+            }
+
     select_sheet_match = re.search(
         r"([^\s,]+)\s*(?:시트|sheet)\s*(?:로|으로)?\s*(?:이동|전환|선택|활성화|switch|go)",
         text,
@@ -356,6 +456,14 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
             "action": "excel_live.write_range",
             "params": {"start_cell": start_cell, "values_2d": values_2d},
             "reason": "셀 값 삭제 요청",
+        }
+
+    if looks_like_existing_table_convert(text):
+        target_range = _extract_target_range_from_text(text) or context_range or "__USED_RANGE__"
+        return {
+            "action": "excel_live.convert_to_excel_table",
+            "params": {"target_range": target_range, "has_header": True},
+            "reason": "기존 데이터 범위를 Excel 표로 변환",
         }
 
     # 예: "5 * 5 표 만들어줘", "3x4 테이블 생성"
@@ -409,6 +517,35 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
             "reason": "선택 범위 경계선 적용 요청",
         }
 
+    if re.search(r"(굵게|볼드|bold|글꼴|폰트)", lowered) and not re.search(
+        r"(테두리|경계선|border|괘선)", lowered
+    ):
+        header_font = bool(re.search(r"(머리글|헤더|header)", lowered))
+        target_range = _extract_target_range_from_text(lowered) or (
+            "1:1" if header_font else (context_range or "__ACTIVE_SELECTION__")
+        )
+        return {
+            "action": "excel_live.set_font",
+            "params": {"target_range": target_range, "bold": True},
+            "reason": "글꼴 굵게 적용 요청",
+        }
+
+    if re.search(r"데이터\s*막대|data\s*bar", lowered):
+        target_range = _extract_target_range_from_text(text) or context_range or "__ACTIVE_SELECTION__"
+        return {
+            "action": "excel_live.apply_data_bar",
+            "params": {"target_range": target_range},
+            "reason": "데이터 막대 조건부 서식",
+        }
+
+    if re.search(r"색조|컬러\s*스케일|color\s*scale", lowered):
+        target_range = _extract_target_range_from_text(text) or context_range or "__ACTIVE_SELECTION__"
+        return {
+            "action": "excel_live.apply_color_scale",
+            "params": {"target_range": target_range},
+            "reason": "색조 조건부 서식",
+        }
+
     # 예: "A1:C10 읽어줘", "B열 보여줘"
     read_verbs = r"(읽어|읽기|보여|조회|확인|read|show|display)"
     if re.search(read_verbs, lowered) and not re.search(write_verbs, lowered):
@@ -439,6 +576,28 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
             "reason": "집계 함수 수식 생성 요청",
         }
 
+    formula_cf = bool(re.search(r"조건부\s*서식|수식\s*조건부", lowered))
+    text_equals = parse_text_equals_condition(text)
+    if formula_cf and text_equals:
+        col_match = COLUMN_LETTER_PATTERN.search(text)
+        col = str(col_match.group(1)).upper() if col_match else ""
+        target_range = _extract_target_range_from_text(lowered) or (f"{col}:{col}" if col else "__USED_RANGE__")
+        formula_col = col or "A"
+        color_match = re.search(
+            r"(노란색|노랑|yellow|빨간색|빨강|red|초록색|초록|green|파란색|파랑|blue)",
+            lowered,
+        )
+        fill = _normalize_color(color_match.group(1)) if color_match else "#FFC7CE"
+        return {
+            "action": "excel_live.apply_formula_cf",
+            "params": {
+                "target_range": target_range,
+                "formula": f'=${formula_col}2="{text_equals}"',
+                "fill_color": fill,
+            },
+            "reason": "수식 조건부 서식 요청",
+        }
+
     # 예: "A열 50보다 큰 값 노란색으로 칠해줘", "A1:A20 >= 100 highlight"
     if re.search(r"(칠해|강조|표시|highlight|색|채워|배경|바꿔)", lowered):
         op_threshold = _parse_operator_threshold(lowered)
@@ -446,6 +605,19 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
             r"(노란색|노랑|yellow|빨간색|빨강|red|초록색|초록|green|파란색|파랑|blue)",
             lowered,
         )
+        if op_threshold is None and text_equals:
+            target_range = _extract_target_range_from_text(lowered) or "A:Z"
+            return {
+                "action": "excel_live.highlight_by_condition",
+                "params": {
+                    "target_range": target_range,
+                    "operator": "==",
+                    "threshold": 0,
+                    "value": text_equals,
+                    "fill_color": _normalize_color(color_match.group(1)) if color_match else "#FFFF00",
+                },
+                "reason": "값 동등 조건부 강조 요청",
+            }
         # 예: "표 색을 전반적으로 노랗게 칠해줘"처럼 조건 없는 전체 채우기
         if op_threshold is None:
             broad_intent = bool(
@@ -1266,9 +1438,16 @@ def extract_create_table_slot_hints(message: str) -> dict[str, Any]:
     lowered = text.lower()
     preset = match_table_preset(text)
 
+    # "집계표 만들어줘"의 '표'는 빈 격자가 아니라 피벗이다.
+    table_scan = (
+        lowered.replace("집계표", " ")
+        .replace("피벗 테이블", " ")
+        .replace("피벗테이블", " ")
+        .replace("pivot table", " ")
+    )
     table_intent = (
-        any(token in lowered for token in ["표", "테이블", "table"])
-        and any(token in lowered for token in ["만들", "생성", "create", "작성"])
+        any(token in table_scan for token in ["표", "테이블", "table"])
+        and any(token in table_scan for token in ["만들", "생성", "create", "작성"])
     )
     if preset is not None:
         table_intent = True
@@ -1312,6 +1491,9 @@ def extract_create_table_slot_hints(message: str) -> dict[str, Any]:
         if parsed_headers:
             headers = parsed_headers
 
+    if looks_like_existing_table_convert(text) and not values_2d and rows is None and cols is None:
+        table_intent = False
+
     return {
         "rows": rows,
         "cols": cols,
@@ -1329,5 +1511,9 @@ def extract_create_table_slot_hints(message: str) -> dict[str, Any]:
             token in lowered
             for token in ["응", "네", "좋아", "그대로", "그 정도", "맞아", "yes", "ok", "okay"]
         ),
+        "convert_existing": looks_like_existing_table_convert(text)
+        and not values_2d
+        and rows is None
+        and cols is None,
     }
 

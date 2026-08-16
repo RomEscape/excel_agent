@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from office_claw_sidecar.services.excel_live_agent import parse_command_rule_based
+from office_claw_sidecar.services.excel_macro_coverage import CoverageTracker
 from office_claw_sidecar.services.llm_json import extract_json_object
 
 # 한 매크로가 낼 수 있는 하위 명령 수 상한. 넘으면 사용자가 검토할 수 없고,
@@ -40,6 +41,12 @@ _COMPOSITE_ARTIFACT = re.compile(
 
 # "대시보드처럼 정리해줘"는 비유지 대시보드를 만들어 달라는 말이 아니다.
 _COMPARISON_SUFFIX = re.compile(r"^(처럼|같이|같은|스럽|식으로|풍으로|느낌)")
+
+# "Dashboard 시트 만들어줘"는 대시보드를 지어 달라는 말이 아니라 **그 이름의 시트를
+# 하나** 만들어 달라는 말이다. 산출물어 바로 뒤에 '시트/탭'이 붙으면 이름으로 읽는다.
+# 이걸 매크로로 넘기면 create_sheet 한 번이면 될 일이 17단계 승인 화면이 되고,
+# 사용자가 그 화면을 지나치면 시트가 아예 안 생긴다(2026-08-16 실측).
+_SHEET_NAMING_SUFFIX = re.compile(r"^(시트|탭|sheet|tab)", re.IGNORECASE)
 
 # 셀/범위를 콕 집었으면 이미 구체적인 단일 명령이다.
 # \b를 쓰면 "A1에"처럼 조사가 붙었을 때 한글이 단어 문자로 취급돼 경계가 생기지 않는다.
@@ -84,10 +91,12 @@ class MacroStepPlan:
 
 
 def _requests_composite_artifact(text: str) -> bool:
-    """복합 산출물을 '만들어 달라'고 한 것인지 본다 — 비유는 뺀다."""
+    """복합 산출물을 '만들어 달라'고 한 것인지 본다 — 비유와 시트 이름은 뺀다."""
     for match in _COMPOSITE_ARTIFACT.finditer(text):
         tail = text[match.end() :].lstrip()
         if _COMPARISON_SUFFIX.match(tail):
+            continue
+        if _SHEET_NAMING_SUFFIX.match(tail):
             continue
         return True
     return False
@@ -169,7 +178,12 @@ def build_macro_prompt(message: str, *, digest_text: str = "") -> str:
         "조건부 서식, 글꼴/굵게 같은 글자 스타일.\n"
         "6) 사용자가 지우라고 하지 않았으면 기존 데이터를 지우거나 덮어쓰지 않는다.\n"
         f"7) 명령은 최대 {MAX_MACRO_STEPS}개까지.\n"
-        "8) 순서가 중요하다. 값을 먼저 넣고 그 값을 참조하는 수식·차트를 뒤에 둔다.\n\n"
+        "8) 순서가 중요하다. 값을 먼저 넣고 그 값을 참조하는 수식·차트를 뒤에 둔다.\n"
+        "   수식이 참조하는 셀은 **그보다 앞선 단계가 반드시 값을 채워야 한다.**\n"
+        "   예: B6:B11에 =SUMIF(...,A6,...)를 넣으려면 A6:A11 여섯 칸을 채우는 단계가 먼저 있어야 한다.\n"
+        "   그 단계를 넣을 수 없으면 수식 단계도 계획에서 뺀다.\n"
+        "9) 한 셀은 한 용도로만 쓴다. KPI는 레이블을 A열, 값을 B열에 나란히 둔다.\n"
+        "   KPI 값을 넣은 셀을 뒤에서 다른 표의 머리글이나 수식 기준으로 재사용하지 않는다.\n\n"
         f"{_fewshot_block()}\n\n"
         f"요청: {message}"
     )
@@ -210,11 +224,19 @@ def _predict_destructive(command: str) -> bool:
     규칙 파서는 정규식이라 비용이 없다. 파서가 액션을 못 뽑으면 문장의 파괴적 어휘로
     한 번 더 본다 — 승인 화면에서 놓치는 것보다 과하게 표시하는 편이 낫다.
     """
-    text = str(command or "")
+    return _is_destructive(str(command or ""), _parse_or_none(command))
+
+
+def _parse_or_none(command: Any) -> dict[str, Any] | None:
+    """규칙 파서를 한 번만 돌린다. 파괴성 판정과 커버리지 검사가 같은 결과를 나눠 쓴다."""
     try:
-        parsed = parse_command_rule_based(text)
+        parsed = parse_command_rule_based(str(command or ""))
     except Exception:
-        parsed = None
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _is_destructive(text: str, parsed: dict[str, Any] | None) -> bool:
     if isinstance(parsed, dict):
         if str(parsed.get("action") or "").strip() in DESTRUCTIVE_ACTIONS:
             return True
@@ -242,6 +264,10 @@ def validate_macro_steps(
         raise TypeError("분해 결과가 목록이 아닙니다.")
 
     known_sheets = _sheet_names(digest)
+    # 셀 입도 커버리지. 시트 존재 여부만 보는 known_sheets로는 "이 수식이 참조하는
+    # A6:A11을 채우는 단계가 계획에 있는가"를 알 수 없다.
+    coverage = CoverageTracker(digest)
+    active_sheet = str((digest or {}).get("active_sheet") or "").strip()
     steps: list[MacroStepPlan] = []
     seen: set[str] = set()
 
@@ -271,11 +297,16 @@ def validate_macro_steps(
             if known_sheets and cleaned.lower() not in known_sheets:
                 warnings.append(f"'{cleaned}' 시트는 지금 통합문서에 없습니다.")
 
+        parsed = _parse_or_none(command)
+        # 읽기 판정을 먼저 한다 — 한 단계가 자기가 참조하는 셀을 스스로 채울 수는 없다.
+        warnings.extend(coverage.check(command, parsed, fallback_sheet=active_sheet))
+        coverage.record(command, parsed, fallback_sheet=active_sheet)
+
         steps.append(
             MacroStepPlan(
                 index=len(steps) + 1,
                 command=command,
-                destructive=_predict_destructive(command),
+                destructive=_is_destructive(command, parsed),
                 warnings=warnings,
             )
         )

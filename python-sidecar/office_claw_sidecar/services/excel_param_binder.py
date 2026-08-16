@@ -71,6 +71,47 @@ _CELL_REF_PATTERN = re.compile(r"^[A-Z]{1,3}\d{1,7}$")
 _COLUMN_LETTER_ONLY = re.compile(r"^[A-Za-z]{1,3}$")
 _JOSA = ("으로", "로서", "에서", "들을", "를", "을", "은", "는", "이", "가", "의", "로", "별")
 
+# "새 시트로 만들어줘"의 '새'처럼 이름이 아니라 지시어인 낱말. 이걸 시트 이름으로
+# 오인하면 멀쩡한 요청이 "그런 시트 없다"고 막힌다.
+_GENERIC_SHEET_WORDS = frozenset(
+    {
+        "새",
+        "이",
+        "그",
+        "저",
+        "요",
+        "다른",
+        "현재",
+        "활성",
+        "각",
+        "모든",
+        "전체",
+        "해당",
+        "빈",
+        "임시",
+        "결과",
+        "출력",
+        "원본",
+        "위",
+        "아래",
+        "new",
+        "this",
+        "that",
+        "other",
+        "current",
+        "active",
+        "all",
+        "each",
+        "the",
+        "a",
+        "an",
+        "blank",
+        "empty",
+        "result",
+        "output",
+    }
+)
+
 
 def _strip_josa(text: str) -> str:
     value = str(text or "").strip()
@@ -127,7 +168,51 @@ def resolve_sheet_from_message(
         if _REFERENCE_CONTEXT.search(text[max(0, match.start() - 12) : match.start()]):
             continue
         return candidate
-    return _sheet_called_by_its_korean_name(text, names) or default
+    return (
+        _sheet_named_verbatim(text, names)
+        or _sheet_called_by_its_korean_name(text, names)
+        or default
+    )
+
+
+def explicit_sheet_mentions(message: str) -> list[str]:
+    """원문이 "<이름> 시트"로 **콕 집어** 부른 이름들을 등장 순서로 돌려준다.
+
+    resolve_sheet_from_message는 통합문서에 **있는** 시트만 고른다. 그래서 아직 없는
+    시트를 지목하면(예: "Dashboard 시트 A4에 총 매출 입력해줘") 지목이 통째로 버려지고
+    활성 시트로 폴백해, 사용자가 말한 적 없는 시트를 덮어쓴다. 그 지목을 잃지 않으려고
+    이름만 따로 뽑아 둔다 — 존재 여부 판정은 호출부가 한다.
+
+    지시어('새', '이', 'new' 등)는 이름이 아니므로 뺀다.
+    """
+    found: list[str] = []
+    for match in _SHEET_MENTION_PATTERN.finditer(str(message or "")):
+        candidate = _strip_josa(match.group(1)).strip()
+        if not candidate or candidate.lower() in _GENERIC_SHEET_WORDS:
+            continue
+        if candidate not in found:
+            found.append(candidate)
+    return found
+
+
+def _sheet_named_verbatim(text: str, names: set[str]) -> str | None:
+    """'Inventory를 표로'처럼 시트 이름이 조사만 붙고 '시트' 없이 나온 경우.
+
+    한 낱말 이름(Inventory)은 한국어 별칭 규칙이 고의로 건너뛴다. 그 상태로
+    두면 활성 시트(대개 첫 시트 Dashboard)에 표가 생긴다.
+    """
+    if not text or not names:
+        return None
+    particles = r"(?:을|를|이|가|은|는|의|에|에서|으로|로|과|와|도|만)?"
+    for name in sorted(names, key=len, reverse=True):
+        pattern = rf"(?<![A-Za-z0-9_]){re.escape(name)}{particles}(?![A-Za-z0-9_])"
+        match = re.search(pattern, text, re.IGNORECASE)
+        if not match:
+            continue
+        if _REFERENCE_CONTEXT.search(text[max(0, match.start() - 12) : match.start()]):
+            continue
+        return name
+    return None
 
 
 # 영문 시트명을 한국어로 부를 때 쓰는 말. 시트 이름은 거의 이 낱말들의 조합이다.
@@ -277,7 +362,7 @@ def _pick_sort_key(message: str, headers: list[str]) -> str | None:
 _GROUP_MARKER = re.compile(r"\s*(?:별|마다|당)")
 # 무엇을 더할지 가리키는 말. "매출 합계"뿐 아니라 "매출이 얼마나 나오는지"도 같은 요청이다.
 _MEASURE_MARKER = re.compile(
-    r"\s*(?:을|를|은|는|이|가|의)?\s*(?:합계|합|총액|총합|평균|개수|건수|카운트|얼마|실적|규모)"
+    r"\s*(?:을|를|은|는|이|가|의)?\s*(?:합계|합|총액|총합|평균|개수|건수|카운트|얼마|실적|규모|집계)"
 )
 
 
@@ -286,11 +371,13 @@ def _bind_pivot(params: dict[str, Any], *, message: str, entry: dict[str, Any]) 
     notes: list[str] = []
     text = str(message or "")
     source_sheet = str(entry.get("name") or "").strip()
-    if source_sheet and not str(params.get("source_sheet") or "").strip():
-        # 결과 시트를 먼저 만드는 계획이면 활성 시트가 그쪽으로 옮겨간다.
-        # 집계 원본은 지금 확정해 둬야 빈 시트를 읽고 실패하지 않는다.
-        params["source_sheet"] = source_sheet
-        notes.append(f"source_sheet={source_sheet}")
+    if source_sheet:
+        # 슬롯/플래너가 활성 시트(Dashboard 등)를 원본으로 넣어 두면, 머리글이
+        # 있는 시트로 옮긴 뒤에도 빈 시트를 집계한다. 비어 있을 때만 채우면 부족하다.
+        current = str(params.get("source_sheet") or "").strip()
+        if current != source_sheet:
+            params["source_sheet"] = source_sheet
+            notes.append(f"source_sheet={source_sheet}")
     mentions = find_header_mentions(text, headers)
     row_field = _pick_role_column(message, headers, ("행",))
     col_field = _pick_role_column(message, headers, ("열",))
@@ -622,7 +709,13 @@ def _normalize_output_sheet(
         changes.append(f"output_sheet={named}")
 
     current = str(params.get("output_sheet") or "").strip()
-    if current and source_sheet and current == source_sheet:
+    if action == "excel_live.pivot_table" and source_sheet and (not current or current == source_sheet):
+        # 비어 있으면 원본 시트 A1에 쓴다. 오늘 실슬에서 Sales_Data 머리글을
+        # 지역/매출 집계로 덮어썼다. "새 시트"라고 불렀든 아니든 원본은 건드리면 안 된다.
+        params["output_sheet"] = f"{source_sheet}_집계"
+        changes.append(f"output_sheet={params['output_sheet']}")
+        current = params["output_sheet"]
+    elif current and source_sheet and current == source_sheet:
         # 집계 결과를 원본 시트에 쓰면 원본 데이터가 지워진다.
         params["output_sheet"] = f"{source_sheet}_집계"
         changes.append(f"output_sheet={params['output_sheet']}")
@@ -1051,8 +1144,17 @@ def bind_plan_steps(
 
     다이제스트를 못 읽었으면(빈 워크북·연결 실패) 아무것도 바꾸지 않는다 — 추측으로 덮어쓰는 게 더 위험하다.
     """
-    entry = sheet_entry(digest, sheet_name)
+    original_entry = sheet_entry(digest, sheet_name)
+    entry = original_entry
     headers_known = bool(entry and _headers(entry))
+    if headers_known:
+        # 활성 시트가 이전 턴의 Inventory여도, "지역별 매출"은 Sales_Data 이야기다.
+        retargeted, _prefix = _retarget_sheet_by_headers(message, entry, digest, "")
+        if retargeted is not None:
+            entry = retargeted
+            headers_known = bool(_headers(entry))
+    retargeted_name = str(entry.get("name") or "").strip() if entry else ""
+    original_name = str(original_entry.get("name") or "").strip() if original_entry else ""
     if not headers_known:
         # 머리글을 모르면 열 바인딩은 추측이 되므로 하지 않는다.
         # 다만 원문에만 있는 리터럴(쓰기 값)은 워크북 상태와 무관하게 채울 수 있다.
@@ -1166,7 +1268,11 @@ def bind_plan_steps(
                 notes.append({"action": step.action, "slot": "formula_a1", "status": "unresolved"})
 
         if step.action in _CONDITION_FORMAT_ACTIONS:
-            changes.extend(_bind_condition_format(params, message=message, entry=entry, digest=digest))
+            # 조건부 강조는 범위에 `재고!E:E` 접두를 붙이는 경로다. 이미 옮긴
+            # entry를 넘기면 접두가 비어 활성 시트(매출)의 E열을 칠한다.
+            changes.extend(
+                _bind_condition_format(params, message=message, entry=original_entry, digest=digest)
+            )
 
         if step.action == "excel_live.consolidate_sheets":
             changes.extend(_bind_consolidate(params, message=message, digest=digest))
@@ -1180,6 +1286,16 @@ def bind_plan_steps(
                     action=step.action,
                 )
             )
+
+        if (
+            retargeted_name
+            and retargeted_name != original_name
+            and step.action not in _WRITE_INTO_NEW_SHEET_ACTIONS
+            and step.action != "excel_live.create_sheet"
+            and not str(params.get("sheet_name") or "").strip()
+        ):
+            params["sheet_name"] = retargeted_name
+            changes.append(f"sheet_name={retargeted_name}")
 
         changes.extend(_bind_created_sheet_target(step.action, params, created_sheet=created_sheet))
         if step.action == "excel_live.create_sheet":

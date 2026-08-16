@@ -63,6 +63,14 @@ class TestChartCompletion:
         assert _chart_step_from_message("차트 만들어줘") is None
         assert _chart_step_from_message("그래프로 보여줘") is None
 
+    def test_default_kind_fills_when_chart_is_accompaniment(self):
+        step = _chart_step_from_message(
+            "지역별 매출과 이익을 집계해서 새 시트와 차트를 만들어줘",
+            default_kind="bar",
+        )
+        assert step is not None
+        assert step["params"]["chart_type"] == "bar"
+
     def test_ignores_sentences_that_are_not_about_charts(self):
         assert _chart_step_from_message("금액 열 기준 내림차순으로 정렬해줘") is None
 

@@ -125,6 +125,18 @@ TOOL_REGISTRY: list[ToolDef] = [
         example_triggers=["요약 시트 만들어줘", "새 탭 추가", "시트 생성"],
     ),
     ToolDef(
+        name="excel_live.rename_sheet",
+        description="기존 시트 이름을 변경",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["Sheet1 시트 이름을 Dashboard로 바꿔줘", "탭 이름 변경"],
+    ),
+    ToolDef(
+        name="excel_live.delete_sheet",
+        description="시트를 삭제. 마지막 시트는 남김",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["Sheet1 시트 삭제해줘", "빈 탭 제거"],
+    ),
+    ToolDef(
         name="excel_live.read_range",
         description="지정 시트/범위의 셀 값을 읽기",
         permission=PermissionLevel.SAFE,
@@ -402,6 +414,24 @@ TOOL_REGISTRY: list[ToolDef] = [
         permission=PermissionLevel.CONFIRM,
         example_triggers=["퍼센트로 보여줘", "천단위 구분기호", "날짜 형식으로"],
     ),
+    ToolDef(
+        name="excel_live.set_font",
+        description="지정 범위의 글꼴(굵게/크기/색/글꼴명) 변경",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["머리글 굵게", "볼드 처리", "글자 크게"],
+    ),
+    ToolDef(
+        name="excel_live.convert_to_excel_table",
+        description="이미 있는 데이터 범위를 Excel 표(ListObject)로 변환",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["엑셀 표로 만들어줘", "테이블로 변환", "ListObject"],
+    ),
+    ToolDef(
+        name="excel_live.apply_formula_cf",
+        description="수식 조건부 서식. 값이 바뀌면 색이 따라간다",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["발주필요이면 빨간 조건부서식", "수식 조건부 서식"],
+    ),
     # ── 명시적 거부 목록 — 어떤 경우에도 실행 불가 ──────────────────────────
     ToolDef(
         name="DENIED.file_delete",
@@ -476,6 +506,9 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "excel_live.apply_color_scale": "Excel 색조 조건부 서식",
     "excel_live.apply_data_bar": "Excel 데이터 막대 조건부 서식",
     "excel_live.set_number_format": "Excel 표시 형식 변경",
+    "excel_live.set_font": "Excel 글꼴 변경",
+    "excel_live.convert_to_excel_table": "Excel 표(ListObject) 변환",
+    "excel_live.apply_formula_cf": "Excel 수식 조건부 서식",
 }
 
 # ── 화이트리스트 오버라이드 (런타임에 사용자가 변경 가능) ─────────────────────

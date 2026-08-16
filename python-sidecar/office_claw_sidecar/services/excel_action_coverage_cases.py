@@ -173,6 +173,40 @@ def _b_create_sheet(digest: dict[str, Any], rng: random.Random) -> Case | None:
     )
 
 
+@_register("excel_live.rename_sheet")
+def _b_rename_sheet(digest: dict[str, Any], rng: random.Random) -> Case | None:
+    names = _sheet_names(digest)
+    if not names:
+        return None
+    old = names[0]
+    new = _new_sheet_name(digest, rng.choice(["Dashboard", "요약본", "정리"]))
+    text = rng.choice(
+        [
+            f"{old} 시트 이름을 {new}로 바꿔줘",
+            f"{old} 시트 이름을 {new}으로 변경해줘",
+        ]
+    )
+    return (
+        text,
+        [_step("excel_live.rename_sheet", {"sheet_name": old, "new_name": new}, f"{old}→{new}")],
+        "시트 이름 변경",
+    )
+
+
+@_register("excel_live.delete_sheet")
+def _b_delete_sheet(digest: dict[str, Any], rng: random.Random) -> Case | None:
+    names = _sheet_names(digest)
+    if len(names) < 2:
+        return None
+    target = names[-1]
+    text = rng.choice([f"{target} 시트 삭제해줘", f"{target} 탭 제거해줘"])
+    return (
+        text,
+        [_step("excel_live.delete_sheet", {"sheet_name": target}, f"{target} 시트 삭제")],
+        "시트 삭제",
+    )
+
+
 # ── 읽기·쓰기 ───────────────────────────────────────────────────────────
 
 
@@ -397,10 +431,79 @@ def _b_number_format(digest: dict[str, Any], rng: random.Random) -> Case | None:
     )
 
 
+@_register("excel_live.set_font")
+def _b_set_font(digest: dict[str, Any], rng: random.Random) -> Case | None:
+    text = rng.choice(["머리글을 굵게 해줘", "첫 행 글자를 볼드 처리해줘", "A1 글꼴 굵게"])
+    return (
+        text,
+        [_step("excel_live.set_font", {"target_range": "A1:A1", "bold": True}, "머리글 굵게")],
+        "글꼴 굵게",
+    )
+
+
+@_register("excel_live.convert_to_excel_table")
+def _b_convert_table(digest: dict[str, Any], rng: random.Random) -> Case | None:
+    name = rng.choice(["SalesTable", "DataTable", "목록표"])
+    used = str(_active_entry(digest).get("used_range") or "A1:D10")
+    text = rng.choice(
+        [
+            f"이 범위를 {name} 이름으로 엑셀 표 테이블로 만들어줘",
+            f"{used}를 {name}라는 엑셀 표로 변환해줘",
+        ]
+    )
+    return (
+        text,
+        [
+            _step(
+                "excel_live.convert_to_excel_table",
+                {"target_range": used, "table_name": name, "has_header": True},
+                f"{name} 표 변환",
+            )
+        ],
+        "엑셀 표 변환",
+    )
+
+
+@_register("excel_live.apply_formula_cf")
+def _b_formula_cf(digest: dict[str, Any], rng: random.Random) -> Case | None:
+    cats = categorical_headers(digest)
+    if not cats:
+        return None
+    header = rng.choice(cats)
+    letter = _letter_of(digest, header)
+    needle = rng.choice(["완료", "미납", "발주필요", "지연"])
+    formula = f'={letter}2="{needle}"'
+    used = _column_range(digest, header)
+    text = rng.choice(
+        [
+            f"{header}가 {needle}이면 빨간 조건부서식",
+            f"{used} {needle}면 빨간 조건부서식",
+        ]
+    )
+    return (
+        text,
+        [
+            _step(
+                "excel_live.apply_formula_cf",
+                {"target_range": used, "formula": formula, "fill_color": "#FFC7CE"},
+                f"{header} {needle} 조건부서식",
+            )
+        ],
+        "수식 조건부 서식",
+    )
+
+
 @_register("excel_live.merge_cells")
 def _b_merge(digest: dict[str, Any], rng: random.Random) -> Case | None:
     ref = f"A1:{_last_letter(digest)}1"
-    text = rng.choice([f"{ref} 셀 합쳐줘", "맨 윗줄 병합해서 제목 칸으로 만들어줘"])
+    sheet = str(_active_entry(digest).get("name") or "시트")
+    text = rng.choice(
+        [
+            f"{ref} 셀 합쳐줘",
+            f"{sheet} 맨 윗줄 병합해서 제목 칸으로 만들어줘",
+            f"{sheet} {ref} 병합해줘",
+        ]
+    )
     return text, [_step("excel_live.merge_cells", {"target_range": ref}, f"{ref} 병합")], "셀 병합"
 
 
@@ -1114,11 +1217,11 @@ def build_action_coverage_records(
     같은 액션이라도 통합문서가 매번 달라야 모델이 문장이 아니라 다이제스트를 보고
     파라미터를 채운다. 그래서 픽스처 조합을 돌면서 생성한다.
     """
-    rng = random.Random(seed)
     fixture_names = [fixture.name for fixture in WORKBOOK_FIXTURES]
     records: list[dict[str, Any]] = []
 
     for action, builder in _BUILDERS.items():
+        action_rng = random.Random(f"{seed}:{action}")
         made = 0
         attempt = 0
         # 픽스처 조합을 넉넉히 돌아도 조건을 못 채우는 액션이 있다(숫자 열 2개 필요 등).
@@ -1131,7 +1234,7 @@ def build_action_coverage_records(
                 [primary, secondary], seed=f"cover-{action}-{attempt}"
             )
             attempt += 1
-            built = builder(digest, rng)
+            built = builder(digest, action_rng)
             if built is None:
                 continue
             instruction, steps, reason = built

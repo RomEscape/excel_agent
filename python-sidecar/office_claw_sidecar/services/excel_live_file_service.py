@@ -17,15 +17,16 @@ from typing import Any
 from openpyxl import load_workbook
 from openpyxl.chart import BarChart, LineChart, PieChart, Reference
 from openpyxl.comments import Comment
-from openpyxl.formatting.rule import ColorScaleRule, DataBarRule
+from openpyxl.formatting.rule import ColorScaleRule, DataBarRule, FormulaRule
 from openpyxl.formula.translate import Translator
-from openpyxl.styles import Border, PatternFill, Side
+from openpyxl.styles import Border, Font, PatternFill, Side
 from openpyxl.utils import column_index_from_string, get_column_letter
 from openpyxl.utils.cell import range_boundaries
 from openpyxl.workbook.defined_name import DefinedName
 from openpyxl.workbook.properties import CalcProperties
 from openpyxl.worksheet.cell_range import CellRange
 from openpyxl.worksheet.datavalidation import DataValidation
+from openpyxl.worksheet.table import Table, TableStyleInfo
 
 from office_claw_sidecar.sandbox import WORKSPACE_ROOT
 from office_claw_sidecar.services import excel_formula_cache as formula_cache
@@ -421,6 +422,13 @@ class FileExcelLiveService(ExcelLiveService):
             min_col, min_row, max_col, max_row = range_boundaries(text)
         except Exception:
             min_col, min_row, max_col, max_row = range_boundaries("A1")
+        # "1:1" 같은 행 전체 범위는 열 번호가 None이다. 사용 범위의 열로 채운다.
+        if min_col is None or max_col is None or min_row is None or max_row is None:
+            used_row, used_col = self._used_bounds(ws)
+            min_col = 1 if min_col is None else min_col
+            max_col = used_col if max_col is None else max_col
+            min_row = 1 if min_row is None else min_row
+            max_row = used_row if max_row is None else max_row
         return (min_row, min_col, max_row, max_col)
 
     @classmethod
@@ -520,6 +528,58 @@ class FileExcelLiveService(ExcelLiveService):
                 "created": created,
                 "sheet_name": ws.title,
                 "active_sheet": self._selected_sheet_by_workbook.get(str(path), ws.title),
+            }
+        finally:
+            wb.close()
+
+    def rename_sheet(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        new_name: str,
+    ) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        target_name = self._sanitize_sheet_name(new_name)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            old_name = ws.title
+            if target_name != old_name and target_name in wb.sheetnames:
+                raise ExcelLiveError(f"이미 '{target_name}' 시트가 있습니다.")
+            ws.title = target_name
+            if self._selected_sheet_by_workbook.get(str(path)) == old_name:
+                self._selected_sheet_by_workbook[str(path)] = target_name
+            self._save_wb(wb, path)
+            return {
+                "renamed": True,
+                "old_name": old_name,
+                "sheet_name": ws.title,
+                "sheets": list(wb.sheetnames),
+                "active_sheet": self._selected_sheet_by_workbook.get(str(path), ws.title),
+            }
+        finally:
+            wb.close()
+
+    def delete_sheet(self, workbook_id: str | None, sheet_name: str) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            if len(wb.sheetnames) <= 1:
+                raise ExcelLiveError("마지막 시트는 삭제할 수 없습니다.")
+            ws = self._sheet_or_raise(wb, sheet_name)
+            deleted_name = ws.title
+            wb.remove(ws)
+            remaining = list(wb.sheetnames)
+            selected = self._selected_sheet_by_workbook.get(str(path))
+            if selected == deleted_name:
+                self._selected_sheet_by_workbook[str(path)] = remaining[0]
+                wb.active = 0
+            self._save_wb(wb, path)
+            return {
+                "deleted": True,
+                "sheet_name": deleted_name,
+                "sheets": remaining,
+                "active_sheet": self._selected_sheet_by_workbook.get(str(path), remaining[0]),
             }
         finally:
             wb.close()
@@ -742,6 +802,7 @@ class FileExcelLiveService(ExcelLiveService):
         threshold: float,
         fill_color: str = "#FFFF00",
         compare_column: str | None = None,
+        value: Any = None,
     ) -> dict[str, Any]:
         path = self._resolve_workbook_path(workbook_id)
         wb = self._load_wb(path)
@@ -771,11 +832,21 @@ class FileExcelLiveService(ExcelLiveService):
                 """파일 캐시 → 우리 스냅샷 → 직접 계산 순으로 실제 값을 찾는다."""
                 return self._evaluated(evaluator, ws.title, row_idx, col_idx, fallback)
 
+            text_value = None if value is None or str(value).strip() == "" else str(value).strip()
+            text_ops = {"==", "=", "!=", "<>"}
             for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
                 for cell in row:
                     scanned += 1
                     left = computed(cell.row, cell.column, cell.value)
-                    if compare_letter:
+                    if text_value is not None and str(operator or "").strip() in text_ops:
+                        left_text = "" if left is None else str(left).strip()
+                        op = str(operator or "").strip()
+                        matched_text = left_text == text_value
+                        if op in {"!=", "<>"}:
+                            matched_text = not matched_text
+                        if not matched_text:
+                            continue
+                    elif compare_letter:
                         limit_cell = ws[f"{compare_letter}{cell.row}"]
                         limit = computed(limit_cell.row, limit_cell.column, limit_cell.value)
                         if not isinstance(limit, (int, float)) or isinstance(limit, bool):
@@ -1937,6 +2008,136 @@ class FileExcelLiveService(ExcelLiveService):
             ws.conditional_formatting.add(address, rule)
             self._save_wb(wb, path)
             return {"address": address, "applied": True, "rule": "data_bar"}
+        finally:
+            wb.close()
+
+    @staticmethod
+    def _sanitize_table_name(raw: str, existing: set[str]) -> str:
+        """Excel 표 이름은 영문으로 시작하고 시트 안에서 유일해야 한다."""
+        cleaned = re.sub(r"[^A-Za-z0-9_]", "", str(raw or "")) or "Table1"
+        if cleaned[0].isdigit():
+            cleaned = f"T{cleaned}"
+        if not cleaned[0].isalpha():
+            cleaned = f"Table{cleaned}"
+        name = cleaned
+        index = 1
+        existing_cf = {item.casefold() for item in existing}
+        while name.casefold() in existing_cf:
+            index += 1
+            name = f"{cleaned}{index}"
+        return name
+
+    def convert_to_excel_table(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        target_range: str,
+        table_name: str = "",
+        has_header: bool = True,
+    ) -> dict[str, Any]:
+        """이미 있는 데이터 범위를 Excel 표(ListObject)로 바꾼다.
+
+        create_table은 빈 n×m 격자+테두리다. 데모 파일의 SalesTable 같은 진짜 표는 이쪽이다.
+        """
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            bounds = self._range_bounds(ws, target_range)
+            address = self._address_from_bounds(bounds)
+            existing = set(ws.tables.keys())
+            display_name = self._sanitize_table_name(table_name or f"{ws.title}Table", existing)
+            table = Table(displayName=display_name, ref=address)
+            table.tableStyleInfo = TableStyleInfo(
+                name="TableStyleMedium2",
+                showFirstColumn=False,
+                showLastColumn=False,
+                showRowStripes=True,
+                showColumnStripes=False,
+            )
+            ws.add_table(table)
+            self._save_wb(wb, path)
+            return {
+                "created": True,
+                "address": address,
+                "table_name": display_name,
+                "has_header": bool(has_header),
+            }
+        finally:
+            wb.close()
+
+    def set_font(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        target_range: str,
+        *,
+        bold: bool | None = None,
+        name: str | None = None,
+        size: float | None = None,
+        color: str | None = None,
+    ) -> dict[str, Any]:
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            bounds = self._range_bounds(ws, target_range)
+            min_row, min_col, max_row, max_col = bounds
+            changed = 0
+            font_color = self._to_argb(color)[2:] if color else None
+            for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
+                for cell in row:
+                    current = cell.font
+                    cell.font = Font(
+                        name=name or current.name,
+                        size=size if size is not None else current.size,
+                        bold=current.bold if bold is None else bool(bold),
+                        italic=current.italic,
+                        color=font_color or current.color,
+                    )
+                    changed += 1
+            self._save_wb(wb, path)
+            return {
+                "changed_cells": changed,
+                "address": self._address_from_bounds(bounds),
+                "bold": bold,
+            }
+        finally:
+            wb.close()
+
+    def apply_formula_cf(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        target_range: str,
+        formula: str,
+        fill_color: str = "#FFC7CE",
+        font_color: str | None = "#9C0006",
+    ) -> dict[str, Any]:
+        """값이 바뀌면 다시 평가되는 수식 조건부 서식."""
+        formula_text = str(formula or "").strip()
+        if formula_text.startswith("="):
+            formula_text = formula_text[1:]
+        if not formula_text:
+            raise ExcelLiveError("apply_formula_cf.formula가 비어 있습니다.")
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            bounds = self._range_bounds(ws, target_range)
+            address = self._address_from_bounds(bounds)
+            fill = PatternFill(
+                start_color=self._to_argb(fill_color),
+                end_color=self._to_argb(fill_color),
+                fill_type="solid",
+            )
+            font = Font(color=self._to_argb(font_color)[2:]) if font_color else None
+            ws.conditional_formatting.add(
+                address,
+                FormulaRule(formula=[formula_text], fill=fill, font=font),
+            )
+            self._save_wb(wb, path)
+            return {"address": address, "applied": True, "rule": "formula", "formula": formula_text}
         finally:
             wb.close()
 

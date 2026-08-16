@@ -63,6 +63,33 @@ def test_comparisons_are_not_build_requests(message):
     assert looks_like_macro_request(message) is False
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Dashboard 시트 만들어줘",
+        "대시보드 시트 만들어줘",
+        "보고서 시트를 만들어줘",
+        "집계표 시트 만들어줘",
+        "report 탭 만들어줘",
+    ],
+)
+def test_naming_a_sheet_is_not_a_macro_request(message):
+    """"Dashboard 시트 만들어줘"는 그 이름의 시트 하나를 만들어 달라는 말이다.
+
+    이걸 매크로로 넘기면 create_sheet 한 번이면 될 일이 17단계 승인 화면이 되고,
+    사용자가 그 화면을 지나치면 시트가 아예 생기지 않는다. 2026-08-16 실측에서
+    Dashboard 시트가 끝내 안 만들어졌고, 뒤따르는 "Dashboard 시트 A4에 ~" 명령들이
+    활성 시트(Lookup)를 덮어썼다.
+    """
+    assert looks_like_macro_request(message) is False
+
+
+def test_building_a_dashboard_is_still_a_macro_request():
+    """시트 이름 예외가 진짜 대시보드 요청까지 삼키면 안 된다."""
+    assert looks_like_macro_request("Sales_Data로 매출 대시보드 만들어줘") is True
+    assert looks_like_macro_request("대시보드 만들어줘") is True
+
+
 def test_prompt_carries_the_measured_dashboard_example():
     """검증된 18개 명령이 few-shot에서 빠지면 분해 품질이 그만큼 떨어진다."""
     prompt = build_macro_prompt("대시보드 만들어줘", digest_text="시트 Sales_Data")

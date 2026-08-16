@@ -28,6 +28,8 @@ SUPPORTED_ACTIONS = {
     "excel_live.list_sheets",
     "excel_live.select_sheet",
     "excel_live.create_sheet",
+    "excel_live.rename_sheet",
+    "excel_live.delete_sheet",
     "excel_live.read_range",
     "excel_live.write_range",
     "excel_live.create_table",
@@ -75,12 +77,17 @@ SUPPORTED_ACTIONS = {
     "excel_live.apply_color_scale",
     "excel_live.apply_data_bar",
     "excel_live.set_number_format",
+    "excel_live.set_font",
+    "excel_live.convert_to_excel_table",
+    "excel_live.apply_formula_cf",
 }
 
 EDIT_ACTIONS = {
     "excel_live.recalculate",
     "excel_live.export_pdf",
     "excel_live.create_sheet",
+    "excel_live.rename_sheet",
+    "excel_live.delete_sheet",
     "excel_live.write_range",
     "excel_live.create_table",
     "excel_live.highlight_by_condition",
@@ -117,6 +124,9 @@ EDIT_ACTIONS = {
     "excel_live.apply_color_scale",
     "excel_live.apply_data_bar",
     "excel_live.set_number_format",
+    "excel_live.set_font",
+    "excel_live.convert_to_excel_table",
+    "excel_live.apply_formula_cf",
 }
 
 PASSIVE_ACTIONS = {
@@ -442,6 +452,29 @@ def _validate_step_body(
             out_params["workbook_id"] = workbook
         return PlanStep(action=action, params=out_params, reason=reason)
 
+    if action == "excel_live.rename_sheet":
+        sheet_name = str(params.get("sheet_name") or params.get("old_name") or "").strip()
+        new_name = str(params.get("new_name") or params.get("name") or "").strip()
+        if not sheet_name:
+            raise ValueError("rename_sheet.sheet_name이 필요합니다.")
+        if not new_name:
+            raise ValueError("rename_sheet.new_name이 필요합니다.")
+        workbook = str(params.get("workbook_id") or "").strip() or None
+        out_params: dict[str, Any] = {"sheet_name": sheet_name, "new_name": new_name}
+        if workbook:
+            out_params["workbook_id"] = workbook
+        return PlanStep(action=action, params=out_params, reason=reason)
+
+    if action == "excel_live.delete_sheet":
+        sheet_name = str(params.get("sheet_name") or params.get("name") or "").strip()
+        if not sheet_name:
+            raise ValueError("delete_sheet.sheet_name이 필요합니다.")
+        workbook = str(params.get("workbook_id") or "").strip() or None
+        out_params: dict[str, Any] = {"sheet_name": sheet_name}
+        if workbook:
+            out_params["workbook_id"] = workbook
+        return PlanStep(action=action, params=out_params, reason=reason)
+
     if action == "excel_live.read_range":
         range_ref = _normalize_range_text(params.get("range_ref"))
         if not range_ref:
@@ -514,11 +547,21 @@ def _validate_step_body(
             target_range = preferred_range or "A:Z"
         operator_raw = params.get("operator") or params.get("condition") or ">="
         operator = _coerce_operator(operator_raw)
-        threshold_raw = params.get("threshold", params.get("value"))
+        text_value = params.get("text_value")
+        threshold_raw = params.get("threshold")
+        value_raw = params.get("value")
+        if text_value is None and value_raw is not None and operator in {"==", "=", "!="}:
+            try:
+                float(str(value_raw).replace(",", "").replace("%", ""))
+            except (TypeError, ValueError):
+                text_value = str(value_raw).strip()
+                value_raw = None
+        if threshold_raw is None:
+            threshold_raw = value_raw
         if threshold_raw is None:
             # operator가 객체로 온 경우 그 안의 value를 먼저 본다.
             threshold_raw = _operator_payload_value(operator_raw)
-        if threshold_raw is None:
+        if threshold_raw is None and not text_value:
             # ">=1100"처럼 연산자에 붙어 온 기준값을 회수한다.
             embedded = re.search(r"-?\d+(?:\.\d+)?", str(operator_raw))
             if embedded is None:
@@ -527,10 +570,15 @@ def _validate_step_body(
                 # 전부 노랗게 칠해진 시트를 보게 된다. 기준값은 지어내면 안 된다.
                 raise ValueError("highlight_by_condition에는 기준값(threshold)이 필요합니다.")
             threshold_raw = embedded.group(0)
-        try:
-            threshold = float(threshold_raw)
-        except Exception as exc:
-            raise ValueError("highlight_by_condition.threshold는 숫자여야 합니다.") from exc
+        threshold = 0.0
+        if threshold_raw is not None:
+            try:
+                threshold = float(threshold_raw)
+            except Exception as exc:
+                if text_value:
+                    threshold = 0.0
+                else:
+                    raise ValueError("highlight_by_condition.threshold는 숫자여야 합니다.") from exc
         fill_color = str(params.get("fill_color") or params.get("color") or "#FFFF00").strip()
         # 기준이 같은 행의 다른 열이면(재고 ≤ 재주문점) 열 문자로만 받는다.
         compare_column = str(params.get("compare_column") or "").strip().upper()
@@ -544,6 +592,8 @@ def _validate_step_body(
         }
         if compare_column:
             step_params["compare_column"] = compare_column
+        if text_value:
+            step_params["value"] = str(text_value)
         return PlanStep(action=action, params=step_params, reason=reason)
 
     if action == "excel_live.fill_range":
@@ -677,6 +727,56 @@ def _validate_step_body(
         if not format_code:
             raise ValueError("set_number_format.format_code가 필요합니다.")
         return PlanStep(action=action, params={"target_range": target_range, "format_code": format_code}, reason=reason)
+
+    if action == "excel_live.set_font":
+        target_range = _normalize_range_text(params.get("target_range")) or preferred_range or "__ACTIVE_SELECTION__"
+        bold = params.get("bold")
+        name = str(params.get("name") or params.get("font_name") or "").strip() or None
+        size_raw = params.get("size") or params.get("font_size")
+        size = None
+        if size_raw not in {None, ""}:
+            size = float(size_raw)
+        color = str(params.get("color") or params.get("font_color") or "").strip() or None
+        out = {"target_range": target_range}
+        if bold is not None:
+            out["bold"] = bool(bold)
+        if name:
+            out["name"] = name
+        if size is not None:
+            out["size"] = size
+        if color:
+            out["color"] = color
+        if "bold" not in out and not name and size is None and not color:
+            out["bold"] = True
+        return PlanStep(action=action, params=out, reason=reason)
+
+    if action == "excel_live.convert_to_excel_table":
+        target_range = _normalize_range_text(params.get("target_range")) or preferred_range or "__USED_RANGE__"
+        table_name = str(params.get("table_name") or params.get("name") or "").strip()
+        has_header = bool(params.get("has_header", True))
+        return PlanStep(
+            action=action,
+            params={"target_range": target_range, "table_name": table_name, "has_header": has_header},
+            reason=reason,
+        )
+
+    if action == "excel_live.apply_formula_cf":
+        target_range = _normalize_range_text(params.get("target_range")) or preferred_range or "__ACTIVE_SELECTION__"
+        formula = str(params.get("formula") or params.get("formula_a1") or "").strip()
+        if not formula:
+            raise ValueError("apply_formula_cf.formula가 필요합니다.")
+        fill_color = str(params.get("fill_color") or params.get("color") or "#FFC7CE").strip()
+        font_color = str(params.get("font_color") or "").strip() or "#9C0006"
+        return PlanStep(
+            action=action,
+            params={
+                "target_range": target_range,
+                "formula": formula,
+                "fill_color": fill_color,
+                "font_color": font_color,
+            },
+            reason=reason,
+        )
 
     if action == "excel_live.define_named_range":
         name = str(params.get("name") or "").strip()

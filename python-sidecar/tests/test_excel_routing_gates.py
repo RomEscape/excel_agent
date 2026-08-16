@@ -13,6 +13,10 @@ import pytest
 from office_claw_sidecar.routers.excel_live import (
     _build_quick_action_plan,
     _detect_operation_intent,
+    _extract_excel_table_name,
+    _extract_formula_from_text,
+    _extract_operation_hints,
+    _extract_quoted_chart_title,
     _is_likely_edit_request,
     _quick_plan_underfits_message,
 )
@@ -90,3 +94,43 @@ def test_table_creation_with_headers_still_goes_to_the_table_slot():
     plan = _build_quick_action_plan("금액, 장소, 날짜 헤더로 표 만들어줘", None)
 
     assert not plan or plan[0]["action"] != "excel_live.write_range"
+
+
+def test_ratio_formula_keeps_both_functions():
+    message = (
+        'Dashboard 시트 G6에 =COUNTIF(Sales_Data!P2:P181,"배송완료")'
+        "/COUNTA(Sales_Data!A2:A181) 수식 넣어줘"
+    )
+    formula = _extract_formula_from_text(message)
+    assert formula == (
+        '=COUNTIF(Sales_Data!P2:P181,"배송완료")/COUNTA(Sales_Data!A2:A181)'
+    )
+    plan = _build_quick_action_plan(message, None)
+    assert plan and plan[0]["action"] == "excel_live.set_formula"
+    assert plan[0]["params"]["formula_a1"] == formula
+
+
+def test_named_excel_table_convert_keeps_the_name():
+    plan = _build_quick_action_plan(
+        "Sales_Data를 SalesTable 이름으로 엑셀 표 테이블로 만들어줘", None
+    )
+    assert plan and plan[0]["action"] == "excel_live.convert_to_excel_table"
+    assert plan[0]["params"]["table_name"] == "SalesTable"
+    assert _extract_excel_table_name("Inventory를 InventoryTable 이름으로 엑셀 표") == (
+        "InventoryTable"
+    )
+
+
+def test_data_bar_and_color_scale_beat_write_and_fill():
+    bar = _build_quick_action_plan("K2:K181에 데이터 막대 넣어줘", None)
+    assert bar and bar[0]["action"] == "excel_live.apply_data_bar"
+    scale = _build_quick_action_plan("O2:O181에 색조 조건부서식 적용해줘", None)
+    assert scale and scale[0]["action"] == "excel_live.apply_color_scale"
+
+
+def test_quoted_chart_title_beats_generic_sales_title():
+    message = "Dashboard 시트 A12:D18로 '2026 월별 매출 및 매출이익' 선 그래프 만들어줘"
+    assert _extract_quoted_chart_title(message) == "2026 월별 매출 및 매출이익"
+    hints = _extract_operation_hints(message)
+    assert hints["params"].get("title") == "2026 월별 매출 및 매출이익"
+    assert hints["params"].get("chart_type") == "line"

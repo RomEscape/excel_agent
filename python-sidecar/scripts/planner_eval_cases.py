@@ -317,6 +317,11 @@ RARE: list[EvalCase] = [
     _c("rare-030", "rare", "영문재고", "SKU 중복 있는지만 알려줘", f"{A}find_duplicates"),
     _c("rare-031", "rare", "병원", "수납대장 시트 보호 걸어줘", f"{A}protect_sheet"),
     _c("rare-032", "rare", "물류", "이 통합문서 PDF로 저장", f"{A}export_pdf"),
+    _c("rare-033", "rare", "병원", "수납대장 시트 이름을 수납내역으로 바꿔줘", f"{A}rename_sheet"),
+    _c("rare-034", "rare", "학원", "출결 시트 삭제해줘", f"{A}delete_sheet"),
+    _c("rare-035", "rare", "학원", "성적표 머리글을 굵게 해줘", f"{A}set_font"),
+    _c("rare-036", "rare", "영문재고", "재고 시트를 InventoryTable 이름으로 엑셀 표 테이블로 만들어줘", f"{A}convert_to_excel_table"),
+    _c("rare-037", "rare", "병원", "수납상태가 미납이면 빨간 조건부서식", f"{A}apply_formula_cf"),
 ]
 
 # ── clarify_yes: 되물어야 정답 ───────────────────────────────────────────

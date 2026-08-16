@@ -262,12 +262,66 @@ def test_parse_rule_based_create_sheet():
     assert parsed["params"]["sheet_name"] == "요약"
 
 
+def test_parse_rule_based_rename_sheet():
+    parsed = parse_command_rule_based("Sheet1 시트 이름을 Dashboard로 바꿔줘")
+    assert parsed is not None
+    assert parsed["action"] == "excel_live.rename_sheet"
+    assert parsed["params"]["sheet_name"] == "Sheet1"
+    assert parsed["params"]["new_name"] == "Dashboard"
+
+
+def test_parse_rule_based_delete_sheet():
+    parsed = parse_command_rule_based("Sheet1 시트 삭제해줘")
+    assert parsed is not None
+    assert parsed["action"] == "excel_live.delete_sheet"
+    assert parsed["params"]["sheet_name"] == "Sheet1"
+
+
+def test_parse_column_rename_is_not_sheet_rename():
+    parsed = parse_command_rule_based("Profit_Margin 열 이름을 마진율로 바꿔줘")
+    assert parsed is None or parsed.get("action") != "excel_live.rename_sheet"
+
+
 def test_extract_create_table_slot_hints_with_size_and_headers():
     hints = extract_create_table_slot_hints("5*5크기로 금액, 장소, 날짜, 요건, 비고 표 만들어줘")
     assert hints["table_intent"] is True
     assert hints["rows"] == 5
     assert hints["cols"] == 5
     assert hints["headers"] == ["금액", "장소", "날짜", "요건", "비고"]
+
+
+def test_extract_create_table_slot_hints_does_not_treat_pivot_as_blank_grid():
+    hints = extract_create_table_slot_hints("부서별 비용 집계표 만들어줘")
+    assert hints["table_intent"] is False
+
+
+def test_extract_create_table_slot_hints_excel_table_is_not_blank_grid():
+    hints = extract_create_table_slot_hints("Sales_Data를 엑셀 표 테이블로 만들어줘")
+    assert hints["table_intent"] is False
+    parsed = parse_command_rule_based("Sales_Data를 엑셀 표 테이블로 만들어줘")
+    assert parsed is not None
+    assert parsed["action"] == "excel_live.convert_to_excel_table"
+
+
+def test_parse_text_equals_highlight_not_fill():
+    parsed = parse_command_rule_based("Inventory 시트에서 상태가 발주필요인 행을 노란색으로 칠해줘")
+    assert parsed is not None
+    assert parsed["action"] == "excel_live.highlight_by_condition"
+    assert parsed["params"]["value"] == "발주필요"
+
+
+def test_parse_header_bold_uses_set_font():
+    parsed = parse_command_rule_based("머리글을 굵게 해줘")
+    assert parsed is not None
+    assert parsed["action"] == "excel_live.set_font"
+    assert parsed["params"]["bold"] is True
+
+
+def test_parse_formula_cf_from_conditional_format_phrase():
+    parsed = parse_command_rule_based("H열 발주필요면 빨간 조건부서식")
+    assert parsed is not None
+    assert parsed["action"] == "excel_live.apply_formula_cf"
+    assert "발주필요" in parsed["params"]["formula"]
 
 
 def test_extract_create_table_slot_hints_reads_unit_suffixed_sizes():

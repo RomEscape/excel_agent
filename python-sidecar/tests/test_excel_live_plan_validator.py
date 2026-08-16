@@ -178,3 +178,24 @@ def test_validate_create_sheet_defaults_make_active_true():
     assert out[0].params["sheet_name"] == "요약"
     assert out[0].params["make_active"] is True
 
+
+def test_validate_rename_and_delete_sheet():
+    renamed = validate_plan(
+        [
+            PlanStep(
+                action="excel_live.rename_sheet",
+                params={"sheet_name": "Sheet1", "new_name": "Dashboard"},
+                reason="",
+            )
+        ],
+        context=ValidationContext(message="Sheet1 시트 이름을 Dashboard로 바꿔줘"),
+    )
+    assert renamed[0].params["sheet_name"] == "Sheet1"
+    assert renamed[0].params["new_name"] == "Dashboard"
+
+    deleted = validate_plan(
+        [PlanStep(action="excel_live.delete_sheet", params={"sheet_name": "Sheet1"}, reason="")],
+        context=ValidationContext(message="Sheet1 시트 삭제해줘"),
+    )
+    assert deleted[0].params["sheet_name"] == "Sheet1"
+

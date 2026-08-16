@@ -51,7 +51,13 @@ def _build_filter(args) -> Callable[[dict], bool]:
             return False
         if args.endpoint and args.endpoint not in str(turn.get("endpoint", "")):
             return False
-        if args.grep and args.grep not in str(turn.get("message", "")):
+        # 원문에도 걸어 준다. 매크로 하위 단계의 message는 분해기가 만든 문장이라,
+        # 사용자가 실제로 친 "대시보드 만들어줘"로는 그 19개 턴을 하나도 못 찾는다.
+        if args.grep and args.grep not in str(turn.get("message", "")) and args.grep not in str(
+            turn.get("user_input", "")
+        ):
+            return False
+        if args.macro and str((turn.get("origin") or {}).get("macro_id") or "") != args.macro:
             return False
         if args.source and args.source not in source_label(turn):
             return False
@@ -112,7 +118,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="턴 로그 조회")
     parser.add_argument("-n", "--count", type=int, default=5, help="최근 몇 턴 (기본 5)")
     parser.add_argument("--failed", action="store_true", help="실패한 턴만")
-    parser.add_argument("--grep", default="", help="사용자 문장에 이 말이 든 턴만")
+    parser.add_argument("--grep", default="", help="사용자 문장(원문 포함)에 이 말이 든 턴만")
+    parser.add_argument("--macro", default="", help="이 macro_id에 속한 하위 단계만")
     parser.add_argument("--turn", default="", help="turn_id로 하나만")
     parser.add_argument("--endpoint", default="", help="엔드포인트로 거르기")
     parser.add_argument("--source", default="", help="출처로 거르기 (테스트 이름 등)")

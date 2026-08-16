@@ -176,3 +176,25 @@ def test_file_service_basic_edit_flow(tmp_path):
         has_header=True,
     )
     assert filtered["filtered_rows"] >= 2
+
+
+def test_file_rename_and_delete_sheet(tmp_path, monkeypatch):
+    path = tmp_path / "sheets.xlsx"
+    _make_workbook(path)
+    monkeypatch.setenv("EXCEL_LIVE_ENGINE", "file")
+    service = FileExcelLiveService(workspace_root=tmp_path)
+    service.select_workbook(str(path))
+    service.create_sheet(str(path), "임시", make_active=False)
+
+    renamed = service.rename_sheet(str(path), "Sheet1", "Dashboard")
+    assert renamed["renamed"] is True
+    assert renamed["sheet_name"] == "Dashboard"
+    listed = service.list_sheets(str(path))
+    assert "Dashboard" in listed["sheets"]
+    assert "Sheet1" not in listed["sheets"]
+
+    deleted = service.delete_sheet(str(path), "임시")
+    assert deleted["deleted"] is True
+    listed = service.list_sheets(str(path))
+    assert "임시" not in listed["sheets"]
+    assert listed["sheets"] == ["Dashboard"]

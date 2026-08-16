@@ -300,6 +300,12 @@ def _verify_sort(
         return False, f"sort_key_out_of_range:{params.get('key_column')} 열이 정렬 범위 밖입니다"
 
     column = [row[offset] if offset < len(row) else None for row in body]
+    # 파일 엔진은 계산값이 아니라 수식 문자열을 읽는다(openpyxl data_only=False).
+    # `=G2*H2`, `=G3*H3` … 를 문자열로 비교하면 어떤 정렬도 "안 됐다"가 되어,
+    # 제대로 끝난 정렬까지 롤백된다 — 2026-08-16 실측에서 매출(수식) 열 정렬이
+    # sort_not_applied로 되돌려졌다. 못 보는 것을 실패로 단정하지 않는다.
+    if any(str(value).strip().startswith("=") for value in column if value is not None):
+        return True, ""
     descending = str(params.get("order", "asc")).strip().lower() in {"desc", "descending", "내림차순"}
     if _is_sorted(column, descending=descending):
         return True, ""
@@ -307,6 +313,113 @@ def _verify_sort(
         False,
         f"sort_not_applied:{_idx_to_col(key_idx)}열이 요청한 순서로 정렬되지 않았습니다",
     )
+
+
+# 기준 범위를 보고 골라 담는 집계 함수. 기준을 못 찾으면 **오류가 아니라 0**이 나온다.
+# 그래서 "수식이 들어갔다"만 보는 검사로는 전부 0인 표를 성공으로 통과시킨다.
+_CONDITIONAL_AGGREGATE = re.compile(r"\b(?:SUMIFS?|COUNTIFS?|AVERAGEIFS?)\s*\(", re.IGNORECASE)
+
+# `Sales_Data!$C$2:$C$61` 처럼 시트를 밝힌 참조. 기준 셀 후보에서 먼저 걷어낸다.
+_SHEET_QUALIFIED_REF = re.compile(
+    r"(?:'[^']+'|[A-Za-z0-9_가-힣]+)!\$?[A-Z]{1,3}\$?\d{1,7}(?::\$?[A-Z]{1,3}\$?\d{1,7})?"
+)
+
+# 시트 접두사 없는 단일 셀 참조(=이 시트의 기준 셀). 범위(A1:B2)와 함수명(LOG10()) 은 뺀다.
+_LOCAL_CELL_REF = re.compile(r"(?<![A-Za-z0-9_$:!])(\$?)([A-Z]{1,3})(\$?)(\d{1,7})(?![\d:(])")
+
+
+def _criteria_cells(formula: str, target: str) -> list[tuple[str, int]]:
+    """수식이 기준으로 삼는 이 시트의 셀들을 대상 범위만큼 펼쳐서 돌려준다.
+
+    `B6:B11`에 `=SUMIF(...,A6,...)`를 넣으면 A6은 A6..A11로 흘러내린다. `$`가 붙어
+    고정된 축은 펼치지 않는다. 이 전개를 안 하면 A6 한 칸만 보고 "기준이 있다"고
+    판단해, 정작 비어 있는 A7:A11을 놓친다.
+    """
+    parts = _range_parts(target)
+    if not parts:
+        return []
+    start_col, start_row, end_col, end_row = parts
+    rows = abs(end_row - start_row) + 1
+    cols = abs(_col_to_idx(end_col) - _col_to_idx(start_col)) + 1
+
+    local = _SHEET_QUALIFIED_REF.sub(" ", str(formula or ""))
+    out: list[tuple[str, int]] = []
+    for col_abs, col_letters, row_abs, row_text in _LOCAL_CELL_REF.findall(local):
+        base_col = _col_to_idx(col_letters)
+        base_row = int(row_text)
+        row_span = 1 if row_abs else rows
+        col_span = 1 if col_abs else cols
+        for dr in range(row_span):
+            for dc in range(col_span):
+                cell = (_idx_to_col(base_col + dc), base_row + dr)
+                if cell not in out:
+                    out.append(cell)
+    return out
+
+
+def _verify_conditional_aggregate(
+    params: dict[str, Any],
+    result: dict[str, Any],
+    *,
+    service: Any,
+    workbook_id: str | None,
+    sheet_name: str | None,
+) -> tuple[bool, str]:
+    """SUMIF/COUNTIF류가 기준을 못 찾아 표 전체가 0이 된 경우를 잡는다.
+
+    2026-08-16 실측: 매크로가 "A6:A11에 지역 이름 입력" 단계를 빠뜨린 채
+    `=SUMIF(Sales_Data!$C$2:$C$61, A6, ...)`를 B6:C11에 넣었다. 기준 셀이 비어 있어
+    12칸이 전부 0이 됐는데, `formula_applied_cells > 0`만 보는 검사가 통과시켜
+    "19단계를 마쳤습니다"로 보고됐다.
+
+    오탐이 더 위험하므로 세 가지가 **모두** 참일 때만 실패로 본다.
+      1) 조건 집계 수식이고
+      2) 결과가 한 칸도 빠짐없이 0이거나 비어 있고
+      3) 그 수식이 보는 이 시트의 기준 셀 중 **비어 있는 칸이 있다**
+    매출이 정말 0인 지역은 기준 셀이 채워져 있으므로 3)에서 걸러진다.
+    """
+    formula = str(params.get("formula_a1") or "")
+    if not _CONDITIONAL_AGGREGATE.search(formula):
+        return True, ""
+    target = str(result.get("address") or params.get("range_ref") or "").strip()
+    if not target:
+        return True, ""
+
+    reader = getattr(service, "read_computed_range", None)
+    if not callable(reader):
+        return True, ""
+    try:
+        payload = reader(workbook_id, sheet_name, target)
+    except Exception:
+        return True, ""
+    if not isinstance(payload, dict):
+        return True, ""
+    # 계산값을 끝내 못 구한 칸이 있으면 판정하지 않는다 — 못 본 것을 실패로 단정하지 않는다.
+    if payload.get("unresolved_formulas"):
+        return True, ""
+    values = payload.get("values")
+    if not isinstance(values, list) or not values:
+        return True, ""
+
+    cells = [cell for row in values if isinstance(row, list) for cell in row]
+    if not cells:
+        return True, ""
+    if not all(_is_blank(cell) or _as_number(cell) == 0.0 for cell in cells):
+        return True, ""
+
+    empty: list[str] = []
+    for col, row in _criteria_cells(formula, target):
+        try:
+            read = _read(service, workbook_id, sheet_name, f"{col}{row}")
+        except Exception:
+            return True, ""
+        value = read[0][0] if read and read[0] else None
+        if _is_blank(value):
+            empty.append(f"{col}{row}")
+    if not empty:
+        return True, ""
+    shown = ", ".join(empty[:5]) + ("…" if len(empty) > 5 else "")
+    return False, f"criteria_range_empty:기준 셀 {shown}이(가) 비어 있어 결과가 전부 0입니다"
 
 
 def _verify_output_sheet(
@@ -406,11 +519,31 @@ def verify_effect(
                 return False, "no_cells_changed:서식이 적용된 셀이 없습니다"
             return True, ""
 
+        if action == "excel_live.set_font":
+            changed = int(result.get("changed_cells", result.get("applied_cells", 0)) or 0)
+            if changed <= 0:
+                return False, "no_cells_changed:글꼴이 적용된 셀이 없습니다"
+            return True, ""
+
+        if action == "excel_live.convert_to_excel_table":
+            if not result.get("created"):
+                return False, "table_not_created:Excel 표가 만들어지지 않았습니다"
+            return True, ""
+
+        if action == "excel_live.apply_formula_cf":
+            if not result.get("applied"):
+                return False, "formula_cf_not_applied:수식 조건부 서식이 적용되지 않았습니다"
+            return True, ""
+
         if action == "excel_live.set_formula":
             applied = int(result.get("formula_applied_cells", 0) or 0)
             if applied <= 0:
                 return False, "formula_not_applied:수식이 입력된 셀이 없습니다"
-            return True, ""
+            # applied는 COM 경로에서 대상 범위의 칸 수(row*col)라 늘 참이다. 넣었다는
+            # 사실만으로는 "의도한 값이 나왔는가"를 아무것도 말해 주지 않는다.
+            return _verify_conditional_aggregate(
+                params, result, service=service, workbook_id=workbook_id, sheet_name=sheet_name
+            )
 
         if action == "excel_live.set_data_validation":
             if not result.get("applied"):

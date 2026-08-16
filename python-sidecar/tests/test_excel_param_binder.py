@@ -1,6 +1,7 @@
 from office_claw_sidecar.services.excel_live_executor import PlanStep
 from office_claw_sidecar.services.excel_param_binder import (
     bind_plan_steps,
+    explicit_sheet_mentions,
     resolve_sheet_from_message,
 )
 
@@ -587,6 +588,34 @@ def test_resolve_sheet_from_message_prefers_first_real_sheet():
     )
 
 
+def test_single_token_sheet_name_without_sheet_word():
+    """'Inventory를 표로'는 '시트'가 없어도 Inventory여야 한다. 아니면 Dashboard에 표가 생긴다."""
+    digest = {
+        "active_sheet": "Dashboard",
+        "sheets": [
+            {"name": "Dashboard", "used_range": "A1", "columns": [{"letter": "A", "header": "대시보드"}]},
+            {"name": "Inventory", "used_range": "A1:K11", "columns": [{"letter": "A", "header": "SKU"}]},
+            {"name": "Sales_Data", "used_range": "A1:Q11", "columns": [{"letter": "A", "header": "Order_ID"}]},
+        ],
+    }
+    assert (
+        resolve_sheet_from_message(
+            "Inventory를 InventoryTable 이름으로 엑셀 표 테이블로 만들어줘",
+            digest,
+            default="Dashboard",
+        )
+        == "Inventory"
+    )
+    assert (
+        resolve_sheet_from_message(
+            "Dashboard 시트 I6에 =COUNTIF(Inventory!H2:H11,\"발주필요\") 수식 넣어줘",
+            digest,
+            default="Dashboard",
+        )
+        == "Dashboard"
+    )
+
+
 def test_writes_after_create_sheet_land_on_the_new_sheet():
     """시트를 만든 뒤 이어지는 쓰기는 새 시트로 간다. 안 그러면 원본 A1을 덮어쓴다."""
     steps = [
@@ -625,3 +654,123 @@ def test_pivot_source_is_not_dragged_onto_the_new_sheet():
     ]
     bound, _notes = _bind(steps, "요약 시트 만들어서 카테고리별 금액 합계 정리해줘")
     assert bound[1].params.get("sheet_name") in (None, "")
+
+
+def test_pivot_retargets_to_the_sheet_that_owns_the_headers():
+    """이전 턴이 Inventory를 켜 둔 채 '지역별 매출'을 말하면 Sales_Data로 옮겨야 한다."""
+    digest = {
+        "active_sheet": "Inventory",
+        "sheets": [
+            {
+                "name": "Inventory",
+                "used_range": "A1:K11",
+                "columns": [
+                    {"letter": "A", "header": "SKU"},
+                    {"letter": "H", "header": "Stock_Status"},
+                    {"letter": "E", "header": "Current_Stock", "numeric": True},
+                ],
+            },
+            {
+                "name": "Sales_Data",
+                "used_range": "A1:Q11",
+                "columns": [
+                    {"letter": "D", "header": "Region"},
+                    {"letter": "L", "header": "Sales", "numeric": True},
+                    {"letter": "N", "header": "Gross_Profit", "numeric": True},
+                ],
+            },
+        ],
+    }
+    steps = [
+        PlanStep(
+            action="excel_live.pivot_table",
+            params={"row_field": "지역", "value_field": "매출"},
+        )
+    ]
+    bound, _notes = bind_plan_steps(
+        steps,
+        digest=digest,
+        message="지역별 매출과 이익을 집계해서 새 시트와 차트를 만들어줘",
+        sheet_name="Inventory",
+    )
+    assert bound[0].params["source_sheet"] == "Sales_Data"
+    assert bound[0].params["row_field"] == "Region"
+    assert bound[0].params["value_field"] in {"Sales", "Gross_Profit"}
+    assert bound[0].params["output_sheet"] == "Sales_Data_집계"
+
+
+def test_pivot_overwrites_wrong_active_source_sheet():
+    """슬롯이 Dashboard를 원본으로 넣어도 머리글이 있는 Sales_Data로 바꿔야 한다."""
+    digest = {
+        "active_sheet": "Dashboard",
+        "sheets": [
+            {
+                "name": "Dashboard",
+                "used_range": "A1",
+                "columns": [{"letter": "A", "header": "AI 기반 통합 운영 대시보드"}],
+            },
+            {
+                "name": "Sales_Data",
+                "used_range": "A1:Q11",
+                "columns": [
+                    {"letter": "D", "header": "Region"},
+                    {"letter": "L", "header": "Sales", "numeric": True},
+                    {"letter": "N", "header": "Gross_Profit", "numeric": True},
+                ],
+            },
+        ],
+    }
+    steps = [
+        PlanStep(
+            action="excel_live.pivot_table",
+            params={
+                "source_range": "__ACTIVE_SELECTION__",
+                "row_field": "지역",
+                "value_field": "매출",
+                "source_sheet": "Dashboard",
+            },
+        )
+    ]
+    bound, _notes = bind_plan_steps(
+        steps,
+        digest=digest,
+        message="지역별 매출과 이익을 집계해서 새 시트와 차트를 만들어줘",
+        sheet_name=None,
+    )
+    assert bound[0].params["source_sheet"] == "Sales_Data"
+    assert bound[0].params["row_field"] == "Region"
+    assert bound[0].params["value_field"] in {"Sales", "Gross_Profit"}
+    assert bound[0].params["output_sheet"] == "Sales_Data_집계"
+
+
+class TestExplicitSheetMentions:
+    """원문이 "<이름> 시트"로 지목한 이름은, 그 시트가 아직 없어도 잃으면 안 된다.
+
+    resolve_sheet_from_message는 **있는** 시트만 고르므로 없는 시트 지목은 통째로
+    버려진다. 그 상태로 활성 시트에 쓰면 사용자가 말한 적 없는 시트를 덮어쓴다 —
+    2026-08-16 실측에서 "Dashboard 시트 B4에 합계 수식"이 Sales_Data!B4의
+    주문일자를 지우고도 성공으로 보고됐다.
+    """
+
+    def test_it_picks_up_a_sheet_that_does_not_exist_yet(self):
+        assert explicit_sheet_mentions("Dashboard 시트 A4에 총 매출 입력해줘") == ["Dashboard"]
+
+    def test_it_keeps_existing_sheets_too(self):
+        # 존재 여부는 호출부가 판정한다. 여기서는 지목만 뽑는다.
+        assert explicit_sheet_mentions("매출 시트 정렬해줘") == ["매출"]
+
+    def test_demonstratives_are_not_sheet_names(self):
+        # "새 시트로 만들어줘"의 '새'를 이름으로 읽으면 멀쩡한 요청이 막힌다.
+        assert explicit_sheet_mentions("지역별 매출을 집계해서 새 시트로 만들어줘") == []
+        assert explicit_sheet_mentions("이 시트에 표 만들어줘") == []
+        assert explicit_sheet_mentions("현재 시트 저장해줘") == []
+
+    def test_several_mentions_keep_their_order(self):
+        assert explicit_sheet_mentions("Sales_Data 시트를 Dashboard 시트로 복사해줘") == [
+            "Sales_Data",
+            "Dashboard",
+        ]
+
+    def test_a_message_without_any_sheet_word_yields_nothing(self):
+        assert explicit_sheet_mentions("A1:C10 합계 구해줘") == []
+        assert explicit_sheet_mentions("") == []

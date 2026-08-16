@@ -181,6 +181,8 @@ class _FakeExcelService:
         operator,
         threshold,
         fill_color,
+        compare_column=None,
+        value=None,
     ):
         self._record(
             "highlight_by_condition",

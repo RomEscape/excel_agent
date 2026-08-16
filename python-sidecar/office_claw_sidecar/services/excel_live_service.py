@@ -245,6 +245,64 @@ class ExcelLiveService:
             "active_sheet": self._active_sheet_name(wb),
         }
 
+    def rename_sheet(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        new_name: str,
+    ) -> dict[str, Any]:
+        """기존 시트 이름을 바꾼다."""
+        target_id = workbook_id or self._selected_workbook_id
+        if not target_id:
+            rows = self.list_workbooks()
+            if not rows:
+                raise WorkbookNotFoundError("열린 통합문서가 없습니다.")
+            target_id = rows[0]["workbook_id"]
+
+        wb = self._find_workbook(target_id)
+        sheet = self._find_sheet(wb, sheet_name)
+        target_name = self._sanitize_sheet_name(new_name)
+        old_name = str(getattr(sheet, "name", "") or sheet_name)
+        existing = {str(getattr(item, "name", "") or "") for item in wb.sheets}
+        if target_name != old_name and target_name in existing:
+            raise ExcelLiveError(f"이미 '{target_name}' 시트가 있습니다.")
+        sheet.name = target_name
+        return {
+            "renamed": True,
+            "old_name": old_name,
+            "sheet_name": str(getattr(sheet, "name", "") or target_name),
+            "sheets": [str(getattr(item, "name", "") or "") for item in wb.sheets],
+            "active_sheet": self._active_sheet_name(wb),
+        }
+
+    def delete_sheet(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+    ) -> dict[str, Any]:
+        """시트를 삭제한다. 마지막 시트는 남긴다."""
+        target_id = workbook_id or self._selected_workbook_id
+        if not target_id:
+            rows = self.list_workbooks()
+            if not rows:
+                raise WorkbookNotFoundError("열린 통합문서가 없습니다.")
+            target_id = rows[0]["workbook_id"]
+
+        wb = self._find_workbook(target_id)
+        names = [str(getattr(item, "name", "") or "") for item in wb.sheets]
+        if len(names) <= 1:
+            raise ExcelLiveError("마지막 시트는 삭제할 수 없습니다.")
+        sheet = self._find_sheet(wb, sheet_name)
+        deleted_name = str(getattr(sheet, "name", "") or sheet_name)
+        sheet.delete()
+        remaining = [str(getattr(item, "name", "") or "") for item in wb.sheets]
+        return {
+            "deleted": True,
+            "sheet_name": deleted_name,
+            "sheets": remaining,
+            "active_sheet": self._active_sheet_name(wb),
+        }
+
     def read_range(
         self,
         workbook_id: str | None,
@@ -361,6 +419,7 @@ class ExcelLiveService:
         threshold: float,
         fill_color: str = "#FFFF00",
         compare_column: str | None = None,
+        value: Any = None,
     ) -> dict[str, Any]:
         """조건에 맞는 셀 배경색을 변경한다.
 
@@ -396,7 +455,7 @@ class ExcelLiveService:
                     if not isinstance(other, (int, float)) or isinstance(other, bool):
                         continue
                     limit = float(other)
-                if self._matches_condition(cell_value, operator, limit):
+                if self._cell_matches_highlight(cell_value, operator, limit, value):
                     matched += 1
                     absolute_col = start_col + c_idx
                     cell_ref = f"{self._idx_to_col(absolute_col)}{absolute_row}"
@@ -959,13 +1018,16 @@ class ExcelLiveService:
         src_rng = self._resolve_target_range(src_ws, source_range)
         out_ws = self._find_or_create_sheet(wb, output_sheet or sheet_name)
         try:
-            chart = out_ws.charts.add(left=300, top=40, width=520, height=320)
-            chart.set_source_data(src_rng)
-            chart_name = f"chart_{len(out_ws.charts)}"
-            chart.name = chart_name
-            chart.api.ChartType = self._chart_type_to_excel(chart_type)
-            chart.api.HasTitle = True
-            chart.api.ChartTitle.Text = str(title or "데이터 차트")
+            # xlwings Chart.api가 튜플인 버전이 있어 COM ChartObjects로 직접 만든다.
+            left = float(src_rng.left) + float(src_rng.width) + 20
+            top = float(src_rng.top)
+            chart_object = out_ws.api.ChartObjects().Add(Left=left, Top=top, Width=520, Height=320)
+            chart = chart_object.Chart
+            chart.SetSourceData(src_rng.api)
+            chart.ChartType = self._chart_type_to_excel(chart_type)
+            chart.HasTitle = True
+            chart.ChartTitle.Text = str(title or "데이터 차트")
+            chart_name = str(chart_object.Name)
         except Exception as exc:  # pragma: no cover - COM 환경 의존
             raise ExcelLiveError(f"차트 생성 실패: {exc}") from exc
         return {
@@ -975,6 +1037,137 @@ class ExcelLiveService:
             "source_address": str(src_rng.address),
             "sheet_name": str(getattr(out_ws, "name", "") or ""),
         }
+
+    def set_font(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        target_range: str,
+        *,
+        bold: bool | None = None,
+        name: str | None = None,
+        size: float | None = None,
+        color: str | None = None,
+    ) -> dict[str, Any]:
+        target_id = workbook_id or self._selected_workbook_id
+        if not target_id:
+            raise WorkbookNotFoundError("workbook_id가 필요합니다.")
+        sheet = self._find_sheet(self._find_workbook(target_id), sheet_name)
+        rng = self._resolve_target_range(sheet, target_range)
+        font = rng.api.Font
+        if bold is not None:
+            font.Bold = bool(bold)
+        if name:
+            font.Name = str(name)
+        if size is not None:
+            font.Size = float(size)
+        if color:
+            red, green, blue = self._hex_to_rgb(color)
+            font.Color = red + (green << 8) + (blue << 16)
+        shape = getattr(rng, "shape", None)
+        if isinstance(shape, tuple) and len(shape) >= 2:
+            changed = max(1, int(shape[0] or 1)) * max(1, int(shape[1] or 1))
+        else:
+            changed = int(rng.api.Rows.Count) * int(rng.api.Columns.Count)
+        return {"changed_cells": changed, "address": str(rng.address), "bold": bold}
+
+    def convert_to_excel_table(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        target_range: str,
+        table_name: str = "",
+        has_header: bool = True,
+    ) -> dict[str, Any]:
+        target_id = workbook_id or self._selected_workbook_id
+        if not target_id:
+            raise WorkbookNotFoundError("workbook_id가 필요합니다.")
+        sheet = self._find_sheet(self._find_workbook(target_id), sheet_name)
+        rng = self._resolve_target_range(sheet, target_range)
+        existing = {str(item.Name) for item in sheet.api.ListObjects}
+        cleaned = re.sub(r"[^A-Za-z0-9_]", "", str(table_name or "")) or f"{sheet_name}Table"
+        if cleaned[0].isdigit():
+            cleaned = f"T{cleaned}"
+        display = cleaned
+        index = 1
+        while display in existing:
+            index += 1
+            display = f"{cleaned}{index}"
+        listed = sheet.api.ListObjects.Add(1, rng.api, True, 1 if has_header else 2)
+        listed.Name = display
+        listed.TableStyle = "TableStyleMedium2"
+        return {
+            "created": True,
+            "address": str(rng.address),
+            "table_name": display,
+            "has_header": bool(has_header),
+        }
+
+    def apply_formula_cf(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        target_range: str,
+        formula: str,
+        fill_color: str = "#FFC7CE",
+        font_color: str | None = "#9C0006",
+    ) -> dict[str, Any]:
+        formula_text = str(formula or "").strip()
+        if not formula_text.startswith("="):
+            formula_text = f"={formula_text}"
+        if formula_text == "=":
+            raise ExcelLiveError("apply_formula_cf.formula가 비어 있습니다.")
+        target_id = workbook_id or self._selected_workbook_id
+        if not target_id:
+            raise WorkbookNotFoundError("workbook_id가 필요합니다.")
+        sheet = self._find_sheet(self._find_workbook(target_id), sheet_name)
+        rng = self._resolve_target_range(sheet, target_range)
+        condition = rng.api.FormatConditions.Add(Type=2, Formula1=formula_text)
+        red, green, blue = self._hex_to_rgb(fill_color)
+        condition.Interior.Color = red + (green << 8) + (blue << 16)
+        if font_color:
+            fr, fg, fb = self._hex_to_rgb(font_color)
+            condition.Font.Color = fr + (fg << 8) + (fb << 16)
+        return {"address": str(rng.address), "applied": True, "rule": "formula", "formula": formula_text.lstrip("=")}
+
+    def apply_color_scale(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        target_range: str,
+        *,
+        min_color: str = "#F8696B",
+        mid_color: str = "#FFEB84",
+        max_color: str = "#63BE7B",
+    ) -> dict[str, Any]:
+        target_id = workbook_id or self._selected_workbook_id
+        if not target_id:
+            raise WorkbookNotFoundError("workbook_id가 필요합니다.")
+        sheet = self._find_sheet(self._find_workbook(target_id), sheet_name)
+        rng = self._resolve_target_range(sheet, target_range)
+        scale = rng.api.FormatConditions.AddColorScale(3)
+        for index, hex_code in ((1, min_color), (2, mid_color), (3, max_color)):
+            red, green, blue = self._hex_to_rgb(hex_code)
+            scale.ColorScaleCriteria(index).FormatColor.Color = red + (green << 8) + (blue << 16)
+        return {"address": str(rng.address), "applied": True, "rule": "color_scale"}
+
+    def apply_data_bar(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        target_range: str,
+        *,
+        color: str = "#638EC6",
+    ) -> dict[str, Any]:
+        target_id = workbook_id or self._selected_workbook_id
+        if not target_id:
+            raise WorkbookNotFoundError("workbook_id가 필요합니다.")
+        sheet = self._find_sheet(self._find_workbook(target_id), sheet_name)
+        rng = self._resolve_target_range(sheet, target_range)
+        bar = rng.api.FormatConditions.AddDatabar()
+        red, green, blue = self._hex_to_rgb(color)
+        bar.BarColor.Color = red + (green << 8) + (blue << 16)
+        return {"address": str(rng.address), "applied": True, "rule": "data_bar"}
 
     def validate_data(
         self,
@@ -1900,6 +2093,18 @@ class ExcelLiveService:
         if not text:
             raise ExcelLiveError("유효한 sheet_name이 필요합니다.")
         return text
+
+    @staticmethod
+    def _cell_matches_highlight(cell_value: Any, operator: str, threshold: float, value: Any = None) -> bool:
+        text_value = None if value is None or str(value).strip() == "" else str(value).strip()
+        op = str(operator or "").strip()
+        if text_value is not None and op in {"==", "=", "!=", "<>"}:
+            left = "" if cell_value is None else str(cell_value).strip()
+            matched_text = left == text_value
+            if op in {"!=", "<>"}:
+                return not matched_text
+            return matched_text
+        return ExcelLiveService._matches_condition(cell_value, operator, threshold)
 
     @staticmethod
     def _matches_condition(value: Any, operator: str, threshold: float) -> bool:

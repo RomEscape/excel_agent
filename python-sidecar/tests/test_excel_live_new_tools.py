@@ -208,6 +208,57 @@ def test_validate_plan_preserves_sheet_name_for_new_tools():
     assert validated[0].params["sheet_name"] == "Summary"
 
 
+def test_set_font_bold_on_header_row(tmp_path):
+    service, path = _service(tmp_path)
+    result = service.set_font(None, "Sheet1", "A1:B1", bold=True)
+    assert result["changed_cells"] >= 1
+    wb = load_workbook(path)
+    assert wb["Sheet1"]["A1"].font.bold is True
+    wb.close()
+
+
+def test_set_font_accepts_whole_row_range(tmp_path):
+    service, path = _service(tmp_path)
+    result = service.set_font(None, "Sheet1", "1:1", bold=True)
+    assert result["changed_cells"] >= 1
+    wb = load_workbook(path)
+    assert wb["Sheet1"]["A1"].font.bold is True
+    wb.close()
+
+
+def test_convert_to_excel_table_registers_list_object(tmp_path):
+    service, path = _service(tmp_path)
+    result = service.convert_to_excel_table(None, "Sheet1", "A1:B3", table_name="DemoTable")
+    assert result["created"] is True
+    wb = load_workbook(path)
+    assert "DemoTable" in wb["Sheet1"].tables
+    wb.close()
+
+
+def test_apply_formula_cf_registers_formula_rule(tmp_path):
+    service, path = _service(tmp_path)
+    result = service.apply_formula_cf(None, "Sheet1", "A2:A3", formula='=$A2="apple pie"', fill_color="#FFC7CE")
+    assert result["applied"] is True
+    wb = load_workbook(path)
+    assert len(list(wb["Sheet1"].conditional_formatting)) == 1
+    wb.close()
+
+
+def test_highlight_text_equals_value(tmp_path):
+    service, _path = _service(tmp_path)
+    result = service.highlight_by_condition(
+        None, "Sheet1", "A1:A3", "==", 0, "#FFFF00", value="banana"
+    )
+    assert result["matched_cells"] == 1
+    assert result["changed_cells"] == 1
+
+
+def test_validate_plan_set_font_defaults_bold():
+    steps = [PlanStep(action="excel_live.set_font", params={})]
+    validated = validate_plan(steps, context=ValidationContext(message="머리글 굵게"))
+    assert validated[0].params["bold"] is True
+
+
 def test_validate_plan_rejects_find_replace_without_find_text():
     steps = [PlanStep(action="excel_live.find_replace", params={"replace_text": "완료"})]
     try:

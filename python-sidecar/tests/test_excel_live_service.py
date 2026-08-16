@@ -254,6 +254,19 @@ class _FakeSheet:
         except ValueError:
             pass
 
+    def delete(self):
+        if self._sheets is None:
+            return
+        try:
+            idx = self._sheets.index(self)
+        except ValueError:
+            return
+        del self._sheets[idx]
+        if self._sheets:
+            self._sheets._active_index = min(idx, len(self._sheets) - 1)
+        else:
+            self._sheets._active_index = 0
+
 
 class _FakeRowApi:
     def __init__(self, sheet, row_index: int):
@@ -394,6 +407,22 @@ def test_create_sheet_creates_and_reuses_existing_sheet():
     reused = service.create_sheet(workbook_id=None, sheet_name="요약", make_active=False)
     assert reused["created"] is False
     assert reused["sheet_name"] == "요약"
+
+
+def test_rename_and_delete_sheet():
+    service, wb1, _ = _build_service()
+    service.select_workbook(wb1.fullname)
+    service.create_sheet(workbook_id=None, sheet_name="임시", make_active=False)
+
+    renamed = service.rename_sheet(workbook_id=None, sheet_name="Sheet1", new_name="Dashboard")
+    assert renamed["renamed"] is True
+    assert renamed["sheet_name"] == "Dashboard"
+    assert "Dashboard" in renamed["sheets"]
+    assert "Sheet1" not in renamed["sheets"]
+
+    deleted = service.delete_sheet(workbook_id=None, sheet_name="임시")
+    assert deleted["deleted"] is True
+    assert "임시" not in deleted["sheets"]
 
 
 def test_read_range_uses_selected_workbook_when_id_missing():

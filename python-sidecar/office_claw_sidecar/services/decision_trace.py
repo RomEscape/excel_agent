@@ -60,6 +60,8 @@ class DecisionTurn:
 _CURRENT: ContextVar[DecisionTurn | None] = ContextVar("decision_turn", default=None)
 # 턴을 만든 주체. 사람이 앱에서 친 명령인지, 어느 테스트가 돌린 것인지 구분한다.
 _SOURCE: ContextVar[dict[str, Any] | None] = ContextVar("decision_source", default=None)
+# 이 턴을 촉발한 **사람의 원래 말**. `message`가 기계가 만든 문장일 때를 위한 것이다.
+_ORIGIN: ContextVar[dict[str, Any] | None] = ContextVar("decision_origin", default=None)
 
 
 def _now_iso() -> str:
@@ -116,6 +118,34 @@ def source(**fields: Any):
         yield merged
     finally:
         _SOURCE.reset(token)
+
+
+def current_origin() -> dict[str, Any]:
+    """지금 열려 있는 원본 발화 정보. 턴 밖에서 부르면 빈 dict."""
+    return dict(_ORIGIN.get() or {})
+
+
+@contextmanager
+def origin(user_input: str = "", **fields: Any):
+    """이 블록 안의 턴에 **사람이 실제로 무엇을 했는지**를 붙인다.
+
+    `message`는 그 턴이 처리한 문장이지 사람이 친 문장이 아니다. 매크로 하위 단계는
+    분해기가 만든 문장("Dashboard 시트 A6에 수식 =AVERAGE(...) 적용")이 들어가고,
+    승인 턴은 원래 명령을 재사용한다. 그래서 로그만 보면 **사용자가 무엇을 요구했는지
+    알 수 없다** — 19단계가 줄줄이 찍혀 있는데 그게 "매출 대시보드 만들어줘" 한 마디에서
+    나왔다는 사실이 어디에도 없다.
+
+    이 블록을 열어 두면 그 턴들에 `user_input`(원문)과 계보(`kind`·`parent_turn_id`·
+    `macro_id`·`step_index`)가 함께 남아, 한 줄만 봐도 누가 시켰는지 되짚을 수 있다.
+    """
+    incoming = {"user_input": user_input} if user_input else {}
+    incoming.update({k: v for k, v in fields.items() if v is not None})
+    merged = {**(_ORIGIN.get() or {}), **incoming}
+    token = _ORIGIN.set(merged)
+    try:
+        yield merged
+    finally:
+        _ORIGIN.reset(token)
 
 
 def note(stage: str, **fields: Any) -> None:
@@ -188,7 +218,8 @@ def _write(entry: dict[str, Any]) -> None:
     try:
         raw = json.dumps(entry, ensure_ascii=False, default=str)
         path = get_chat_log_path()
-        with _LOCK, path.open("a", encoding="utf-8") as f:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with _LOCK, path.open("a", encoding="utf-8", newline="\n") as f:
             f.write(raw + "\n")
     except Exception as exc:
         logger.warning("대화 추적 로그 기록 실패(무시): %s", exc)
@@ -224,6 +255,10 @@ def turn_scope(
         raise
     finally:
         _CURRENT.reset(token)
+        origin_fields = dict(_ORIGIN.get() or {})
+        # user_input은 **항상** 채운다. 원본이 따로 없으면 이 턴의 문장이 곧 사람의 말이다.
+        # 이렇게 해 두면 어떤 턴이든 한 필드만 보면 "사용자가 무엇을 요구했나"를 알 수 있다.
+        user_input = str(origin_fields.pop("user_input", "") or turn.message or "")
         _write(
             {
                 "turn_id": turn.turn_id,
@@ -231,7 +266,9 @@ def turn_scope(
                 "endpoint": turn.endpoint,
                 "session_id": turn.session_id,
                 "source": compact(_SOURCE.get() or {}),
+                "user_input": compact(user_input),
                 "message": turn.message,
+                "origin": compact({"kind": "user", **origin_fields}),
                 "request": turn.request,
                 "elapsed_ms": round((time.perf_counter() - turn.started_ts) * 1000, 1),
                 "routes": turn.routes,

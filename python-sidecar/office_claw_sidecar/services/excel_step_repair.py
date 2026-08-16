@@ -41,6 +41,31 @@ RANGE_PARAM_KEYS = (
 )
 SHEET_PARAM_KEYS = ("sheet_name", "output_sheet", "left_sheet", "right_sheet")
 
+# 표 전체를 대상으로 하는 액션. 이것들의 `__ACTIVE_SELECTION__`은 라우터가 시트의
+# 사용 영역으로 정확히 편다(excel_live.py의 _resolve_symbolic_range).
+#
+# 그런데 여기서 먼저 센티널을 지워 버리면 그 정식 해석이 재시도에서 영영 안 돈다.
+# 대체값으로 쓰이는 ctx.active_cell은 **직전 턴이 건드린 범위**라, 차트를 G1:G4로
+# 만든 다음 "지역별 매출 집계해줘"를 하면 피벗이 G열(Product) 4칸을 집계하려다
+# "'Product' 열은 숫자가 아니라 sum 집계를 할 수 없습니다"로 죽는다(2026-08-16 실측).
+# 좁은 범위를 물려받아 조용히 틀린 답을 내느니, 센티널을 남겨 두는 편이 낫다.
+TABLE_SCOPED_ACTIONS = frozenset(
+    {
+        "excel_live.pivot_table",
+        "excel_live.create_chart",
+        "excel_live.sort_range",
+        "excel_live.sort_rows",
+        "excel_live.filter_rows",
+        "excel_live.dedupe_rows",
+        "excel_live.group_by_aggregate",
+        "excel_live.find_duplicates",
+        "excel_live.convert_to_excel_table",
+        "excel_live.create_table",
+        "excel_live.validate_data",
+        "excel_live.forecast_linear",
+    }
+)
+
 _A1_PATTERN = re.compile(r"^\$?[A-Z]{1,3}\$?\d{1,7}(:\$?[A-Z]{1,3}\$?\d{1,7})?$")
 _COLUMN_SPAN_PATTERN = re.compile(r"^\$?[A-Z]{1,3}(:\$?[A-Z]{1,3})?$")
 
@@ -98,6 +123,9 @@ def repair_step(
         if not isinstance(raw, str) or not raw.strip():
             continue
         if raw.strip() == ACTIVE_SELECTION:
+            if step.action in TABLE_SCOPED_ACTIONS:
+                # 라우터의 사용 영역 해석에 맡긴다. 직전 턴의 범위로 바꾸지 않는다.
+                continue
             resolved = _resolve_active_selection(ctx)
             if resolved and resolved != raw:
                 params[key] = resolved

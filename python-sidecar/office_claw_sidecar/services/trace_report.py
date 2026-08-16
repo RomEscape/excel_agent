@@ -197,7 +197,28 @@ def render(turn: dict[str, Any], *, show_prompt: bool = False) -> str:
         f"{turn.get('elapsed_ms', 0)}ms"
         + (f"  [{source_label(turn)}]" if origin else "")
     )
-    add("[USER]", str(turn.get("message", "")))
+    # 사람이 실제로 요구한 말과 이 턴이 처리한 문장이 다를 수 있다(매크로 하위 단계·승인).
+    # 원문을 먼저 보여 주지 않으면 19줄짜리 기계 문장만 남아 무엇에서 비롯됐는지 알 수 없다.
+    message = str(turn.get("message", ""))
+    lineage = turn.get("origin") or {}
+    user_input = str(turn.get("user_input") or "")
+    if user_input and user_input != message:
+        kind = str(lineage.get("kind") or "")
+        step = lineage.get("step_index")
+        total = lineage.get("total_steps")
+        tail = ""
+        if kind == "macro_step" and step:
+            tail = f"  (매크로 {step}/{total} — {lineage.get('macro_id', '')[:8]})"
+        elif kind == "approval":
+            tail = "  (승인함)" if lineage.get("approved") else "  (거부함)"
+        add("[USER]", f"{user_input}{tail}")
+        add("[STEP]", message)
+    else:
+        add("[USER]", message)
+        if str(lineage.get("kind") or "") == "approval":
+            cont("(승인함)" if lineage.get("approved") else "(거부함)")
+    if lineage.get("user_reply"):
+        add("[답변]", str(lineage["user_reply"]))
 
     obs = _stage(turn, "observation")
     if obs:
