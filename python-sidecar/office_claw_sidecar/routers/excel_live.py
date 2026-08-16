@@ -91,6 +91,7 @@ from office_claw_sidecar.services.excel_live_service import (
     get_excel_live_service,
 )
 from office_claw_sidecar.services.excel_live_table_presets import get_table_preset
+from office_claw_sidecar.services.excel_macro_coverage import parse_rect
 from office_claw_sidecar.services.excel_macro_planner import (
     MacroStepPlan,
     decompose_macro_request,
@@ -112,7 +113,10 @@ from office_claw_sidecar.services.excel_planner_prompt import (
     render_conversation_history,
 )
 from office_claw_sidecar.services.excel_result_verifier import verify_effect
-from office_claw_sidecar.services.excel_selection_context import resolve_context_range
+from office_claw_sidecar.services.excel_selection_context import (
+    mentions_selection,
+    resolve_context_range,
+)
 from office_claw_sidecar.services.excel_step_repair import RepairContext, repair_step
 from office_claw_sidecar.services.excel_workbook_digest import (
     build_workbook_digest,
@@ -4681,6 +4685,34 @@ def _merge_create_table_slots(
     # 헤더를 받았으면 열 수는 물어볼 필요가 없다. 머리글 개수가 곧 열 수다.
     if slot.cols is None and slot.headers:
         slot.cols = max(1, min(50, len(slot.headers)))
+
+    # 사용자가 끌어 둔 영역이 곧 표 크기다.
+    #
+    # 2026-08-16 실측: A1:D9를 드래그하고 "이 부분에 표 만들어줘"라고 했는데
+    # `start_cell`을 만들 때 `.split(":")[0]`으로 왼쪽 위 칸만 남기고 크기를 버려,
+    # "표 크기와 헤더를 알려주세요"로 되물었다. 끌어 놓고 다시 크기를 불러야 하면
+    # 드래그가 아무 의미가 없다.
+    #
+    # 사용자가 문장으로 크기를 말했으면(`5*5`) 그게 이미 채워져 있으므로 건드리지 않는다.
+    #
+    # **가리켰을 때만** 크기로 쓴다. 지시어 없는 "표 만들어줘"까지 선택으로 크기를
+    # 정하면, 우연히 남아 있던 선택이 표 크기가 된다 — 사용자가 의도한 적 없는 크기다.
+    # (이 조건을 안 걸었더니 기존 테스트 5건이 되묻기 대신 곧장 표를 만들었다.)
+    dragged = _normalize_range_text(getattr(req, "context_range", None) or "")
+    if (
+        ":" in dragged
+        and mentions_selection(req.message)
+        and slot.rows is None
+        and slot.cols is None
+    ):
+        rect = parse_rect(dragged)
+        if rect:
+            top, left, bottom, right = rect
+            slot.rows = max(1, min(100, bottom - top + 1))
+            slot.cols = max(1, min(50, right - left + 1))
+            if not slot.start_cell:
+                slot.start_cell = dragged.split(":")[0]
+
     slot.updated_at_ts = now
     return slot
 
