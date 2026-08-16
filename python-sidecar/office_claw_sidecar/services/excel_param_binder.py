@@ -600,6 +600,29 @@ def _coerce_literal(text: str) -> Any:
     return int(number) if number.is_integer() else number
 
 
+# "지워줘"는 빈 값을 쓰는 게 정답이다. 그 경우만 빈 쓰기를 허용한다.
+_CLEARING_INTENT = re.compile(r"(지워|지운|삭제|제거|비워|비우|clear|초기화|없애)", re.IGNORECASE)
+
+
+def write_values_are_empty(params: dict[str, Any]) -> bool:
+    """무엇을 쓸지 끝내 정하지 못한 상태인지 본다.
+
+    규칙 파서가 "H1에 넣어줘"처럼 값이 없는 문장에서 `values_2d=[[""]]`를 만들어 내고,
+    그게 그대로 실행돼 **빈 칸을 쓰고도 성공으로 보고**된 사례가 있다(2026-08-16 실측:
+    되묻기 다음 턴에 원 요청의 '총매출'이 유실됐는데 검증기는 빈 값 대 빈 셀을 같다고
+    보고 통과시켰다). 추측해서 빈 칸을 쓰느니 무엇을 넣을지 되묻는 편이 낫다.
+    """
+    values = params.get("values_2d")
+    if not isinstance(values, list) or not values:
+        return True
+    for row in values:
+        cells = row if isinstance(row, list) else [row]
+        for cell in cells:
+            if cell is not None and str(cell).strip() != "":
+                return False
+    return True
+
+
 def _bind_write_values(params: dict[str, Any], *, message: str) -> list[str]:
     """ "C3에 120 입력해줘"처럼 값이 원문에만 있는 쓰기 명령을 채운다.
 
@@ -1257,6 +1280,9 @@ def bind_plan_steps(
 
         if step.action == "excel_live.write_range":
             changes.extend(_bind_write_values(params, message=message))
+            # 무엇을 쓸지 못 정했으면 추측해서 빈 칸을 쓰지 않는다 — 되묻는 쪽이 맞다.
+            if write_values_are_empty(params) and not _CLEARING_INTENT.search(str(message or "")):
+                notes.append({"action": step.action, "slot": "values_2d", "status": "unresolved"})
 
         if step.action == "excel_live.set_formula" and (
             params.get("named_formula_message") or str(params.get("formula_mode") or "") == "named"

@@ -742,6 +742,8 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
         r"([a-z]+\d+)\s*(?:셀)?\s*값(?:을|를)?\s*['\"]?([^'\"]+?)['\"]?\s*(?:로)?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|write|set|input)",
         r"\b([a-z]+\d+)\s+['\"]?([^'\"]+?)['\"]?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|write|set|input)\b",
     ]
+    # 셀은 지목했는데 넣을 값이 없는 문장("H1에 넣어줘")을 만났는지.
+    valueless_cell_write = False
     for pattern in single_write_patterns:
         single_write = re.search(pattern, text, re.IGNORECASE)
         if not single_write:
@@ -750,12 +752,23 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
         raw_value = re.sub(r"\s*(?:값|value)\s*$", "", single_write.group(2).strip(), flags=re.IGNORECASE)
         if "수식" in raw_value or "formula" in raw_value.lower() or "=" in raw_value:
             continue
+        if not raw_value:
+            valueless_cell_write = True
+            continue
         value = _parse_literal_value(raw_value)
         return {
             "action": "excel_live.write_range",
             "params": {"start_cell": cell, "values_2d": [[value]]},
             "reason": "단일 셀 값 입력 요청",
         }
+
+    if valueless_cell_write:
+        # "H1에 넣어줘" — 셀은 있는데 넣을 값이 없다. 계획을 만들면 values_2d=[[""]]가 되어
+        # 빈 칸을 쓰고도 성공으로 보고된다(2026-08-16 실측: 되묻기 다음 턴의 '총매출'이
+        # 이렇게 유실됐고, 검증기는 빈 값 대 빈 셀을 같다고 보아 통과시켰다).
+        # 아래 "선택 셀 입력" 규칙으로 흘려도 안 된다 — 문장 자체("H1에")를 값으로 써 버린다.
+        # 규칙으로는 못 푸는 문장이므로 계획을 만들지 않고 플래너·되묻기에 넘긴다.
+        return None
 
     # 예: "777 입력해줘" (셀 미지정) -> 현재 선택 셀에 기록
     implicit_single_write = re.search(

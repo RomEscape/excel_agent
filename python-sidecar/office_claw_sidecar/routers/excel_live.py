@@ -7425,6 +7425,19 @@ def _plan_approval_gate(ctx: PlanExecution, plan: list[PlanStep]) -> ExcelLiveAc
     )
     if target_problem:
         trace_note("target_missing", action=head.action, detail=target_problem)
+        # 되묻고 끝내면 다음 턴이 맨바닥에서 다시 계획한다. 사용자의 답변("Sales_Data
+        # 시트 H1에 넣어줘")만으로는 **무엇을 넣을지**를 알 수 없어, 실측에서
+        # values_2d=[[""]]가 되어 빈 칸을 쓰고도 성공으로 보고됐다.
+        # 원 요청과 질문을 남겨 두면 다음 턴 프롬프트(conversation_history_text)에
+        # 함께 들어가 계획이 완성된다 — 플래너가 스스로 되물을 때와 같은 취급.
+        previous = _pending_clarifications.get(ctx.session_key)
+        _pending_clarifications[ctx.session_key] = PendingClarification(
+            session_id=ctx.session_key,
+            original_message=previous.original_message if previous else req.message,
+            question=target_problem,
+            ask_count=(previous.ask_count + 1) if previous else 1,
+            created_at_ts=time.time(),
+        )
         return ExcelLiveActionResponse(
             ok=True,
             action="excel_live.clarify",

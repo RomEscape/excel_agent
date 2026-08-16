@@ -689,3 +689,33 @@ def test_parse_excel_live_command_rejects_clarify_mixed_with_execution():
     except ValueError:
         pass
 
+
+
+class TestValuelessWriteFallsThroughToClarify:
+    """셀은 지목했는데 넣을 값이 없는 문장은 규칙으로 계획을 만들면 안 된다.
+
+    2026-08-16 실측: 되묻기 다음 턴 "Sales_Data 시트 H1에 넣어줘"에서 규칙 파서가
+    values_2d=[[""]]를 만들었고, 검증기는 빈 값 대 빈 셀을 같다고 보아 통과시켜
+    **빈 칸을 쓰고도 "성공"으로 보고**됐다. 원 요청의 '총매출'은 사라졌다.
+    """
+
+    def test_a_cell_without_a_value_yields_no_plan(self):
+        assert parse_command_rule_based("H1에 넣어줘") is None
+        assert parse_command_rule_based("Sales_Data 시트 H1에 넣어줘") is None
+
+    def test_it_does_not_leak_into_the_active_cell_rule(self):
+        # 아래 "선택 셀 입력" 규칙으로 흘리면 문장 자체("H1에")를 값으로 써 버린다.
+        parsed = parse_command_rule_based("H1에 넣어줘")
+        assert parsed is None, f"문장을 값으로 쓰는 계획이 만들어졌다: {parsed}"
+
+    def test_a_value_that_is_present_still_works(self):
+        parsed = parse_command_rule_based("H1에 총매출 넣어줘")
+        assert parsed["action"] == "excel_live.write_range"
+        assert parsed["params"]["values_2d"] == [["총매출"]]
+        assert parsed["params"]["start_cell"] == "H1"
+
+    def test_clearing_is_untouched(self):
+        # "지워줘"는 빈 값을 쓰는 게 정답이다. 이 경로를 막으면 안 된다.
+        parsed = parse_command_rule_based("B2 지워줘")
+        assert parsed["action"] == "excel_live.write_range"
+        assert parsed["params"]["values_2d"] == [[None]]
