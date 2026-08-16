@@ -105,6 +105,49 @@ class TestStructureProtection:
         assert _block({"structure_protected": True}, action=WRITE).ok
 
 
+class TestComReadOnlyIsCrossChecked:
+    """COM의 ReadOnly만으로 편집을 막으면 안 된다 (2026-08-16 Excel 실측).
+
+    갓 만들어 저장한 파일도, 앱 자체 Workspace 폴더의 쓰기 가능한 파일도
+    `wb.api.ReadOnly`가 True로 나왔다(디스크는 `os.access(W_OK)=True`).
+    그대로 차단 근거로 쓰면 xlwings 경로의 **모든 편집이 막힌다**.
+
+    그래서 디스크가 실제로 쓰기 불가일 때만 인정한다. 반대 방향 오차(진짜 읽기
+    전용으로 열렸는데 통과시킴)는 실행 시 실패로 드러나므로 훨씬 싸다.
+    """
+
+    def _unwritable(self, full_name):
+        from office_claw_sidecar.services.excel_live_service import ExcelLiveService
+
+        class FakeApi:
+            FullName = full_name
+
+        return ExcelLiveService._path_is_unwritable(FakeApi())
+
+    def test_a_never_saved_workbook_is_writable(self):
+        # 저장된 적 없으면 FullName이 절대경로가 아니다 ("통합 문서1").
+        assert self._unwritable("통합 문서1") is False
+        assert self._unwritable("") is False
+
+    def test_a_writable_file_is_not_unwritable(self, tmp_path):
+        f = tmp_path / "ok.xlsx"
+        f.write_bytes(b"x")
+        assert self._unwritable(str(f)) is False
+
+    def test_a_missing_file_is_not_treated_as_unwritable(self, tmp_path):
+        assert self._unwritable(str(tmp_path / "없는파일.xlsx")) is False
+
+    def test_a_broken_api_object_does_not_raise(self):
+        from office_claw_sidecar.services.excel_live_service import ExcelLiveService
+
+        class Boom:
+            @property
+            def FullName(self):
+                raise RuntimeError("COM 실패")
+
+        assert ExcelLiveService._path_is_unwritable(Boom()) is False
+
+
 class TestFlagReading:
     def test_a_service_without_the_method_yields_none(self):
         # 36개 테스트 파일의 가짜 서비스는 이 메서드를 갖고 있지 않다.

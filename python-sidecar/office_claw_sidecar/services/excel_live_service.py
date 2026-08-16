@@ -2017,6 +2017,23 @@ class ExcelLiveService:
             pass
         return "A1"
 
+    @staticmethod
+    def _path_is_unwritable(wb_api: Any) -> bool:
+        """통합문서 파일이 디스크에서 실제로 쓰기 불가인가.
+
+        저장된 적 없는 새 통합문서(FullName이 경로가 아님)는 쓰기 가능으로 본다.
+        """
+        try:
+            full = str(getattr(wb_api, "FullName", "") or "")
+        except Exception:
+            return False
+        if not full or not os.path.isabs(full):
+            return False
+        try:
+            return os.path.exists(full) and not os.access(full, os.W_OK)
+        except Exception:
+            return False
+
     def get_write_protection(
         self, workbook_id: str | None, sheet_name: str | None = None
     ) -> dict[str, Any]:
@@ -2040,7 +2057,16 @@ class ExcelLiveService:
         wb_api = getattr(wb, "api", None)
         if wb_api is None:
             return flags
-        flags["workbook_read_only"] = _flag(wb_api, "ReadOnly")
+        # COM의 ReadOnly만 믿으면 안 된다 (2026-08-16 실측).
+        #
+        # 갓 만들어 저장한 파일도, 앱 자체 Workspace 폴더의 쓰기 가능한 파일도
+        # `wb.api.ReadOnly`가 True로 나왔다(디스크는 os.access(W_OK)=True).
+        # 보호된 보기·자동화 열기 등 실제 쓰기 가능 여부와 무관한 이유로 켜진다.
+        # 이걸 그대로 차단 근거로 쓰면 **xlwings 경로의 모든 편집이 막힌다** —
+        # 가장 비싼 오탐이다. 그래서 디스크가 실제로 쓰기 불가일 때만 인정한다.
+        com_read_only = _flag(wb_api, "ReadOnly")
+        flags["com_read_only"] = com_read_only
+        flags["workbook_read_only"] = com_read_only and self._path_is_unwritable(wb_api)
         flags["structure_protected"] = _flag(wb_api, "ProtectStructure")
         flags["marked_final"] = _flag(wb_api, "Final")
 

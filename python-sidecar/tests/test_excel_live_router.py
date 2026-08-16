@@ -1353,7 +1353,14 @@ def test_command_debug_filter_function_error_prefers_debug_intent(monkeypatch):
     assert body["result"]["ask_follow_up"] is True
 
 
-def test_command_parse_failure_returns_400_instead_of_list_fallback(monkeypatch):
+def test_command_parse_failure_routes_to_chat_instead_of_list_fallback(monkeypatch):
+    """파싱 실패는 목록 조회로 눙치지 않는다.
+
+    2026-08-16에 전달 방식만 바꿨다: 400 → 200 + not_excel_request.
+    Rust의 read_response(ipc.rs:29)가 4xx를 Err로 바꿔 버려서, 400으로는 프론트가
+    "요청 실패"와 "엑셀 일이 아님"을 구분할 수 없었다. 구분이 돼야 일반 채팅으로
+    넘겨 정상적으로 답할 수 있다. 금지 사항(list 폴백)은 그대로다.
+    """
     monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
 
     async def _raise_parse(_message, llm_service, context):
@@ -1366,8 +1373,12 @@ def test_command_parse_failure_returns_400_instead_of_list_fallback(monkeypatch)
         json={"message": "뭔가 이상한 명령", "approve": False},
         headers=HEADERS,
     )
-    assert resp.status_code == 400
-    assert "해석하지 못했습니다" in resp.json().get("detail", "")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["action"] == "excel_live.not_excel_request"
+    assert body["result"]["route_to_chat"] is True
+    # 원래 이 테스트가 막으려던 것 — 목록 조회로 새면 안 된다.
+    assert body["action"] != "excel_live.list_workbooks"
 
 
 def test_command_parse_failure_returns_clarify_for_excel_like_request(monkeypatch):
@@ -2308,7 +2319,11 @@ def test_command_create_table_slot_state_expires_by_ttl(monkeypatch):
         },
         headers=HEADERS,
     )
-    assert expired.status_code == 400
+    # 슬롯이 만료되면 "5*5, 금액, 장소"는 맥락 없는 문장이라 표를 만들지 않는다.
+    # 2026-08-16에 전달 방식만 400 → 200 + not_excel_request로 바꿨다(ipc.rs가 4xx를
+    # Err로 바꿔 프론트가 분기할 수 없었다). 표를 만들면 안 된다는 성질은 그대로다.
+    assert expired.status_code == 200
+    assert expired.json()["action"] == "excel_live.not_excel_request"
 
 
 def test_command_template_follow_up_then_affirmative_executes(monkeypatch):

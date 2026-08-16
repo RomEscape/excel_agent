@@ -6859,7 +6859,9 @@ async def _run_command(
                             "operation_intent": "clarify",
                         },
                     )
-                raise HTTPException(status_code=400, detail=str(parse_error))
+                # 엑셀 요청으로 안 보이는데 파싱까지 실패했다. 오류가 아니라
+                # "엑셀 일이 아님"이므로 프론트가 일반 채팅으로 넘길 수 있게 200으로 준다.
+                return _not_excel_response(req.message, f"parse_error: {parse_error}"[:60])
 
     if should_parse_with_llm and parsed is not None:
         # 플래너가 "이대로 실행하면 위험하다"고 판단해 되물은 경우.
@@ -7299,7 +7301,9 @@ async def _run_command(
                     "operation_intent": operation_hints.get("intent") or "clarify",
                 },
             )
-        raise HTTPException(status_code=400, detail="실행 가능한 action을 생성하지 못했습니다.")
+        # 여기는 _looks_like_excel_request가 False인 갈래다 — 계획을 못 만든 게 아니라
+        # 애초에 엑셀 요청이 아니다. 400은 프론트에서 분기 불가능한 신호다.
+        return _not_excel_response(req.message, "no_action_plan")
 
     base_context = {
         "context_range": req.context_range,
