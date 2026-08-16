@@ -19,12 +19,13 @@ pre-commit:
     python-lint:
       glob: "python-sidecar/**/*.py"
       root: "python-sidecar/"
-      run: uvx ruff check .
+      # uv가 없는 개발기(2026-08-16 Windows 실측)에서는 `uvx`가 없어 훅이 통째로 실패했다.
+      run: if command -v uvx >/dev/null 2>&1; then uvx ruff check .; else ./.venv/Scripts/ruff.exe check .; fi
     frontend-lint:
       glob: "src/**/*.{ts,tsx,js,jsx}"
       run: npm run lint --if-present
     devlog-guard:
-      run: cd python-sidecar && uv run python scripts/append_devlog_from_reports.py --devlog ../개발일지.md --complex-report ../logs/excel_complex_verify_report.json --release-gate ../logs/eval_release_gate.json --from-staged --skip-if-devlog-staged && node ../scripts/check-devlog-update.mjs --staged
+      run: cd python-sidecar && sh ../scripts/py-run.sh scripts/append_devlog_from_reports.py --devlog ../개발일지.md --complex-report ../logs/excel_complex_verify_report.json --release-gate ../logs/eval_release_gate.json --from-staged --skip-if-devlog-staged && node ../scripts/check-devlog-update.mjs --staged
 
 pre-push:
   parallel: true
@@ -34,6 +35,6 @@ pre-push:
       run: cargo clippy --all-targets -- -D warnings
     python-test:
       root: "python-sidecar/"
-      run: uv run pytest -q
+      run: sh ../scripts/py-run.sh -m pytest -q
     frontend-test:
       run: npm run test:unit --if-present

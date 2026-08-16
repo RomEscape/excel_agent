@@ -1,8 +1,0 @@
-{
-  "model": "ax7bplanner-v5r:latest",
-  "cases": 40,
-  "accuracy_json_only_off": 0.8,
-  "accuracy_json_only_on": 0.8,
-  "diverged": [],
-  "errors": []
-}
