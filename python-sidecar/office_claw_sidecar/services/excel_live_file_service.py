@@ -15,7 +15,15 @@ from pathlib import Path
 from typing import Any
 
 from openpyxl import load_workbook
-from openpyxl.chart import BarChart, LineChart, PieChart, Reference
+from openpyxl.chart import (
+    AreaChart,
+    BarChart,
+    DoughnutChart,
+    LineChart,
+    PieChart,
+    Reference,
+    ScatterChart,
+)
 from openpyxl.comments import Comment
 from openpyxl.formatting.rule import ColorScaleRule, DataBarRule, FormulaRule
 from openpyxl.formula.translate import Translator
@@ -2224,12 +2232,26 @@ class FileExcelLiveService(ExcelLiveService):
                 "원형": "pie",
                 "파이": "pie",
                 "분산형": "scatter",
+                "산점도": "scatter",
+                # 참고 대시보드가 목표 달성률을 도넛으로 그린다. 별칭만 있고 구현이 없어
+                # 전부 꺾은선으로 떨어졌다(2026-08-16).
+                "도넛": "doughnut",
+                "donut": "doughnut",
+                "링": "doughnut",
+                "영역": "area",
+                "면적": "area",
             }
             kind = aliases.get(kind, kind)
             if kind == "bar":
                 chart = BarChart()
             elif kind == "pie":
                 chart = PieChart()
+            elif kind == "doughnut":
+                chart = DoughnutChart()
+            elif kind == "area":
+                chart = AreaChart()
+            elif kind == "scatter":
+                chart = ScatterChart()
             else:
                 kind = "line"
                 chart = LineChart()
@@ -2237,8 +2259,9 @@ class FileExcelLiveService(ExcelLiveService):
 
             categories = Reference(ws, min_col=min_col, min_row=min_row + 1, max_row=max_row)
             value_min_col = min(min_col + 1, max_col)
-            if kind == "pie":
-                # 원형 차트는 계열이 하나여야 한다.
+            if kind in {"pie", "doughnut"}:
+                # 원형·도넛은 계열이 하나여야 한다. 여러 열을 주면 첫 계열만 그려지고
+                # 나머지는 조용히 사라진다.
                 values = Reference(ws, min_col=value_min_col, min_row=min_row, max_row=max_row)
             else:
                 values = Reference(

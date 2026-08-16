@@ -3883,11 +3883,16 @@ def _rank_limit_fill_color(plan) -> str:
     return "#FFFF00"
 
 
-# 원문에 나온 차트 종류 → 실행기가 받는 이름. 검증기가 받아주는 값만 둔다.
-# 여기 없는 말(영역·분산)은 확정하지 않고 되묻게 두는 편이 낫다.
+# 원문에 나온 차트 종류 → 실행기가 받는 이름. 실행기가 실제로 만들 수 있는 값만 둔다.
+# 2026-08-16: 도넛이 pie로 접혀 있었다. DoughnutChart를 구현했으니 갈라 준다.
+# 영역·분산도 구현했으므로 되묻지 않고 확정한다. 도넛을 먼저 봐야 한다 —
+# "도넛"보다 "원형"이 앞에 오면 도넛 요청이 원형으로 떨어진다.
 _CHART_KIND_WORDS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"(도넛|도너츠|donut|doughnut|링\s*차트)", re.IGNORECASE), "doughnut"),
     (re.compile(r"(막대|bar|컬럼|column)", re.IGNORECASE), "bar"),
-    (re.compile(r"(원형|파이|pie|도넛|donut)", re.IGNORECASE), "pie"),
+    (re.compile(r"(원형|파이|pie)", re.IGNORECASE), "pie"),
+    (re.compile(r"(분산|산점|scatter)", re.IGNORECASE), "scatter"),
+    (re.compile(r"(영역\s*차트|면적\s*차트|area\s*chart)", re.IGNORECASE), "area"),
     (re.compile(r"(선\s*그래프|꺾은|라인|line|추이)", re.IGNORECASE), "line"),
 )
 
