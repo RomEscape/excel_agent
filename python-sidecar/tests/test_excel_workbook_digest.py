@@ -84,3 +84,53 @@ def test_digest_survives_service_errors():
 
 def test_render_returns_empty_when_no_sheets():
     assert render_workbook_digest({"active_sheet": "", "sheets": []}) == ""
+
+
+class TestFirstFreeColumn:
+    """파생 열을 어디에 만들지 모델에게 알려 준다.
+
+    2026-08-16 실측: few-shot이 "J1에 매출 입력"처럼 열을 하드코딩해 두었더니, J~M에
+    이미 클레임·거리·연료·평점이 있는 물류 통합문서에서도 그대로 J에 썼다. 1단계가
+    `A1:M201 병합해줘`였고 201행이 통째로 사라졌다.
+    "빈 열을 쓰라"는 규칙만으로는 부족하다 — 어느 열이 비었는지 알려 줘야 한다.
+    """
+
+    def test_it_points_just_past_the_used_range(self):
+        from office_claw_sidecar.services.excel_workbook_digest import first_free_column
+
+        assert first_free_column("A1:M201") == "N"
+        assert first_free_column("A1:I61") == "J"
+        assert first_free_column("B2:C9") == "D"
+
+    def test_a_single_cell_range(self):
+        from office_claw_sidecar.services.excel_workbook_digest import first_free_column
+
+        assert first_free_column("A1") == "B"
+
+    def test_multi_letter_columns_roll_over(self):
+        from office_claw_sidecar.services.excel_workbook_digest import first_free_column
+
+        assert first_free_column("A1:Z10") == "AA"
+        assert first_free_column("A1:AA10") == "AB"
+
+    def test_an_empty_range_yields_nothing(self):
+        from office_claw_sidecar.services.excel_workbook_digest import first_free_column
+
+        assert first_free_column("") == ""
+        assert first_free_column("이상한값") == ""
+
+    def test_the_digest_shows_it(self):
+        from office_claw_sidecar.services.excel_workbook_digest import render_workbook_digest
+
+        digest = {
+            "active_sheet": "S",
+            "sheets": [{"name": "S", "used_range": "A1:M201", "columns": [], "sample_rows": []}],
+        }
+        assert "빈열=N부터" in render_workbook_digest(digest)
+
+    def test_an_empty_sheet_gets_no_note(self):
+        from office_claw_sidecar.services.excel_workbook_digest import render_workbook_digest
+
+        digest = {"active_sheet": "S", "sheets": [{"name": "S", "used_range": "", "columns": []}]}
+        text = render_workbook_digest(digest)
+        assert "빈열" not in text

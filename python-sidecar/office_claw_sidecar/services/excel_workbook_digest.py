@@ -196,6 +196,31 @@ def invalidate_workbook_digest(workbook_id: str | None = None) -> None:
     _digest_cache.pop("__selected__", None)
 
 
+def first_free_column(used_range: str) -> str:
+    """사용 범위 **오른쪽 첫 빈 열**. 파생 값을 여기부터 쓰면 원본을 안 건드린다.
+
+    2026-08-16 실측: few-shot 예시가 "J1에 매출 입력"처럼 열을 하드코딩해 두었더니,
+    J~M에 이미 클레임·거리·연료·평점이 있는 물류 통합문서에서도 그대로 J에 썼다.
+    1단계가 `A1:M201 병합해줘`였고 201행이 통째로 사라졌다.
+    규칙으로 "빈 열을 쓰라"고만 하면 모델이 어느 열이 비었는지 모른다 — 알려 줘야 한다.
+    """
+    text = str(used_range or "").replace("$", "").strip().upper()
+    if not text:
+        return ""
+    right = text.rpartition(":")[2] or text
+    match = re.match(r"([A-Z]{1,3})\d", right)
+    if not match:
+        return ""
+    idx = 0
+    for ch in match.group(1):
+        idx = idx * 26 + (ord(ch) - 64)
+    out, n = "", idx + 1
+    while n:
+        n, rem = divmod(n - 1, 26)
+        out = chr(65 + rem) + out
+    return out
+
+
 def render_workbook_digest(digest: dict[str, Any], *, max_chars: int = 1600) -> str:
     """프롬프트에 넣을 수 있는 짧은 텍스트로 변환한다."""
     sheets = digest.get("sheets") or []
@@ -206,7 +231,10 @@ def render_workbook_digest(digest: dict[str, Any], *, max_chars: int = 1600) -> 
     for sheet in sheets:
         name = str(sheet.get("name") or "")
         marker = " (활성)" if name and name == active else ""
-        lines.append(f"- 시트 {name}{marker} 사용범위={sheet.get('used_range') or '비어있음'}")
+        used = str(sheet.get("used_range") or "")
+        free = first_free_column(used)
+        free_note = f" 빈열={free}부터" if free else ""
+        lines.append(f"- 시트 {name}{marker} 사용범위={used or '비어있음'}{free_note}")
         columns = sheet.get("columns") or []
         if columns:
             rendered = " | ".join(
