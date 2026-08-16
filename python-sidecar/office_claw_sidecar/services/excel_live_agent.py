@@ -144,6 +144,89 @@ def _extract_target_range_from_text(text: str) -> str | None:
     return None
 
 
+# "글자 크기 16", "16pt", "폰트 크기를 14로"
+_FONT_SIZE_PATTERN = re.compile(
+    r"(?:글자|글씨|폰트|글꼴|텍스트|font)?\s*(?:크기|사이즈|size)\s*(?:를|을)?\s*(\d{1,3})|(\d{1,3})\s*(?:pt|포인트)",
+    re.IGNORECASE,
+)
+# 글자색을 가리키는 말. 배경색과 반드시 갈라야 한다 — 안 그러면 배경을 칠해 버린다.
+_FONT_COLOR_MARKER = re.compile(
+    r"(글자\s*색|글씨\s*색|폰트\s*색|글꼴\s*색|텍스트\s*색|font\s*colou?r)", re.IGNORECASE
+)
+_COLOR_TOKEN = re.compile(
+    r"(#[0-9a-fA-F]{6}|노란색|노랑|노란|yellow|빨간색|빨강|빨간|red|파란색|파랑|blue"
+    r"|초록색|초록|green|흰색|하얀색|하양|white|화이트|백색|검정|검은색|검은|black)",
+    re.IGNORECASE,
+)
+_COLORED_TEXT_PATTERN = re.compile(
+    r"(#[0-9a-fA-F]{6}|[가-힣]{1,4}색|[가-힣]{1,3})\s*(?:글씨|글자|텍스트)", re.IGNORECASE
+)
+# "글씨 흰색", "글자를 빨강으로" — 색이 뒤에 오는 형태.
+_TEXT_THEN_COLOR_PATTERN = re.compile(
+    r"(?:글씨|글자|텍스트|폰트|글꼴)\s*(?:를|을|는|색)?\s*"
+    r"(#[0-9a-fA-F]{6}|노란색|노랑|yellow|빨간색|빨강|red|파란색|파랑|blue"
+    r"|초록색|초록|green|흰색|하얀색|하양|white|화이트|백색|검정|검은색|black)",
+    re.IGNORECASE,
+)
+# 글자색을 말하는 문장은 배경색 규칙이 가로채면 안 된다. "글씨 흰색으로"가 배경을
+# 하얗게 칠해 버린 사례가 있다(2026-08-16 실측).
+FONT_COLOR_CONTEXT = re.compile(
+    r"(글씨|글자|텍스트|폰트\s*색|글꼴\s*색|font\s*colou?r)", re.IGNORECASE
+)
+
+
+def extract_font_params(text: str) -> dict[str, Any]:
+    """문장에서 글꼴 속성(굵게·크기·색)을 뽑는다.
+
+    지금까지는 `bold=True` 하나만 넣고 크기·색을 버렸다. `set_font`는 `size`·`color`를
+    받는데 파서가 안 넘겨서 "글자 크기 16으로", "제목 글씨 흰색"이 통째로 무시됐다
+    (2026-08-16 실측: 참고 대시보드의 흰 제목 글씨와 증감 표시 색을 못 만들었다).
+
+    굵게를 말하지 않았으면 `bold`를 넣지 않는다 — 크기만 바꾸려던 요청에 굵기까지
+    바꿔 버리면 사용자가 하지 않은 편집이 된다.
+    """
+    lowered = str(text or "").lower()
+    out: dict[str, Any] = {}
+
+    if re.search(r"(굵게|볼드|bold|굵은|두껍)", lowered):
+        out["bold"] = True
+    elif re.search(r"(굵기\s*(?:해제|없|빼)|보통\s*굵기|not\s*bold)", lowered):
+        out["bold"] = False
+
+    size_match = _FONT_SIZE_PATTERN.search(lowered)
+    if size_match:
+        raw = size_match.group(1) or size_match.group(2)
+        try:
+            size = float(raw)
+        except (TypeError, ValueError):
+            size = 0.0
+        # 엑셀이 받는 범위 밖이면 무시한다. "2026년" 같은 숫자를 크기로 읽으면 안 된다.
+        if 1 <= size <= 409:
+            out["size"] = size
+
+    color = ""
+    marker = _FONT_COLOR_MARKER.search(lowered)
+    if marker:
+        token = _COLOR_TOKEN.search(lowered[marker.end() :])
+        if token:
+            color = _normalize_color(token.group(1))
+    if not color:
+        # "글씨 흰색", "글자를 빨강으로" — 색이 뒤에 오는 형태.
+        after = _TEXT_THEN_COLOR_PATTERN.search(str(text or ""))
+        if after:
+            color = _normalize_color(after.group(1))
+    if not color:
+        # "빨간 글씨", "흰색 글자" — 색이 앞에 오는 형태.
+        phrase = _COLORED_TEXT_PATTERN.search(str(text or ""))
+        if phrase:
+            candidate = _normalize_color(phrase.group(1))
+            if candidate != "#FFFF00" or "노" in phrase.group(1):
+                color = candidate
+    if color:
+        out["color"] = color
+    return out
+
+
 def _normalize_color(word: str) -> str:
     normalized = word.strip().lower()
     # `#1F4E79` 처럼 코드로 준 색. 대시보드 배색은 이름으로 부를 수 없는 색이 대부분인데,
@@ -159,6 +242,12 @@ def _normalize_color(word: str) -> str:
         return "#00FF00"
     if normalized in {"파란색", "파랑", "blue"}:
         return "#0000FF"
+    # 글자색으로 가장 많이 쓰는 두 색이 빠져 있었다. 없으면 노랑으로 폴백해서
+    # "제목 글씨 흰색으로"가 노란 글씨가 됐다(2026-08-16 실측).
+    if normalized in {"흰색", "하얀색", "하양", "흰", "white", "화이트", "백색"}:
+        return "#FFFFFF"
+    if normalized in {"검정", "검은색", "검은", "black", "블랙"}:
+        return "#000000"
     return "#FFFF00"
 
 
@@ -522,17 +611,25 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
             "reason": "선택 범위 경계선 적용 요청",
         }
 
-    if re.search(r"(굵게|볼드|bold|글꼴|폰트)", lowered) and not re.search(
-        r"(테두리|경계선|border|괘선)", lowered
-    ):
+    # "글씨 흰색으로"는 굵게·글꼴이라는 말이 없어 예전엔 배경색 규칙으로 흘러 배경을 칠했다.
+    # 색·크기를 실제로 뽑아냈으면 글꼴 요청으로 본다.
+    font_params = extract_font_params(text)
+    if (
+        re.search(r"(굵게|볼드|bold|글꼴|폰트)", lowered)
+        or font_params.get("color")
+        or font_params.get("size")
+    ) and not re.search(r"(테두리|경계선|border|괘선)", lowered):
         header_font = bool(re.search(r"(머리글|헤더|header)", lowered))
         target_range = _extract_target_range_from_text(lowered) or (
             "1:1" if header_font else (context_range or "__ACTIVE_SELECTION__")
         )
+        if not font_params:
+            # "글꼴 바꿔줘"처럼 무엇을 바꿀지 없는 문장. 굵게로 단정하지 않는다.
+            font_params = {"bold": True}
         return {
             "action": "excel_live.set_font",
-            "params": {"target_range": target_range, "bold": True},
-            "reason": "글꼴 굵게 적용 요청",
+            "params": {"target_range": target_range, **font_params},
+            "reason": "글꼴 변경 요청",
         }
 
     if re.search(r"데이터\s*막대|data\s*bar", lowered):

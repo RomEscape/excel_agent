@@ -530,6 +530,14 @@ _WRITE_VALUE_PATTERN = re.compile(
     r"\s*(?:셀|범위)?\s*에\s*(.+?)\s*(?:입력|기입|써|쓰|넣|적어|set|write)",
     re.IGNORECASE,
 )
+# "A8:A13에 지역 목록 입력 (서울, 경기, …)" — 값이 동사 **뒤** 괄호에 오는 형태.
+# 분해기가 이 문장을 실제로 낸다. 앞의 패턴은 "지역 목록"을 값으로 잡아 A8 한 칸만 채우고,
+# 뒤 단계의 SUMIF가 빈 기준을 보게 된다(2026-08-16 실측: 매크로가 11단계에서 멈췄다).
+_WRITE_VALUE_PAREN_PATTERN = re.compile(
+    r"([A-Za-z]{1,3}\d{1,7}(?::[A-Za-z]{1,3}\d{1,7})?)"
+    r"\s*(?:셀|범위)?\s*에\s*[^()]*?(?:입력|기입|써|쓰|넣|적어|set|write)[^()]*?\(([^()]+)\)",
+    re.IGNORECASE,
+)
 
 _CELL_REF_PATTERN = re.compile(r"^([A-Za-z]{1,3})(\d{1,7})$")
 
@@ -630,7 +638,9 @@ def _bind_write_values(params: dict[str, Any], *, message: str) -> list[str]:
     가장 단순한 명령이 되묻기로 떨어진다.
     """
     existing = params.get("values_2d")
-    match = _WRITE_VALUE_PATTERN.search(str(message or ""))
+    text = str(message or "")
+    # 괄호형이 있으면 그쪽이 진짜 값이다 — 앞 패턴은 "지역 목록" 같은 설명을 값으로 잡는다.
+    match = _WRITE_VALUE_PAREN_PATTERN.search(text) or _WRITE_VALUE_PATTERN.search(text)
     if not match:
         return []
     shape = _range_shape(match.group(1))

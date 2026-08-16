@@ -50,6 +50,7 @@ from office_claw_sidecar.services.excel_live_agent import (
     RANGE_REF_PATTERN,
     clarify_question_from_plan,
     extract_create_table_slot_hints,
+    extract_font_params,
     looks_like_existing_table_convert,
     parse_command_plan_with_llm,
     parse_command_rule_based,
@@ -2460,8 +2461,17 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
             ]
 
     # "완료,진행중,지연만 선택되도록 드롭다운으로 제한해줘"
-    if any(token in lowered for token in ["드롭다운", "dropdown", "목록", "선택되도록", "선택만"]) and (
-        explicit_range or normalized_ctx
+    #
+    # "A8:A13에 지역 목록 입력 (서울, 경기, …)"은 **값을 쓰라는 말**이지 드롭다운을 걸라는
+    # 말이 아니다. '목록' 하나로 여기 걸리면 셀은 빈 채 유효성 검사만 붙고, 뒤 단계의
+    # SUMIF가 빈 기준을 보게 된다(2026-08-16 실측: 매크로가 11단계에서 멈췄다).
+    # 쓰기 동사가 있으면 드롭다운이 아니라고 본다 — 제한하라는 말이 함께 있을 때만 예외.
+    writes_values = re.search(r"(입력|기입|써|쓰|넣|적어|채워|write|set)", lowered)
+    restricts = re.search(r"(드롭다운|dropdown|제한|유효성|validation|선택되도록|선택만)", lowered)
+    if (
+        any(token in lowered for token in ["드롭다운", "dropdown", "목록", "선택되도록", "선택만"])
+        and (explicit_range or normalized_ctx)
+        and not (writes_values and not restricts)
     ):
         choices = re.search(r"([^\s,]{1,20}(?:\s*,\s*[^\s,]{1,20}){1,9})", text)
         if choices:
@@ -2618,15 +2628,21 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
             }
         ]
 
-    if re.search(r"(굵게|볼드|bold|글꼴|폰트)", lowered) and not re.search(
-        r"(테두리|경계선|border|괘선)", lowered
-    ):
+    # 크기·색을 버리면 "제목 글씨 흰색으로 크게"가 굵게로만 끝난다. 같은 추출기를 쓴다.
+    # "글씨 흰색"처럼 굵게·글꼴이라는 말이 없는 문장이 배경색 규칙으로 새지 않게 한다.
+    font_params = extract_font_params(text)
+    if (
+        re.search(r"(굵게|볼드|bold|글꼴|폰트)", lowered)
+        or font_params.get("color")
+        or font_params.get("size")
+    ) and not re.search(r"(테두리|경계선|border|괘선)", lowered):
         header_font = bool(re.search(r"(머리글|헤더|header)", lowered))
         target = normalized_ctx or explicit_range or ("1:1" if header_font else "__ACTIVE_SELECTION__")
+        font_params = font_params or {"bold": True}
         return [
             {
                 "action": "excel_live.set_font",
-                "params": {"target_range": target, "bold": True},
+                "params": {"target_range": target, **font_params},
                 "reason": "빠른 규칙 기반 글꼴 변경",
             }
         ]
