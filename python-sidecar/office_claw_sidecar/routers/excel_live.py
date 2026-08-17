@@ -4902,6 +4902,44 @@ def _apply_table_size_fallback(slot: PendingCreateTableSlots) -> str:
     )
 
 
+def _safe_table_start_cell(slot, digest: dict[str, Any]) -> str:
+    """표를 놓을 시작 칸. 이미 데이터가 있으면 그 아래로 내린다.
+
+    2026-08-17 멀티턴 실측: "매출 시트에 표 만들어줘" → "5행 4열로" 두 턴 만에
+    시트의 머리글과 데이터가 통째로 사라졌다. `create_table`은 빈 값을 쓰는데
+    시작 칸이 A1로 기본값이라, 데이터가 A1부터 있는 시트를 그대로 덮었다.
+
+    사용자가 칸을 지목했으면 그대로 쓴다 — 덮어쓰기를 원할 수도 있고, 그건 승인
+    카드에서 보인다. 지목하지 않았을 때만 안전한 자리를 고른다.
+    """
+    named = _normalize_range_text(getattr(slot, "start_cell", "") or "")
+    if named:
+        return named
+
+    sheet_name = str(getattr(slot, "explicit_sheet_name", "") or "").strip()
+    sheets = (digest or {}).get("sheets") or []
+    entry = None
+    for candidate in sheets:
+        if sheet_name and str(candidate.get("name") or "") == sheet_name:
+            entry = candidate
+            break
+    if entry is None and not sheet_name:
+        active = str((digest or {}).get("active_sheet") or "")
+        entry = next((c for c in sheets if str(c.get("name") or "") == active), None)
+    if entry is None:
+        return "A1"
+
+    used = str(entry.get("used_range") or "").replace("$", "").upper()
+    match = re.search(r"([A-Z]{1,3})(\d+)$", used.rpartition(":")[2] or used)
+    if not match:
+        return "A1"
+    last_row = int(match.group(2))
+    # 한 칸짜리 사용범위(A1)는 빈 시트다. 그대로 A1에서 시작한다.
+    if used in {"", "A1"} or last_row <= 1:
+        return "A1"
+    return f"A{last_row + 2}"  # 한 줄 띄우고 아래에
+
+
 def _build_create_table_steps(slot: PendingCreateTableSlots) -> list[dict[str, Any]]:
     tabular_values: list[list[Any]] = []
     if isinstance(slot.values_2d, list):
@@ -7415,6 +7453,8 @@ async def _run_command(
                 },
             )
         _pending_create_table_slots.pop(session_key, None)
+        # 시작 칸을 못 정했으면 기존 데이터 아래로 내린다 — A1 기본값이 시트를 덮었다.
+        slot.start_cell = _safe_table_start_cell(slot, workbook_digest)
         action_plan = normalize_plan_steps(_build_create_table_steps(slot))
         parsed = {
             "action_plan": [s.__dict__ for s in action_plan],
