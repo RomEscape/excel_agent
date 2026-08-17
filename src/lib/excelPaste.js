@@ -51,8 +51,15 @@ export function buildPasteBlock(text, address) {
   const { rows, cols } = pasteShape(text);
   const ref = String(address || "").toUpperCase();
   if (!ref) return String(text ?? "");
+  // 안내 문구는 반드시 **제거 가능한 표시** 안에 둔다.
+  //
+  // 2026-08-17 실측: 괄호 문구를 맨 텍스트로 뒀더니 `stripExcelContextBlock`이
+  // 못 지워서 명령문에 그대로 섞였다:
+  //   "(엑셀에서 붙여넣은 9행 × 4열 — A1:D9 범위로 인식했습니다) 여기를 원래대로…"
+  // 게다가 그 안의 `A1:D9`가 "문장에 범위가 있다"로 잡혀 context_range 전달까지
+  // 막았다. 사용자에게 보여 줄 말과 모델에게 보낼 말은 갈라 놓아야 한다.
   return [
     `[[EXCEL_RANGE:${ref}]]`,
-    `(엑셀에서 붙여넣은 ${rows}행 × ${cols}열 — ${ref} 범위로 인식했습니다)`,
+    `[[EXCEL_PASTE_NOTE]]엑셀에서 붙여넣은 ${rows}행 × ${cols}열 — ${ref} 범위로 인식했습니다[[/EXCEL_PASTE_NOTE]]`,
   ].join("\n");
 }

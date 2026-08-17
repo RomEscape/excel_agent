@@ -1538,7 +1538,9 @@ def _is_clear_reset_request(lowered: str) -> bool:
         return False
     has_clear_verb = bool(
         re.search(
-            r"(지우|지워|지울|삭제|비우|비워|초기화|리셋|reset|clear|wipe|erase|밀어|싹)",
+            # "없애"가 빠져 있었다 — "여기 표를 없애줘"가 규칙에 안 걸려
+            # 플래너로 갔고, 성공 보고만 하고 아무것도 안 바뀌었다(2026-08-17 실측).
+            r"(지우|지워|지울|삭제|없애|없앤|없애줘|비우|비워|초기화|리셋|reset|clear|wipe|erase|밀어|싹)",
             text,
             re.IGNORECASE,
         )
@@ -2950,13 +2952,33 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
             # 지울 대상이 따로 지목된 문장. 규칙으로 밀면 시트가 통째로 비워진다.
             return None
         target = normalized_ctx or explicit_range or ("__USED_RANGE__" if whole_sheet_reset else "__ACTIVE_SELECTION__")
-        return [
-            {
-                "action": "excel_live.clear_range",
-                "params": {"target_range": target},
-                "reason": "빠른 규칙 기반 내용 비우기",
-            }
-        ]
+        steps: list[dict[str, Any]] = []
+        # "표를 없애줘"는 값만 지우라는 뜻이 아니다 — 테두리·배경까지 걷어내야
+        # 사용자 눈에 표가 사라진다. clear_range는 서식을 남기므로, 값만 지우면
+        # 빈 칸에 테두리만 남아 "아무것도 안 됐다"로 보인다(2026-08-17 실측:
+        # 사용자가 "완료되었습니다"를 받고도 화면은 그대로였다).
+        if re.search(r"(표|테이블|table|서식|포맷|스타일|꾸민|테두리|경계선)", lowered):
+            steps.append({
+                "action": "excel_live.apply_border",
+                "params": {
+                    "target_range": target,
+                    "line_style": "none",
+                    "weight": "thin",
+                    "color": "#D9D9D9",
+                },
+                "reason": "빠른 규칙 기반 테두리 제거",
+            })
+            steps.append({
+                "action": "excel_live.fill_range",
+                "params": {"target_range": target, "fill_color": "#FFFFFF"},
+                "reason": "빠른 규칙 기반 배경색 제거",
+            })
+        steps.append({
+            "action": "excel_live.clear_range",
+            "params": {"target_range": target},
+            "reason": "빠른 규칙 기반 내용 비우기",
+        })
+        return steps
 
     if any(token in lowered for token in ["저장", "save"]):
         if "pdf" in lowered:
