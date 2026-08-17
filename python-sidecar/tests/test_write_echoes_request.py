@@ -106,23 +106,35 @@ class TestTheNoteSurvivesToTheGate:
     }
     WITHOUT_HEADERS = {"active_sheet": "주문", "sheets": [{"name": "주문"}]}
 
-    def _pairs(self, digest):
+    def _bind(self, digest):
         step = PlanStep(action="excel_live.write_range", params=dict(self.STEP_PARAMS), reason="")
-        _bound, notes = bind_plan_steps(
+        bound, notes = bind_plan_steps(
             [step], digest=digest, message=self.MESSAGE, sheet_name=None
         )
-        return {
+        pairs = {
             (n.get("action"), n.get("slot"))
             for n in notes
             if n.get("status") == "unresolved"
         }
+        return bound[0], pairs
 
-    @pytest.mark.parametrize("which", ["WITH_HEADERS", "WITHOUT_HEADERS"])
-    def test_the_note_reaches_the_gate_on_both_binder_paths(self, which):
-        pairs = self._pairs(getattr(self, which))
-        assert pairs & _AMBIGUITY_SENSITIVE_SLOTS, (
-            f"{which}: 메모가 게이트까지 살아남지 못했다 — 그대로 실행된다"
-        )
+    def test_with_headers_it_builds_the_formula_instead_of_asking(self):
+        """머리글을 알면 되묻지 않고 만들어 준다.
+
+        처음엔 이 경로도 되묻게 했는데, 바인더는 "매출"이 몇 번 열인지 알므로
+        물어볼 이유가 없다. 되묻는 것보다 만들어 주는 게 낫다.
+        """
+        step, pairs = self._bind(self.WITH_HEADERS)
+        assert step.action == "excel_live.set_formula"
+        # 이 픽스처의 사용 범위는 A1:C3이므로 데이터는 2~3행이다.
+        assert step.params["formula_a1"] == "=MAX(B2:B3)"
+        assert not pairs
+
+    def test_without_headers_the_note_reaches_the_gate(self):
+        # 열을 못 찾으면 수식을 못 만든다. 그때는 설명문을 쓰지 말고 되물어야 한다.
+        step, pairs = self._bind(self.WITHOUT_HEADERS)
+        assert step.action == "excel_live.write_range"
+        assert pairs & _AMBIGUITY_SENSITIVE_SLOTS, "메모가 게이트까지 못 갔다 — 그대로 실행된다"
 
     def test_the_write_slot_is_registered_as_sensitive(self):
         assert ("excel_live.write_range", "values_2d") in _AMBIGUITY_SENSITIVE_SLOTS

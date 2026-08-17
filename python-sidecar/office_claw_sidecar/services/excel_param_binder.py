@@ -1299,6 +1299,8 @@ def bind_plan_steps(
         params = dict(step.params)
         used: set[str] = set()
         changes: list[str] = []
+        # 바인딩 중에 액션 자체가 바뀔 수 있다(쓰기 → 수식).
+        step_action_override: str | None = None
 
         if not column_stated:
             for slot in _REQUIRE_EXPLICIT_COLUMN.get(step.action, ()):
@@ -1386,9 +1388,20 @@ def bind_plan_steps(
         if step.action == "excel_live.write_range":
             changes.extend(_bind_write_values(params, message=message))
             # 무엇을 쓸지 못 정했으면 추측해서 빈 칸을 쓰지 않는다 — 되묻는 쪽이 맞다.
-            if write_values_are_empty(params) and not _CLEARING_INTENT.search(str(message or "")):
+            # 시킨 말을 값으로 쓰려 한다면, 그게 집계 요청인지 먼저 본다.
+            # 여기서는 다이제스트가 있어 "매출"이 몇 번 열인지 안다 —
+            # 빠른 규칙은 그걸 몰라서 되묻는 데서 멈출 수밖에 없었다.
+            if write_values_echo_the_request(params, message):
+                aggregate = build_aggregate_formula(message, entry=entry, digest=digest)
+                if aggregate:
+                    target = _top_left_of(params.get("start_cell"))
+                    if target:
+                        step_action_override = "excel_live.set_formula"
+                        params = {"range_ref": target, "formula_a1": aggregate}
+                        changes.append(f"formula_a1={aggregate}")
+            if step_action_override is None and write_values_are_empty(params) and not _CLEARING_INTENT.search(str(message or "")):
                 notes.append({"action": step.action, "slot": "values_2d", "status": "unresolved"})
-            elif write_values_echo_the_request(params, message):
+            elif step_action_override is None and write_values_echo_the_request(params, message):
                 # 값이 **있는데 그게 지시문**인 경우다. 낡음 필터는 "값이 채워졌으면
                 # 해결된 것"으로 보므로, 사유를 붙여 걸러지지 않게 한다.
                 notes.append({
@@ -1447,11 +1460,60 @@ def bind_plan_steps(
         # 미해결로 남겨 두면 물어볼 필요가 없는 걸 묻게 된다.
         notes = [note for note in notes if not _is_stale_unresolved(note, step.action, params)]
 
+        final_action = step_action_override or step.action
         if changes:
-            notes.append({"action": step.action, "status": "bound", "changes": changes})
-        bound.append(PlanStep(action=step.action, params=params, reason=step.reason))
+            notes.append({"action": final_action, "status": "bound", "changes": changes})
+        bound.append(PlanStep(action=final_action, params=params, reason=step.reason))
 
     return bound, notes
+
+
+# 말로 시킨 집계 → 함수. 순서가 중요하다: "가장 큰"이 "큰"보다 먼저 걸려야 한다.
+_AGGREGATE_FUNCS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"(가장\s*(큰|높|많)|최댓값|최대값|최고값)"), "MAX"),
+    (re.compile(r"(가장\s*(작은|낮|적)|최솟값|최소값|최저값)"), "MIN"),
+    (re.compile(r"(평균|average)", re.IGNORECASE), "AVERAGE"),
+    (re.compile(r"(개수|건수|몇\s*건|몇\s*개|세는|세어)"), "COUNTA"),
+    (re.compile(r"(합계|다\s*더|모두\s*더|전부\s*더|더한|더해|합산|총합)"), "SUM"),
+)
+# 조건이 붙은 집계는 기준 열과 값이 더 필요하다. 여기서 만들지 않고 되묻게 둔다.
+_CONDITIONAL_AGGREGATE = re.compile(r"(만\s|만의|별로|별\s|이상|이하|초과|미만|넘|같은|조건)")
+
+
+def _top_left_of(cell: Any) -> str:
+    """`F7` / `F7:G9` 어느 쪽이 와도 왼쪽 위 한 칸을 준다. 집계 결과는 한 칸이다."""
+    text = str(cell or "").strip().upper().replace("$", "")
+    if not text:
+        return ""
+    head = text.split(":")[0]
+    return head if re.fullmatch(r"[A-Z]{1,3}\d{1,7}", head) else ""
+
+
+def build_aggregate_formula(
+    message: str, *, entry: dict[str, Any] | None, digest: dict[str, Any] | None
+) -> str:
+    """ "가장 큰 매출 값 넣어줘" → "=MAX(B2:B6)".
+
+    바인더에서만 만들 수 있다 — 빠른 규칙은 다이제스트를 못 봐서 "매출"이 몇 번
+    열인지 모른다(2026-08-17: 그래서 되묻는 데서 멈췄다).
+
+    조건이 붙은 집계("서울 지역만")는 만들지 않는다. 기준 열과 값이 더 필요한데
+    잘못 짚으면 엉뚱한 숫자가 조용히 들어간다 — 그럴 땐 되묻는 편이 낫다.
+    """
+    text = str(message or "")
+    if not text or not entry or _CONDITIONAL_AGGREGATE.search(text):
+        return ""
+    func = next((f for pattern, f in _AGGREGATE_FUNCS if pattern.search(text)), "")
+    if not func:
+        return ""
+    headers = mentioned_headers(text, entry, digest or {})
+    if len(headers) != 1:
+        # 열을 하나로 못 좁히면 추측하지 않는다.
+        return ""
+    letter = str(_column_meta(entry, headers[0]).get("letter") or "")
+    if not letter:
+        return ""
+    return f"={func}({letter}2:{letter}{_last_data_row(entry)})"
 
 
 def _is_stale_unresolved(note: dict[str, Any], action: str, params: dict[str, Any]) -> bool:
