@@ -888,7 +888,7 @@ def test_command_rule_based_border_reset_phrase_uses_thin_gray_on_used_range(mon
     assert fake._last_border["target_range"] == "A1:C8"
     assert fake._last_border["line_style"] == "continuous"
     assert fake._last_border["weight"] == "thin"
-    assert fake._last_border["color"] == "#D9D9D9"
+    assert fake._last_border["color"] == "#000000"  # 2026-08-17 GUI 실측: 기본=회색은 흰 배경에서 안 보여 실패로 읽혔다. 기본은 Excel 모든 테두리와 같은 검정.
 
 
 def test_command_rule_based_border_reset_phrase_handles_colloquial_boundary_word(monkeypatch):
@@ -916,7 +916,7 @@ def test_command_rule_based_border_reset_phrase_handles_colloquial_boundary_word
     assert fake._last_border["target_range"] == "B2:C3"
     assert fake._last_border["line_style"] == "continuous"
     assert fake._last_border["weight"] == "thin"
-    assert fake._last_border["color"] == "#D9D9D9"
+    assert fake._last_border["color"] == "#000000"  # 2026-08-17 GUI 실측: 기본=회색은 흰 배경에서 안 보여 실패로 읽혔다. 기본은 Excel 모든 테두리와 같은 검정.
 
 
 def test_command_border_color_reset_phrase_prefers_apply_border_over_fill(monkeypatch):

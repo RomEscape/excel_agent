@@ -2793,7 +2793,8 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
         )
         target = normalized_ctx or explicit_range or ("__USED_RANGE__" if whole_sheet_border else "__ACTIVE_SELECTION__")
         border_thin = any(token in lowered for token in ["얇", "thin"])
-        border_light = any(token in lowered for token in ["옅", "연한", "회색", "그레이", "gray", "grey"])
+        # "회식"은 회색의 흔한 오타다 — 실측 문장("가장 기본 회식 얇은 색")에서 나왔다.
+        border_light = any(token in lowered for token in ["옅", "연한", "회색", "회식", "그레이", "gray", "grey"])
         border_reset = any(
             token in lowered
             for token in ["기본값", "기본 상태", "기본", "원래 상태", "원래", "초기 상태", "초기", "없애", "제거", "지워", "reset"]
@@ -2801,7 +2802,12 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
         border_remove = any(token in lowered for token in ["없애", "제거", "지워", "remove"])
         line_style = "none" if border_remove else "continuous"
         weight = "thin" if (border_reset or border_thin) else "medium"
-        color = "#D9D9D9" if (border_reset or border_light) else "#000000"
+        # "기본 경계선"의 기본은 Excel '모든 테두리' 버튼과 같은 **검정 얇은 실선**이다.
+        # 2026-08-17 GUI 실측: 기본값 복구가 #D9D9D9(아주 연한 회색)를 칠했는데,
+        # 흰 배경 위에서 사실상 안 보여 사용자가 "그건 못하나 보네"라고 했다 —
+        # COM으로 확인하니 테두리는 실제로 박혀 있었다. 연한 회색은 사용자가
+        # 명시적으로 옅은 색을 말했을 때만 쓴다.
+        color = "#D9D9D9" if border_light else "#000000"
         reason = (
             "빠른 규칙 기반 경계선 제거"
             if border_remove
