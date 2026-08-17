@@ -529,7 +529,7 @@ def test_parse_excel_live_command_includes_deep_reasoning_prompt():
         parse_excel_live_command(
             "수량과 단가를 곱해서 계산해줘",
             llm,
-            context={"reasoning_mode": "deep", "complexity_score": 5},
+            context={"reasoning_mode": "deep", "complexity_score": 5, "skip_intent_normalizer": True},
         )
     )
     assert parsed["action_plan"][0]["action"] == "excel_live.set_formula"
@@ -550,6 +550,8 @@ def test_parse_excel_live_command_includes_reflection_prompt():
                 "reasoning_mode": "reflect",
                 "reflection_note": "intent_unknown",
                 "previous_first_action": "excel_live.read_range",
+                # 플래너 프롬프트 자체를 검증하는 테스트다 — 정규화 계층을 우회한다.
+                "skip_intent_normalizer": True,
             },
         )
     )
@@ -570,6 +572,8 @@ def test_parse_excel_live_command_includes_personalization_prompt():
             llm,
             context={
                 "personalization_hint": "개인화 힌트:\n- 실패 표현: \"경계 기본\" -> 기대 액션 `excel_live.apply_border`",
+                # 플래너 프롬프트 자체를 검증하는 테스트다 — 정규화 계층을 우회한다.
+                "skip_intent_normalizer": True,
             },
         )
     )
@@ -587,7 +591,7 @@ def test_parse_excel_live_command_uses_context_planner_model():
         parse_excel_live_command(
             "A열 노랑으로 칠해줘",
             llm,
-            context={"planner_model": "officeclaw-ax7b-planner:latest"},
+            context={"planner_model": "officeclaw-ax7b-planner:latest", "skip_intent_normalizer": True},
         )
     )
     assert parsed["action_plan"][0]["action"] == "excel_live.fill_range"

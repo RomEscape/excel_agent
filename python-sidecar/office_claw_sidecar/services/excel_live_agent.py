@@ -22,6 +22,10 @@ from office_claw_sidecar.services.decision_trace import (
 from office_claw_sidecar.services.decision_trace import (
     route as trace_route,
 )
+from office_claw_sidecar.services.excel_intent_normalizer import (
+    intent_to_plan,
+    normalize_intent,
+)
 from office_claw_sidecar.services.excel_live_plan_validator import (
     SUPPORTED_ACTIONS as VALIDATOR_SUPPORTED_ACTIONS,
 )
@@ -659,7 +663,14 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
 
     # 예: "A1:C10 읽어줘", "B열 보여줘"
     read_verbs = r"(읽어|읽기|보여|조회|확인|read|show|display)"
-    if re.search(read_verbs, lowered) and not re.search(write_verbs, lowered):
+    if (
+        re.search(read_verbs, lowered)
+        and not re.search(write_verbs, lowered)
+        # "읽기 편하게 콤마 찍어줘"의 '읽기'는 조회가 아니라 가독성 이야기다.
+        # 2026-08-17 실측: 이 오탐이 read_range를 만들어 표시 형식 계획을 덮었다.
+        and not re.search(r"(읽기|보기)\s*(좋|편|쉽)", lowered)
+        and not re.search(r"(콤마|쉼표|서식|포맷|형식|소수점|퍼센트|정렬|테두리)", lowered)
+    ):
         range_ref = _extract_target_range_from_text(lowered)
         if not range_ref:
             range_ref = context_range or "__ACTIVE_SELECTION__"
@@ -1158,6 +1169,28 @@ async def parse_excel_live_command(
 ) -> dict[str, Any]:
     context = context or {}
     lowered = str(message or "").lower()
+    # 이해는 범용 모델에게, 좌표는 코드에게 (2026-08-17 실측: 같은 36문장에서
+    # 정규화 100%/96% vs 플래너 67%/58% — 플래너의 실패는 표현이 아니라 파라미터
+    # 암기였다. =SUM(E:E)를 여섯 표현 모두에 냈다). 정규화·매핑이 성공하면
+    # 플래너를 부르지 않는다. 실패는 어떤 이유든 조용히 플래너로 폴백한다.
+    if not context.get("skip_intent_normalizer"):
+        try:
+            intent = await normalize_intent(
+                message, context.get("workbook_digest"), llm_service
+            )
+            normalized = intent_to_plan(
+                intent, digest=context.get("workbook_digest"), message=message
+            )
+        except Exception:
+            normalized = None
+        if normalized is not None:
+            trace_note(
+                "llm_call",
+                purpose="intent_normalizer",
+                task=str((intent or {}).get("task") or ""),
+                mapped_action=str(normalized.get("action") or ""),
+            )
+            return normalized
     # 목록 조회는 어느 모드에서든 편집 요청의 답이 아니다. 관측(read_range·
     # validate_data)만 모드에 따라 허용한다 — 그게 이번 실험의 변수다.
     non_edit_actions = {

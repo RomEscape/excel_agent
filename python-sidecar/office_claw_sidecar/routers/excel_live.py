@@ -7343,7 +7343,14 @@ async def _run_command(
 
     # "B2:D2에 이름,수량,금액 입력"처럼 범위와 값이 다 나온 명령은 표 생성 인터뷰 대상이 아니다.
     # 플래너가 create_table로 답하는 날에만 되묻기가 뜨면 같은 문장이 실행되기도 하고 안 되기도 한다.
-    if standalone_read_step and parsed and parsed.get("action_plan"):
+    # 정규화(plan_source=intent)가 편집으로 확정한 계획은 조회 오버라이드 대상이 아니다 —
+    # 2026-08-17 실측: "읽기 편하게 콤마"의 '읽기' 오탐 read가 표시 형식 계획을 덮었다.
+    if (
+        standalone_read_step
+        and parsed
+        and parsed.get("action_plan")
+        and parsed.get("plan_source") != "intent"
+    ):
         planner_steps = [s for s in parsed["action_plan"] if isinstance(s, dict)]
         planner_actions = [str(s.get("action", "")) for s in planner_steps]
         rule_range = str((standalone_read_step.get("params") or {}).get("range_ref", ""))
@@ -7398,7 +7405,7 @@ async def _run_command(
         # "플래너가 뒤집지 못하게"가 목적이다. 계획이 이미 규칙에서 왔다면 뒤집을
         # 플래너가 없고, 여기서 쓰기 단계만 남기면 규칙이 낸 나머지 단계가 사라진다
         # — 근거 필터가 "표 없애줘" 3단계를 1단계로 자른 것과 같은 부류다.
-        and parsed.get("plan_source") != "rule"
+        and parsed.get("plan_source") not in {"rule", "intent"}
     ):
         planner_actions = [
             str(s.get("action", "")) for s in parsed["action_plan"] if isinstance(s, dict)
@@ -7459,7 +7466,7 @@ async def _run_command(
     if (
         parsed
         and parsed.get("action_plan")
-        and parsed.get("plan_source") != "rule"
+        and parsed.get("plan_source") not in {"rule", "intent"}
         and quick_action_plan
     ):
         tainted_first = (
@@ -7503,7 +7510,7 @@ async def _run_command(
     # [테두리 제거, 배경 제거, 내용 비우기] 3단계를 냈는데, 문장에 '테두리'라는
     # 낱말이 없다고 이 필터가 2단계를 잘라 **내용만 비우고 테두리가 남았다.**
     # 규칙은 문장을 보고 발화된 것이라 낱말 대조를 다시 할 이유가 없다.
-    if parsed and parsed.get("action_plan") and parsed.get("plan_source") != "rule":
+    if parsed and parsed.get("action_plan") and parsed.get("plan_source") not in {"rule", "intent"}:
         planner_first = parsed["action_plan"][0] if isinstance(parsed["action_plan"][0], dict) else {}
         planner_action = str(planner_first.get("action", ""))
         # 첫 단계만 보면 [create_sheet, pivot_table]처럼 준비 단계 뒤에 숨은 오작동을 놓친다.
