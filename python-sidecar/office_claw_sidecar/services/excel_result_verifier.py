@@ -483,6 +483,11 @@ def verify_effect(
         if action == "excel_live.filter_rows":
             matched = result.get("filtered_rows", result.get("matched_rows"))
             if matched is not None and int(matched or 0) <= 0:
+                if result.get("no_change"):
+                    # 실행기가 파일을 건드리지 않고 물러난 경우다(무일치 keep 필터가
+                    # 시트를 통째로 비우는 사고 방지, 2026-08-17 실측). 파일이 그대로
+                    # 이므로 실패·롤백이 아니라 "변화 없음"을 정직하게 보고할 일이다.
+                    return True, ""
                 return False, "filter_no_match:조건에 맞는 행이 없습니다"
             return True, ""
 

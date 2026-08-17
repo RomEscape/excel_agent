@@ -1421,11 +1421,29 @@ class FileExcelLiveService(ExcelLiveService):
                 "matched_rows": matched,
                 "removed_rows": 0,
                 "remaining_rows": after,
+                "no_change": True,
                 "address": address,
                 "column_index": col_idx + 1,
                 "operator": op,
                 "value": value,
                 "mode": "remove" if exclude else "keep",
+            }
+        if not exclude and matched == 0 and before > 0:
+            # "제주인 행만 남겨줘"인데 제주가 한 행도 없다 — 그대로 진행하면
+            # **시트의 데이터가 통째로 지워진다** (2026-08-17 실측: 4행 전부 삭제,
+            # filter_rows가 롤백 스냅샷 목록에도 없어 복구조차 안 됐다).
+            # 조건 값이 틀렸을 가능성이 압도적이므로 파일을 건드리지 않고 알린다.
+            return {
+                "filtered_rows": 0,
+                "matched_rows": 0,
+                "removed_rows": 0,
+                "remaining_rows": before,
+                "no_change": True,
+                "address": address,
+                "column_index": col_idx + 1,
+                "operator": op,
+                "value": value,
+                "mode": "keep",
             }
 
         min_col, min_row, max_col, max_row = range_boundaries(address)

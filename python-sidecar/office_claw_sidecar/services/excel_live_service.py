@@ -796,6 +796,18 @@ class ExcelLiveService:
             else:
                 doomed_rows.append(start_row + body_offset + offset)
 
+        if not drop_matches and kept == 0 and doomed_rows:
+            # 조건에 맞는 행이 하나도 없다 — 그대로 지우면 시트가 통째로 빈다.
+            # 조건 값이 틀렸을 가능성이 압도적이므로 파일을 건드리지 않는다
+            # (파일 엔진과 같은 계약, 2026-08-17 실측).
+            return {
+                "filtered_rows": 0,
+                "matched_rows": 0,
+                "removed_rows": 0,
+                "no_change": True,
+                "address": str(rng.address),
+            }
+
         # 아래에서 위로 지워야 남은 행의 번호가 밀리지 않는다.
         for row_index in reversed(doomed_rows):
             try:

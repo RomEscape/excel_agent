@@ -593,6 +593,9 @@ _ROLLBACK_SNAPSHOT_ACTIONS = {
     "excel_live.sort_range",
     "excel_live.dedupe_rows",
     "excel_live.create_table",
+    # 2026-08-17 실측: 무일치 keep 필터가 시트를 통째로 비웠는데, 이 목록에 없어
+    # 검증 실패 후에도 복구가 안 됐다. 행을 지우는 액션은 전부 스냅샷을 뜬다.
+    "excel_live.filter_rows",
 }
 _COMPLEX_REASONING_KEYWORDS = {
     "피벗",
@@ -8617,6 +8620,29 @@ def _no_match_note(action: str, result: dict[str, Any]) -> str:
             "지울 값이 없는 범위였습니다. 배경색·테두리 같은 서식을 없애려면 "
             "'서식 지워줘' 또는 '초기화해줘'라고 말씀해 주세요"
         )
+    if action == "excel_live.find_replace":
+        # 2026-08-17 실측: 못 찾은 찾아바꾸기가 "완료"로만 나갔다.
+        replaced = result.get("replaced_cells")
+        if replaced is not None and int(replaced or 0) == 0:
+            return "바꿀 대상을 찾지 못해 변경된 셀이 없습니다"
+        return ""
+    if action == "excel_live.dedupe_rows":
+        removed = result.get("removed_rows")
+        if (
+            removed is not None
+            and int(removed or 0) == 0
+            and int(result.get("remaining_rows", 0) or 0) > 0
+        ):
+            return "중복된 행이 없어 지운 행이 없습니다"
+        return ""
+    if action == "excel_live.filter_rows":
+        # 무일치 keep 필터는 실행기가 파일을 건드리지 않고 no_change로 돌아온다
+        # (그대로 진행하면 시트가 통째로 비기 때문). 그 사실을 말로 전한다.
+        if result.get("no_change") and int(result.get("matched_rows", 0) or 0) == 0:
+            return "조건에 맞는 행이 없어 아무것도 바꾸지 않았습니다. 값이나 열을 확인해 주세요"
+        if result.get("no_change"):
+            return "모든 행이 조건에 맞아 지울 행이 없습니다"
+        return ""
     if action != "excel_live.highlight_by_condition":
         return ""
     if int(result.get("scanned_cells", 0) or 0) < 1:
