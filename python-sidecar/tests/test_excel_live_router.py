@@ -2969,3 +2969,23 @@ def test_color_scale_is_not_fill_range(monkeypatch):
     assert resp.status_code == 200
     assert resp.json().get("action") == "excel_live.apply_color_scale"
 
+
+
+def test_selection_endpoint_is_fast_and_deterministic(monkeypatch):
+    """붙여넣기 프로브 전용 경량 조회 — LLM·파이프라인을 타지 않는다.
+
+    2026-08-17 실측: 프로브가 전체 명령 파이프라인을 타다 Ollama 혼잡·사이드카
+    재시작 창과 겹쳐 통째로 실패했고, 붙여넣기가 조용히 죽었다.
+    """
+    fake = _FakeExcelService()
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: fake)
+
+    async def _no_llm(*args, **kwargs):
+        raise AssertionError("선택 조회가 LLM을 불렀다")
+
+    monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _no_llm)
+    resp = client.get("/excel-live/selection", headers=HEADERS)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["available"] is True
+    assert body["address"], body

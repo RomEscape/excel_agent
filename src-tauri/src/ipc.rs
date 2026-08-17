@@ -759,6 +759,29 @@ pub async fn excel_live_status(state: State<'_, Mutex<SidecarState>>) -> Result<
     read_response(resp).await
 }
 
+// 현재 Excel 선택 영역 주소만 빠르게 조회한다. 붙여넣기 프로브가 전체 명령
+// 파이프라인(LLM 경유 가능)을 타다 느려지거나 죽던 문제의 전용 경로다.
+#[tauri::command]
+pub async fn excel_live_selection(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
+    let (url, client, token) = {
+        let s = state.lock().map_err(|e| e.to_string())?;
+        (
+            sidecar_url(&s, "/excel-live/selection"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
+    };
+
+    let resp = client
+        .get(&url)
+        .bearer_auth(&token)
+        .send()
+        .await
+        .map_err(|e| format!("Excel 선택 영역 조회 실패: {}", e))?;
+
+    read_response(resp).await
+}
+
 #[tauri::command]
 pub async fn excel_live_command(
     state: State<'_, Mutex<SidecarState>>,

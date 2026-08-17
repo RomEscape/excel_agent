@@ -76,6 +76,7 @@ pub fn run() {
             ipc::excel_chart_data,
             ipc::excel_export,
             ipc::excel_live_status,
+            ipc::excel_live_selection,
             ipc::excel_live_command,
             ipc::excel_live_macro_step,
             ipc::excel_live_macro_abort,

@@ -312,6 +312,18 @@ export async function excelLiveStatus() {
 }
 
 /**
+ * 현재 Excel 선택 영역 주소만 빠르게 조회한다.
+ *
+ * 붙여넣기 프로브 전용 — 전체 명령 파이프라인("지금 선택한 범위 읽어줘")은
+ * LLM이 바쁘면 수십 초가 걸리고, 사이드카 재시작 창과 겹치면 통째로 실패해
+ * 붙여넣기가 조용히 죽었다(2026-08-17 실측).
+ */
+export async function excelLiveSelection() {
+  const raw = await call("excel_live_selection");
+  return parseResponse(raw);
+}
+
+/**
  * 자연어 엑셀 명령을 실행한다.
  *
  * @param {string} message

@@ -6407,6 +6407,25 @@ def get_status():
     }
 
 
+@router.get("/selection")
+def get_selection():
+    """현재 Excel 선택 영역 주소만 빠르게 돌려준다.
+
+    2026-08-17 실측: 붙여넣기 프로브가 전체 명령 파이프라인("지금 선택한 범위
+    읽어줘")을 타고 있었다. LLM 경유 경로라 Ollama가 바쁘면 수십 초씩 걸리고,
+    사이드카 재시작 창과 겹치면 통째로 실패해 붙여넣기가 조용히 죽었다.
+    주소 조회는 결정적 한 번의 COM/파일 호출이면 된다 — LLM이 낄 자리가 아니다.
+    """
+    service = get_excel_live_service()
+    if not service.is_available():
+        return {"available": False, "address": ""}
+    try:
+        address = str(service.get_active_selection_ref(None, None) or "")
+    except Exception:
+        address = ""
+    return {"available": True, "address": address.upper()}
+
+
 @router.get("/backups")
 def get_backups(workbook_id: str | None = None, limit: int = 20):
     service = get_excel_live_service()
