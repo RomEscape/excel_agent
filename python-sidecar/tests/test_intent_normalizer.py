@@ -145,6 +145,40 @@ class TestTheParseGate:
         assert out.get("plan_source") != "intent"
         assert llm.calls == 2
 
+    def test_a_replan_bypasses_the_normalizer(self):
+        """검증 실패 되먹임 폐루프(로드맵 2-1)의 성립 조건.
+
+        정규화 프롬프트는 실패 정보를 모른다 — 재계획까지 가로채면 같은 계획이
+        또 나와 같은 실패를 반복한다. failed_error가 있으면 플래너로 직행해야
+        `render_execution_failure` 블록(실패 액션·인자·원인)이 프롬프트에 실린다.
+        """
+
+        class _PromptSpy(_FakeLLM):
+            def __init__(self, replies):
+                super().__init__(replies)
+                self.prompts = []
+
+            async def chat(self, messages, **kwargs):
+                self.prompts.append(messages[0]["content"])
+                return await super().chat(messages, **kwargs)
+
+        llm = _PromptSpy([
+            '{"action_plan": [{"action": "excel_live.set_formula",'
+            ' "params": {"range_ref": "F2", "formula_a1": "=SUM(D2:D9)"}}],'
+            ' "action": "excel_live.set_formula", "params": {}, "reason": "재계획", "intent": "edit"}',
+        ])
+        ctx = {
+            **self.CONTEXT,
+            "failed_action": "excel_live.set_formula",
+            "failed_args": {"range_ref": "F2", "formula_a1": "=SUM(E:E)"},
+            "failed_error": "verify_failed:numeric_cells=0",
+        }
+        out = asyncio.run(parse_excel_live_command("F2에 금액 다 더해줘", llm, context=ctx))
+        assert out.get("plan_source") != "intent", "재계획이 정규화에 가로채였다"
+        assert llm.calls == 1
+        assert "직전 실행 실패" in llm.prompts[0], "실패 블록이 프롬프트에 없다 — 폐루프 단절"
+        assert "=SUM(E:E)" in llm.prompts[0]
+
     def test_a_normalizer_crash_falls_back_to_the_planner(self):
         class _Crashy(_FakeLLM):
             async def chat(self, messages, **kwargs):

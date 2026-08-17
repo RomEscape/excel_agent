@@ -1173,7 +1173,13 @@ async def parse_excel_live_command(
     # 정규화 100%/96% vs 플래너 67%/58% — 플래너의 실패는 표현이 아니라 파라미터
     # 암기였다. =SUM(E:E)를 여섯 표현 모두에 냈다). 정규화·매핑이 성공하면
     # 플래너를 부르지 않는다. 실패는 어떤 이유든 조용히 플래너로 폴백한다.
-    if not context.get("skip_intent_normalizer"):
+    # 재계획(직전 실행 실패)은 정규화를 건너뛴다. 정규화 프롬프트는 실패 정보를
+    # 모르므로 원문을 다시 정규화하면 **같은 계획이 또 나와 같은 실패를 반복**한다.
+    # 플래너 경로는 `render_execution_failure`로 실패한 액션·인자·원인을 프롬프트에
+    # 받는다 — 검증 실패 되먹임 폐루프(로드맵 2-1, SheetCopilot ablation 최대 요인)는
+    # 그 경로에만 존재한다.
+    is_replan = bool(str(context.get("failed_error") or "").strip())
+    if not context.get("skip_intent_normalizer") and not is_replan:
         try:
             intent = await normalize_intent(
                 message, context.get("workbook_digest"), llm_service
