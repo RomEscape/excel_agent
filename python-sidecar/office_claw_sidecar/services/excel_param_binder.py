@@ -20,6 +20,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from .excel_correction_context import find_replace_erases_data
 from .excel_formula_builder import build_formula, parse_named_formula
 from .excel_header_lexicon import find_header_mentions, resolve_header
 from .excel_live_executor import PlanStep
@@ -1176,6 +1177,60 @@ def _last_data_row(entry: dict[str, Any] | None) -> int:
     return 2
 
 
+# 수식 안의 맨 A1 범위. 시트 접두(`매출!`)가 붙은 건 이 시트 이야기가 아니라 건드리지 않는다.
+_BARE_A1_RANGE = re.compile(r"(?<![!:\w$])(\$?)([A-Z]{1,3})(\$?)(\d{1,7}):(\$?)([A-Z]{1,3})(\$?)(\d{1,7})")
+
+
+def _last_data_column(entry: dict[str, Any] | None) -> int:
+    """사용 범위의 마지막 열 번호. 모르면 0."""
+    used = str((entry or {}).get("used_range") or "")
+    match = re.search(r":\s*\$?([A-Z]{1,3})\$?\d+\s*$", used, re.IGNORECASE)
+    return _column_index(match.group(1).upper()) if match else 0
+
+
+def clamp_formula_to_used_range(formula: str, entry: dict[str, Any] | None) -> str:
+    """데이터 끝을 넘는 **행**을 사용 범위까지 잘라낸다.
+
+    2026-08-17 실측: 사용 범위가 A1:D4인 시트에 `=SUM(D2:D181)`이 들어갔다. 181은
+    이 통합문서에 없는 숫자다 — 학습셋에 그대로 있는 리터럴이다(CLAUDE.md §3.4).
+    합계는 어차피 맞게 나오지만 사용자가 수식을 열어 보면 틀린 표로 보이고,
+    COUNT 계열은 실제로 값이 달라진다.
+
+    **열까지 데이터 밖이면 손대지 않는다.** 처음엔 행만 보고 잘랐다가 회귀를 냈다:
+
+        =VLOOKUP(A2,$F$2:$H$200,2,FALSE)   사용 범위 A1:C8
+
+    F~H는 이 시트에 아예 없는 열이다. 즉 참조표 전체가 플래너의 추측이고, 검증기가
+    그걸 거부해 "조회값 열이 필요합니다"라고 되묻고 있었다. 행만 보고 `$H$8`로
+    다듬으니 그럴듯해져서 검증을 통과했고, **아무도 말하지 않은 F~H열로 실행됐다.**
+    범위를 다듬는 일이 "이건 추측이다"라는 신호를 지워 버린 것이다.
+
+    그래서 자르는 조건은 둘 다다 — 열이 데이터 안에 있고, 시작 행도 데이터 안에 있을 것.
+    """
+    text = str(formula or "")
+    if not text.startswith("=") or not entry:
+        return text
+    used = str(entry.get("used_range") or "")
+    if not re.search(r"\d\s*$", used):
+        return text
+    last_row = _last_data_row(entry)
+    last_col = _last_data_column(entry)
+    if last_row < 2 or last_col < 1:
+        return text
+
+    def _clip(hit: re.Match[str]) -> str:
+        c1, col1, r1, row1, c2, col2, r2, row2 = hit.groups()
+        start, end = int(row1), int(row2)
+        if end <= last_row or start > last_row:
+            return hit.group(0)
+        if max(_column_index(col1), _column_index(col2)) > last_col:
+            # 없는 열을 가리키고 있다. 다듬으면 추측이 사실처럼 보인다.
+            return hit.group(0)
+        return f"{c1}{col1}{r1}{start}:{c2}{col2}{r2}{last_row}"
+
+    return _BARE_A1_RANGE.sub(_clip, text)
+
+
 def _bind_named_formula(
     params: dict[str, Any], *, message: str, entry: dict[str, Any] | None
 ) -> tuple[list[str], bool]:
@@ -1419,6 +1474,24 @@ def bind_plan_steps(
                 changes.extend(formula_changes)
             else:
                 notes.append({"action": step.action, "slot": "formula_a1", "status": "unresolved"})
+
+        if (step_action_override or step.action) == "excel_live.set_formula":
+            # 학습 리터럴로 들어온 범위를 데이터 끝까지로 자른다.
+            clipped = clamp_formula_to_used_range(str(params.get("formula_a1") or ""), entry)
+            if clipped and clipped != params.get("formula_a1"):
+                params["formula_a1"] = clipped
+                changes.append(f"formula_a1={clipped}")
+
+        if step.action == "excel_live.find_replace" and find_replace_erases_data(params, message):
+            # 바꿀 말이 비었다 = 찾은 글자를 지운다. 지우라고 하지 않았으면 계획이 뒤집힌 것이다.
+            notes.append(
+                {
+                    "action": step.action,
+                    "slot": "replace_text",
+                    "status": "unresolved",
+                    "reason": "empty_replacement",
+                }
+            )
 
         if step.action in _CONDITION_FORMAT_ACTIONS:
             # 조건부 강조는 범위에 `재고!E:E` 접두를 붙이는 경로다. 이미 옮긴

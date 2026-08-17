@@ -46,6 +46,15 @@ from office_claw_sidecar.services.decision_trace import (
     route as trace_route,
 )
 from office_claw_sidecar.services.excel_actions import execute_excel_action
+from office_claw_sidecar.services.excel_correction_context import (
+    build_correction_plan,
+)
+from office_claw_sidecar.services.excel_correction_context import (
+    recall_write as recall_last_write,
+)
+from office_claw_sidecar.services.excel_correction_context import (
+    record_write as record_last_write,
+)
 from office_claw_sidecar.services.excel_edit_precheck import (
     ExcelEditBlockedError,
     evaluate_write_block,
@@ -527,6 +536,9 @@ _AMBIGUITY_SENSITIVE_SLOTS = {
     # 2026-08-17 실측: "가장 큰 매출 값 넣어줘"가 셀에 '가장 큰 매출'을 남겼다.
     # 바인더가 unresolved로 표시해도 이 목록에 없으면 그대로 실행됐다.
     ("excel_live.write_range", "values_2d"),
+    # 바꿀 말이 비면 찾은 글자를 **지운다.** 2026-08-17 실측: "아니 부산으로 바꿔줘"가
+    # find='부산' replace='' 로 와서 시트에 원래 있던 '부산'을 지우고 성공으로 보고했다.
+    ("excel_live.find_replace", "replace_text"),
 }
 # 2026-08-17 실측: "도넛 차트 만들어줘"에 "차트 종류를 선택해 주세요"로 되물었다.
 # `_CHART_KIND_WORDS`(아래)는 도넛을 알아보는데 **이 패턴에만 빠져 있었다.**
@@ -6735,6 +6747,12 @@ async def _run_command(
     user_key = resolve_user_key({"user_id": req.user_id, "session_id": req.session_id})
     personalization_hint = build_personalization_prompt(user_key)
     quick_action_plan = _build_quick_action_plan(req.message, req.context_range)
+    # "아니 부산으로 바꿔줘"는 시트를 뒤지라는 말이 아니라 방금 쓴 칸을 고치라는 말이다.
+    # 문맥 없이 플래너에 넘기면 찾을 말과 바꿀 말이 뒤집혀 남의 셀이 지워진다.
+    if quick_action_plan is None and pending_slot is None and pending_operation is None:
+        quick_action_plan = build_correction_plan(
+            req.message, recall_last_write(session_key)
+        )
     rule_based_step = parse_command_rule_based(
         req.message,
         context_range=req.context_range,
@@ -8196,6 +8214,15 @@ async def _execute_plan_and_respond(
     address = _normalize_range_text(last_result.get("address"))
     if address:
         _recent_range_by_workbook[_context_key(req.workbook_id)] = address
+    # 한 칸에 값을 써 넣었다면 기억해 둔다. 다음 턴의 "아니 부산으로 바꿔줘"가
+    # 시트 전체를 뒤지는 대신 이 칸을 고치게 하려면 이게 있어야 한다.
+    if primary.action == "excel_live.write_range":
+        record_last_write(
+            session_key,
+            sheet_name=str((primary.params or {}).get("sheet_name") or ""),
+            address=address,
+            values=(primary.params or {}).get("values_2d"),
+        )
     # 방금 파일을 건드렸다. 다이제스트 캐시(TTL 20초)를 버리지 않으면 다음 단계가
     # 앞 단계의 결과를 못 본다 — 매크로는 2~3초 간격으로 돈다.
     invalidate_workbook_digest(req.workbook_id)
