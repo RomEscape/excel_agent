@@ -1151,7 +1151,14 @@ def test_command_rule_based_clear_range(monkeypatch):
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["action"] == "excel_live.clear_range"
+    # "깨끗하게"는 2026-08-17부터 리셋 의미로 서식 제거 단계가 앞에 붙는다
+    # (GUI 실측: 값만 지우면 서식만 남은 화면이 그대로라 "아무것도 안 됐다").
+    # 여기서 지키는 것은 규칙 경로 + 승인 요구다.
+    assert body["action"] in {
+        "excel_live.apply_border",
+        "excel_live.fill_range",
+        "excel_live.clear_range",
+    }
     assert body["approval_required"] is True
 
 

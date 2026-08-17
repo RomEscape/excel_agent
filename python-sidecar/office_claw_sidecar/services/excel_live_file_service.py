@@ -778,8 +778,14 @@ class FileExcelLiveService(ExcelLiveService):
             bounds = self._range_bounds(ws, target_range)
             min_row, min_col, max_row, max_col = bounds
             cleared = 0
+            # 원래 값이 있던 칸 수. 0이면 "완료"가 사용자 눈에는 무동작이다 —
+            # 응답이 그 사실을 말할 수 있게 따로 센다(2026-08-17 실측: 서식만 있는
+            # 범위를 비우고 "완료"가 나가 "아무것도 안 됐다"는 항의를 받았다).
+            emptied = 0
             for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
                 for cell in row:
+                    if cell.value is not None:
+                        emptied += 1
                     cell.value = None
                     cleared += 1
             self._save_wb(
@@ -788,7 +794,11 @@ class FileExcelLiveService(ExcelLiveService):
                 value_changed_sheet=ws.title,
                 changed_rows=set(range(min_row, max_row + 1)),
             )
-            return {"cleared_cells": cleared, "address": self._address_from_bounds(bounds)}
+            return {
+                "cleared_cells": cleared,
+                "emptied_values": emptied,
+                "address": self._address_from_bounds(bounds),
+            }
         finally:
             wb.close()
 

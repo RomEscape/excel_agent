@@ -48,6 +48,14 @@ class TestRemovingATableStripsFormatting:
             "여기 표 지워줘",
             "여기 서식 없애줘",
             "여기 표 초기화해줘",
+            # 2026-08-17 두 번째 GUI 실측. "초기화"는 표·서식을 말하지 않아도
+            # 전체 리셋이다 — 값 비우기로만 분류돼, 서식만 있고 값이 없는 범위에서
+            # 아무것도 안 바뀐 채 "완료"가 나갔다.
+            "A1:D9 여기 부분 초기화시켜줄 수 있어?",
+            "여기 초기화해줘",
+            "여기 리셋해줘",
+            "싹 지워줘",
+            "깨끗하게 지워줘",
         ],
     )
     def test_it_removes_borders_and_fill_too(self, message):
@@ -72,10 +80,17 @@ class TestRemovingATableStripsFormatting:
 
 
 class TestValueOnlyClearStaysNarrow:
+    """처음엔 "A1:D9 초기화해줘"도 여기 있었다 — 2026-08-17 GUI 실측이 반증했다.
+
+    사용자는 "초기화"에 서식 제거까지 기대했고, 값 비우기만 하니 "아무것도 안
+    바뀌었다"고 했다. 초기화·리셋은 전체 리셋으로 옮겼다. 값만 지우는 건
+    비우기·내용·값 어휘일 때다.
+    """
+
     @pytest.mark.parametrize(
-        "message", ["여기 값만 지워줘", "여기 내용만 비워줘", "A1:D9 초기화해줘"]
+        "message", ["여기 값만 지워줘", "여기 내용만 비워줘", "C2:C3 비워줘", "여기 내용 지워줘"]
     )
     def test_it_does_not_strip_formatting(self, message):
-        # 서식을 말하지 않았는데 테두리를 지우면 사용자가 만든 표가 망가진다.
+        # 값·내용을 말한 요청에 테두리까지 지우면 사용자가 만든 표가 망가진다.
         actions = _actions(message)
         assert actions == ["excel_live.clear_range"], f"과잉 삭제: {message} → {actions}"

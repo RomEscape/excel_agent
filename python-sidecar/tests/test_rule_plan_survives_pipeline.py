@@ -89,7 +89,7 @@ def _run(message: str, context_range: str | None = None) -> dict:
 
 
 class TestClearTableRunsAllThreeSteps:
-    """스크린샷의 바로 그 턴. 내용·배경·테두리가 모두 지워져야 한다."""
+    """스크린샷의 바로 그 턴들. 내용·배경·테두리가 모두 지워져야 한다."""
 
     MESSAGE = "이 부분은 원래대로 초기화해줄 수 있어? 표 없애줘"
 
@@ -100,6 +100,16 @@ class TestClearTableRunsAllThreeSteps:
         assert actions == ["apply_border", "fill_range", "clear_range"], (
             f"3단계 중 일부가 잘렸다: {actions} — "
             "근거 필터가 규칙 계획을 다시 자르고 있다"
+        )
+
+    def test_a_reset_phrasing_also_strips_formatting(self, service):
+        # 2026-08-17 두 번째 GUI 실측. "초기화"가 값 비우기로만 분류돼, 서식만
+        # 있고 값이 없는 범위에서 아무것도 안 바뀐 채 "완료"가 나갔다.
+        body = _run("A1:D9 여기 부분 초기화시켜줄 수 있어?")
+        assert body["ok"] is True
+        actions = [a for a, _ in service.calls]
+        assert actions == ["apply_border", "fill_range", "clear_range"], (
+            f"초기화가 서식을 안 걷어낸다: {actions}"
         )
 
     def test_every_step_targets_the_pasted_range(self, service):

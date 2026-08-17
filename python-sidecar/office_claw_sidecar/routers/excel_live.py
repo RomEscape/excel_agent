@@ -2973,7 +2973,17 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
         # 사용자 눈에 표가 사라진다. clear_range는 서식을 남기므로, 값만 지우면
         # 빈 칸에 테두리만 남아 "아무것도 안 됐다"로 보인다(2026-08-17 실측:
         # 사용자가 "완료되었습니다"를 받고도 화면은 그대로였다).
-        if re.search(r"(표|테이블|table|서식|포맷|스타일|꾸민|테두리|경계선)", lowered):
+        #
+        # "초기화"도 같은 부류다(같은 날 두 번째 실측). "여기 부분 초기화시켜줄 수
+        # 있어?"가 값 비우기로만 분류돼, 서식만 있고 값이 없는 범위에서 **아무것도
+        # 안 바뀐 채** "완료"가 나갔다. 초기화·원래대로·리셋은 의미상 전체 리셋이다
+        # — 값·비우기 어휘("비워줘", "내용 지워줘")만 서식을 남긴다.
+        if re.search(
+            r"(표|테이블|table|서식|포맷|스타일|꾸민|테두리|경계선"
+            r"|초기화|리셋|reset|원래대로|원상복구|(원래|처음|초기|기본)\s*상태"
+            r"|깨끗하게|깔끔하게|말끔하게|새\s*것처럼|새것처럼|싹\s*(다\s*)?(지워|밀어|비워))",
+            lowered,
+        ):
             steps.append({
                 "action": "excel_live.apply_border",
                 "params": {
@@ -8414,7 +8424,23 @@ async def _execute_plan_and_respond(
 
 
 def _no_match_note(action: str, result: dict[str, Any]) -> str:
-    """조건은 제대로 검사했는데 해당하는 셀이 없었던 경우의 안내 문구."""
+    """실행은 성공했는데 사용자 눈에 보이는 변화가 없는 경우의 안내 문구.
+
+    말해 주지 않으면 사용자는 명령이 씹혔다고 생각하고 같은 문장을 다시 친다.
+    """
+    if action == "excel_live.clear_range":
+        # 2026-08-17 실측: 서식(배경·테두리)만 있고 값이 없는 범위를 비우고
+        # "완료"가 나갔다. 화면은 그대로였고 사용자는 "아무것도 안 됐다"고 했다.
+        emptied = result.get("emptied_values")
+        if emptied is None or int(emptied or 0) >= 1:
+            return ""
+        # 여러 단계 계획(테두리·배경 제거 포함)이면 화면이 실제로 바뀌므로 조용히 넘어간다.
+        if result.get("executed_steps"):
+            return ""
+        return (
+            "지울 값이 없는 범위였습니다. 배경색·테두리 같은 서식을 없애려면 "
+            "'서식 지워줘' 또는 '초기화해줘'라고 말씀해 주세요"
+        )
     if action != "excel_live.highlight_by_condition":
         return ""
     if int(result.get("scanned_cells", 0) or 0) < 1:

@@ -522,6 +522,20 @@ class ExcelLiveService:
         sheet = self._find_sheet(wb, sheet_name)
         rng = self._resolve_target_range(sheet, target_range)
 
+        # 원래 값이 있던 칸 수. 0이면 "완료"가 사용자 눈에는 무동작이라, 응답이
+        # 그 사실을 말할 수 있게 지우기 전에 센다. 읽기가 실패해도 지우기는 진행한다.
+        emptied = None
+        try:
+            before = rng.value
+            flat = (
+                [c for row in before for c in (row if isinstance(row, (list, tuple)) else [row])]
+                if isinstance(before, (list, tuple))
+                else [before]
+            )
+            emptied = sum(1 for v in flat if v is not None and str(v).strip() != "")
+        except Exception:
+            pass
+
         api_range = getattr(rng, "api", None)
         if api_range is not None and hasattr(api_range, "ClearContents"):
             api_range.ClearContents()
@@ -533,10 +547,13 @@ class ExcelLiveService:
         cols_obj = getattr(rng, "columns", None)
         row_count = int(getattr(rows_obj, "count", 1) or 1)
         col_count = int(getattr(cols_obj, "count", 1) or 1)
-        return {
+        result: dict[str, Any] = {
             "cleared_cells": row_count * col_count,
             "address": str(rng.address),
         }
+        if emptied is not None:
+            result["emptied_values"] = emptied
+        return result
 
     def apply_border(
         self,

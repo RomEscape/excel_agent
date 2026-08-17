@@ -42,7 +42,13 @@ def test_targeted_delete_requests_go_to_the_planner(message):
     ],
 )
 def test_whole_sheet_reset_still_uses_the_quick_path(message):
-    assert _first_action(message) == "excel_live.clear_range"
+    # 여기서 지키는 것은 "플래너로 새지 않고 규칙 경로에 남는가"다. 첫 액션은
+    # 2026-08-17부터 clear_range가 아닐 수 있다 — 리셋 의미 표현("싹 다",
+    # "초기 상태로")은 서식 제거 단계가 앞에 붙는다(GUI 실측: 값만 지우면
+    # 서식만 남은 화면이 그대로라 "아무것도 안 됐다"가 된다).
+    plan = _build_quick_action_plan(message, None) or []
+    actions = [str(s["action"]) for s in plan]
+    assert "excel_live.clear_range" in actions, f"규칙 경로를 벗어났다: {actions}"
 
 
 def test_explicit_range_still_uses_the_quick_path():
