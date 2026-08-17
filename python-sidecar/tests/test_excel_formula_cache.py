@@ -197,7 +197,9 @@ def test_aggregation_stops_when_formula_cannot_be_computed(workbook, tmp_path):
     service = _service(tmp_path)
     wb = openpyxl.load_workbook(str(workbook))
     # 지원하지 않는 함수. 캐시도 지워 값을 알 방법이 없게 만든다.
-    wb["Sales_Data"]["D2"] = "=XLOOKUP(A2,A:A,C:C)"
+    # 예시를 XLOOKUP → XIRR로 바꿨다 — 2026-08-17에 찾기 함수를 구현하면서
+    # XLOOKUP은 계산되는 함수가 됐다. 검증하려는 성질은 그대로다.
+    wb["Sales_Data"]["D2"] = "=XIRR(A2:A9,C2:C9)"
     wb.save(str(workbook))
     wb.close()
     formula_cache.clear_all()

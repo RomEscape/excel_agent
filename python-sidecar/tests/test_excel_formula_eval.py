@@ -211,7 +211,10 @@ class TestFailureModes:
     """계산 못 한 걸 0으로 둔갑시키지 않는지가 핵심이다."""
 
     def test_unsupported_function_raises(self):
-        cells = {"S": {(1, 1): "=XLOOKUP(D1,E1:E9,F1:F9)"}}
+        # 예시를 XLOOKUP → XIRR로 바꿨다. 2026-08-17에 찾기 함수를 구현하면서
+        # XLOOKUP이 지원 대상이 됐다. 검증하려는 성질("모르면 조용히 0을 주지 않는다")은
+        # 그대로이므로 아직 구현하지 않은 함수로 갈아 끼운다.
+        cells = {"S": {(1, 1): "=XIRR(D1:D9,E1:E9)"}}
         with pytest.raises(FormulaError) as exc:
             _evaluator(cells).value("S", 1, 1)
         assert exc.value.code == "#NAME?"

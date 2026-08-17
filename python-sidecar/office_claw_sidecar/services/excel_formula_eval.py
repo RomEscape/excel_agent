@@ -796,6 +796,201 @@ def _apply_function(name: str, args: list[Any], ev: WorkbookEvaluator) -> Any:
     if name == "CONCATENATE":
         return "".join(_to_text(v) for v in _flatten(values, ev))
 
+    # ── 찾기 함수 ──────────────────────────────────────────────────────
+    #
+    # 실무 대시보드에 거의 항상 들어가는데 통째로 빠져 있었다(2026-08-17 실측:
+    # VLOOKUP·HLOOKUP·XLOOKUP·INDEX·MATCH 전부 #NAME?). 수식은 파일에 들어가지만
+    # 이 평가기가 값을 못 내니, 다이제스트에는 수식 문자열이 보이고
+    # `verify_formula_result`의 사후 검증도 그 자리에서 눈을 감았다.
+    if name == "MATCH":
+        target = scalar(args[0]) if args else None
+        rng = args[1] if len(args) > 1 else None
+        if not isinstance(rng, _Range):
+            raise FormulaError("#N/A", "MATCH의 두 번째 인자는 범위여야 합니다")
+        mode = int(_to_number(scalar(args[2]))) if len(args) > 2 else 1
+        cells = list(ev.iter_range(rng))
+        if mode == 0:
+            for i, cell in enumerate(cells, start=1):
+                if _compare(cell, target) == 0:
+                    return float(i)
+            raise FormulaError("#N/A", "MATCH: 찾는 값이 없습니다")
+        # 근사 일치. 정렬돼 있다고 보고 조건을 만족하는 마지막/첫 위치를 찾는다.
+        best = None
+        for i, cell in enumerate(cells, start=1):
+            if _is_blank(cell):
+                continue
+            if (mode > 0 and _compare(cell, target) <= 0) or (mode < 0 and _compare(cell, target) >= 0):
+                best = i
+        if best is None:
+            raise FormulaError("#N/A", "MATCH: 조건을 만족하는 값이 없습니다")
+        return float(best)
+
+    if name == "INDEX":
+        rng = args[0] if args else None
+        if not isinstance(rng, _Range):
+            raise FormulaError("#REF!", "INDEX의 첫 인자는 범위여야 합니다")
+        height = rng.row2 - rng.row1 + 1
+        width = rng.col2 - rng.col1 + 1
+        row_n = int(_to_number(scalar(args[1]))) if len(args) > 1 else 0
+        col_n = int(_to_number(scalar(args[2]))) if len(args) > 2 else 0
+        # 한 줄짜리 범위는 인자 하나로 그 줄의 n번째를 가리킨다.
+        if len(args) == 2:
+            if height == 1:
+                row_n, col_n = 1, row_n
+            else:
+                col_n = 1
+        if not (1 <= row_n <= height) or not (1 <= col_n <= width):
+            raise FormulaError("#REF!", "INDEX: 범위를 벗어났습니다")
+        return ev.value(rng.sheet or ev._default_sheet, rng.row1 + row_n - 1, rng.col1 + col_n - 1)
+
+    if name in ("VLOOKUP", "HLOOKUP"):
+        target = scalar(args[0]) if args else None
+        rng = args[1] if len(args) > 1 else None
+        if not isinstance(rng, _Range):
+            raise FormulaError("#N/A", f"{name}의 두 번째 인자는 범위여야 합니다")
+        index = int(_to_number(scalar(args[2]))) if len(args) > 2 else 1
+        approximate = _to_bool(scalar(args[3])) if len(args) > 3 else True
+        sheet = rng.sheet or ev._default_sheet
+        vertical = name == "VLOOKUP"
+        span = (rng.row2 - rng.row1 + 1) if vertical else (rng.col2 - rng.col1 + 1)
+        depth = (rng.col2 - rng.col1 + 1) if vertical else (rng.row2 - rng.row1 + 1)
+        if not (1 <= index <= depth):
+            raise FormulaError("#REF!", f"{name}: 인덱스가 범위를 벗어났습니다")
+        best = None
+        for offset in range(span):
+            key = (
+                ev.value(sheet, rng.row1 + offset, rng.col1)
+                if vertical
+                else ev.value(sheet, rng.row1, rng.col1 + offset)
+            )
+            cmp = _compare(key, target)
+            if cmp == 0:
+                best = offset
+                break
+            if approximate and not _is_blank(key) and cmp < 0:
+                best = offset
+        if best is None:
+            raise FormulaError("#N/A", f"{name}: 찾는 값이 없습니다")
+        return (
+            ev.value(sheet, rng.row1 + best, rng.col1 + index - 1)
+            if vertical
+            else ev.value(sheet, rng.row1 + index - 1, rng.col1 + best)
+        )
+
+    if name == "XLOOKUP":
+        target = scalar(args[0]) if args else None
+        lookup = args[1] if len(args) > 1 else None
+        result = args[2] if len(args) > 2 else None
+        if not isinstance(lookup, _Range) or not isinstance(result, _Range):
+            raise FormulaError("#N/A", "XLOOKUP의 찾을 범위와 결과 범위는 범위여야 합니다")
+        keys = list(ev.iter_range(lookup))
+        for i, key in enumerate(keys):
+            if _compare(key, target) == 0:
+                cells = list(ev.iter_range(result))
+                if i < len(cells):
+                    return cells[i]
+                raise FormulaError("#REF!", "XLOOKUP: 결과 범위가 짧습니다")
+        # 4번째 인자는 "못 찾았을 때" 값이다.
+        if len(args) > 3:
+            return scalar(args[3])
+        raise FormulaError("#N/A", "XLOOKUP: 찾는 값이 없습니다")
+
+    # ── 실무에서 흔한 나머지 ────────────────────────────────────────────
+    if name == "MEDIAN":
+        nums = sorted(_numbers(values, ev))
+        if not nums:
+            raise FormulaError("#NUM!", "MEDIAN: 숫자가 없습니다")
+        mid = len(nums) // 2
+        return nums[mid] if len(nums) % 2 else (nums[mid - 1] + nums[mid]) / 2
+
+    if name in ("STDEV", "STDEV.S", "STDEVP", "STDEV.P"):
+        nums = _numbers(values, ev)
+        sample = name in ("STDEV", "STDEV.S")
+        if len(nums) < (2 if sample else 1):
+            raise FormulaError("#DIV/0!", "STDEV: 표본이 부족합니다")
+        mean = sum(nums) / len(nums)
+        var = sum((x - mean) ** 2 for x in nums) / (len(nums) - 1 if sample else len(nums))
+        return var ** 0.5
+
+    if name == "SUMPRODUCT":
+        columns = [_numbers([arg], ev) for arg in args]
+        if not columns:
+            return 0.0
+        length = min(len(col) for col in columns)
+        return float(sum(
+            __import__("math").prod(col[i] for col in columns) for i in range(length)
+        ))
+
+    if name == "SUBTOTAL":
+        code = int(_to_number(scalar(args[0]))) % 100 if args else 9
+        rest = args[1:]
+        mapping = {1: "AVERAGE", 2: "COUNT", 3: "COUNTA", 4: "MAX", 5: "MIN", 9: "SUM"}
+        inner = mapping.get(code)
+        if not inner:
+            raise FormulaError("#VALUE!", f"SUBTOTAL 코드 {code}는 지원하지 않습니다")
+        return _apply_function(inner, rest, ev)
+
+    if name == "IFS":
+        for i in range(0, len(args) - 1, 2):
+            condition = args[i]
+            if isinstance(condition, _Deferred):
+                continue
+            if _to_bool(scalar(condition)):
+                return scalar(args[i + 1])
+        raise FormulaError("#N/A", "IFS: 참인 조건이 없습니다")
+
+    if name == "TEXTJOIN":
+        sep = _to_text(scalar(args[0])) if args else ""
+        skip_blank = _to_bool(scalar(args[1])) if len(args) > 1 else True
+        parts = [_to_text(v) for v in _flatten(args[2:], ev)]
+        if skip_blank:
+            parts = [t for t in parts if t != ""]
+        return sep.join(parts)
+
+    if name == "SUBSTITUTE":
+        text = _to_text(values[0]) if values else ""
+        old = _to_text(values[1]) if len(values) > 1 else ""
+        new = _to_text(values[2]) if len(values) > 2 else ""
+        return text.replace(old, new) if old else text
+
+    if name in ("RANK", "RANK.EQ"):
+        target = _to_number(values[0]) if values else 0.0
+        nums = _numbers([args[1]] if len(args) > 1 else [], ev)
+        descending = True
+        if len(args) > 2:
+            descending = not _to_bool(scalar(args[2]))
+        ordered = sorted(nums, reverse=descending)
+        for i, x in enumerate(ordered, start=1):
+            if x == target:
+                return float(i)
+        raise FormulaError("#N/A", "RANK: 값이 범위에 없습니다")
+
+    if name == "EOMONTH":
+        base = from_excel_serial(_to_number(values[0])) if values else None
+        if base is None:
+            raise FormulaError("#VALUE!", "EOMONTH: 날짜를 읽지 못했습니다")
+        months = int(_to_number(values[1])) if len(values) > 1 else 0
+        total = base.year * 12 + (base.month - 1) + months
+        year, month = divmod(total, 12)
+        month += 1
+        return excel_serial(datetime(year, month, _days_in_month(year, month)))
+
+    if name == "DATEDIF":
+        start = from_excel_serial(_to_number(values[0])) if values else None
+        end = from_excel_serial(_to_number(values[1])) if len(values) > 1 else None
+        if start is None or end is None:
+            raise FormulaError("#VALUE!", "DATEDIF: 날짜를 읽지 못했습니다")
+        unit = _to_text(values[2]).upper() if len(values) > 2 else "D"
+        if unit == "D":
+            return float((end - start).days)
+        if unit == "M":
+            return float((end.year - start.year) * 12 + (end.month - start.month)
+                         - (1 if end.day < start.day else 0))
+        if unit == "Y":
+            return float(end.year - start.year
+                         - (1 if (end.month, end.day) < (start.month, start.day) else 0))
+        raise FormulaError("#NUM!", f"DATEDIF 단위 {unit}는 지원하지 않습니다")
+
     raise FormulaError("#NAME?", f"지원하지 않는 함수: {name}")
 
 
