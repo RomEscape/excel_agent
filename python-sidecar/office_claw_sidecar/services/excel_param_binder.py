@@ -651,6 +651,53 @@ def _coerce_literal(text: str) -> Any:
 _CLEARING_INTENT = re.compile(r"(지워|지운|삭제|제거|비워|비우|clear|초기화|없애)", re.IGNORECASE)
 
 
+# 계산을 **시킨** 문장인가. 명사가 아니라 동사로 판정한다.
+#
+# 처음엔 "합계|총|평균" 같은 명사를 넣었더니 "A1에 총매출 입력"이 걸렸다 —
+# 사용자가 진짜로 '총매출'이라는 머리글을 쓰려는 정당한 요청인데 막힌다.
+# 계산을 시킨 문장은 동사나 최상급으로 드러난다("더한", "구하는", "가장 큰").
+_COMPUTE_REQUEST = re.compile(
+    r"(더한|더해|합산|구하는|구해|계산해|계산하|산출|세는|세어|매기는|매겨|"
+    r"가장\s*(큰|작은|높|낮|많|적)|최댓값|최솟값)"
+)
+
+
+def write_values_echo_the_request(params: dict[str, Any], message: str) -> bool:
+    """쓰려는 값이 **요청 문장을 되뇐 것**인지 본다.
+
+    2026-08-17 실측: 함수 선택 배터리 12건 중 2건이 이렇게 실패했다.
+
+        "F2에 서울 지역 매출만 더한 값 넣어줘"  → F2에 "서울 지역 매출만 더한" (텍스트)
+        "F7에 가장 큰 매출 값 넣어줘"          → F7에 "가장 큰 매출" (텍스트)
+
+    같은 실패가 서식에서도 났다 — "천 단위 콤마 넣어줘"가 셀에 '천 단위 콤마'를
+    써서 원래 있던 97000을 덮었다. 규칙이 못 잡으면 플래너가 **시킨 말을 값으로**
+    쓴다. 계산을 시킨 문장인데 쓰려는 값이 그 문장 안에 그대로 들어 있으면,
+    데이터가 아니라 지시문이다.
+
+    판정을 좁게 잡는다 — 사용자가 진짜로 "합계"라는 **머리글**을 쓰려는 경우가 있다.
+    그래서 (1) 계산을 시킨 문장이고, (2) 값이 문장의 연속된 조각이며,
+    (3) 두 글자를 넘을 때만 되뇐 것으로 본다.
+    """
+    text = re.sub(r"\s+", " ", str(message or "")).strip()
+    if not text or not _COMPUTE_REQUEST.search(text):
+        return False
+    values = params.get("values_2d")
+    if not isinstance(values, list) or not values:
+        return False
+    for row in values:
+        cells = row if isinstance(row, list) else [row]
+        for cell in cells:
+            token = re.sub(r"\s+", " ", str(cell if cell is not None else "")).strip()
+            if len(token) <= 2:
+                continue
+            if token.startswith("="):
+                continue  # 수식은 정상이다
+            if token in text:
+                return True
+    return False
+
+
 def write_values_are_empty(params: dict[str, Any]) -> bool:
     """무엇을 쓸지 끝내 정하지 못한 상태인지 본다.
 
@@ -1197,8 +1244,17 @@ def _bind_message_only_slots(
         changes: list[str] = []
         if step.action == "excel_live.write_range":
             changes.extend(_bind_write_values(params, message=message))
-        if step.action in _CONDITION_FORMAT_ACTIONS:
-            changes.extend(_bind_condition_format(params, message=message))
+            # 여기에도 있어야 한다 — 머리글을 모르면 `bind_plan_steps`가 이 함수로
+            # 조기 반환하므로(위 "머리글을 모르면…" 분기), 그쪽에만 검사를 두면
+            # 실제로 타는 경로에서 그대로 통과한다(2026-08-17 실측: 검사가 True를
+            # 돌려주는데도 셀에 '가장 큰 매출'이 그대로 써졌다).
+            if write_values_echo_the_request(params, message):
+                notes.append({
+                    "action": step.action,
+                    "slot": "values_2d",
+                    "status": "unresolved",
+                    "reason": "echoed_request",
+                })
         if changes:
             notes.append({"action": step.action, "status": "bound", "changes": changes})
         bound.append(PlanStep(action=step.action, params=params, reason=step.reason))
@@ -1332,6 +1388,15 @@ def bind_plan_steps(
             # 무엇을 쓸지 못 정했으면 추측해서 빈 칸을 쓰지 않는다 — 되묻는 쪽이 맞다.
             if write_values_are_empty(params) and not _CLEARING_INTENT.search(str(message or "")):
                 notes.append({"action": step.action, "slot": "values_2d", "status": "unresolved"})
+            elif write_values_echo_the_request(params, message):
+                # 값이 **있는데 그게 지시문**인 경우다. 낡음 필터는 "값이 채워졌으면
+                # 해결된 것"으로 보므로, 사유를 붙여 걸러지지 않게 한다.
+                notes.append({
+                    "action": step.action,
+                    "slot": "values_2d",
+                    "status": "unresolved",
+                    "reason": "echoed_request",
+                })
 
         if step.action == "excel_live.set_formula" and (
             params.get("named_formula_message") or str(params.get("formula_mode") or "") == "named"
@@ -1392,6 +1457,10 @@ def bind_plan_steps(
 def _is_stale_unresolved(note: dict[str, Any], action: str, params: dict[str, Any]) -> bool:
     """이 단계에서 결국 채워진 슬롯의 미해결 보고인지."""
     if note.get("status") != "unresolved" or note.get("action") != action:
+        return False
+    if note.get("reason") == "echoed_request":
+        # 값이 채워져 있다는 게 바로 문제다 — 그 값이 시킨 말 자체다.
+        # 여기서 "채워졌으니 해결됨"으로 지우면 설명문이 셀에 그대로 들어간다.
         return False
     if note.get("reason") == "not_stated":
         # 원문이 기준 열을 말하지 않았다. 플래너가 채운 값도, 그 값을 다듬은 결과도

@@ -523,6 +523,10 @@ _AMBIGUITY_SENSITIVE_SLOTS = {
     ("excel_live.dedupe_rows", "key_columns"),
     ("excel_live.create_chart", "chart_type"),
     ("excel_live.filter_rows", "column"),
+    # 무엇을 쓸지 못 정한 채 쓰면 셀에 설명문이 들어간다.
+    # 2026-08-17 실측: "가장 큰 매출 값 넣어줘"가 셀에 '가장 큰 매출'을 남겼다.
+    # 바인더가 unresolved로 표시해도 이 목록에 없으면 그대로 실행됐다.
+    ("excel_live.write_range", "values_2d"),
 }
 # 2026-08-17 실측: "도넛 차트 만들어줘"에 "차트 종류를 선택해 주세요"로 되물었다.
 # `_CHART_KIND_WORDS`(아래)는 도넛을 알아보는데 **이 패턴에만 빠져 있었다.**
@@ -7714,6 +7718,31 @@ async def _run_command(
                     "follow_up_question": follow_up,
                     "slot_state": dict(ambiguity_slot.params),
                     "operation_intent": ambiguity_slot.intent,
+                    "unresolved_slots": sorted(f"{a}.{s}" for a, s in unresolved_pairs),
+                },
+            )
+        # 되묻기 문구를 못 만들었다고 그대로 실행하면 안 된다.
+        #
+        # 2026-08-17 실측: write_range에는 대응하는 operation intent가 없어
+        # `follow_up`이 비었고, 게이트를 통과해 셀에 '가장 큰 매출'이라는 **설명문**이
+        # 써졌다. 무엇을 쓸지 모르는 채 쓰느니 묻는 편이 낫다.
+        if ("excel_live.write_range", "values_2d") in unresolved_pairs:
+            echoed = any(
+                note.get("reason") == "echoed_request" for note in bind_notes
+            )
+            question = (
+                "어떤 값을 넣을지 정하지 못했습니다. 계산 결과를 원하시면 어떤 열을 "
+                "기준으로 할지 알려 주세요 (예: 매출 열의 최댓값)."
+                if echoed
+                else "어떤 값을 넣을까요?"
+            )
+            return ExcelLiveActionResponse(
+                ok=True,
+                action="excel_live.clarify",
+                reason=question,
+                result={
+                    "ask_follow_up": True,
+                    "follow_up_question": question,
                     "unresolved_slots": sorted(f"{a}.{s}" for a, s in unresolved_pairs),
                 },
             )
