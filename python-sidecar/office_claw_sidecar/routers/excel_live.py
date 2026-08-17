@@ -6350,13 +6350,77 @@ def _action_summary(action: str) -> str:
     return _ACTION_SUMMARY.get(action, "엑셀 변경 작업을 실행합니다.")
 
 
+# 승인 카드 제목용 짧은 한국어 이름. 원시 액션 문자열("excel_live.create_table")이
+# 제목으로 뜨던 것을 사람 말로 바꾼다(로드맵 2-3 프리뷰-승인).
+_ACTION_DISPLAY = {
+    "excel_live.write_range": "값 입력",
+    "excel_live.create_table": "표 생성",
+    "excel_live.highlight_by_condition": "조건부 강조",
+    "excel_live.fill_range": "배경색 변경",
+    "excel_live.apply_border": "테두리 적용",
+    "excel_live.set_formula": "수식 적용",
+    "excel_live.clear_range": "내용 비우기",
+    "excel_live.sort_range": "정렬",
+    "excel_live.filter_rows": "행 필터",
+    "excel_live.dedupe_rows": "중복 제거",
+    "excel_live.find_replace": "찾아 바꾸기",
+    "excel_live.set_font": "글자 서식",
+    "excel_live.set_number_format": "표시 형식",
+    "excel_live.merge_cells": "셀 병합",
+    "excel_live.delete_sheet": "시트 삭제",
+}
+
+# 데이터가 사라지거나 재배치되는 액션 — 카드에서 경고 표시.
+_DESTRUCTIVE_ACTIONS = frozenset(
+    {
+        "excel_live.clear_range",
+        "excel_live.filter_rows",
+        "excel_live.dedupe_rows",
+        "excel_live.find_replace",
+        "excel_live.delete_sheet",
+        "excel_live.drop_column",
+        "excel_live.merge_cells",
+    }
+)
+
+_SYMBOLIC_TARGET_LABELS = {
+    "__ACTIVE_SELECTION__": "현재 선택 영역",
+    "__USED_RANGE__": "데이터가 있는 전체 범위",
+    "__ACTIVE_CELL__": "현재 셀",
+}
+
+
+def _step_target(params: dict[str, Any] | None) -> str:
+    """승인 카드에 보여줄 대상 — 바인더가 확정한 실제 범위.
+
+    "선택 범위에 경계선을 적용합니다"만 보고 승인하면 사용자는 **어디에** 적용되는지
+    모른 채 승인한다(2026-08-17 실측: A1:M201 2,613셀에 적용된다는 것을 실행 후에야
+    알았다). MS·Google 모두 실행 전 영향 범위 표시를 신뢰 수단으로 출시했다(로드맵 2-3).
+    """
+    p = params or {}
+    raw = str(p.get("target_range") or p.get("range_ref") or p.get("start_cell") or "").strip()
+    if not raw:
+        sheet = str(p.get("sheet_name") or "").strip()
+        return f"{sheet} 시트" if sheet else ""
+    label = _SYMBOLIC_TARGET_LABELS.get(raw.upper(), raw.upper().replace("$", ""))
+    sheet = str(p.get("sheet_name") or "").strip()
+    return f"{sheet} 시트 {label}" if sheet else label
+
+
+def _step_preview_line(index: int, action: str, params: dict[str, Any] | None) -> str:
+    mark = "⚠ " if action in _DESTRUCTIVE_ACTIONS else ""
+    target = _step_target(params)
+    tail = f" — {target}" if target else ""
+    return f"{index}. {mark}{_action_summary(action)}{tail}"
+
+
 def _build_approval(action: str, params: dict[str, Any]) -> ApprovalRequest:
     approval_id = str(uuid.uuid4())
-    summary = _action_summary(action)
+    summary = _step_preview_line(1, action, params).split(". ", 1)[1]
     return ApprovalRequest(
         approval_id=approval_id,
         tool_name=action,
-        tool_display_name=action,
+        tool_display_name=_ACTION_DISPLAY.get(action, "엑셀 작업 승인"),
         summary=summary,
         args_preview=params,
         session_id="excel-live",
@@ -8127,11 +8191,15 @@ def _plan_approval_gate(ctx: PlanExecution, plan: list[PlanStep]) -> ExcelLiveAc
     pending = _build_approval(head.action, head.params)
     if len(plan) > 1:
         # 첫 단계만 보여주면 사용자는 나머지를 모른 채 승인한다. 승인 대상이
-        # 계획 전체가 된 이상, 다이얼로그도 계획 전체를 보여줘야 한다.
+        # 계획 전체가 된 이상, 다이얼로그도 계획 전체 + **바인더가 확정한 대상
+        # 범위**를 보여줘야 한다(로드맵 2-3 — 어디에 적용되는지 모른 채 승인 금지).
         steps_text = "\n".join(
-            f"{idx}. {_action_summary(step.action)}" for idx, step in enumerate(plan, start=1)
+            _step_preview_line(idx, step.action, step.params)
+            for idx, step in enumerate(plan, start=1)
         )
         pending.summary = f"다음 {len(plan)}단계를 실행합니다.\n{steps_text}"
+        if any(step.action in _DESTRUCTIVE_ACTIONS for step in plan):
+            pending.summary += "\n\n⚠ 표시 단계는 데이터가 지워지거나 재배치됩니다. 실행 후 '되돌리기'로 복구할 수 있습니다."
     _pending_approvals[pending.approval_id] = PendingExcelApproval(
         action=head.action,
         params=head.params,
