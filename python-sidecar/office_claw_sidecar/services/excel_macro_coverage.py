@@ -168,7 +168,20 @@ class CoverageTracker:
                 self._preexisting[name] = rect
 
     def _key(self, command: str, fallback: str = "") -> str:
-        return (sheet_in_command(command) or fallback).strip().lower()
+        explicit = sheet_in_command(command)
+        if explicit:
+            return explicit.strip().lower()
+        # "제품_리포트 A3:A7에 …"처럼 '시트'라는 낱말 없이 시트명으로 시작하는 문장.
+        # 2026-08-17 실측: 이 형태가 활성 시트로 오귀속돼, 계획 안에서 새로 만든
+        # 시트에 쓰는 단계가 "기존 데이터를 덮어씁니다" 오탐 경고를 5건 받았다.
+        head = str(command or "").strip().split()
+        if head:
+            first = head[0].strip().strip("'\"").lower()
+            if first and (
+                first in self._known or first in self._preexisting or first in self._filled
+            ):
+                return first
+        return str(fallback or "").strip().lower()
 
     def record(self, command: str, parsed: dict[str, Any] | None, *, fallback_sheet: str = "") -> None:
         """이 단계가 채우는 범위를 쌓는다."""

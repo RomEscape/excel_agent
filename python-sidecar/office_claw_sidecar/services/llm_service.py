@@ -99,6 +99,11 @@ def get_planner_model_name(*, fallback: str | None = None) -> str:
     return str(_DEFAULT_CONFIG.get("model", "") or "").strip()
 
 
+def _is_planner_model(name: str) -> bool:
+    """계획 JSON 전용 SFT 모델인가. 이 모델은 분해·대화·정규화 태스크에 못 쓴다."""
+    return str(name or "").strip().lower().startswith("ax7bplanner")
+
+
 def get_macro_model_name(*, fallback: str | None = None) -> str:
     """
     매크로 분해 전용 모델명을 반환한다.
@@ -106,9 +111,13 @@ def get_macro_model_name(*, fallback: str | None = None) -> str:
     플래너 모델(`ax7bplanner-*`)은 계획 JSON만 뱉도록 파인튜닝돼 있어 "요청을 하위 명령
     문장으로 펼쳐라"는 다른 태스크에는 맞지 않는다. 그래서 planner_model이 아니라
     일반 대화 모델을 기본으로 쓴다.
+
+    2026-08-17 실측: 설정 파일의 `model` 자체가 ax7bplanner-v3로 잘못 저장돼 있어
+    매크로 분해·정규화·채팅이 전부 플래너로 돌고 있었다(분해 JSON 실패 실측).
+    설정이 또 틀어져도 이 태스크로는 새지 않게 플래너 패턴이면 기본 모델로 떨어진다.
     우선순위:
       1) OFFICECLAW_MACRO_MODEL 환경변수
-      2) llm_config.json의 model
+      2) llm_config.json의 model (플래너 모델이 아닐 때만)
       3) fallback / 기본값
     """
     env_model = str(os.getenv("OFFICECLAW_MACRO_MODEL", "")).strip()
@@ -116,7 +125,7 @@ def get_macro_model_name(*, fallback: str | None = None) -> str:
         return env_model
     cfg = load_llm_config()
     cfg_model = str(cfg.get("model", "") or "").strip()
-    if cfg_model:
+    if cfg_model and not _is_planner_model(cfg_model):
         return cfg_model
     if fallback:
         return str(fallback).strip()
