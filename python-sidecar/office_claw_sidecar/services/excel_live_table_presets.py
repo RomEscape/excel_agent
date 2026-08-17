@@ -1,8 +1,18 @@
-"""Excel 표 생성용 업무 템플릿 프리셋."""
+"""Excel 표 생성용 업무 템플릿 프리셋.
+
+2026-08-17 GUI 실측이 드러낸 설계 결함: 질문("일별/월별 중 어떤 형식으로?")은
+던지는데 **그 답을 해석하는 코드가 없었다.** "일별"이라고 정확히 답해도 긍정어
+("응/네")가 아니라서 같은 질문을 또 하고, 되묻기 한도가 차면 프리셋 헤더도 버린 채
+5×5 빈 표로 떨어졌다. 사용자: "왜 출석부 만들어달라니까 근태표를 만드는 작업을 하지?"
+
+그래서 프리셋이 선택지(`variants`)를 데이터로 갖고, 라우터가 답에서 선택지를
+찾아 그 헤더를 쓴다. 선택지를 못 찾은 답이라도 **질문은 한 번만** — 답이 뭐든
+기본형으로 진행한다. 질문만 하고 해석 못 하는 선택지는 여기 넣지 않는다.
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -11,7 +21,11 @@ class TablePreset:
     keywords: tuple[str, ...]
     headers: tuple[str, ...]
     default_rows: int
+    # "{name}"이 있으면 사용자가 실제로 쓴 낱말로 채워진다 — "출석부"라고 했는데
+    # "근태표는…"이라고 물으면 다른 걸 만드는 것처럼 들린다(2026-08-17 실측).
     follow_up_question: str
+    # (선택지 낱말, 그 선택지의 헤더). 답 문장 어디에 있어도 잡는다("일별로 만들어줘").
+    variants: tuple[tuple[str, tuple[str, ...]], ...] = field(default=())
 
     @property
     def default_cols(self) -> int:
@@ -33,7 +47,11 @@ TABLE_PRESETS: tuple[TablePreset, ...] = (
         keywords=("근태", "출석부"),
         headers=("이름", "부서", "날짜", "출근", "지각", "결근", "휴가", "비고"),
         default_rows=32,
-        follow_up_question="근태표는 일별/월별 중 어떤 형식으로 만들까요? (기본: 월별)",
+        follow_up_question="{name}는 일별/월별 중 어떤 형식으로 만들까요? (기본: 월별)",
+        variants=(
+            ("일별", ("날짜", "이름", "출근 시간", "퇴근 시간", "지각", "결근", "비고")),
+            ("월별", ("이름", "부서", "날짜", "출근", "지각", "결근", "휴가", "비고")),
+        ),
     ),
     TablePreset(
         key="sales",
@@ -41,6 +59,10 @@ TABLE_PRESETS: tuple[TablePreset, ...] = (
         headers=("월", "상품명", "판매수량", "단가", "총매출"),
         default_rows=24,
         follow_up_question="매출표는 월별/상품별 중 어떤 기준으로 정리할까요?",
+        variants=(
+            ("월별", ("월", "상품명", "판매수량", "단가", "총매출")),
+            ("상품별", ("상품명", "월", "판매수량", "단가", "총매출")),
+        ),
     ),
     TablePreset(
         key="checklist",
@@ -92,6 +114,33 @@ def match_table_preset(message: str) -> TablePreset | None:
     for preset in TABLE_PRESETS:
         if any(keyword in lowered for keyword in preset.keywords):
             return preset
+    return None
+
+
+# 되묻기 문구에 쓸 표시 이름. 키워드가 접두("근태")면 자연스러운 낱말로 바꾼다.
+_DISPLAY_NAMES = {"근태": "근태표"}
+
+
+def preset_follow_up(preset: TablePreset, message: str) -> str:
+    """사용자가 실제로 쓴 낱말로 되묻기 문구를 만든다.
+
+    "출석부 만들어줘"에 "근태표는 …?"라고 물으면 다른 걸 만드는 것처럼 들린다
+    (2026-08-17 실측 — 사용자가 정확히 그 지점을 지적했다).
+    """
+    lowered = str(message or "").lower()
+    matched = next((k for k in preset.keywords if k in lowered), preset.keywords[0])
+    name = _DISPLAY_NAMES.get(matched, matched)
+    return preset.follow_up_question.replace("{name}", name)
+
+
+def find_variant(preset: TablePreset | None, message: str) -> tuple[str, tuple[str, ...]] | None:
+    """답 문장에서 선택지를 찾는다. "일별로 만들어줘"처럼 조사·동사가 붙어도 잡는다."""
+    if preset is None:
+        return None
+    lowered = str(message or "").lower()
+    for name, headers in preset.variants:
+        if name in lowered:
+            return name, headers
     return None
 
 

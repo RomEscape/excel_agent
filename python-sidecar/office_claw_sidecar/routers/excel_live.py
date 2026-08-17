@@ -100,7 +100,10 @@ from office_claw_sidecar.services.excel_live_service import (
     get_excel_live_service,
     invalidate_excel_engine_cache,
 )
-from office_claw_sidecar.services.excel_live_table_presets import get_table_preset
+from office_claw_sidecar.services.excel_live_table_presets import (
+    find_variant,
+    get_table_preset,
+)
 from office_claw_sidecar.services.excel_macro_coverage import parse_rect
 from office_claw_sidecar.services.excel_macro_planner import (
     MacroStepPlan,
@@ -271,6 +274,9 @@ class PendingCreateTableSlots:
     start_cell: str | None = None
     template_key: str | None = None
     template_follow_up_question: str | None = None
+    # 템플릿 질문은 **한 번만** 한다. 2026-08-17 실측: "일별"이라는 답을 해석하는
+    # 코드가 없어 같은 질문("일별/월별 중 어떤 형식으로?")을 되풀이했다.
+    template_question_asked: bool = False
     ask_count: int = 0
     created_at_ts: float = 0.0
     updated_at_ts: float = 0.0
@@ -2128,6 +2134,11 @@ def _drop_superseded_pending_slots(
     else:
         return pending_slot, pending_operation
     if not incoming or incoming == pending_label:
+        return pending_slot, pending_operation
+    # "아무거나 알아서 해줘"는 새 명령이 아니라 되묻기에 대한 (모호한) 답이다.
+    # general로 분류됐다고 표 슬롯을 버리면, 답을 받고도 대화가 원점으로 돌아간다
+    # (2026-08-17 실측 — 템플릿 질문 다음 턴이 "어떤 작업을 원하시는지…"로 샜다).
+    if pending_label == "table" and incoming == "general":
         return pending_slot, pending_operation
     # "보기 좋게 만들어줘" 뒤에 "매출 열 기준 내림차순"은 같은 대화의 구체화다.
     # 일반 슬롯을 버리면 업그레이드가 안 되고 LLM을 다시 부른다.
@@ -4872,6 +4883,16 @@ def _merge_create_table_slots(
     # 정하면, 우연히 남아 있던 선택이 표 크기가 된다 — 사용자가 의도한 적 없는 크기다.
     # (이 조건을 안 걸었더니 기존 테스트 5건이 되묻기 대신 곧장 표를 만들었다.)
     dragged = _normalize_range_text(getattr(req, "context_range", None) or "")
+    if ":" not in dragged and mentions_selection(req.message):
+        # 붙여넣기 경로는 범위가 context_range가 아니라 **문장 앞에 인라인**으로 온다
+        # ("A1:D13 여기에 출석부를…"). 2026-08-17 실측: 그래서 이 크기 소비 로직을
+        # 못 타고 "표 크기를 알려주세요"로 되물었다 — 2026-08-16에 고친 바로 그
+        # 버그가 다른 입구로 되살아난 것이다.
+        inline = re.search(
+            r"\b[A-Za-z]{1,3}\d{1,7}:[A-Za-z]{1,3}\d{1,7}\b", str(req.message or "")
+        )
+        if inline:
+            dragged = _normalize_range_text(inline.group(0))
     if (
         ":" in dragged
         and mentions_selection(req.message)
@@ -4886,6 +4907,35 @@ def _merge_create_table_slots(
             if not slot.start_cell:
                 slot.start_cell = dragged.split(":")[0]
 
+    # 템플릿 질문에 대한 답을 실제로 해석한다.
+    #
+    # 2026-08-17 실측: "일별/월별 중 어떤 형식으로?"라고 물어 놓고 "일별로
+    # 만들어줘"라는 답을 해석하는 코드가 없었다. 긍정어("응/네")만 통과라서 같은
+    # 질문을 또 했고, 되묻기 한도가 차자 프리셋 헤더도 버린 채 5×5 빈 표가 나갔다.
+    if slot.template_key:
+        template = get_table_preset(slot.template_key)
+        variant = find_variant(template, req.message)
+        if variant is not None:
+            variant_headers = list(variant[1])
+            if not user_header_explicit:
+                # 대상 범위를 지목했으면(13×4) 그 폭에 맞춰 자른다.
+                slot.headers = variant_headers[: slot.cols] if slot.cols else variant_headers
+            if slot.cols is None:
+                slot.cols = max(1, min(50, len(slot.headers or variant_headers)))
+            if slot.rows is None and template is not None:
+                slot.rows = template.default_rows
+            slot.template_follow_up_question = ""
+        elif current is not None and slot.template_question_asked and template is not None:
+            # 질문에 선택지 밖의 답이 왔다. 다시 물으면 대화가 제자리를 돈다 —
+            # 답이 뭐든 기본형으로 진행한다(구체 지정이 있으면 위에서 이미 반영됨).
+            if not slot.headers:
+                slot.headers = list(template.headers)[: slot.cols] if slot.cols else list(template.headers)
+            if slot.cols is None:
+                slot.cols = template.default_cols
+            if slot.rows is None:
+                slot.rows = template.default_rows
+            slot.template_follow_up_question = ""
+
     slot.updated_at_ts = now
     return slot
 
@@ -4895,7 +4945,9 @@ _MAX_TABLE_FOLLOW_UPS = 2
 
 
 def _build_table_follow_up(slot: PendingCreateTableSlots, *, last_call: bool = False) -> str:
-    if slot.rows is None and slot.cols is None and slot.template_follow_up_question:
+    # 템플릿 질문이 크기 질문보다 먼저다 — 답(일별/월별)이 헤더까지 정하기 때문이다.
+    # 단, **한 번만**. 답을 못 알아들었다고 또 물으면 대화가 제자리를 돈다.
+    if slot.template_follow_up_question and not slot.template_question_asked:
         return slot.template_follow_up_question
     tail = " (다음 답변에도 크기가 없으면 기본값으로 만들게요)" if last_call else ""
     if slot.rows is None and slot.cols is None:
@@ -7455,7 +7507,16 @@ async def _run_command(
             session_key=session_key,
         )
         _apply_template_defaults_if_confirmed(slot, hints=hints)
-        need_follow_up = slot.rows is None or slot.cols is None
+        # 크기를 알아도(붙여넣은 A1:D13 → 13×4) 템플릿의 형식(일별/월별)이 미정이면
+        # 그 질문 **한 번**은 한다 — 답이 헤더를 정한다. 이미 물었다면 merge가
+        # 기본형으로 채웠으므로 여기 다시 오지 않는다.
+        need_template_answer = (
+            bool(slot.template_key)
+            and bool(slot.template_follow_up_question)
+            and not slot.template_question_asked
+            and not slot.headers
+        )
+        need_follow_up = slot.rows is None or slot.cols is None or need_template_answer
         fallback_notice = ""
         if need_follow_up and slot.ask_count >= _MAX_TABLE_FOLLOW_UPS:
             # 물어본 만큼 물었는데도 크기를 못 받았다. 여기서 또 되물으면 대화가 제자리를 돈다.
@@ -7479,6 +7540,9 @@ async def _run_command(
                 if isinstance(parsed, dict)
                 else ""
             ) or _build_table_follow_up(slot, last_call=slot.ask_count >= _MAX_TABLE_FOLLOW_UPS)
+            if follow_up_question == (slot.template_follow_up_question or ""):
+                # 이 질문은 한 번만 한다 — 다음 턴의 답은 무조건 진행으로 이어진다.
+                slot.template_question_asked = True
             return ExcelLiveActionResponse(
                 ok=True,
                 action="excel_live.create_table",

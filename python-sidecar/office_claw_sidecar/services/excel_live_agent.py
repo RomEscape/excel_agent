@@ -25,7 +25,10 @@ from office_claw_sidecar.services.decision_trace import (
 from office_claw_sidecar.services.excel_live_plan_validator import (
     SUPPORTED_ACTIONS as VALIDATOR_SUPPORTED_ACTIONS,
 )
-from office_claw_sidecar.services.excel_live_table_presets import match_table_preset
+from office_claw_sidecar.services.excel_live_table_presets import (
+    match_table_preset,
+    preset_follow_up,
+)
 from office_claw_sidecar.services.excel_planner_prompt import build_planner_prompt
 from office_claw_sidecar.services.llm_json import extract_json_object
 from office_claw_sidecar.services.llm_service import (
@@ -1626,7 +1629,7 @@ def extract_create_table_slot_hints(message: str) -> dict[str, Any]:
         "template_headers": list(preset.headers) if preset else [],
         "template_rows": preset.default_rows if preset else None,
         "template_cols": preset.default_cols if preset else None,
-        "template_follow_up_question": preset.follow_up_question if preset else "",
+        "template_follow_up_question": preset_follow_up(preset, text) if preset else "",
         "blank_table": any(token in lowered for token in ["빈 표", "빈표", "그냥 빈"]),
         "affirmative": any(
             token in lowered

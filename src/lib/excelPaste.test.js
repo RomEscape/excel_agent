@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildPasteBlock, displayMessageText, looksLikeExcelPaste, pasteShape } from "./excelPaste.js";
+import { buildPasteBlock, displayMessageText, looksLikeExcelPaste, pasteShape, rangeShape } from "./excelPaste.js";
 
 // Excel에서 A1:D3을 복사하면 이런 모양으로 붙는다.
 const EXCEL_TABLE = "날짜\t지역\t담당자\t금액\n2026-01-01\t서울\t김철수\t120000\n2026-01-02\t경기\t이영희\t85000";
@@ -45,6 +45,21 @@ test("주소를 알면 범위 참조로 바꾼다", () => {
   assert.equal(out.includes("김철수"), false);
 });
 
+// 2026-08-17 실측(스크린샷): 붙여넣은 텍스트로 세면 빈 줄이 걸러져
+// "9행 × 4열 — A1:D13"처럼 서로 안 맞는 숫자가 나갔다. 사용자: "인식되는 범위도 다르고".
+test("안내 문구의 행×열은 범위와 항상 일치한다", () => {
+  // 3줄짜리 텍스트여도 범위가 A1:D13이면 13행이라고 말해야 한다.
+  const out = buildPasteBlock(EXCEL_TABLE, "A1:D13");
+  assert.match(out, /13행 × 4열 — A1:D13/);
+});
+
+test("범위에서 행×열을 계산한다", () => {
+  assert.deepEqual(rangeShape("A1:D13"), { rows: 13, cols: 4 });
+  assert.deepEqual(rangeShape("b2:c4"), { rows: 3, cols: 2 });
+  assert.equal(rangeShape("B2"), null); // 한 칸은 텍스트 기준으로 센다
+  assert.equal(rangeShape(""), null);
+});
+
 test("주소를 못 알아내면 붙여넣은 내용을 그대로 둔다", () => {
   // Excel이 꺼져 있거나 다른 앱에서 복사한 경우다. 사용자 입력을 잃으면 안 된다.
   assert.equal(buildPasteBlock(EXCEL_TABLE, ""), EXCEL_TABLE);
@@ -56,7 +71,8 @@ test("말풍선에는 마크업 대신 사람용 문구를 쓴다", () => {
   const raw = `${buildPasteBlock(EXCEL_TABLE, "A1:D9")} 이 부분은 원래대로 초기화해줄 수 있어? 표 없애줘`;
   const shown = displayMessageText(raw);
   assert.equal(shown.includes("[[EXCEL_"), false, "마크업이 그대로 노출된다");
-  assert.match(shown, /엑셀에서 붙여넣은 3행 × 4열/);
+  // 행×열은 범위(A1:D9) 기준이다 — 텍스트 기준(3행)과 어긋나면 안 된다.
+  assert.match(shown, /엑셀에서 붙여넣은 9행 × 4열/);
   assert.match(shown, /표 없애줘/);
 });
 

@@ -47,10 +47,24 @@ export function pasteShape(text) {
  * 주소를 알아냈으면 범위 참조로, 못 알아냈으면 붙여넣은 표를 그대로 둔다 —
  * Excel이 꺼져 있거나 다른 앱에서 복사한 경우가 있다.
  */
+/** `A1:D13` → {rows: 13, cols: 4}. 한 칸(`B2`)이나 못 읽는 표기는 null. */
+export function rangeShape(ref) {
+  const m = String(ref || "").toUpperCase().match(/^([A-Z]{1,3})(\d{1,7}):([A-Z]{1,3})(\d{1,7})$/);
+  if (!m) return null;
+  const col = (s) => [...s].reduce((n, ch) => n * 26 + (ch.charCodeAt(0) - 64), 0);
+  const rows = Math.abs(Number(m[4]) - Number(m[2])) + 1;
+  const cols = Math.abs(col(m[3]) - col(m[1])) + 1;
+  return rows > 0 && cols > 0 ? { rows, cols } : null;
+}
+
 export function buildPasteBlock(text, address) {
-  const { rows, cols } = pasteShape(text);
   const ref = String(address || "").toUpperCase();
   if (!ref) return String(text ?? "");
+  // 행×열은 **범위에서** 센다. 붙여넣은 텍스트로 세면 빈 줄이 걸러져
+  // "9행 × 4열 — A1:D13"처럼 서로 안 맞는 숫자가 나간다(2026-08-17 실측 —
+  // 사용자가 "인식되는 범위도 다르고"라고 지적한 그 화면). 값은 어차피
+  // 백엔드가 범위로 읽으므로 범위가 기준이다.
+  const { rows, cols } = rangeShape(ref) || pasteShape(text);
   // 안내 문구는 반드시 **제거 가능한 표시** 안에 둔다.
   //
   // 2026-08-17 실측: 괄호 문구를 맨 텍스트로 뒀더니 `stripExcelContextBlock`이
