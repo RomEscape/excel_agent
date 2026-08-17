@@ -58,6 +58,51 @@ class TestFormattingWordsAreNotCellValues:
         assert step["params"]["values_2d"] == [[777]]
 
 
+class TestSlashInsideValuesIsNotASeparator:
+    """ "A44:E44에 토 07/05,278000,… 입력"의 "토 07/05"가 두 칸으로 갈라졌다.
+
+    2026-08-18 ex2 재현 실측: 나열 구분자에 빗금이 들어 있어 날짜("07/05")를
+    쪼갰고, 요일 7행 전체의 열이 한 칸씩 밀렸다. 쉼표가 있는 나열에서 빗금은
+    값의 일부다.
+    """
+
+    def test_a_comma_list_keeps_slashes_inside_values(self):
+        step = parse_command_rule_based("A44:E44에 토 07/05,278000,28,29,104% 입력")
+        assert step["action"] == "excel_live.write_range"
+        assert step["params"]["values_2d"] == [["토 07/05", 278000, 28, 29, "104%"]]
+
+    def test_a_slash_only_list_still_splits(self):
+        # 쉼표가 아예 없으면 빗금 나열("월/화/수")은 여전히 세 칸이다.
+        step = parse_command_rule_based("A1:C1에 월/화/수 입력")
+        assert step["params"]["values_2d"] == [["월", "화", "수"]]
+
+
+class TestBatchRowInput:
+    """한 턴에 여러 행 — 세미콜론·줄바꿈이 행 구분자다.
+
+    2026-08-18: 검증된 문형이 "한 턴 = 한 행"뿐이라 표 하나에 수십 턴이
+    들었다(85턴 재현 대화). 행 구분자를 결정적 규칙으로 받는다.
+    """
+
+    def test_semicolon_separated_rows(self):
+        step = parse_command_rule_based("A2:C4에 가,1,2; 나,3,4; 다,5,6 입력")
+        assert step["action"] == "excel_live.write_range"
+        assert step["params"]["start_cell"] == "A2"
+        assert step["params"]["values_2d"] == [["가", 1, 2], ["나", 3, 4], ["다", 5, 6]]
+
+    def test_newline_separated_rows(self):
+        step = parse_command_rule_based("A2:B3에 사과,100\n배,200 입력")
+        assert step["params"]["values_2d"] == [["사과", 100], ["배", 200]]
+
+    def test_a_single_row_is_unchanged(self):
+        step = parse_command_rule_based("B2:D2에 이름,수량,금액 입력")
+        assert step["params"]["values_2d"] == [["이름", "수량", "금액"]]
+
+    def test_short_rows_are_padded_to_the_range_width(self):
+        step = parse_command_rule_based("A2:C3에 가,1; 나 입력")
+        assert step["params"]["values_2d"] == [["가", 1, ""], ["나", "", ""]]
+
+
 class TestFormatCodeSniffing:
     """플래너가 format_code에 말 그대로 "소수점 둘째 자리"를 넣었다."""
 

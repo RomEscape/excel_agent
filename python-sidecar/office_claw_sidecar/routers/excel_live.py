@@ -7073,13 +7073,22 @@ async def _run_command(
         fallback_rule_step = None
     elif operation_intent == "formula":
         rule_params = dict(fallback_rule_step.get("params", {})) if fallback_rule_step else {}
+        rule_action = str(fallback_rule_step.get("action", "")).strip() if fallback_rule_step else ""
         has_explicit_formula = (
-            bool(fallback_rule_step)
-            and str(fallback_rule_step.get("action", "")).strip() == "excel_live.set_formula"
+            rule_action == "excel_live.set_formula"
             and str(rule_params.get("formula_a1", "")).strip().startswith("=")
             and bool(re.search(r"\b[A-Z]+\d+(?::[A-Z]+\d+)?\b", str(req.message or ""), re.IGNORECASE))
         )
-        if not has_explicit_formula:
+        # 값 나열의 "건수"·"합계" 같은 낱말이 formula 힌트를 켠 경우다. 범위와
+        # 값을 다 말한 쓰기(values_2d 있는 write_range)는 수식 요청이 아니므로
+        # 폴백을 살린다(2026-08-18 ex2 재현 실측: "총 주문 건수"가 든 KPI 라벨
+        # 행이 countif 되묻기로 샜다).
+        is_explicit_row_write = (
+            rule_action == "excel_live.write_range"
+            and bool(rule_params.get("values_2d"))
+            and bool(re.search(r"\b[A-Z]+\d+(?::[A-Z]+\d+)?\b", str(req.message or ""), re.IGNORECASE))
+        )
+        if not has_explicit_formula and not is_explicit_row_write:
             fallback_rule_step = None
     elif (
         fallback_rule_step
@@ -7552,6 +7561,14 @@ async def _run_command(
     if explicit_write and _TABLE_KEYWORD_PATTERN.search(req.message):
         # "B2부터 3행 3열 표 만들어줘"는 범위가 있어도 표 생성이 맞다.
         explicit_write = False
+    if explicit_write and pending_operation is None and operation_intent:
+        # 값 나열에 "비교 기준", "총 주문 건수" 같은 낱말이 섞이면 힌트 추출이
+        # 작업 의도로 오인해 새 멀티턴 슬롯을 연다(2026-08-18 ex2 재현 실측:
+        # KPI 라벨 행 2건이 compare/count 되묻기로 샜다). 진행 중인 멀티턴이
+        # 없고 범위·값을 다 말한 쓰기가 확정돼 있으면 힌트는 값의 일부다 —
+        # 여기서 지워 아래 모든 슬롯 생성 지점이 열리지 않게 한다.
+        operation_hints = {}
+        operation_intent = ""
 
     # 범위와 값을 다 말한 쓰기는 계획이 이미 정해진 것이다. 그런데 값에 "총매출",
     # "평균주문금액" 같은 집계어가 섞이면 플래너가 통계 조회로 알아들어, 라벨은
@@ -7570,7 +7587,20 @@ async def _run_command(
         # 2026-08-18 실측, 스키마 강제 후 모델이 option에 태스크 이름을 되뇌어
         # 'write_value'가 셀에 쓰였는데 intent 면제 때문에 규칙의 정답(120)이
         # 못 이겼다. 문장에서 값을 뽑는 일은 결정적 규칙이 모델보다 정확하다.
-        and parsed.get("plan_source") != "rule"
+        #
+        # 규칙(rule) 계획 면제의 예외 하나: 단일 read_range. 값 나열의 "조회
+        # 기간" 같은 낱말이 읽기 퀵 규칙을 켜면 완결된 쓰기가 조회로 오실행된다
+        # (2026-08-18 ex2 재현 실측). 한 단계짜리 읽기는 잘려 나갈 다른 단계가
+        # 없으니 덮어도 "표 없애줘" 3단계 절단 같은 사고가 나지 않는다.
+        and (
+            parsed.get("plan_source") != "rule"
+            or [
+                str(s.get("action", ""))
+                for s in parsed["action_plan"]
+                if isinstance(s, dict)
+            ]
+            == ["excel_live.read_range"]
+        )
     ):
         planner_actions = [
             str(s.get("action", "")) for s in parsed["action_plan"] if isinstance(s, dict)

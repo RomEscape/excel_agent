@@ -825,8 +825,9 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
             }
 
     # 예: "B2:D2에 이름,수량,금액 입력"
+    #     "A2:C4에 가,1,2; 나,3,4; 다,5,6 입력"  ← 세미콜론·줄바꿈이 행 구분자
     row_write = re.search(
-        r"\b([a-z]+\d+:[a-z]+\d+)\s*에\s*([^\n]+?)\s*(입력(?:해)?|써|작성|적어|넣어|write|set)\b",
+        r"\b([a-z]+\d+:[a-z]+\d+)\s*에\s*((?:[^\n]|\n)+?)\s*(입력(?:해)?|써|작성|적어|넣어|write|set)\b",
         text,
         re.IGNORECASE,
     )
@@ -846,16 +847,29 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
             ):
                 pass
             else:
-                tokens = [t.strip() for t in re.split(r"[,/|]", raw_values) if t.strip()]
                 col_count = _column_span(left_col.group(1), right_col.group(1))
-                if tokens:
+                # 세미콜론·줄바꿈은 행 구분자다. "한 턴 = 한 행"만 되면 표 하나에
+                # 수십 턴이 든다(2026-08-18, 85턴 재현 대화가 과하다는 지적).
+                # 행 안은 기존 그대로 쉼표 나열이다.
+                row_groups = [g.strip() for g in re.split(r"[;\n]", raw_values) if g.strip()]
+                rows_2d = []
+                for group in row_groups:
+                    tokens = _split_header_tokens(group)
+                    if not tokens:
+                        continue
                     row_values = [_parse_literal_value(t) for t in tokens[:col_count]]
                     if len(row_values) < col_count:
                         row_values.extend([""] * (col_count - len(row_values)))
+                    rows_2d.append(row_values)
+                if rows_2d:
                     return {
                         "action": "excel_live.write_range",
-                        "params": {"start_cell": left, "values_2d": [row_values]},
-                        "reason": "행 범위 값 입력 요청",
+                        "params": {"start_cell": left, "values_2d": rows_2d},
+                        "reason": (
+                            "행 범위 값 입력 요청"
+                            if len(rows_2d) == 1
+                            else f"여러 행({len(rows_2d)}) 값 일괄 입력 요청"
+                        ),
                     }
 
     # 예: "A1에 120 입력", "C3 셀에 777 입력해줘", "C3 값을 777로 입력", "C3 777 입력"
@@ -1521,7 +1535,16 @@ def _extract_quoted_headers(text: str) -> list[str]:
 
 
 def _split_header_tokens(source: str) -> list[str]:
-    return [token.strip() for token in re.split(r"[,/|]", source) if token.strip()]
+    """나열을 토큰으로 쪼갠다 — 쉼표가 있으면 쉼표만 구분자로 쓴다.
+
+    날짜("07/05")처럼 값 안에 빗금이 흔해서, 쉼표 나열에 빗금까지 구분자로
+    쓰면 열이 밀린다(2026-08-18 ex2 실측: "토 07/05" → "토 07"과 "05" 두 칸).
+    빗금·세로줄은 쉼표가 아예 없는 나열에서만 구분자다.
+    """
+    text = str(source or "")
+    if "," in text:
+        return [token.strip() for token in text.split(",") if token.strip()]
+    return [token.strip() for token in re.split(r"[/|]", text) if token.strip()]
 
 
 def _narrow_to_header_clause(source: str) -> str:

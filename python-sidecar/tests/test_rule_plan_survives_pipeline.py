@@ -53,6 +53,11 @@ class _RecordingService(_FakeExcelService):
         self.calls.append(("apply_border", str(target_range)))
         return super().apply_border(workbook_id, sheet_name, target_range, line_style, weight, color)
 
+    def write_range(self, workbook_id, sheet_name, start_cell, values_2d, **kwargs):
+        self.calls.append(("write_range", str(start_cell)))
+        self.written = values_2d
+        return super().write_range(workbook_id, sheet_name, start_cell, values_2d, **kwargs)
+
 
 @pytest.fixture()
 def service(monkeypatch):
@@ -141,6 +146,38 @@ class TestClearTableRunsAllThreeSteps:
         assert body["ok"] is True
         # create_table이 실행되지 않았어야 한다.
         assert "create_table" not in str(body.get("action", "")), body.get("action")
+
+
+class TestKeywordBearingValuesStillWrite:
+    """값 나열에 작업 낱말이 섞여도 완결된 쓰기는 되묻지 않는다.
+
+    2026-08-18 ex2 재현 실측: "A3:D3에 …,비교 기준 전월 대비,… 입력"이
+    compare 슬롯 질문으로, "A5:F5에 총 매출,…,식자재 원가율 입력"이 formula
+    슬롯 질문으로 샜다. 힌트 추출이 값 안의 낱말을 의도로 오인해, 범위와
+    값을 다 말한 쓰기 앞에서 새 멀티턴을 열었다.
+    """
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "A3:D3에 조회 기간 2026-06-01~2026-06-30,브랜드 푸드AI 키친,비교 기준 전월 대비,업데이트 2026-07-01 09:30 입력",
+            "A5:F5에 총 매출,총 순이익,총 주문 건수,신규 고객 수,고객 만족도,식자재 원가율 입력",
+        ],
+    )
+    def test_the_row_is_written_without_a_question(self, service, message):
+        body = _run(message)
+        assert body["ok"] is True
+        assert not (body.get("result") or {}).get("ask_follow_up"), (
+            f"완결된 쓰기에 되묻는다: {body.get('reason')}"
+        )
+        assert [a for a, _ in service.calls] == ["write_range"], service.calls
+
+    def test_a_bare_comparison_request_still_opens_the_slot(self, service):
+        # 반대 방향: 쓸 값이 없는 진짜 비교 요청은 여전히 질문해야 한다.
+        body = _run("전월이랑 비교해줘")
+        result = body.get("result") or {}
+        assert result.get("ask_follow_up") or body.get("action") != "excel_live.write_range"
+        assert "write_range" not in [a for a, _ in service.calls]
 
 
 class TestBorderOnlyStaysNarrow:
