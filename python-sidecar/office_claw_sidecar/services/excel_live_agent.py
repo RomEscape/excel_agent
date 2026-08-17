@@ -861,6 +861,9 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
             continue
         cell = single_write.group(1).upper()
         raw_value = re.sub(r"\s*(?:값|value)\s*$", "", single_write.group(2).strip(), flags=re.IGNORECASE)
+        # "합계 라고 입력해줘"의 '라고'는 인용 조사지 값이 아니다.
+        # 2026-08-17 배터리 실측: A12에 '합계 라고'가 그대로 들어갔다.
+        raw_value = re.sub(r"\s*이?라고\s*$", "", raw_value)
         if "수식" in raw_value or "formula" in raw_value.lower() or "=" in raw_value:
             continue
         if not raw_value:
@@ -889,9 +892,19 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
     )
     if (
         implicit_single_write
-        and not re.search(r"(수식|formula|헤더|header|색|highlight|강조|표시|열|column|row)", lowered)
+        # 서식·구조 어휘가 든 문장은 "그 말을 값으로 쓰라"는 뜻이 아니다.
+        # 2026-08-17 배터리 실측: "금액에 천 단위 콤마 넣어줘"가 이 규칙에 걸려
+        # 셀에 '금액에 천 단위 콤마'라는 **텍스트**가 들어갔다 — 규칙이 정답
+        # (set_number_format)을 이미 내놨는데도.
+        and not re.search(
+            r"(수식|formula|헤더|header|색|highlight|강조|표시|열|column|row"
+            r"|콤마|쉼표|서식|포맷|형식|소수점|퍼센트|%|자리|정렬|테두리|경계선"
+            r"|필터|차트|그래프|굵게|기울임|밑줄|병합)",
+            lowered,
+        )
     ):
         raw_value = implicit_single_write.group(1).strip()
+        raw_value = re.sub(r"\s*이?라고\s*$", "", raw_value)
         if "수식" not in raw_value and "formula" not in raw_value.lower() and "=" not in raw_value:
             value = _parse_literal_value(raw_value)
             return {

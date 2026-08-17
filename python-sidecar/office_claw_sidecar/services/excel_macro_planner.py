@@ -50,6 +50,13 @@ _COMPOSITE_ARTIFACT = re.compile(
 # "대시보드처럼 정리해줘"는 비유지 대시보드를 만들어 달라는 말이 아니다.
 _COMPARISON_SUFFIX = re.compile(r"^(처럼|같이|같은|스럽|식으로|풍으로|느낌)")
 
+# "지역별 금액 합계 집계표 만들어줘"는 피벗 **한 번**이면 되는 단일 작업이다.
+# 2026-08-17 배터리 실측: 이 문장이 16단계 매크로로 분해돼 승인 화면만 나오고
+# 정작 집계는 하나도 안 됐다. "X별 … 집계표/요약표"는 피벗 경로가 담당한다.
+_SINGLE_GROUP_BY_TABLE = re.compile(
+    r"[가-힣A-Za-z0-9_]+\s*별[가-힣A-Za-z0-9_,\s]{0,20}(집계표|요약표)"
+)
+
 # "Dashboard 시트 만들어줘"는 대시보드를 지어 달라는 말이 아니라 **그 이름의 시트를
 # 하나** 만들어 달라는 말이다. 산출물어 바로 뒤에 '시트/탭'이 붙으면 이름으로 읽는다.
 # 이걸 매크로로 넘기면 create_sheet 한 번이면 될 일이 17단계 승인 화면이 되고,
@@ -122,6 +129,8 @@ def looks_like_macro_request(message: str) -> bool:
     if not text:
         return False
     if _CELL_REF.search(text):
+        return False
+    if _SINGLE_GROUP_BY_TABLE.search(text):
         return False
     if not _requests_composite_artifact(text):
         return False

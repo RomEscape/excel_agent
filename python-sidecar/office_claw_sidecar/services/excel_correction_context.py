@@ -95,12 +95,103 @@ def recall_write(session_key: str, *, now: float | None = None) -> LastWrite | N
     return item
 
 
+@dataclass(frozen=True)
+class LastFormula:
+    """직전에 넣은 한 칸짜리 수식. "그 아래 칸에는 평균"의 문맥이다."""
+
+    sheet_name: str
+    cell: str
+    formula: str
+    at_ts: float
+
+
+_last_formulas: dict[str, LastFormula] = {}
+
+
+def record_formula(
+    session_key: str, *, sheet_name: str, cell: str, formula: str, now: float | None = None
+) -> None:
+    key = str(session_key or "").strip()
+    if not key:
+        return
+    target = str(cell or "").strip().upper().replace("$", "").split(":")[0]
+    text = str(formula or "").strip()
+    if not _SINGLE_CELL.fullmatch(target) or not text.startswith("="):
+        _last_formulas.pop(key, None)
+        return
+    stamp = time.time() if now is None else now
+    _last_formulas[key] = LastFormula(
+        sheet_name=str(sheet_name or ""), cell=target, formula=text, at_ts=stamp
+    )
+
+
+def recall_formula(session_key: str, *, now: float | None = None) -> LastFormula | None:
+    key = str(session_key or "").strip()
+    item = _last_formulas.get(key)
+    if item is None:
+        return None
+    stamp = time.time() if now is None else now
+    if stamp - item.at_ts > _TTL_SECONDS:
+        _last_formulas.pop(key, None)
+        return None
+    return item
+
+
+# "그 아래 칸에는 평균 넣어줘" — 직전 수식과 같은 범위, 함수만 바꾼다.
+_BELOW_MENTION = re.compile(r"(그\s*)?(아래|밑)(에|의)?\s*(칸|셀)")
+_AGG_WORDS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"가장\s*(큰|높|많)|최댓값|최대값"), "MAX"),
+    (re.compile(r"가장\s*(작은|낮|적)|최솟값|최소값"), "MIN"),
+    (re.compile(r"평균"), "AVERAGE"),
+    (re.compile(r"개수|건수"), "COUNTA"),
+    (re.compile(r"합계|총합|합\s|더한"), "SUM"),
+)
+_SIMPLE_AGG_FORMULA = re.compile(r"^=\s*[A-Z]+\(([^()]+)\)$")
+
+
+def build_below_formula_plan(message: str, last: LastFormula | None) -> list[dict] | None:
+    """직전 턴 "F2에 합계" 다음의 "그 아래 칸에는 평균" → F3에 =AVERAGE(같은 범위).
+
+    2026-08-17 배터리 실측: 이 문장이 플래너로 가서 =AVERAGE(A2:A1)이 A1:A8에
+    적용돼 **날짜 열이 덮였다.** 직전 수식을 기억하면 규칙으로 풀린다 — 어느 열의
+    평균인지 물을 필요도 없다. 방금 그 열이다.
+    """
+    if last is None:
+        return None
+    text = str(message or "")
+    if not _BELOW_MENTION.search(text):
+        return None
+    func = next((f for pattern, f in _AGG_WORDS if pattern.search(text)), "")
+    if not func:
+        return None
+    args_match = _SIMPLE_AGG_FORMULA.match(last.formula)
+    if args_match is None:
+        # 인자를 못 읽는 복합 수식은 흉내 내지 않는다.
+        return None
+    col_row = re.fullmatch(r"([A-Z]{1,3})(\d{1,7})", last.cell)
+    if col_row is None:
+        return None
+    target = f"{col_row.group(1)}{int(col_row.group(2)) + 1}"
+    params: dict = {"range_ref": target, "formula_a1": f"={func}({args_match.group(1)})"}
+    if last.sheet_name:
+        params["sheet_name"] = last.sheet_name
+    return [
+        {
+            "action": "excel_live.set_formula",
+            "params": params,
+            "reason": f"직전 수식({last.cell}) 아래 칸에 {func}",
+        }
+    ]
+
+
 def forget(session_key: str) -> None:
     _last_writes.pop(str(session_key or "").strip(), None)
+    _last_formulas.pop(str(session_key or "").strip(), None)
 
 
 def reset_for_tests() -> None:
     _last_writes.clear()
+    _last_formulas.clear()
 
 
 # "아니" 하나로는 부족하다 — "아니 그거 지워줘"는 정정이 아니라 새 명령이다.

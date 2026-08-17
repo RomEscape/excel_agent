@@ -47,10 +47,17 @@ from office_claw_sidecar.services.decision_trace import (
 )
 from office_claw_sidecar.services.excel_actions import execute_excel_action
 from office_claw_sidecar.services.excel_correction_context import (
+    build_below_formula_plan,
     build_correction_plan,
 )
 from office_claw_sidecar.services.excel_correction_context import (
+    recall_formula as recall_last_formula,
+)
+from office_claw_sidecar.services.excel_correction_context import (
     recall_write as recall_last_write,
+)
+from office_claw_sidecar.services.excel_correction_context import (
+    record_formula as record_last_formula,
 )
 from office_claw_sidecar.services.excel_correction_context import (
     record_write as record_last_write,
@@ -514,6 +521,21 @@ _UNGATED_EDIT_ACTIONS = {
 }
 
 
+def _looks_like_format_code(code: str) -> bool:
+    """표시 형식 코드처럼 생겼는가 — "소수점 둘째 자리" 같은 한국어 문장을 걸러낸다.
+
+    2026-08-17 배터리 실측: 플래너가 format_code에 말 그대로 "소수점 둘째 자리"를
+    넣었고, 그게 그대로 셀 서식이 됐다. 형식 코드에 한글이 들어갈 일은 없다.
+    """
+    text = str(code or "").strip()
+    if not text or re.search(r"[가-힣]", text):
+        return False
+    return bool(re.search(r"[0#@%.,]|yy|mm|dd|hh|ss", text, re.IGNORECASE)) or text.lower() in {
+        "general",
+        "text",
+    }
+
+
 def _action_lacks_evidence(action: str, message: str) -> bool:
     """사용자가 시키지 않은 편집을 걸러낸다.
 
@@ -545,6 +567,9 @@ _AMBIGUITY_SENSITIVE_SLOTS = {
     # 바꿀 말이 비면 찾은 글자를 **지운다.** 2026-08-17 실측: "아니 부산으로 바꿔줘"가
     # find='부산' replace='' 로 와서 시트에 원래 있던 '부산'을 지우고 성공으로 보고했다.
     ("excel_live.find_replace", "replace_text"),
+    # 뒤집힌 범위(=AVERAGE(A2:A1)) 같은 오염 수식. 2026-08-17 배터리 실측:
+    # 이게 A1:A8에 적용돼 날짜 열이 통째로 덮였다.
+    ("excel_live.set_formula", "formula_a1"),
 }
 # 2026-08-17 실측: "도넛 차트 만들어줘"에 "차트 종류를 선택해 주세요"로 되물었다.
 # `_CHART_KIND_WORDS`(아래)는 도넛을 알아보는데 **이 패턴에만 빠져 있었다.**
@@ -4353,7 +4378,11 @@ def _operation_follow_up(slot: PendingExcelOperationSlots) -> str:
         if slot.params.get("value") is None:
             return "필터 값이 필요합니다. 예: 완료만 / 60점 미만"
     if intent == "dedupe" and not slot.params.get("key_columns"):
-        return "중복 기준 열을 알려주세요. 예: 전화번호 기준"
+        # "중복된 행 지워줘"는 행 전체가 같은 걸 지우라는 말이다. 실행기는 키 없이
+        # 부르면 이미 전체 열 기준으로 돈다 — 여기서 기준 열을 물으면 과잉 질문이다
+        # (2026-08-17 배터리 실측). 특정 열 중복("전화번호 중복")일 때만 묻는다.
+        if not re.search(r"중복(된|되는)?\s*(행|줄|row)", str(slot.params.get("raw_message") or ""), re.IGNORECASE):
+            return "중복 기준 열을 알려주세요. 예: 전화번호 기준"
     if intent == "pivot":
         if not slot.params.get("row_field"):
             return "피벗의 행 기준이 필요합니다. 예: 월"
@@ -6811,10 +6840,11 @@ async def _run_command(
     quick_action_plan = _build_quick_action_plan(req.message, req.context_range)
     # "아니 부산으로 바꿔줘"는 시트를 뒤지라는 말이 아니라 방금 쓴 칸을 고치라는 말이다.
     # 문맥 없이 플래너에 넘기면 찾을 말과 바꿀 말이 뒤집혀 남의 셀이 지워진다.
+    # "그 아래 칸에는 평균"도 같은 부류 — 직전 수식을 기억하면 규칙으로 풀린다.
     if quick_action_plan is None and pending_slot is None and pending_operation is None:
         quick_action_plan = build_correction_plan(
             req.message, recall_last_write(session_key)
-        )
+        ) or build_below_formula_plan(req.message, recall_last_formula(session_key))
     rule_based_step = parse_command_rule_based(
         req.message,
         context_range=req.context_range,
@@ -7373,7 +7403,26 @@ async def _run_command(
         planner_actions = [
             str(s.get("action", "")) for s in parsed["action_plan"] if isinstance(s, dict)
         ]
-        if planner_actions != ["excel_live.write_range"]:
+        if planner_actions == ["excel_live.write_range"]:
+            # 액션이 같아도 **값은 규칙 것**을 쓴다. 2026-08-17 배터리 실측:
+            # "A12에 합계 라고 입력해줘"에서 규칙은 '합계'를 뽑았는데 플래너의
+            # '합계 라고'가 액션이 같다는 이유로 살아남아 그대로 셀에 들어갔다.
+            # 문장에서 값을 뽑는 일은 결정적 규칙이 플래너보다 정확하다.
+            planner_params = (
+                parsed["action_plan"][0].get("params") or {}
+                if isinstance(parsed["action_plan"][0], dict)
+                else {}
+            )
+            if planner_params.get("values_2d") != preferred_write[0].params.get("values_2d"):
+                parsed = {
+                    "action_plan": [step.__dict__ for step in preferred_write],
+                    "action": preferred_write[0].action,
+                    "params": preferred_write[0].params,
+                    "reason": "범위와 값을 지목한 쓰기",
+                    "intent": "edit",
+                    "plan_source": "rule",
+                }
+        else:
             # "K2:K181에 데이터 막대 넣어줘"는 범위+넣어줘라서 쓰기 폴백이 생긴다.
             # 이미 데이터 막대·수식·표를 골랐으면 그 계획을 쓰기로 덮지 않는다.
             parsed_action = planner_actions[0] if planner_actions else ""
@@ -7396,6 +7445,54 @@ async def _run_command(
                     "params": preferred_write[0].params,
                     "reason": "범위와 값을 지목한 쓰기",
                     "intent": "edit",
+                }
+
+    # 플래너 파라미터가 명백히 오염됐고 빠른 규칙이 대안을 갖고 있으면 규칙을 쓴다.
+    #
+    # 2026-08-17 배터리 실측 — 규칙이 정답을 내놨는데 오염된 계획이 그걸 덮었다:
+    #   "금액에 천 단위 콤마 넣어줘"
+    #     quick_plan : set_number_format(A1:D9, "#,##0")            ← 정답
+    #     plan_final : write_range("금액에 천 단위 콤마")            ← 지시문이 셀에
+    #   "D2:D9 소수점 둘째 자리까지 보이게 해줘"
+    #     quick_plan : set_number_format(D2:D9, "0.00")             ← 정답
+    #     plan_final : set_number_format(format_code="소수점 둘째 자리") ← 말 그대로
+    if (
+        parsed
+        and parsed.get("action_plan")
+        and parsed.get("plan_source") != "rule"
+        and quick_action_plan
+    ):
+        tainted_first = (
+            parsed["action_plan"][0] if isinstance(parsed["action_plan"][0], dict) else {}
+        )
+        t_action = str(tainted_first.get("action", ""))
+        t_params = tainted_first.get("params") or {}
+        quick_first_step = quick_action_plan[0] if isinstance(quick_action_plan[0], dict) else {}
+        q_action = str(quick_first_step.get("action", ""))
+        contaminated = False
+        # ① 지시문을 값으로 쓰는 계획. 규칙이 같은 문장을 편집 액션으로 읽었다면
+        #    그 문장은 데이터가 아니라 명령이다.
+        if t_action == "excel_live.write_range" and q_action != "excel_live.write_range":
+            joined = " ".join(
+                str(c) for row in (t_params.get("values_2d") or []) for c in (row or [])
+            ).strip()
+            if len(joined) >= 4 and joined in str(req.message or ""):
+                contaminated = True
+        # ② 표시 형식이 형식 코드가 아니라 한국어 문장인 계획.
+        if t_action == "excel_live.set_number_format" and not _looks_like_format_code(
+            str(t_params.get("format_code", ""))
+        ):
+            contaminated = True
+        if contaminated:
+            rule_plan = _normalize_plan_or_empty(quick_action_plan)
+            if rule_plan:
+                parsed = {
+                    "action_plan": [s.__dict__ for s in rule_plan],
+                    "action": rule_plan[0].action,
+                    "params": rule_plan[0].params,
+                    "reason": "플래너 파라미터 오염 — 규칙 계획으로 대체",
+                    "intent": "edit",
+                    "plan_source": "rule",
                 }
 
     # 플래너가 고른 액션이 사용자의 말에 근거가 없으면, 근거 있는 규칙 후보로 되돌린다.
@@ -8310,6 +8407,14 @@ async def _execute_plan_and_respond(
             sheet_name=str((primary.params or {}).get("sheet_name") or ""),
             address=address,
             values=(primary.params or {}).get("values_2d"),
+        )
+    # 한 칸짜리 수식도 기억한다 — "그 아래 칸에는 평균"의 문맥이다.
+    if primary.action == "excel_live.set_formula":
+        record_last_formula(
+            session_key,
+            sheet_name=str((primary.params or {}).get("sheet_name") or ""),
+            cell=str((primary.params or {}).get("range_ref") or ""),
+            formula=str((primary.params or {}).get("formula_a1") or ""),
         )
     # 방금 파일을 건드렸다. 다이제스트 캐시(TTL 20초)를 버리지 않으면 다음 단계가
     # 앞 단계의 결과를 못 본다 — 매크로는 2~3초 간격으로 돈다.

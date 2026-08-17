@@ -1179,6 +1179,34 @@ def _last_data_row(entry: dict[str, Any] | None) -> int:
 
 # 수식 안의 맨 A1 범위. 시트 접두(`매출!`)가 붙은 건 이 시트 이야기가 아니라 건드리지 않는다.
 _BARE_A1_RANGE = re.compile(r"(?<![!:\w$])(\$?)([A-Z]{1,3})(\$?)(\d{1,7}):(\$?)([A-Z]{1,3})(\$?)(\d{1,7})")
+# 열 전체 참조(D:D). 시트 접두가 붙은 것은 제외.
+_BARE_COL_RANGE = re.compile(r"(?<![!:\w$])\$?([A-Z]{1,3}):\$?([A-Z]{1,3})(?![\w$:])")
+
+
+def formula_has_reversed_range(formula: str) -> bool:
+    """`=AVERAGE(A2:A1)`처럼 시작 행이 끝 행보다 큰 범위 — 항상 플래너 오염이다."""
+    for hit in _BARE_A1_RANGE.finditer(str(formula or "")):
+        _c1, col1, _c2, row1, _c3, col2, _c4, row2 = hit.groups()
+        if int(row1) > int(row2) or _column_index(col1) > _column_index(col2):
+            return True
+    return False
+
+
+def formula_refers_beyond_used_columns(formula: str, entry: dict[str, Any] | None) -> bool:
+    """수식이 참조하는 열이 전부 데이터 밖인 범위가 있는가 (=AVERAGE(E:E), 데이터는 A~D)."""
+    last_col = _last_data_column(entry)
+    if last_col < 1:
+        return False
+    text = str(formula or "")
+    for hit in _BARE_A1_RANGE.finditer(text):
+        cols = (_column_index(hit.group(2)), _column_index(hit.group(6)))
+        if min(cols) > last_col:
+            return True
+    for hit in _BARE_COL_RANGE.finditer(text):
+        cols = (_column_index(hit.group(1)), _column_index(hit.group(2)))
+        if min(cols) > last_col:
+            return True
+    return False
 
 
 def _last_data_column(entry: dict[str, Any] | None) -> int:
@@ -1476,6 +1504,27 @@ def bind_plan_steps(
                 notes.append({"action": step.action, "slot": "formula_a1", "status": "unresolved"})
 
         if (step_action_override or step.action) == "excel_live.set_formula":
+            formula_text = str(params.get("formula_a1") or "")
+            if formula_has_reversed_range(formula_text):
+                # =AVERAGE(A2:A1) — 뒤집힌 범위는 항상 플래너 오염이다. 2026-08-17
+                # 배터리 실측: 이게 A1:A8에 적용돼 **날짜 열이 통째로 덮였다.**
+                # 대상 range_ref까지 오염돼 있으므로 고쳐 쓰지 않고 되묻는다.
+                notes.append(
+                    {
+                        "action": step.action,
+                        "slot": "formula_a1",
+                        "status": "unresolved",
+                        "reason": "degenerate_range",
+                    }
+                )
+            elif formula_refers_beyond_used_columns(formula_text, entry):
+                # =AVERAGE(E:E)인데 데이터는 A~D뿐 — 근거 없는 열이다. 문장이 말한
+                # 머리글("금액")로 다시 세울 수 있으면 세운다. 못 세우면 그대로 둔다
+                # — 참조표처럼 **일부러** 빈 영역을 가리키는 수식(VLOOKUP)이 있다.
+                rebuilt = build_aggregate_formula(message, entry=entry, digest=digest)
+                if rebuilt:
+                    params["formula_a1"] = rebuilt
+                    changes.append(f"formula_a1={rebuilt}")
             # 학습 리터럴로 들어온 범위를 데이터 끝까지로 자른다.
             clipped = clamp_formula_to_used_range(str(params.get("formula_a1") or ""), entry)
             if clipped and clipped != params.get("formula_a1"):
@@ -1596,6 +1645,9 @@ def _is_stale_unresolved(note: dict[str, Any], action: str, params: dict[str, An
     if note.get("reason") == "echoed_request":
         # 값이 채워져 있다는 게 바로 문제다 — 그 값이 시킨 말 자체다.
         # 여기서 "채워졌으니 해결됨"으로 지우면 설명문이 셀에 그대로 들어간다.
+        return False
+    if note.get("reason") in {"degenerate_range", "empty_replacement"}:
+        # 값이 있어도 그 값 자체가 오염이다(뒤집힌 범위, 빈 치환).
         return False
     if note.get("reason") == "not_stated":
         # 원문이 기준 열을 말하지 않았다. 플래너가 채운 값도, 그 값을 다듬은 결과도
