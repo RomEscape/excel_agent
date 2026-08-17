@@ -121,6 +121,23 @@ def _strip_josa(text: str) -> str:
     return value
 
 
+def _josa_variants(text: str) -> list[str]:
+    """원문형과 조사를 뗀 형태를 **원문형 먼저** 돌려준다.
+
+    2026-08-17 실측: 시트명이 "추이"였는데 `_strip_josa`가 끝 글자 "이"를 주격
+    조사로 보고 떼어 "추"를 만들었다. 그 시트를 찾을 수 없다며 되물었고,
+    **에러 메시지에는 '현재 시트: … 추이 …'가 그대로 찍혀 있었다.**
+    데이터 8턴 + 차트 2턴이 통째로 날아갔다.
+
+    조사인지 이름의 일부인지는 이 함수만으로 알 수 없다. 그러니 정하지 말고
+    둘 다 주고, 실제 시트 목록과 대조하는 쪽이 고르게 한다. 원문형이 앞이다 —
+    사용자가 부른 그대로가 우선이어야 한다.
+    """
+    value = str(text or "").strip()
+    stripped = _strip_josa(value)
+    return [value] if stripped == value else [value, stripped]
+
+
 def sheet_entry(digest: dict[str, Any], sheet_name: str | None) -> dict[str, Any]:
     sheets = digest.get("sheets") or []
     target = str(sheet_name or digest.get("active_sheet") or "").strip()
@@ -162,8 +179,12 @@ def resolve_sheet_from_message(
     if not names:
         return default
     for match in _SHEET_MENTION_PATTERN.finditer(text):
-        candidate = _strip_josa(match.group(1))
-        if candidate not in names:
+        # 원문형("추이")이 실제 시트면 그걸 쓴다. 조사를 뗀 형태("추")를 먼저 보면
+        # 멀쩡한 이름이 잘려 나간다.
+        candidate = next(
+            (name for name in _josa_variants(match.group(1)) if name in names), ""
+        )
+        if not candidate:
             continue
         if _REFERENCE_CONTEXT.search(text[max(0, match.start() - 12) : match.start()]):
             continue
@@ -187,11 +208,12 @@ def explicit_sheet_mentions(message: str) -> list[str]:
     """
     found: list[str] = []
     for match in _SHEET_MENTION_PATTERN.finditer(str(message or "")):
-        candidate = _strip_josa(match.group(1)).strip()
-        if not candidate or candidate.lower() in _GENERIC_SHEET_WORDS:
-            continue
-        if candidate not in found:
-            found.append(candidate)
+        for candidate in _josa_variants(match.group(1)):
+            candidate = candidate.strip()
+            if not candidate or candidate.lower() in _GENERIC_SHEET_WORDS:
+                continue
+            if candidate not in found:
+                found.append(candidate)
     return found
 
 

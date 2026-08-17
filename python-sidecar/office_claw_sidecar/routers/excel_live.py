@@ -738,6 +738,22 @@ def _resolve_sheet_name(service, workbook_id: str | None, sheet_name: str | None
         for row in rows:
             if row["workbook_id"].lower() == lowered or row["name"].lower() == lowered:
                 return row.get("active_sheet") or "Sheet1"
+        # 지목한 통합문서가 목록에 없다고 **다른 통합문서의 시트로 떨어지면 안 된다.**
+        #
+        # 2026-08-17 실측: 워크스페이스 밖 경로로 지목했더니 목록에 없어서 rows[0]로
+        # 폴백했고, 전혀 다른 통합문서의 활성 시트("추이")를 돌려줬다. 두 통합문서에
+        # 같은 이름 시트가 있으면 조용히 엉뚱한 시트에 쓰게 된다.
+        # 지목이 있으면 그 통합문서에게 직접 묻는다.
+        try:
+            info = service.list_sheets(workbook_id)
+            active = str(info.get("active_sheet") or "").strip()
+            if active:
+                return active
+            sheets = info.get("sheets") or []
+            if sheets:
+                return str(sheets[0])
+        except Exception:
+            pass
     return rows[0].get("active_sheet") or "Sheet1"
 
 
