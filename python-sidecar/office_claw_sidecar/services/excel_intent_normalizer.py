@@ -299,7 +299,7 @@ def intent_to_plan(
                 },
                 {
                     "action": "excel_live.fill_range",
-                    "params": {"target_range": rng, "fill_color": "#FFFFFF"},
+                    "params": {"target_range": rng, "fill_color": "none"},
                     "reason": "의도 정규화: 배경 제거",
                 },
                 {

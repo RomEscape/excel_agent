@@ -809,7 +809,13 @@ class FileExcelLiveService(ExcelLiveService):
             ws = self._sheet_or_raise(wb, sheet_name)
             bounds = self._range_bounds(ws, target_range)
             min_row, min_col, max_row, max_col = bounds
-            fill = PatternFill(fill_type="solid", fgColor=self._to_argb(fill_color), bgColor=self._to_argb(fill_color))
+            if str(fill_color or "").strip().lower() in {"none", "no_fill", "transparent", "무색", "없음"}:
+                # "채우기 없음" — 흰색 칠과 다르다. 흰색은 Excel 기본 격자선을 가려
+                # 시트가 종이처럼 하얘 보인다(2026-08-17 GUI 실측: 초기화 뒤 사용자가
+                # 테두리가 안 보인다고 했다). 진짜 기본 상태는 무채움이다.
+                fill = PatternFill(fill_type=None)
+            else:
+                fill = PatternFill(fill_type="solid", fgColor=self._to_argb(fill_color), bgColor=self._to_argb(fill_color))
             changed = 0
             for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
                 for cell in row:

@@ -488,6 +488,16 @@ class ExcelLiveService:
         wb = self._find_workbook(target_id)
         sheet = self._find_sheet(wb, sheet_name)
         rng = self._resolve_target_range(sheet, target_range)
+        if str(fill_color or "").strip().lower() in {"none", "no_fill", "transparent", "무색", "없음"}:
+            # "채우기 없음" — 흰색 칠은 기본 격자선을 가린다(파일 엔진과 같은 계약).
+            rng.color = None
+            rows_obj = getattr(rng, "rows", None)
+            cols_obj = getattr(rng, "columns", None)
+            return {
+                "changed_cells": int(getattr(rows_obj, "count", 1) or 1)
+                * int(getattr(cols_obj, "count", 1) or 1),
+                "address": str(rng.address),
+            }
         rgb = self._hex_to_rgb(fill_color)
         rng.color = rgb
 

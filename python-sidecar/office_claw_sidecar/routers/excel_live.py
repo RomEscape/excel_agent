@@ -2761,7 +2761,9 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
         return [
             {
                 "action": "excel_live.fill_range",
-                "params": {"target_range": target, "fill_color": "#FFFFFF"},
+                # "제거"는 흰색 칠이 아니라 무채움이다 — 흰색은 기본 격자선을 가려
+                # 시트가 종이처럼 하얘 보인다(2026-08-17 GUI 실측).
+                "params": {"target_range": target, "fill_color": "none"},
                 "reason": "빠른 규칙 기반 배경색 제거",
             }
         ]
@@ -3041,7 +3043,9 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
             })
             steps.append({
                 "action": "excel_live.fill_range",
-                "params": {"target_range": target, "fill_color": "#FFFFFF"},
+                # "제거"는 흰색 칠이 아니라 무채움이다 — 흰색은 기본 격자선을 가려
+                # 시트가 종이처럼 하얘 보인다(2026-08-17 GUI 실측).
+                "params": {"target_range": target, "fill_color": "none"},
                 "reason": "빠른 규칙 기반 배경색 제거",
             })
         steps.append({
