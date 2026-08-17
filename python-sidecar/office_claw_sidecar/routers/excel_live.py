@@ -7225,6 +7225,9 @@ async def _run_command(
             "params": action_plan[0].params if action_plan else {},
             "reason": "빠른 규칙 기반 실행 계획",
             "intent": "edit" if action_plan and action_plan[0].action != "excel_live.read_range" else "read",
+            # 규칙이 문장을 보고 만든 계획이다 — 그 자체가 원문 근거다. 아래의
+            # 근거 필터는 **플래너**의 헛발질을 막는 장치이므로 여기는 지나가야 한다.
+            "plan_source": "rule",
         }
 
     if parsed is None and not quick_action_plan:
@@ -7236,6 +7239,7 @@ async def _run_command(
                 "params": action_plan[0].params if action_plan else {},
                 "reason": "룰 기반 폴백 실행 계획",
                 "intent": "edit" if action_plan and action_plan[0].action != "excel_live.read_range" else "read",
+                "plan_source": "rule",
             }
 
     # create_table 멀티턴 슬롯필링 오케스트레이션
@@ -7299,6 +7303,10 @@ async def _run_command(
         and pending_slot is None
         and parsed
         and parsed.get("action_plan")
+        # "플래너가 뒤집지 못하게"가 목적이다. 계획이 이미 규칙에서 왔다면 뒤집을
+        # 플래너가 없고, 여기서 쓰기 단계만 남기면 규칙이 낸 나머지 단계가 사라진다
+        # — 근거 필터가 "표 없애줘" 3단계를 1단계로 자른 것과 같은 부류다.
+        and parsed.get("plan_source") != "rule"
     ):
         planner_actions = [
             str(s.get("action", "")) for s in parsed["action_plan"] if isinstance(s, dict)
@@ -7330,7 +7338,13 @@ async def _run_command(
 
     # 플래너가 고른 액션이 사용자의 말에 근거가 없으면, 근거 있는 규칙 후보로 되돌린다.
     # 같은 문장이 실행될 때마다 색칠·표생성·조건부서식으로 튀는 문제를 여기서 끊는다.
-    if parsed and parsed.get("action_plan"):
+    #
+    # 규칙이 만든 계획(plan_source=rule)은 대상이 아니다. 2026-08-17 실측:
+    # "이 부분은 원래대로 초기화해줄 수 있어? 표 없애줘"에 규칙이 일부러
+    # [테두리 제거, 배경 제거, 내용 비우기] 3단계를 냈는데, 문장에 '테두리'라는
+    # 낱말이 없다고 이 필터가 2단계를 잘라 **내용만 비우고 테두리가 남았다.**
+    # 규칙은 문장을 보고 발화된 것이라 낱말 대조를 다시 할 이유가 없다.
+    if parsed and parsed.get("action_plan") and parsed.get("plan_source") != "rule":
         planner_first = parsed["action_plan"][0] if isinstance(parsed["action_plan"][0], dict) else {}
         planner_action = str(planner_first.get("action", ""))
         # 첫 단계만 보면 [create_sheet, pivot_table]처럼 준비 단계 뒤에 숨은 오작동을 놓친다.

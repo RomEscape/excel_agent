@@ -63,3 +63,25 @@ export function buildPasteBlock(text, address) {
     `[[EXCEL_PASTE_NOTE]]엑셀에서 붙여넣은 ${rows}행 × ${cols}열 — ${ref} 범위로 인식했습니다[[/EXCEL_PASTE_NOTE]]`,
   ].join("\n");
 }
+
+/**
+ * 저장·말풍선에 쓸 사람용 문구.
+ *
+ * 2026-08-17 실측(스크린샷): `[[EXCEL_RANGE:A1:D9]] [[EXCEL_PASTE_NOTE]]…`가
+ * 사용자 말풍선에 **그대로** 떴다. 마크업은 모델과의 약속이지 사람에게 보일 말이
+ * 아니다. 마크업을 만든 이 모듈이 표시용 변환도 책임진다 — 두 표기가 다른 파일에
+ * 흩어지면 한쪽만 고치는 사고가 난다(오늘 그랬다).
+ */
+export function displayMessageText(text) {
+  const raw = String(text ?? "");
+  if (!raw.includes("[[EXCEL_")) return raw;
+  const note = raw.match(/\[\[EXCEL_PASTE_NOTE\]\]([\s\S]*?)\[\[\/EXCEL_PASTE_NOTE\]\]/i);
+  const cleaned = raw
+    .replace(/\[\[EXCEL_RANGE:[A-Z0-9:]+\]\]/gi, "")
+    .replace(/\[\[EXCEL_VALUES_TSV\]\][\s\S]*?\[\[\/EXCEL_VALUES_TSV\]\]/gi, "")
+    .replace(/\[\[EXCEL_PASTE_NOTE\]\][\s\S]*?\[\[\/EXCEL_PASTE_NOTE\]\]/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  const prefix = note ? `📋 ${note[1].trim()}` : "";
+  return [prefix, cleaned].filter(Boolean).join("\n");
+}

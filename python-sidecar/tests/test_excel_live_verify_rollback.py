@@ -181,16 +181,18 @@ def test_clear_that_empties_the_range_succeeds(workbook, monkeypatch):
     assert _cell(workbook, "C3") is None
 
 
-def test_emptying_via_write_null_actually_empties_the_cells(workbook):
+def test_emptying_actually_empties_the_cells(workbook):
     """"비워줘"의 실제 실행 경로 회귀 테스트.
 
-    빠른 규칙이 이 문장을 clear_range가 아니라 값이 null인 write_range로 바꾼다.
-    openpyxl의 `ws.cell(value=None)`이 기존 값을 남기는 바람에 이 경로가 아무것도
-    지우지 못한 채 written_cells=2를 보고하고 있었다.
+    한동안 explicit_write 블록이 규칙의 clear_range 계획을 값이 null인
+    write_range로 갈아끼웠고, `ws.cell(value=None)`이 기존 값을 남겨 아무것도
+    지우지 못한 채 written_cells=2를 보고했다. 2026-08-17에 규칙 계획
+    (plan_source=rule)을 그 블록에서 면제하면서 본래 액션인 clear_range로
+    돌아왔다 — 여기서 못박을 것은 액션 이름이 아니라 **셀이 실제로 비는가**다.
     """
     body = _command(workbook, "C2:C3 비워줘")
 
-    assert body["action"] == "excel_live.write_range"
+    assert body["action"] in {"excel_live.clear_range", "excel_live.write_range"}
     assert body["ok"] is True, body.get("result")
     assert _cell(workbook, "C2") is None
     assert _cell(workbook, "C3") is None
