@@ -530,7 +530,7 @@ _AMBIGUITY_SENSITIVE_SLOTS = {
 # 된다. 두 목록이 어긋나면 이런 식으로 조용히 되묻기가 된다 — 같이 고쳐야 한다.
 _CHART_TYPE_MENTION = re.compile(
     r"(선\s*그래프|꺾은|라인|line|막대|bar|원형|파이|pie|영역|area|분산|scatter"
-    r"|도넛|도너츠|donut|doughnut|링\s*차트)",
+    r"|도넛|도너츠|donut|doughnut|링\s*차트|바\s*차트|바\s*그래프)",
     re.IGNORECASE,
 )
 # 계획 끝에 관례적으로 붙는 마무리 단계. 응답 액션으로 보고하면 실제 작업이 가려진다.
@@ -1439,7 +1439,8 @@ def _has_border_style_context(text: str) -> bool:
     lowered = str(text or "").strip().lower()
     if not lowered:
         return False
-    if any(token in lowered for token in ["테두리", "경계선", "border", "보더"]):
+    # "격자 표시해줘"가 read_range로 샜다(2026-08-17 실측). 표에 선을 긋는 말이다.
+    if any(token in lowered for token in ["테두리", "경계선", "border", "보더", "격자", "모눈"]):
         return True
     # "경계값" 같은 수학/통계 문맥은 제외하고, "경계들을" 같은 구어체는 경계선 요청으로 본다.
     return "경계" in lowered and "경계값" not in lowered
@@ -2326,6 +2327,55 @@ def _quick_header_write_step(text: str, preferred_cell: str) -> dict[str, Any] |
     }
 
 
+# 표시 형식을 말로 부르는 방식들. 규칙으로 확정하지 않으면 플래너가 문구를 **값으로**
+# 써 버린다 — 2026-08-17 실측: "천 단위 콤마 넣어줘"가 D5의 97000을 문자열
+# '천 단위 콤마'로 덮어썼다. 서식 요청이 데이터를 부수는 건 가장 나쁜 실패다.
+_NUMBER_FORMAT_HINTS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # 소수점 규칙이 천 단위보다 **앞**이어야 한다 — "소수점 세 자리"가 뒤 규칙의
+    # "세 자리"에 먼저 걸리면 #,##0(정수 표시)이 돼 소수가 사라진다.
+    (re.compile(r"소수(?:점)?\s*(?:네|4)\s*자리"), "0.0000"),
+    (re.compile(r"소수(?:점)?\s*(?:세|3)\s*자리"), "0.000"),
+    (re.compile(r"소수(?:점)?\s*(?:두|2)\s*자리|둘째\s*자리"), "0.00"),
+    (re.compile(r"소수(?:점)?\s*(?:한|1)\s*자리|첫째\s*자리"), "0.0"),
+    (re.compile(r"(퍼센트|백분율|%\s*(로|표시|형식))", re.IGNORECASE), "0.0%"),
+    (re.compile(r"(통화|원화|₩|금액\s*기호)", re.IGNORECASE), '"₩"#,##0'),
+    (re.compile(r"(천\s*단위|세\s*자리|쉼표|콤마|comma)", re.IGNORECASE), "#,##0"),
+    (re.compile(r"(날짜\s*형식|yyyy)", re.IGNORECASE), "yyyy-mm-dd"),
+)
+_EXPLICIT_FORMAT_CODE = re.compile(r"([#0][#0,\.]*(?:%|)|yyyy[-/][mM]{1,2}[-/]dd)")
+
+
+def _quick_number_format_step(text: str, target: str) -> dict[str, Any] | None:
+    """표시 형식 요청을 규칙으로 확정한다. 값은 건드리지 않는다."""
+    lowered = str(text or "").lower()
+    # "소수점 두 자리로 보여줘"가 read_range로 샜다(2026-08-17 실측) — '보여줘'가
+    # 읽기로 해석된 탓이다. 자릿수·서식 어휘가 있으면 표시 형식 요청으로 본다.
+    if not re.search(
+        r"(형식|서식|포맷|format|콤마|쉼표|퍼센트|백분율|천\s*단위|자리|소수)", lowered
+    ):
+        return None
+    # 문장에 코드가 그대로 있으면 그걸 쓴다("#,##0", "0.00%").
+    explicit = ""
+    for match in _EXPLICIT_FORMAT_CODE.finditer(str(text or "")):
+        token = match.group(1)
+        if len(token) >= 3 and any(ch in token for ch in "#0"):
+            explicit = token
+            break
+    code = explicit
+    if not code:
+        for pattern, fmt in _NUMBER_FORMAT_HINTS:
+            if pattern.search(lowered):
+                code = fmt
+                break
+    if not code:
+        return None
+    return {
+        "action": "excel_live.set_number_format",
+        "params": {"target_range": target, "format_code": code},
+        "reason": "빠른 규칙 기반 표시 형식",
+    }
+
+
 def _build_quick_action_plan(message: str, context_range: str | None) -> list[dict[str, Any]] | None:
     text = str(message or "").strip()
     lowered = text.lower()
@@ -2339,6 +2389,12 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
     header_step = _quick_header_write_step(text, explicit_range or normalized_ctx)
     if header_step is not None:
         return [header_step]
+
+    fmt_step = _quick_number_format_step(
+        text, normalized_ctx or explicit_range or "__ACTIVE_SELECTION__"
+    )
+    if fmt_step is not None:
+        return [fmt_step]
 
     if any(
         token in lowered
