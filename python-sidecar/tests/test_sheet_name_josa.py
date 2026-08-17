@@ -18,6 +18,7 @@ from __future__ import annotations
 import pytest
 
 from office_claw_sidecar.services.excel_param_binder import (
+    explicit_sheet_mention_variants,
     explicit_sheet_mentions,
     resolve_sheet_from_message,
 )
@@ -47,11 +48,18 @@ class TestNamesEndingInAParticle:
     def test_the_full_name_wins_when_it_is_a_real_sheet(self, sheet):
         assert _resolve(f"{sheet} 시트 A1:C1에 날짜 입력") == sheet
 
-    def test_the_truncated_form_is_still_offered_as_a_fallback(self):
-        # 실제 시트와 대조하는 쪽이 고를 수 있도록 둘 다 준다. 원문형이 앞이다.
-        mentions = explicit_sheet_mentions("추이 시트 A1:C1에 날짜 입력")
-        assert mentions[0] == "추이"
-        assert "추" in mentions
+    def test_variants_are_grouped_per_mention(self):
+        """후보는 **묶음**으로 준다 — 평평하게 펴면 가드가 오작동한다.
+
+        평평한 목록으로 준 첫 수정에서, "언급했는데 없는 시트"를 찾는 가드가
+        변형형 "추"를 없는 시트로 오인해 다시 "'추' 시트를 찾을 수 없습니다"라고
+        되물었다. 원래 이름 "추이"는 멀쩡히 있는데도 그랬다 — 내가 낸 회귀였다.
+        한 지목의 후보 중 하나라도 실재하면 그 지목은 해결된 것이다.
+        """
+        assert explicit_sheet_mention_variants("추이 시트 A1:C1에 날짜 입력") == [["추이", "추"]]
+
+    def test_the_flat_list_keeps_only_the_verbatim_form(self):
+        assert explicit_sheet_mentions("추이 시트 A1:C1에 날짜 입력") == ["추이"]
 
     def test_creating_and_writing_agree_on_the_name(self):
         # 생성은 되는데 쓰기가 안 되면 사용자는 원인을 못 찾는다 — 실제로 그랬다.
@@ -71,10 +79,13 @@ class TestOrdinaryNamesUnaffected:
 
 class TestRealParticlesStillStripped:
     def test_a_particle_before_the_word_sheet_is_still_handled(self):
-        # "매출의 시트" — '의'는 진짜 조사다. 떼어낸 형태가 실제 시트면 그걸 쓴다.
-        assert "매출" in explicit_sheet_mentions("매출의 시트에 써줘")
+        # "매출의 시트" — '의'는 진짜 조사다. 묶음에 제거형이 들어 있어야
+        # 실제 시트 목록과 대조할 때 걸린다.
+        assert explicit_sheet_mention_variants("매출의 시트에 써줘") == [["매출의", "매출"]]
+
+    def test_the_real_sheet_wins_when_a_particle_was_attached(self):
+        assert _resolve("매출의 시트에 써줘") == "매출"
 
     def test_an_unknown_name_keeps_both_forms(self):
         # 아직 없는 시트를 지목한 경우다. 존재 판정은 호출부가 하므로 둘 다 남긴다.
-        mentions = explicit_sheet_mentions("신규이 시트 만들어줘")
-        assert mentions[0] == "신규이"
+        assert explicit_sheet_mention_variants("신규이 시트 만들어줘") == [["신규이", "신규"]]

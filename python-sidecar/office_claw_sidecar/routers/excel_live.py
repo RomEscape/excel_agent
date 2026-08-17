@@ -101,7 +101,7 @@ from office_claw_sidecar.services.excel_macro_planner import (
 from office_claw_sidecar.services.excel_param_binder import (
     _retarget_sheet_by_headers,
     bind_plan_steps,
-    explicit_sheet_mentions,
+    explicit_sheet_mention_variants,
     resolve_sheet_from_message,
     sheet_entry,
 )
@@ -816,10 +816,14 @@ def _edit_target_problem(
     target_sheet = str(sheet_name or "").strip()
     if message:
         existing = {str(name).strip().casefold() for name in sheets}
-        for named in explicit_sheet_mentions(message):
-            if named.strip().casefold() not in existing:
-                target_sheet = named
-                break
+        # 한 지목의 후보 중 **하나라도 실재하면** 그 지목은 해결된 것이다.
+        # 평평한 목록으로 보면 조사를 뗀 변형("추")이 없는 시트로 걸려,
+        # 멀쩡한 "추이"를 두고 되묻게 된다(2026-08-17 실측).
+        for group in explicit_sheet_mention_variants(message):
+            if any(name.strip().casefold() in existing for name in group):
+                continue
+            target_sheet = group[0]
+            break
     if not target_sheet:
         return ""
     if not sheets or target_sheet in sheets:

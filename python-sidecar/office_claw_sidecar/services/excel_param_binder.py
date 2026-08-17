@@ -207,14 +207,31 @@ def explicit_sheet_mentions(message: str) -> list[str]:
     지시어('새', '이', 'new' 등)는 이름이 아니므로 뺀다.
     """
     found: list[str] = []
-    for match in _SHEET_MENTION_PATTERN.finditer(str(message or "")):
-        for candidate in _josa_variants(match.group(1)):
-            candidate = candidate.strip()
-            if not candidate or candidate.lower() in _GENERIC_SHEET_WORDS:
-                continue
-            if candidate not in found:
-                found.append(candidate)
+    for group in explicit_sheet_mention_variants(message):
+        if group and group[0] not in found:
+            found.append(group[0])
     return found
+
+
+def explicit_sheet_mention_variants(message: str) -> list[list[str]]:
+    """지목 하나당 **후보 묶음**을 준다 — 원문형이 앞, 조사 뗀 형태가 뒤.
+
+    묶음으로 주는 이유(2026-08-17 실측): 후보를 평평하게 펴서 돌려줬더니,
+    "언급했는데 없는 시트"를 찾는 가드가 변형형 "추"를 없는 시트로 오인해
+    "'추' 시트를 찾을 수 없습니다"라고 되물었다. 원래 이름 "추이"는 멀쩡히
+    있는데도 그랬다. **한 지목의 후보 중 하나라도 실재하면 그 지목은 해결된 것**
+    이므로, 판정하는 쪽이 묶음 단위로 볼 수 있어야 한다.
+    """
+    groups: list[list[str]] = []
+    for match in _SHEET_MENTION_PATTERN.finditer(str(message or "")):
+        group = [
+            candidate
+            for candidate in (c.strip().strip("\"'") for c in _josa_variants(match.group(1)))
+            if candidate and candidate.lower() not in _GENERIC_SHEET_WORDS
+        ]
+        if group:
+            groups.append(group)
+    return groups
 
 
 def _sheet_named_verbatim(text: str, names: set[str]) -> str | None:
