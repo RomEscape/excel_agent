@@ -6414,6 +6414,55 @@ def _step_preview_line(index: int, action: str, params: dict[str, Any] | None) -
     return f"{index}. {mark}{_action_summary(action)}{tail}"
 
 
+def _result_count_phrase(action: str, result: dict[str, Any] | None) -> str:
+    """실행 결과의 규모를 사람 말로 — "몇 셀이 어떻게 됐는지"까지가 보고다."""
+    r = result or {}
+    emptied = r.get("emptied_values")
+    if action == "excel_live.clear_range" and emptied is not None:
+        return f" · 값 {int(emptied or 0)}개 삭제"
+    if r.get("written_cells") is not None:
+        return f" · 값 {int(r['written_cells'] or 0)}개 기록"
+    if r.get("replaced_cells") is not None:
+        return f" · {int(r['replaced_cells'] or 0)}개 셀 치환"
+    if r.get("removed_rows") is not None:
+        removed = int(r["removed_rows"] or 0)
+        return f" · {removed}행 제거" if removed else " · 제거된 행 없음"
+    if r.get("formula_applied_cells") is not None:
+        return f" · 수식 {int(r['formula_applied_cells'] or 0)}칸"
+    if r.get("changed_cells") is not None:
+        return f" · {int(r['changed_cells'] or 0)}개 셀"
+    if r.get("rows") is not None and r.get("cols") is not None:
+        return f" · {r['rows']}×{r['cols']}"
+    return ""
+
+
+def _build_execution_report(steps: list[Any]) -> str:
+    """실행된 매 단계를 "액션 — 실제 대상 · 규모"로 보고한다.
+
+    2026-08-18 사용자 요구: "실행할 때마다 어떤 방식으로 수정을 진행하는지
+    나오게, 화면 정확성 최대치로." 지금까지는 대표 액션 한 줄("완료되었습니다")만
+    보여서, 3단계가 돌아도 무엇이 어디에 일어났는지 화면으로는 알 수 없었다.
+    검증은 통과가 기본이므로 예외(검증 안 됨·재시도)만 표시해 소음을 줄인다.
+    """
+    visible = [s for s in steps if s.action not in _ANCILLARY_REPORT_ACTIONS]
+    if not visible:
+        return ""
+    lines: list[str] = []
+    for idx, s in enumerate(visible, start=1):
+        label = _ACTION_DISPLAY.get(s.action, _action_summary(s.action))
+        result = s.result or {}
+        target = str(result.get("address") or "").replace("$", "") or _step_target(s.params)
+        tail = _result_count_phrase(s.action, result)
+        marks = ""
+        if getattr(s, "retried", False):
+            marks += " (재시도 후 성공)"
+        if not getattr(s, "verified", True):
+            marks += " (검증 안 됨)"
+        head = f"{idx}. " if len(visible) > 1 else ""
+        lines.append(f"{head}{label} — {target}{tail}{marks}" if target else f"{head}{label}{tail}{marks}")
+    return "\n".join(lines)
+
+
 def _build_approval(action: str, params: dict[str, Any]) -> ApprovalRequest:
     approval_id = str(uuid.uuid4())
     summary = _step_preview_line(1, action, params).split(". ", 1)[1]
@@ -6429,6 +6478,10 @@ def _build_approval(action: str, params: dict[str, Any]) -> ApprovalRequest:
 
 
 _ACTION_SUMMARY = {
+    # 승인 카드에 그대로 뜬다 — 여기 없는 액션은 "엑셀 변경 작업을 실행합니다"
+    # 라는 무의미한 폴백이 되므로, 새 액션을 추가하면 여기도 한 줄 늘린다
+    # (2026-08-18 실측: 내용 비우기가 폴백으로 떠서 무슨 단계인지 안 보였다).
+    "excel_live.clear_range": "지정 범위의 값을 비웁니다.",
     "excel_live.write_range": "엑셀 셀 값을 수정합니다.",
     "excel_live.create_table": "엑셀에 표를 생성합니다.",
     "excel_live.highlight_by_condition": "조건에 맞는 셀 서식을 변경합니다.",
@@ -8554,6 +8607,14 @@ async def _execute_plan_and_respond(
         ]
     if bind_notes:
         last_result["param_bindings"] = bind_notes
+    # 매 실행의 단계별 보고 — 프런트가 이 문자열을 그대로 그린다(2026-08-18).
+    execution_report = _build_execution_report(execution.steps)
+    if execution_report:
+        last_result["execution_report"] = execution_report
+    if rollback_events:
+        last_result["execution_report"] = (
+            f"{last_result.get('execution_report', '')}\n⚠ 검증 실패로 {len(rollback_events)}건을 자동 되돌렸습니다."
+        ).strip()
     reasoning_profile = {
         "mode": reasoning_mode,
         "complexity_score": reasoning_complexity_score,
