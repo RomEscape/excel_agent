@@ -524,8 +524,14 @@ _AMBIGUITY_SENSITIVE_SLOTS = {
     ("excel_live.create_chart", "chart_type"),
     ("excel_live.filter_rows", "column"),
 }
+# 2026-08-17 실측: "도넛 차트 만들어줘"에 "차트 종류를 선택해 주세요"로 되물었다.
+# `_CHART_KIND_WORDS`(아래)는 도넛을 알아보는데 **이 패턴에만 빠져 있었다.**
+# 이건 "종류를 말했는가"를 판정하는 곳이라, 여기 없으면 종류를 말해도 안 말한 것이
+# 된다. 두 목록이 어긋나면 이런 식으로 조용히 되묻기가 된다 — 같이 고쳐야 한다.
 _CHART_TYPE_MENTION = re.compile(
-    r"(선\s*그래프|꺾은|라인|line|막대|bar|원형|파이|pie|영역|area|분산|scatter)", re.IGNORECASE
+    r"(선\s*그래프|꺾은|라인|line|막대|bar|원형|파이|pie|영역|area|분산|scatter"
+    r"|도넛|도너츠|donut|doughnut|링\s*차트)",
+    re.IGNORECASE,
 )
 # 계획 끝에 관례적으로 붙는 마무리 단계. 응답 액션으로 보고하면 실제 작업이 가려진다.
 _ANCILLARY_REPORT_ACTIONS = {
@@ -1172,6 +1178,28 @@ def _quick_color_hex(word: str) -> str:
     if token in {"흰색", "하얀색", "하양", "white", "화이트", "백색"}:
         return "#FFFFFF"
     return "#FFFF00"
+
+
+def _background_fill_hex(lowered: str, font_color: str | None) -> str:
+    """한 문장에서 **배경색**만 골라낸다. 글자색과 헷갈리면 안 된다.
+
+    "배경색 #1E6B4F로 칠하고 글자 흰색 굵게"에는 색이 둘이다. 글꼴 추출기가 이미
+    글자색(#FFFFFF)을 집어 갔으므로, 남는 색이 배경색이다.
+
+    배경을 가리키는 말이 없으면 빈 문자열 — "글씨 흰색 크게"가 배경 칠하기로
+    새면 안 된다(2026-08-17 실측에서 이 오탐을 경계해 붙인 조건이다).
+    """
+    if not re.search(r"(배경|채우기|칠하|칠해|음영|하이라이트)", lowered):
+        return ""
+    colors = _quick_extract_colors(lowered)
+    if not colors:
+        return ""
+    normalized_font = str(font_color or "").upper()
+    for color in colors:
+        if color.upper() != normalized_font:
+            return color
+    # 글자색과 배경색을 같은 색으로 지시한 경우다. 그대로 쓴다.
+    return colors[0]
 
 
 def _quick_extract_colors(text: str) -> list[str]:
@@ -2684,13 +2712,25 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
         header_font = bool(re.search(r"(머리글|헤더|header)", lowered))
         target = normalized_ctx or explicit_range or ("1:1" if header_font else "__ACTIVE_SELECTION__")
         font_params = font_params or {"bold": True}
-        return [
-            {
-                "action": "excel_live.set_font",
-                "params": {"target_range": target, **font_params},
-                "reason": "빠른 규칙 기반 글꼴 변경",
-            }
-        ]
+        steps: list[dict[str, Any]] = []
+        # "배경색 …로 칠하고 글자 굵게" — 한 문장에 둘 다 있으면 둘 다 한다.
+        #
+        # 2026-08-17 실측: 이 분기가 먼저 return해서 뒤의 배경색 분기에 닿지 못했다.
+        # "배경색 #1E6B4F로 칠하고 글자 흰색 굵게"가 글꼴만 바뀌고 배경은 그대로였는데
+        # **성공으로 보고됐다.** 같은 문장을 둘로 쪼개면 되던 것이라 더 헷갈렸다.
+        fill_hex = _background_fill_hex(lowered, font_params.get("color"))
+        if fill_hex:
+            steps.append({
+                "action": "excel_live.fill_range",
+                "params": {"target_range": target, "fill_color": fill_hex},
+                "reason": "빠른 규칙 기반 배경색 적용",
+            })
+        steps.append({
+            "action": "excel_live.set_font",
+            "params": {"target_range": target, **font_params},
+            "reason": "빠른 규칙 기반 글꼴 변경",
+        })
+        return steps
 
     text_equals = parse_text_equals_condition(text)
     formula_cf = bool(re.search(r"조건부\s*서식|수식\s*조건부", lowered))
