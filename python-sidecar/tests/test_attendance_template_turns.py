@@ -123,6 +123,41 @@ class TestTheScreenshotConversation:
         assert service.tables and service.tables[-1]["rows"] == 13
 
 
+class TestUserSpecifiedHeadersWin:
+    """2026-08-18 GUI 실측 대화 그대로.
+
+    사용자: "A1:D9 여기에 출석부 형태로 표를 만들어줘 날짜, 이름, 출석 여부,
+    비고 이렇게 헤더를 만들어줘" → 봇이 일별/월별을 물었고(정할 게 없는 질문),
+    "일별로 만들어줘"라는 답의 프리셋 헤더(출근 시간…)가 사용자 지정 헤더를
+    덮었으며, 표는 A1:D9가 아니라 A1:D32(프리셋 기본 32행)에 생겼다.
+    """
+
+    MESSAGE = "A1:D9 여기에 출석부 형태로 표를 만들어줘 날짜, 이름, 출석 여부, 비고 이렇게 헤더를 만들어줘"
+
+    def test_everything_is_known_so_nothing_is_asked(self, service):
+        body = _turn(self.MESSAGE, session="sess-headers-1")
+        assert not body["result"].get("ask_follow_up"), body.get("reason")
+
+    def test_the_table_lands_on_the_pasted_range_with_user_headers(self, service):
+        _turn(self.MESSAGE, session="sess-headers-2")
+        assert service.tables, "표가 생성되지 않았다"
+        table = service.tables[-1]
+        # 붙여넣은 A1:D9 = 9행 × 4열. 프리셋 기본 32행이 아니라.
+        assert (table["start_cell"], table["rows"], table["cols"]) == ("A1", 9, 4), table
+        header_rows = [w["values_2d"][0] for w in service.writes if w.get("values_2d")]
+        assert ["날짜", "이름", "출석 여부", "비고"] in header_rows, header_rows
+
+    def test_a_variant_answer_cannot_override_user_headers(self, service):
+        # 헤더만 지정하고 크기를 안 준 경우 — 크기 질문에 "일별로"라고 답해도
+        # 프리셋 헤더가 사용자 지정을 덮으면 안 된다.
+        _turn("출석부 표 만들어줘 헤더는 날짜, 이름, 출석 여부, 비고", session="sess-headers-3")
+        body = _turn("일별로 만들어줘", session="sess-headers-3")
+        assert not body["result"].get("ask_follow_up"), body.get("reason")
+        header_rows = [w["values_2d"][0] for w in service.writes if w.get("values_2d")]
+        assert ["날짜", "이름", "출석 여부", "비고"] in header_rows, header_rows
+        assert ["날짜", "이름", "출근 시간", "퇴근 시간"] not in header_rows
+
+
 class TestPresetPlumbing:
     def test_the_variant_is_found_inside_a_sentence(self):
         preset = match_table_preset("출석부 만들어줘")

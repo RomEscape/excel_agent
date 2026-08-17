@@ -284,6 +284,10 @@ class PendingCreateTableSlots:
     # 템플릿 질문은 **한 번만** 한다. 2026-08-17 실측: "일별"이라는 답을 해석하는
     # 코드가 없어 같은 질문("일별/월별 중 어떤 형식으로?")을 되풀이했다.
     template_question_asked: bool = False
+    # 사용자가 문장으로 직접 지정한 헤더인가. 2026-08-18 GUI 실측: "날짜, 이름,
+    # 출석 여부, 비고"라고 지정했는데 다음 턴의 "일별로"가 프리셋 헤더(출근 시간…)
+    # 로 덮었다. 사용자 지정 헤더는 프리셋 선택지가 이기지 못한다.
+    headers_from_user: bool = False
     ask_count: int = 0
     created_at_ts: float = 0.0
     updated_at_ts: float = 0.0
@@ -4866,6 +4870,8 @@ def _merge_create_table_slots(
             normalized = [str(h).strip() for h in headers if str(h).strip()]
             if normalized:
                 slot.headers = normalized
+                if from_user:
+                    slot.headers_from_user = True
         if isinstance(values_2d, list):
             normalized_rows: list[list[Any]] = []
             inferred_cols = 0
@@ -4938,14 +4944,18 @@ def _merge_create_table_slots(
     if (
         ":" in dragged
         and mentions_selection(req.message)
-        and slot.rows is None
-        and slot.cols is None
+        and (slot.rows is None or slot.cols is None)
     ):
         rect = parse_rect(dragged)
         if rect:
             top, left, bottom, right = rect
-            slot.rows = max(1, min(100, bottom - top + 1))
-            slot.cols = max(1, min(50, right - left + 1))
+            # 빠진 축만 채운다. 2026-08-18 GUI 실측: 헤더 4개로 열이 먼저 정해지자
+            # 이 블록 전체가 건너뛰어져 A1:D9를 붙여넣고도 행이 프리셋 기본값
+            # 32가 됐다("요청한 위치와 장소에 만드는지 모르겠는데").
+            if slot.rows is None:
+                slot.rows = max(1, min(100, bottom - top + 1))
+            if slot.cols is None:
+                slot.cols = max(1, min(50, right - left + 1))
             if not slot.start_cell:
                 slot.start_cell = dragged.split(":")[0]
 
@@ -4959,8 +4969,9 @@ def _merge_create_table_slots(
         variant = find_variant(template, req.message)
         if variant is not None:
             variant_headers = list(variant[1])
-            if not user_header_explicit:
+            if not user_header_explicit and not slot.headers_from_user:
                 # 대상 범위를 지목했으면(13×4) 그 폭에 맞춰 자른다.
+                # 사용자가 직접 지정한 헤더는 프리셋 선택지가 덮지 못한다(2026-08-18 실측).
                 slot.headers = variant_headers[: slot.cols] if slot.cols else variant_headers
             if slot.cols is None:
                 slot.cols = max(1, min(50, len(slot.headers or variant_headers)))
@@ -4988,8 +4999,9 @@ _MAX_TABLE_FOLLOW_UPS = 2
 
 def _build_table_follow_up(slot: PendingCreateTableSlots, *, last_call: bool = False) -> str:
     # 템플릿 질문이 크기 질문보다 먼저다 — 답(일별/월별)이 헤더까지 정하기 때문이다.
-    # 단, **한 번만**. 답을 못 알아들었다고 또 물으면 대화가 제자리를 돈다.
-    if slot.template_follow_up_question and not slot.template_question_asked:
+    # 단, **한 번만**, 그리고 **헤더를 모를 때만** — 사용자가 헤더를 지정했으면
+    # 형식 질문은 정할 것이 없는 빈 질문이다(2026-08-18 실측).
+    if slot.template_follow_up_question and not slot.template_question_asked and not slot.headers:
         return slot.template_follow_up_question
     tail = " (다음 답변에도 크기가 없으면 기본값으로 만들게요)" if last_call else ""
     if slot.rows is None and slot.cols is None:

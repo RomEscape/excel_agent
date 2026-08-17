@@ -1559,6 +1559,15 @@ def _extract_listed_headers(source: str) -> list[str]:
         # 안내말 없이 "표 만들어줘. 이름, 점수"로 오면 첫 토큰에 앞 문장이 통째로 붙는다.
         if index == 0:
             candidate = re.split(r"[.。!?\n]", candidate)[-1].strip()
+            # 구두점 없이 "…표를 만들어줘 날짜, 이름"으로 이어지면 동사 뒤가 목록이다.
+            # 2026-08-18 GUI 실측: 첫 헤더가 "여기에 출석부 형태로 표를 만들어줘 날짜"
+            # 통째로 잡혔다.
+            verb_split = re.split(r"(?:만들어\s*줘|만들어|넣어\s*줘|넣어|해\s*줘|주고)\s+", candidate)
+            if len(verb_split) > 1 and verb_split[-1].strip():
+                candidate = verb_split[-1].strip()
+        # "…비고 이렇게 헤더를 만들어줘"의 마지막 토큰 꼬리.
+        candidate = re.sub(r"\s*이렇게\b.*$", "", candidate).strip()
+        candidate = re.sub(r"\s*(?:헤더|컬럼|열)\s*(?:를|을)?\s*(?:만들|넣|해|지정).*$", "", candidate).strip()
         # 크기 표기를 걷어내고 남은 "*", "로" 같은 찌꺼기는 헤더가 아니다.
         if not re.search(r"[0-9A-Za-z가-힣]", candidate):
             continue
