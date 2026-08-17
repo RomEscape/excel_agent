@@ -108,6 +108,10 @@ async def _eval_model(
             "reasoning_mode": "deep",
             "complexity_score": 4,
             "planner_model": model_name,
+            # 이 평가는 **플래너끼리의** 비교다. 의도 정규화(2026-08-18 통합)가
+            # 가로채면 두 팔이 같은 정규화 결과를 공유해 델타가 희석된다 —
+            # 팔이 아니라 하네스가 조건을 바꾸는 부류(CLAUDE.md §3.6)라 우회한다.
+            "skip_intent_normalizer": True,
             # 프로덕션은 실제 파일에서 읽은 통합문서 상태를 프롬프트에 넣는다.
             # 평가에서 이걸 빼면 학습·추론 조건이 어긋나 측정값이 실제보다 낮게 나온다.
             "workbook_digest_text": _text(input_obj.get("workbook_digest_text")),
@@ -229,6 +233,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--baseline-model", type=str, required=True)
     parser.add_argument("--candidate-model", type=str, required=True)
     parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument("--offset", type=int, default=0)
     parser.add_argument("--parse-timeout-seconds", type=float, default=20.0)
     return parser.parse_args()
 
@@ -236,14 +241,18 @@ def parse_args() -> argparse.Namespace:
 async def main_async() -> None:
     args = parse_args()
     rows = iter_jsonl(args.input_jsonl)
+    if args.offset and args.offset > 0:
+        rows = rows[int(args.offset) :]
     if args.limit and args.limit > 0:
         rows = rows[: int(args.limit)]
 
     original_cfg = load_llm_config()
     next_cfg = dict(original_cfg)
     next_cfg["provider"] = _text(args.provider) or next_cfg.get("provider", "ollama")
-    # provider 초기화를 위해 model은 baseline으로 맞춘다.
-    next_cfg["model"] = _text(args.baseline_model) or next_cfg.get("model")
+    # `model`은 건드리지 않는다. 예전엔 baseline으로 덮었는데, 평가가 중간에 죽으면
+    # 복원이 안 돼 **앱의 일반 모델이 플래너로 바뀐 채 남았다**(2026-08-17 실측 —
+    # 매크로 분해·정규화·채팅이 전부 플래너로 돌던 사고의 범인). 모델은 어차피
+    # _eval_model이 호출마다 명시하므로 공용 설정을 오염시킬 이유가 없다.
 
     try:
         if next_cfg != original_cfg:

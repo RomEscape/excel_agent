@@ -194,6 +194,11 @@ class OllamaProvider(LLMProvider):
         # 전체 대화 히스토리를 그대로 Ollama에 전달 (멀티턴 지원)
         cfg = load_llm_config()
         default_model = str(cfg.get("model") or get_default_llm_config()["model"])
+        if _is_planner_model(default_model):
+            # 기본 모델 자리에 플래너가 들어오면(설정 오염 — 2026-08-17에 평가
+            # 스크립트가 실제로 일으켰다) 채팅·정규화·분해가 전부 계획-JSON 전용
+            # SFT로 돈다. 명시 지정 없는 호출은 항상 범용 모델로 떨어진다.
+            default_model = str(get_default_llm_config()["model"])
         return await self._svc.chat_messages(
             messages,
             model=model or default_model,
