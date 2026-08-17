@@ -86,3 +86,27 @@ def restore_workbook(service: Any, path: str) -> bool:
         return bool(opener(path))
     except Exception:
         return False
+
+# Excel이 편집을 거부할 때 나오는 COM 오류들.
+#   0x800A03EC (-2146827284) — "Application-defined or object-defined error".
+#     정품 인증이 안 된 Excel에서 **모든 쓰기**가 이걸로 실패한다(2026-08-17 실측:
+#     빈 셀 F1에 값 하나 쓰기도 실패). 상태 플래그는 ReadOnly=False라고 답한다.
+#   0x800AC472 (-2146777988) — 다른 작업이 진행 중이라 거부(모달 대화상자 등).
+_COM_WRITE_REFUSAL_CODES = frozenset({-2146827284, -2146777988})
+
+
+def looks_like_com_write_refusal(exc: BaseException) -> bool:
+    """이 예외가 "Excel이 쓰기를 거부했다"인가.
+
+    플래그로는 알 수 없는 편집 불가 상태(정품 미인증 등)를 실제 실패로 판별한다.
+    범위 오타 같은 진짜 오류까지 폴백시키면 원인이 가려지므로 코드로 좁힌다.
+    """
+    args = getattr(exc, "args", ()) or ()
+    for arg in args:
+        if isinstance(arg, int) and arg in _COM_WRITE_REFUSAL_CODES:
+            return True
+        if isinstance(arg, (tuple, list)):
+            for item in arg:
+                if isinstance(item, int) and item in _COM_WRITE_REFUSAL_CODES:
+                    return True
+    return False

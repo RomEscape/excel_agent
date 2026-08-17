@@ -118,6 +118,9 @@ from office_claw_sidecar.services.excel_readonly_bridge import (
     release_workbook,
     restore_workbook,
 )
+from office_claw_sidecar.services.excel_readonly_bridge import (
+    looks_like_com_write_refusal as _looks_like_com_write_refusal,
+)
 from office_claw_sidecar.services.excel_result_verifier import verify_effect
 from office_claw_sidecar.services.excel_selection_context import (
     mentions_selection,
@@ -4854,50 +4857,71 @@ def _execute_action(
     params: dict[str, Any],
     workbook_id: str | None,
     sheet_name: str | None,
-    _bridged_path: str | None = None,
 ) -> dict[str, Any]:
+    """액션을 실행하되, Excel이 쓰기를 거부하면 파일 편집으로 갈아타고 다시 시도한다.
+
+    왜 예외를 잡아서 판단하는가 (2026-08-17 실측):
+        이 PC의 Excel은 정품 인증이 안 돼 COM 편집이 전부 막혀 있다. 그런데
+        **상태 플래그로는 그걸 알 수 없다** —
+
+            ReadOnly: False · 시트보호: False · 통합문서보호: False
+            그런데 빈 셀 F1에 값 하나 쓰기조차 실패:
+              com_error(-2147352567, …, (0, None, None, None, 0, -2146827284))
+
+        `-2146827284`(0x800A03EC)는 Excel의 일반 편집 거부다. 읽기 전용 플래그만
+        보던 이전 버전은 이 경우를 통과시켜, 사용자는 매번 날 COM 덤프를 봤다.
+        플래그를 더 뒤지는 대신 **실제 실패를 신호로 삼는다.**
+
+    폴백 방법은 읽기 전용 브리지와 같다: Excel에서 통합문서를 닫아 파일 잠금을
+    풀고(Excel이 붙들고 있으면 openpyxl도 PermissionError다), 파일을 직접 편집한
+    뒤 다시 열어 준다.
+    """
     service = get_excel_live_service()
 
-    # 쓰기 전에 대상이 쓸 수 있는 상태인지 본다(F-08). 상태를 못 읽으면 막지 않는다.
-    # openpyxl은 시트 보호를 강제하지 않아 보호된 시트에 쓰고 저장까지 성공하므로,
-    # file 엔진에서는 이 점검이 유일한 방어선이다.
     if action in EDIT_ACTIONS:
         flags = read_protection_flags(
             service, workbook_id=workbook_id, sheet_name=sheet_name
         )
         block = evaluate_write_block(action=action, flags=flags, is_edit_action=True)
-        if block.blocked:
-            # 읽기 전용이면 사용자에게 "Excel을 닫아 주세요"라고 부탁하는 대신
-            # 우리가 처리한다. 읽기 전용에는 저장되지 않은 변경이 있을 수 없으므로
-            # 닫아도 잃을 게 없고, Excel이 파일을 붙들고 있는 한 openpyxl조차
-            # PermissionError로 막히기 때문에 닫는 것 말고는 길이 없다.
-            if _bridged_path is None and can_bridge(flags):
-                bridge = release_workbook(service, workbook_id=workbook_id)
-                if bridge.released:
-                    invalidate_excel_engine_cache()
-                    invalidate_workbook_digest()
-                    try:
-                        # **경로를 반드시 넘긴다.** 통합문서를 닫은 뒤에는 file
-                        # 엔진이 대상을 스스로 못 고른다 — 워크스페이스에 여러
-                        # 파일이 있으면 엉뚱한 파일을 편집하거나 되묻는다.
-                        # (2026-08-16 실측: 경로 없이 돌렸더니 병합 셀이 있는
-                        #  다른 파일을 잡아 MergedCell 오류로 죽었다.)
-                        return _execute_action(
-                            action=action,
-                            params=params,
-                            workbook_id=bridge.path,
-                            sheet_name=sheet_name,
-                            _bridged_path=bridge.path,
-                        )
-                    finally:
-                        # 편집 결과를 사용자가 바로 보게 다시 열어 준다. 실패해도
-                        # 편집은 이미 파일에 저장돼 있다.
-                        invalidate_excel_engine_cache()
-                        # 복구는 반드시 원래 xlwings 서비스로 한다 —
-                        # 지금 get_excel_live_service()는 file 엔진을 돌려준다.
-                        restore_workbook(service, bridge.path)
-                        invalidate_workbook_digest()
+        # 시트·구조 보호처럼 파일을 닫아도 안 풀리는 건 여기서 막고 끝낸다.
+        if block.blocked and not can_bridge(flags):
             raise ExcelEditBlockedError(block.reason, code=block.code)
+
+    try:
+        return _dispatch_action(
+            action=action, params=params, workbook_id=workbook_id, sheet_name=sheet_name
+        )
+    except Exception as exc:
+        if action not in EDIT_ACTIONS or not _looks_like_com_write_refusal(exc):
+            raise
+        bridge = release_workbook(service, workbook_id=workbook_id)
+        if not bridge.released:
+            raise
+        invalidate_excel_engine_cache()
+        invalidate_workbook_digest()
+        try:
+            # 경로를 반드시 넘긴다 — 통합문서를 닫으면 file 엔진이 대상을 못 고른다.
+            return _dispatch_action(
+                action=action,
+                params=params,
+                workbook_id=bridge.path,
+                sheet_name=sheet_name,
+            )
+        finally:
+            invalidate_excel_engine_cache()
+            restore_workbook(service, bridge.path)
+            invalidate_workbook_digest()
+
+
+def _dispatch_action(
+    *,
+    action: str,
+    params: dict[str, Any],
+    workbook_id: str | None,
+    sheet_name: str | None,
+) -> dict[str, Any]:
+    """액션 하나를 실제 서비스 호출로 옮긴다. 재시도·폴백은 _execute_action이 맡는다."""
+    service = get_excel_live_service()
 
     if action == "excel_live.list_workbooks":
         return {"workbooks": service.list_workbooks()}
