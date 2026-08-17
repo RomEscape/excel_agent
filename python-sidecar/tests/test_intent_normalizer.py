@@ -173,3 +173,40 @@ class TestNormalizeIntentValidation:
         llm = _FakeLLM([])
         out = asyncio.run(normalize_intent("", DIGEST, llm))
         assert out is None and llm.calls == 0
+
+
+class TestSchemaConstrainedDecoding:
+    """스키마 강제(로드맵 1-1) — 어휘 밖 액션·형식 붕괴를 토큰 수준에서 차단."""
+
+    def test_the_call_carries_the_schema(self):
+        from office_claw_sidecar.services.excel_intent_normalizer import INTENT_JSON_SCHEMA
+
+        class _Spy(_FakeLLM):
+            def __init__(self, replies):
+                super().__init__(replies)
+                self.kwargs = None
+
+            async def chat(self, messages, **kwargs):
+                self.kwargs = kwargs
+                return await super().chat(messages, **kwargs)
+
+        llm = _Spy(['{"task": "sort", "range": null, "column": "금액", "option": "desc"}'])
+        asyncio.run(normalize_intent("금액 순 정렬", DIGEST, llm))
+        assert llm.kwargs.get("json_schema") is INTENT_JSON_SCHEMA
+
+    def test_every_known_task_is_in_the_enum(self):
+        from office_claw_sidecar.services.excel_intent_normalizer import (
+            _KNOWN_TASKS,
+            INTENT_JSON_SCHEMA,
+        )
+
+        assert set(INTENT_JSON_SCHEMA["properties"]["task"]["enum"]) == _KNOWN_TASKS
+
+    def test_no_forbidden_schema_keywords(self):
+        # 로드맵 §0: pattern·oneOf는 엔진 편차·조용한 오답의 원천 — 금지.
+        import json as _json
+
+        from office_claw_sidecar.services.excel_intent_normalizer import INTENT_JSON_SCHEMA
+
+        text = _json.dumps(INTENT_JSON_SCHEMA)
+        assert '"pattern"' not in text and '"oneOf"' not in text

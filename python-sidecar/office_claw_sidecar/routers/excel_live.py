@@ -7437,12 +7437,19 @@ async def _run_command(
         # "플래너가 뒤집지 못하게"가 목적이다. 계획이 이미 규칙에서 왔다면 뒤집을
         # 플래너가 없고, 여기서 쓰기 단계만 남기면 규칙이 낸 나머지 단계가 사라진다
         # — 근거 필터가 "표 없애줘" 3단계를 1단계로 자른 것과 같은 부류다.
-        and parsed.get("plan_source") not in {"rule", "intent"}
+        # 정규화(intent) 계획은 **같은-액션 값 교체에 한해** 이 블록을 지난다:
+        # 2026-08-18 실측, 스키마 강제 후 모델이 option에 태스크 이름을 되뇌어
+        # 'write_value'가 셀에 쓰였는데 intent 면제 때문에 규칙의 정답(120)이
+        # 못 이겼다. 문장에서 값을 뽑는 일은 결정적 규칙이 모델보다 정확하다.
+        and parsed.get("plan_source") != "rule"
     ):
         planner_actions = [
             str(s.get("action", "")) for s in parsed["action_plan"] if isinstance(s, dict)
         ]
-        if planner_actions == ["excel_live.write_range"]:
+        if parsed.get("plan_source") == "intent" and planner_actions != ["excel_live.write_range"]:
+            # 정규화가 쓰기 아닌 액션을 골랐다면 그건 의도된 분류다 — 덮지 않는다.
+            pass
+        elif planner_actions == ["excel_live.write_range"]:
             # 액션이 같아도 **값은 규칙 것**을 쓴다. 2026-08-17 배터리 실측:
             # "A12에 합계 라고 입력해줘"에서 규칙은 '합계'를 뽑았는데 플래너의
             # '합계 라고'가 액션이 같다는 이유로 살아남아 그대로 셀에 들어갔다.

@@ -72,6 +72,28 @@ _KNOWN_TASKS = {
     "write_value", "find_replace", "read", "other",
 }
 
+# 스키마 강제 디코딩(2026-08-18 로드맵 1-1). task를 enum으로 선언하면 어휘 밖
+# 액션 발명·형식 붕괴가 **토큰 수준에서** 불가능해진다 — 이 머신·ax4-light에서
+# enum 강제를 실측 확인했다. 규칙(로드맵 §0): pattern·oneOf 같은 복잡 키워드 금지,
+# 좌표를 만들 수 있는 필드 추가 금지(range는 "문장에 적힌 것 옮겨 적기"용 하나뿐).
+# 스키마는 형식만 보장한다 — task의 의미는 프롬프트의 한국어 설명이 담당하므로
+# 프롬프트를 줄이면 안 된다(실측: 불투명 enum만 주면 합계 요청에 정렬을 골랐다).
+INTENT_JSON_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "required": ["task", "range", "column", "option"],
+    "additionalProperties": False,
+    "properties": {
+        "task": {"type": "string", "enum": sorted(_KNOWN_TASKS)},
+        "range": {"type": ["string", "null"]},
+        "column": {"type": ["string", "null"]},
+        # find_replace는 {find, replace} 객체를 낸다 — 문자열·숫자·객체 모두 허용.
+        "option": {
+            "type": ["string", "number", "object", "null"],
+            "additionalProperties": {"type": ["string", "number", "null"]},
+        },
+    },
+}
+
 # 조건이 붙은 색칠·입력은 여기서 매핑하면 조건이 사라진다 — 플래너·규칙에 넘긴다.
 # 실측(50커맨드): "A열에서 50 이상인 셀만 노란색"이 fill_color로 분류돼 조건 없이
 # 전체를 칠할 뻔했다.
@@ -114,6 +136,7 @@ async def normalize_intent(
         model=None,  # 범용 모델(설정의 `model`, 에이닷) — 플래너 모델이 아니다
         temperature=0.0,
         json_only=True,
+        json_schema=INTENT_JSON_SCHEMA,
         timeout=NORMALIZE_TIMEOUT_SECONDS,
     )
     intent = extract_json_object(raw, require_keys=("task",)) or {}
@@ -202,6 +225,11 @@ def intent_to_plan(
     task = str(intent.get("task") or "")
     rng = _norm_range(intent.get("range"))
     column = intent.get("column")
+    # 스키마 강제 후 실측: 모델이 셀 주소(F2)를 column 필드에 넣는 편차가 있다.
+    # 셀 모양이면 range로 옮긴다 — column은 머리글 이름 자리다.
+    if not rng and _SINGLE_CELL.fullmatch(str(column or "").strip().upper()):
+        rng = str(column).strip().upper()
+        column = None
     option = intent.get("option")
     option_text = "" if option is None else str(option).strip()
 
@@ -336,6 +364,10 @@ def intent_to_plan(
                 "params": {"range_ref": rng, "formula_a1": f"={func}({letter}2:{letter}{_last_row(entry)})"},
                 "reason": f"의도 정규화: {func} 수식(값 입력으로 표현됨)",
             }]
+        elif option_text.lower() in _KNOWN_TASKS:
+            # 스키마 강제 실측 퇴행: 모델이 option에 태스크 이름을 되뇌는 축퇴가
+            # 있다("write_value"가 셀에 쓰였다). 스키마 어휘는 값이 아니다.
+            steps = None
         elif rng and _SINGLE_CELL.fullmatch(rng) and option_text and len(option_text) <= 40:
             steps = [{
                 "action": "excel_live.write_range",

@@ -145,6 +145,7 @@ class LLMProvider(ABC):
         model: str | None = None,
         temperature: float | None = None,
         json_only: bool = False,
+        json_schema: dict | None = None,
         timeout: float | None = None,
     ) -> str:
         """
@@ -187,6 +188,7 @@ class OllamaProvider(LLMProvider):
         model: str | None = None,
         temperature: float | None = None,
         json_only: bool = False,
+        json_schema: dict | None = None,
         timeout: float | None = None,
     ) -> str:
         # 전체 대화 히스토리를 그대로 Ollama에 전달 (멀티턴 지원)
@@ -197,6 +199,7 @@ class OllamaProvider(LLMProvider):
             model=model or default_model,
             temperature=temperature,
             json_only=json_only,
+            json_schema=json_schema,
             timeout=timeout,
         )
 
@@ -217,6 +220,7 @@ class ClaudeProvider(LLMProvider):
         model: str | None = None,
         temperature: float | None = None,
         json_only: bool = False,
+        json_schema: dict | None = None,
         timeout: float | None = None,
     ) -> str:
         # 전체 대화 히스토리를 그대로 Claude에 전달 (멀티턴 지원)
@@ -253,6 +257,7 @@ class LLMService:
         model: str | None = None,
         temperature: float | None = None,
         json_only: bool = False,
+        json_schema: dict | None = None,
         timeout: float | None = None,
     ) -> str:
         """Send messages to the active provider and return the reply.
@@ -268,6 +273,7 @@ class LLMService:
             model=model,
             temperature=temperature,
             json_only=json_only,
+            json_schema=json_schema,
             timeout=timeout,
         )
 
