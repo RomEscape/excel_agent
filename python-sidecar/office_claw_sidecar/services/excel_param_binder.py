@@ -929,6 +929,20 @@ _COLOR_WORDS: tuple[tuple[str, str], ...] = (
     ("갈색", "#843C0C"),
     ("brown", "#843C0C"),
 )
+# 머리글 재지목 시 시트를 계획에 실어 줄 액션들 — 열 기준으로 도는 편집이라
+# 시트가 빠지면 활성 시트를 망친다. 생성·조회류는 제외.
+_SHEET_RETARGET_ACTIONS = frozenset(
+    {
+        "excel_live.sort_range",
+        "excel_live.sort_rows",
+        "excel_live.filter_rows",
+        "excel_live.dedupe_rows",
+        "excel_live.set_number_format",
+        "excel_live.highlight_by_condition",
+        "excel_live.apply_data_bar",
+        "excel_live.apply_color_scale",
+    }
+)
 _COLUMN_ONLY_MENTION = re.compile(r"(?<![A-Za-z0-9])([A-Za-z])\s*열")
 _CONDITION_FORMAT_ACTIONS = {"excel_live.highlight_by_condition", "excel_live.fill_range"}
 _CONDITION_OPERATORS: dict[str, str] = {
@@ -1639,6 +1653,17 @@ def bind_plan_steps(
         notes = [note for note in notes if not _is_stale_unresolved(note, step.action, params)]
 
         final_action = step_action_override or step.action
+        if (
+            retargeted_name
+            and retargeted_name != original_name
+            and not str(params.get("sheet_name") or "").strip()
+            and final_action in _SHEET_RETARGET_ACTIONS
+        ):
+            # 머리글로 시트를 되찾았으면 계획에도 실어야 한다 — 안 실으면
+            # 실행이 활성 시트에서 돈다(2026-08-18 멀티턴 사냥: "금액 기준
+            # 내림차순"이 요약 시트를 정렬했다).
+            params["sheet_name"] = retargeted_name
+            changes.append(f"sheet_name={retargeted_name}")
         if changes:
             notes.append({"action": final_action, "status": "bound", "changes": changes})
         bound.append(PlanStep(action=final_action, params=params, reason=step.reason))

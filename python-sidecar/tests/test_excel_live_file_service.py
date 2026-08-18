@@ -300,3 +300,27 @@ class TestModernFunctionStorage:
         wb2 = load_workbook(path)
         assert isinstance(wb2["데이터"]["C1"].value, ArrayFormula)
         wb2.close()
+
+
+class TestSortPinsTheTotalsRow:
+    """정렬이 합계행(라벨 또는 수식 줄)을 데이터에 섞었다 (멀티턴 사냥 S5)."""
+
+    def test_the_totals_row_stays_at_the_bottom(self, tmp_path):
+        from openpyxl import Workbook as _WB
+        from openpyxl import load_workbook
+
+        path = tmp_path / "sort.xlsx"
+        wb = _WB()
+        ws = wb.active
+        ws.title = "거래내역"
+        for row in [["품목", "금액"], ["가", 300], ["나", 100], ["다", 200], ["합계", "=SUM(B2:B4)"]]:
+            ws.append(row)
+        wb.save(path)
+        svc = FileExcelLiveService(workspace_root=tmp_path)
+        svc.select_workbook(str(path))
+        svc.sort_range(str(path), "거래내역", "A1:B5", key_column="B", order="desc")
+        wb2 = load_workbook(path)
+        col = [wb2["거래내역"].cell(row=r, column=1).value for r in range(2, 6)]
+        assert col == ["가", "다", "나", "합계"], col
+        assert str(wb2["거래내역"]["B5"].value).startswith("=SUM"), wb2["거래내역"]["B5"].value
+        wb2.close()

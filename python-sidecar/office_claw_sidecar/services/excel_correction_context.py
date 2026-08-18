@@ -161,6 +161,11 @@ def build_below_formula_plan(message: str, last: LastFormula | None) -> list[dic
     text = str(message or "")
     if not _BELOW_MENTION.search(text):
         return None
+    # "B10 아래 칸에는 …" — 직전 수식(F2)이 아니라 다른 셀을 지목했다면 이
+    # 문맥의 소관이 아니다. 밀어붙이면 F3에 써진다(2026-08-18 멀티턴 사냥).
+    cited = {c.upper() for c in re.findall(r"\b[A-Za-z]{1,3}\d{1,7}\b", text)}
+    if cited and last.cell not in cited:
+        return None
     func = next((f for pattern, f in _AGG_WORDS if pattern.search(text)), "")
     if not func:
         return None
@@ -198,9 +203,15 @@ def reset_for_tests() -> None:
 _CORRECTION_MARKER = re.compile(r"(^|\s)(아니|아니라|아냐|아니야|말고|대신)(\s|$|,)")
 # 취소·되돌리기는 정정이 아니다. 여기로 새면 되돌릴 것을 덮어쓴다.
 _NOT_A_VALUE_EDIT = re.compile(r"(취소|되돌|undo|지워|삭제|없애|빼\s*줘|비워)", re.IGNORECASE)
-# "부산으로" — 바꿀 값은 '(으)로' 앞에 온다.
-_VALUE_BEFORE_RO = re.compile(r"([^\s,]{1,40}?)(?:으로|로)(?=\s|$|\s*(?:바꿔|변경|고쳐|해|수정))")
+# "부산으로" — 바꿀 값은 '(으)로' 앞에 온다. 옮겨/이동은 셀 이동 정정이다.
+_VALUE_BEFORE_RO = re.compile(r"([^\s,]{1,40}?)(?:으로|로)(?=\s|$|\s*(?:바꿔|변경|고쳐|해|수정|옮겨|이동))")
 _TRAILING_VERB = re.compile(r"(바꿔|바꾸|변경|고쳐|고치|수정|해|줘|주세요|해줘)\s*$")
+# "부산이라니까" — 강조 어미는 값이 아니다(2026-08-18 멀티턴 사냥:
+# '부산이라니까'가 통째로 셀 값이 됐다).
+_EMPHASIS_ENDING = re.compile(r"(?:이?라니까+|이?라니깐|이?라고요?|이?잖아)$")
+# 색·서식 낱말은 값 정정이 아니라 서식 요청이다 — "아니 빨간색으로 바꿔줘"가
+# 셀 값 '빨간색'이 됐다(같은 사냥). 여기서 물러나면 서식 규칙이 받는다.
+_FORMAT_WORD = re.compile(r"(색$|색깔$|굵게$|기울임$|밑줄$|테두리$|경계선$)")
 
 
 def parse_correction(message: str) -> str:
@@ -227,10 +238,13 @@ def parse_correction(message: str) -> str:
             # 여러 낱말이면 무엇이 값인지 확신할 수 없다.
             return ""
     value = value.strip().strip("'\"")
+    value = _EMPHASIS_ENDING.sub("", value)
     if not value or len(value) > 40:
         return ""
     # 지시대명사는 값이 아니다.
     if value in {"그거", "이거", "저거", "그것", "이것", "그", "이", "저", "여기", "거기"}:
+        return ""
+    if _FORMAT_WORD.search(value):
         return ""
     return value
 
@@ -242,6 +256,27 @@ def build_correction_plan(message: str, last: LastWrite | None) -> list[dict[str
     value = parse_correction(message)
     if not value:
         return None
+    if _SINGLE_CELL.fullmatch(value.upper()):
+        # "아니 B2로 옮겨줘" — 값이 아니라 **자리**를 고치는 정정이다.
+        # 값으로 쓰면 A10에 문자 'B2'가 들어간다(2026-08-18 멀티턴 사냥 실측).
+        new_cell = value.upper()
+        move_params: dict[str, Any] = {"start_cell": new_cell, "values_2d": [[last.value]]}
+        clear_params: dict[str, Any] = {"target_range": last.cell}
+        if last.sheet_name:
+            move_params["sheet_name"] = last.sheet_name
+            clear_params["sheet_name"] = last.sheet_name
+        return [
+            {
+                "action": "excel_live.write_range",
+                "params": move_params,
+                "reason": f"직전 값('{last.value}')을 {new_cell}로 이동",
+            },
+            {
+                "action": "excel_live.clear_range",
+                "params": clear_params,
+                "reason": f"원래 자리 {last.cell} 비우기",
+            },
+        ]
     if str(last.value or "").strip() == value:
         # 이미 그 값이다. 다시 써 봐야 달라지는 게 없다.
         return None

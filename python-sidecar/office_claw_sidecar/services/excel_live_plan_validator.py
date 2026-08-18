@@ -1082,6 +1082,13 @@ def validate_plan(
         return []
     validated: list[PlanStep] = []
     for step in steps:
-        validated.append(_validate_step(step, context))
+        checked = _validate_step(step, context)
+        original_sheet = str((step.params or {}).get("sheet_name") or "").strip()
+        if original_sheet and not str(checked.params.get("sheet_name") or "").strip():
+            # 액션별 정규화가 params를 화이트리스트로 재구성하며 시트 지목을
+            # 버렸다 — 바인더가 머리글로 되찾은 시트가 사라져 활성 시트가
+            # 정렬됐다(2026-08-18 멀티턴 사냥 S4 실측). 명시된 시트는 보존한다.
+            checked.params["sheet_name"] = original_sheet
+        validated.append(checked)
     return validated
 

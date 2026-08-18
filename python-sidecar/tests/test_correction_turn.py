@@ -15,6 +15,8 @@ import pytest
 
 from office_claw_sidecar.routers.excel_live import _AMBIGUITY_SENSITIVE_SLOTS, PlanStep
 from office_claw_sidecar.services.excel_correction_context import (
+    LastFormula,
+    LastWrite,
     build_correction_plan,
     find_replace_erases_data,
     parse_correction,
@@ -179,3 +181,71 @@ class TestEmptyReplacementIsBlocked:
 
     def test_the_slot_is_registered_as_sensitive(self):
         assert ("excel_live.find_replace", "replace_text") in _AMBIGUITY_SENSITIVE_SLOTS
+
+
+class TestMultiturnHuntBatch:
+    """멀티턴 정정 사냥 9건(2026-08-18)의 회귀 핀. 전부 실측 재현 후 수정했다."""
+
+    LW = LastWrite(sheet_name="매출", cell="A10", value="서울", at_ts=0.0)
+    LF = LastFormula(sheet_name="", cell="F2", formula="=SUM(A2:A9)", at_ts=0.0)
+
+    def test_a_cell_correction_is_a_move_not_a_value(self):
+        # "아니 B2로 옮겨줘" — 'B2'가 셀 값으로 써졌었다.
+        plan = build_correction_plan("아니 B2로 옮겨줘", self.LW)
+        assert [s["action"] for s in plan] == [
+            "excel_live.write_range",
+            "excel_live.clear_range",
+        ]
+        assert plan[0]["params"]["start_cell"] == "B2"
+        assert plan[0]["params"]["values_2d"] == [["서울"]]
+        assert plan[1]["params"]["target_range"] == "A10"
+
+    def test_color_words_are_not_value_corrections(self):
+        # "아니 빨간색으로 바꿔줘" — 셀 값이 '빨간색'이 됐었다.
+        assert parse_correction("아니 빨간색으로 바꿔줘") == ""
+
+    def test_emphasis_endings_are_stripped(self):
+        assert parse_correction("아니 부산이라니까") == "부산"
+        assert parse_correction("아니 부산이라고") == "부산"
+
+    def test_below_formula_backs_off_when_another_cell_is_cited(self):
+        from office_claw_sidecar.services.excel_correction_context import (
+            build_below_formula_plan,
+        )
+
+        # "B10 아래 칸에는 …" — 직전 수식(F2)이 아니라 딴 셀 이야기다. F3에 쓰였었다.
+        assert build_below_formula_plan("B10 아래 칸에는 개수 세는 수식 넣어줘", self.LF) is None
+        # 직전 셀을 그대로 부른 경우는 여전히 동작한다.
+        plan = build_below_formula_plan("F2 아래 칸에는 평균 넣어줘", self.LF)
+        assert plan and plan[0]["params"]["range_ref"] == "F3"
+
+
+class TestSelectionBeatsStaleContext:
+    """실선택 엔진에서는 클릭·드래그가 낡은 컨텍스트를 이긴다 (S6/S7)."""
+
+    class _Real:
+        has_real_selection = True
+
+        def __init__(self, ref):
+            self._ref = ref
+
+        def get_active_selection_ref(self, wb, sheet):
+            return self._ref
+
+    def test_a_single_cell_click_wins_on_real_engines(self):
+        from office_claw_sidecar.services.excel_selection_context import resolve_context_range
+
+        got = resolve_context_range(
+            self._Real("H1"), message="여기에 100 입력해줘",
+            context_range="A1:F3", workbook_id=None, sheet_name=None,
+        )
+        assert got == "H1"
+
+    def test_a_fresh_drag_wins_over_the_old_range(self):
+        from office_claw_sidecar.services.excel_selection_context import resolve_context_range
+
+        got = resolve_context_range(
+            self._Real("F2:H8"), message="내가 잡아놓은 데만 노란색으로",
+            context_range="A1:D9", workbook_id=None, sheet_name=None,
+        )
+        assert got == "F2:H8"
