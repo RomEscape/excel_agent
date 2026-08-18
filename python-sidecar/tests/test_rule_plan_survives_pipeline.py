@@ -209,3 +209,47 @@ class TestBorderOnlyStaysNarrow:
         _run("A1:D9 테두리 없애줘")
         actions = [a for a, _ in service.calls]
         assert "clear_range" not in actions, f"테두리 요청이 내용까지 지운다: {actions}"
+
+
+class TestPasteThenWriteFlow:
+    """2026-08-18 GUI 실측: 붙여넣기+"입력해줘"가 '건수' 오인 슬롯에 낚였고,
+    그 슬롯이 명시적 좌표 문장까지 붙들어 같은 질문을 3번 반복 — 대화가 막혔다.
+    """
+
+    PASTE_MSG = (
+        "지역,주문건수,출고건수,정시배송률,지연건수,클레임; "
+        "수도권,10452,10158,97.1,145,12; 충청권,3892,3773,95.2,89,6 입력해줘"
+    )
+
+    def test_pasted_values_with_context_are_written(self, service):
+        # 붙여넣기 마커를 벗긴 뒤의 실제 백엔드 입력: 값 나열 + 동사 + context_range.
+        body = _run(self.PASTE_MSG, context_range="A1:F6")
+        assert body["ok"] is True
+        assert not (body.get("result") or {}).get("ask_follow_up"), body.get("reason")
+        assert ("write_range", "A1") in service.calls, service.calls
+        assert len(service.written) == 3 and service.written[0][0] == "지역"
+
+    def test_a_stale_question_slot_releases_for_a_complete_command(self, service):
+        import time as _time
+
+        from office_claw_sidecar.routers.excel_live import PendingExcelOperationSlots
+
+        # 값 낱말 오인으로 열린 가짜 countif 슬롯을 그대로 재현한다.
+        excel_live_router._pending_operation_slots["sess-rule-pipeline"] = (
+            PendingExcelOperationSlots(
+                session_id="sess-rule-pipeline",
+                intent="formula",
+                workbook_id=None,
+                sheet_name=None,
+                params={"formula_mode": "countif"},
+                created_at_ts=_time.time(),
+                updated_at_ts=_time.time(),
+            )
+        )
+        body = _run("A1:F2에 지역,주문건수; 수도권,10452 입력")
+        assert not (body.get("result") or {}).get("ask_follow_up"), (
+            f"슬롯이 완결 명령을 붙들었다: {body.get('reason')}"
+        )
+        assert ("write_range", "A1") in service.calls, service.calls
+        # 슬롯도 사라져 다음 턴이 자유로워야 한다.
+        assert "sess-rule-pipeline" not in excel_live_router._pending_operation_slots

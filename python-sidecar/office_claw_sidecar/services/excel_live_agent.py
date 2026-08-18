@@ -1580,6 +1580,52 @@ def parse_explicit_row_write(text: str, *, strong_verb_only: bool = False) -> di
     }
 
 
+def parse_rangeless_row_write(text: str, target_range: str) -> dict | None:
+    """범위 없이 값 나열+쓰기 동사만 있는 문장 — 붙여넣기 뒤의 자연스러운 형태.
+
+    "지역,주문건수,…; 수도권,…; … 입력해줘"처럼 좌표가 없으면 대상은 호출부가
+    붙여넣기 문맥(context_range)에서 준다. 2026-08-18 GUI 실측: 이 문형이 값
+    낱말('건수')의 의도 오인으로 새서 붙여넣기 흐름이 통째로 막혔다.
+    문장이 통째로 값 나열일 때만 잡는다 — 산문을 쓰기로 채가면 안 된다.
+    """
+    rng = re.match(r"^([A-Z]+)(\d+):([A-Z]+)(\d+)$", str(target_range or "").strip().upper())
+    if not rng:
+        return None
+    source = str(text or "").strip()
+    lowered_src = source.lower()
+    if not source or "=" in source or "수식" in source or "헤더" in lowered_src or "header" in lowered_src:
+        return None
+    verb = re.search(r"(입력|기록|넣어|채워|써)\s*(?:해)?\s*(?:줘|주세요|줄래)?\s*[.!]?\s*$", source)
+    if verb is None:
+        return None
+    body = source[: verb.start()].strip()
+    if not body or RANGE_REF_PATTERN.search(body):
+        # 범위를 말했으면 기존 행 쓰기 규칙 소유다.
+        return None
+    if _ROW_WRITE_FORMAT_VOCAB.search(body):
+        return None
+    row_groups = [g.strip() for g in re.split(r"[;\n]", body) if g.strip()]
+    if not row_groups:
+        return None
+    col_count = _column_span(rng.group(1), rng.group(3))
+    rows_2d = []
+    for group in row_groups:
+        tokens = _split_header_tokens(group)
+        if len(tokens) < 2 and col_count > 1:
+            return None
+        row_values = [_parse_literal_value(t) for t in tokens[:col_count]]
+        if len(row_values) < col_count:
+            row_values.extend([""] * (col_count - len(row_values)))
+        rows_2d.append(row_values)
+    if not rows_2d:
+        return None
+    return {
+        "action": "excel_live.write_range",
+        "params": {"start_cell": f"{rng.group(1)}{rng.group(2)}", "values_2d": rows_2d},
+        "reason": f"붙여넣은 범위에 값 {len(rows_2d)}행 입력",
+    }
+
+
 def _split_header_tokens(source: str) -> list[str]:
     """나열을 토큰으로 쪼갠다 — 쉼표가 있으면 쉼표만 구분자로 쓴다.
 

@@ -87,6 +87,7 @@ from office_claw_sidecar.services.excel_live_agent import (
     parse_command_rule_based,
     parse_excel_live_command,
     parse_explicit_row_write,
+    parse_rangeless_row_write,
     parse_text_equals_condition,
 )
 from office_claw_sidecar.services.excel_live_executor import (
@@ -308,6 +309,9 @@ class PendingExcelOperationSlots:
     params: dict[str, Any]
     created_at_ts: float = 0.0
     updated_at_ts: float = 0.0
+    # 직전에 물은 질문. 같은 질문을 또 하게 되면 답을 해석 못 한 것이므로
+    # 슬롯을 버린다 — 제자리 도는 대화가 최악이다(2026-08-18 GUI 실측).
+    last_question: str = ""
 
 
 @dataclass
@@ -4416,7 +4420,12 @@ def _operation_follow_up(slot: PendingExcelOperationSlots) -> str:
                 return "목표 열과 실제 열을 알려주세요. 예: C열이 목표, D열이 실제"
         if mode == "countif":
             if not slot.params.get("count_column"):
-                return "건수를 셀 기준 열을 알려주세요. 예: 상태가 있는 B열"
+                # "건수를 셀 기준 열" — 사용자가 무슨 말인지 모르겠다고 한 문구다
+                # (2026-08-18). 무엇으로 이해했는지 밝히고 빠져나갈 길도 준다.
+                return (
+                    "개수 세기로 이해했어요. 어느 열의 값을 셀까요? 예: 상태 열. "
+                    "개수 세기가 아니라면 원하시는 작업을 다시 말씀해 주세요."
+                )
         if mode == "vlookup":
             if not slot.params.get("lookup_column"):
                 return "조회값 열이 필요합니다. 예: 코드가 있는 A열"
@@ -7007,6 +7016,15 @@ async def _run_command(
     pending_slot = _pending_create_table_slots.get(session_key)
     pending_operation = _pending_operation_slots.get(session_key)
     pending_clarification = _pending_clarifications.get(session_key)
+    if pending_operation is not None and (
+        parse_explicit_row_write(req.message, strong_verb_only=True) is not None
+        or parse_rangeless_row_write(req.message, str(req.context_range or "")) is not None
+    ):
+        # 완결된 쓰기 문장은 슬롯 답변이 아니라 새 명령이다. 잘못 열린 슬롯이
+        # 좌표·값까지 다 말한 명령을 붙들면 같은 질문만 반복되고 대화가 막힌다
+        # (2026-08-18 GUI 실측: "건수를 셀 기준 열" 질문 3연속).
+        _pending_operation_slots.pop(session_key, None)
+        pending_operation = None
 
     # 업무 외 판정은 **대기 슬롯을 조회한 뒤에** 한다.
     #
@@ -7176,6 +7194,15 @@ async def _run_command(
             != "excel_live.write_range"
         ):
             quick_action_plan = [preempt_write]
+        # 붙여넣기 뒤의 자연스러운 문형: 좌표 없이 값 나열 + "입력해줘".
+        # 대상은 붙여넣기 문맥(context_range)이다. 2026-08-18 GUI 실측:
+        # 이 문형이 값 낱말('건수') 오인으로 새서 붙여넣기 흐름이 막혔다.
+        if preempt_write is None and not quick_action_plan:
+            paste_write = parse_rangeless_row_write(
+                req.message, str(req.context_range or "")
+            )
+            if paste_write is not None:
+                quick_action_plan = [paste_write]
         # 사람 말투 집계: "붙여넣은 것들 합을 밑에 기록해줘" — 좌표도 수식도 없다.
         # 대상은 문장 범위 → context_range(살아 있는 선택 포함) → 사용 범위 순서로
         # 찾고, 실제 값을 읽어 숫자 열마다 집계 수식을 아랫줄에 놓는다.
@@ -8039,8 +8066,16 @@ async def _run_command(
                 )
                 if rescued_plan:
                     follow_up = ""
+            # 같은 질문을 두 번 하게 되면 답을 해석 못 한 것이다. 슬롯을 버리고
+            # 이 턴을 새 명령으로 처리한다(2026-08-18 GUI 실측: 같은 질문 3연속에
+            # 대화가 막혔다).
+            if follow_up and follow_up == op_slot.last_question:
+                _pending_operation_slots.pop(session_key, None)
+                op_slot = None
+                follow_up = ""
             # 새 멀티턴 시작이거나 기존 멀티턴 이어서 파라미터가 부족하면 질문한다.
-            if follow_up:
+            if follow_up and op_slot is not None:
+                op_slot.last_question = follow_up
                 _pending_operation_slots[session_key] = op_slot
                 return ExcelLiveActionResponse(
                     ok=True,
@@ -8054,7 +8089,7 @@ async def _run_command(
                     },
                 )
 
-            op_plan_raw = _operation_action_plan(op_slot)
+            op_plan_raw = _operation_action_plan(op_slot) if op_slot is not None else None
             if rescued_plan or op_plan_raw:
                 action_plan = rescued_plan or _normalize_plan_or_empty(op_plan_raw)
                 if (
