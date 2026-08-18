@@ -50,6 +50,7 @@ from office_claw_sidecar.services.excel_aggregate_below import (
     build_aggregate_below_plan,
     build_cross_sheet_aggregate_plan,
     match_aggregate_below,
+    match_aggregate_columns,
 )
 from office_claw_sidecar.services.excel_correction_context import (
     build_below_formula_plan,
@@ -2550,12 +2551,18 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
             ]
 
     create_sheet_match = re.search(
-        r"([^\s,]+)\s*(?:시트|sheet)\s*(?:만들|생성|추가|create|add)",
+        # 조사(를/을/도)와 "하나/새로" 같은 사이말을 허용한다. "시트를 만들어줘"의
+        # 를 하나 때문에 퀵이 미스나 플래너로 갔고, 플래너가 이름 끝 글자(과)를
+        # 잘라 '지역성' 시트를 만들었다(2026-08-18 GUI 실측).
+        r"([^\s,]+)\s*(?:시트|sheet)\s*(?:을|를|도)?\s*(?:하나|새로)?\s*(?:만들|생성|추가|create|add)",
         text,
         re.IGNORECASE,
     )
     if create_sheet_match:
         sheet_name = str(create_sheet_match.group(1)).strip().strip("\"'")
+        if sheet_name in {"새", "새로운", "빈", "임시", "다른", "하나", "이", "그"}:
+            # "새 시트 만들어줘"의 '새'는 이름이 아니다.
+            sheet_name = ""
         if sheet_name:
             return [
                 {
@@ -7241,14 +7248,50 @@ async def _run_command(
         # 사람 말투 집계: "붙여넣은 것들 합을 밑에 기록해줘" — 좌표도 수식도 없다.
         # 대상은 문장 범위 → context_range(살아 있는 선택 포함) → 사용 범위 순서로
         # 찾고, 실제 값을 읽어 숫자 열마다 집계 수식을 아랫줄에 놓는다.
-        if not quick_action_plan:
+        #
+        # 퀵이 이미 계획을 냈어도 그것이 **한 칸짜리 쓰기**면 집계가 이긴다 —
+        # 2026-08-18 GUI 실측: "합계를 표 아래에 한 줄로 넣어줘"를 활성 셀 쓰기
+        # 규칙이 선점해 훅이 건너뛰어졌고, 플래너 실패 후 문장 전체가 A1 값으로
+        # 들어가 머리글을 덮었다.
+        _quick_head = (quick_action_plan[0] or {}) if quick_action_plan else {}
+        _quick_head_values = (_quick_head.get("params") or {}).get("values_2d") or []
+        trivial_quick_write = str(_quick_head.get("action", "")) == "excel_live.write_range" and (
+            sum(len(r) for r in _quick_head_values if isinstance(r, list)) <= 1
+        )
+        if not quick_action_plan or trivial_quick_write:
             agg_match = match_aggregate_below(req.message)
+            agg_dest_row = 0
+            if agg_match is None:
+                # "A7:F7 합계를 여기 위치에 열 별로 합계를 만들어줘" — 방향 낱말
+                # 없이 대상 줄을 지목한 열별 집계. 플래너로 가면 pivot으로 샌다
+                # (2026-08-18 GUI 실측: 검증 실패·재계획 실패).
+                dest_match = RANGE_REF_PATTERN.search(req.message or "")
+                dest_cand = (
+                    dest_match.group(0).upper() if dest_match else ""
+                ) or str(req.context_range or "").strip().upper()
+                dest_parts = re.match(r"^([A-Z]+)(\d+):([A-Z]+)(\d+)$", dest_cand)
+                if (
+                    dest_parts
+                    and dest_parts.group(2) == dest_parts.group(4)
+                    and int(dest_parts.group(2)) > 1
+                ):
+                    colwise = match_aggregate_columns(req.message)
+                    if colwise is not None:
+                        agg_match = colwise
+                        agg_dest_row = int(dest_parts.group(2))
+                        agg_dest_cols = (dest_parts.group(1), dest_parts.group(3))
             if agg_match is not None:
                 agg_func, agg_label = agg_match
-                range_in_msg = RANGE_REF_PATTERN.search(req.message or "")
-                agg_target = (
-                    range_in_msg.group(0).upper() if range_in_msg else ""
-                ) or str(req.context_range or "").strip().upper()
+                if agg_dest_row:
+                    # 대상 줄 바로 위까지가 데이터다. 머리글은 빌더가 걸러낸다.
+                    agg_target = (
+                        f"{agg_dest_cols[0]}1:{agg_dest_cols[1]}{agg_dest_row - 1}"
+                    )
+                else:
+                    range_in_msg = RANGE_REF_PATTERN.search(req.message or "")
+                    agg_target = (
+                        range_in_msg.group(0).upper() if range_in_msg else ""
+                    ) or str(req.context_range or "").strip().upper()
                 agg_service = get_excel_live_service()
                 if not agg_target or ":" not in agg_target:
                     used_getter = getattr(agg_service, "get_used_range_ref", None)

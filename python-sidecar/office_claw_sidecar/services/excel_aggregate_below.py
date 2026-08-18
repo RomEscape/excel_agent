@@ -49,6 +49,25 @@ def match_aggregate_below(message: str) -> tuple[str, str] | None:
     return None
 
 
+_COLUMNWISE = re.compile(r"열\s*별|열별|각\s*열|칼럼\s*별|컬럼\s*별")
+
+
+def match_aggregate_columns(message: str) -> tuple[str, str] | None:
+    """"열 별로 합계를 만들어줘" — 아래·밑 낱말 없이 열별 집계를 말하는 문형.
+
+    대상 줄(붙여넣은 A7:F7 등)이 따로 있으면 방향 낱말이 필요 없다.
+    2026-08-18 GUI 실측: 이 문형이 플래너로 새서 pivot_table로 오분류돼
+    검증 실패·재계획 실패로 끝났다.
+    """
+    text = str(message or "")
+    if "=" in text or not _COLUMNWISE.search(text):
+        return None
+    for pattern, func, label in _FUNC_VOCAB:
+        if pattern.search(text):
+            return func, label
+    return None
+
+
 # "A4에 지역성과 시트 주문건수 합계를 가져와줘" — 셀·원본 시트·열 이름·집계만
 # 말하는 크로스시트 문형. "E4에는 …를, F4에는 …를"처럼 한 문장에 여러 절이
 # 오면 시트 이름은 앞 절에서 이어받는다.
