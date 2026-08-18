@@ -626,7 +626,12 @@ class ExcelLiveService:
         wb = self._find_workbook(target_id)
         sheet = self._find_sheet(wb, sheet_name)
         rng = sheet.range(range_ref)
-        rng.formula = formula_a1
+        try:
+            # Formula2가 동적 배열(SEQUENCE·FILTER 등)의 스필을 보존한다.
+            # 구형 Formula 속성은 암시적 교차(@)로 강등시킨다.
+            rng.api.Formula2 = formula_a1
+        except Exception:
+            rng.formula = formula_a1
 
         values = self._normalize_values(rng.options(ndim=2).value)
         row_count = len(values)

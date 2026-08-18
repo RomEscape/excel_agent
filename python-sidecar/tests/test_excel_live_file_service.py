@@ -252,3 +252,51 @@ class TestSingleColumnChart:
         assert s.tx is not None and s.tx.strRef.f.endswith("B1")
         assert s.val.numRef.f.endswith("$B$2:$B$5"), s.val.numRef.f
         wb.close()
+
+
+class TestModernFunctionStorage:
+    """신형 함수 접두 정규화 — 2026-08-18 함수 배터리 실측의 회귀.
+
+    접두 없이 저장하면 Excel이 파일을 손상 취급해 열지도 못했다(Workbooks.Open
+    실패). 접두를 붙인 뒤 33종 함수·조합·스필이 전부 계산 통과했다.
+    """
+
+    def test_new_functions_get_the_xlfn_prefix(self):
+        f = FileExcelLiveService._normalize_modern_functions
+        assert f('=XLOOKUP("포도",A2:A8,C2:C8)') == '=_xlfn.XLOOKUP("포도",A2:A8,C2:C8)'
+        assert f("=SEQUENCE(5)") == "=_xlfn.SEQUENCE(5)"
+        assert f("=sequence(5)") == "=_xlfn.SEQUENCE(5)"
+        assert f("=ROUND(STDEV.S(B2:B8),2)") == "=ROUND(_xlfn.STDEV.S(B2:B8),2)"
+
+    def test_sort_and_filter_need_the_xlws_prefix(self):
+        f = FileExcelLiveService._normalize_modern_functions
+        assert f('=SUM(FILTER(B2:B8,D2:D8="채소"))') == '=SUM(_xlfn._xlws.FILTER(B2:B8,D2:D8="채소"))'
+        assert f("=INDEX(SORT(B2:B8),1)") == "=INDEX(_xlfn._xlws.SORT(B2:B8),1)"
+
+    def test_old_functions_and_strings_are_untouched(self):
+        f = FileExcelLiveService._normalize_modern_functions
+        assert f("=SUM(B2:B8)") == "=SUM(B2:B8)"
+        # 문자열 리터럴 안의 낱말은 함수가 아니다.
+        assert f('=IF(A1="SORT(","네","아니오")') == '=IF(A1="SORT(","네","아니오")'
+        # 이미 접두가 있으면 두 번 붙이지 않는다.
+        assert f("=_xlfn.SEQUENCE(5)") == "=_xlfn.SEQUENCE(5)"
+
+    def test_legacy_array_functions_are_stored_as_array_formulas(self, tmp_path):
+        from openpyxl import Workbook as _WB
+        from openpyxl import load_workbook
+        from openpyxl.worksheet.formula import ArrayFormula
+
+        path = tmp_path / "arr.xlsx"
+        wb = _WB()
+        ws = wb.active
+        ws.title = "데이터"
+        for r, v in enumerate(["가", "나", "다"], start=1):
+            ws.cell(row=r, column=1, value=v)
+        wb.save(path)
+        svc = FileExcelLiveService(workspace_root=tmp_path)
+        svc.select_workbook(str(path))
+        out = svc.set_formula(str(path), "데이터", "C1", "=TRANSPOSE(A1:A3)")
+        assert out.get("array_formula") is True
+        wb2 = load_workbook(path)
+        assert isinstance(wb2["데이터"]["C1"].value, ArrayFormula)
+        wb2.close()

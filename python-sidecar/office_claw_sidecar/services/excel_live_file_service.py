@@ -37,6 +37,7 @@ from openpyxl.workbook.defined_name import DefinedName
 from openpyxl.workbook.properties import CalcProperties
 from openpyxl.worksheet.cell_range import CellRange
 from openpyxl.worksheet.datavalidation import DataValidation
+from openpyxl.worksheet.formula import ArrayFormula
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
 from office_claw_sidecar.sandbox import WORKSPACE_ROOT
@@ -1018,6 +1019,50 @@ class FileExcelLiveService(ExcelLiveService):
         finally:
             wb.close()
 
+    # xlsx 규격: 2010 이후 추가된 함수는 파일에 `_xlfn.` 접두로 저장돼야 한다.
+    # 접두 없이 저장하면 Excel이 파일을 손상으로 취급해 복구 프롬프트 없이는
+    # 열지도 못한다(2026-08-18 함수 배터리 실측: XLOOKUP·SEQUENCE가 든 파일이
+    # Workbooks.Open에서 실패). 동적 배열 중 SORT·FILTER만 `_xlfn._xlws.`다.
+    _XLWS_FUNCTIONS = ("FILTER", "SORT")
+    _XLFN_FUNCTIONS = (
+        "XLOOKUP", "XMATCH", "IFS", "SWITCH", "TEXTJOIN", "CONCAT",
+        "MAXIFS", "MINIFS", "IFNA", "FORECAST.LINEAR", "FORMULATEXT",
+        "SEQUENCE", "UNIQUE", "RANDARRAY", "SORTBY", "LET", "LAMBDA",
+        "TOCOL", "TOROW", "VSTACK", "HSTACK", "TEXTSPLIT", "TEXTBEFORE",
+        "TEXTAFTER", "WRAPROWS", "WRAPCOLS", "TAKE", "DROP",
+        "CHOOSECOLS", "CHOOSEROWS", "GROUPBY", "PIVOTBY",
+        "STDEV.S", "STDEV.P", "VAR.S", "VAR.P", "MODE.SNGL", "MODE.MULT",
+        "PERCENTILE.INC", "PERCENTILE.EXC", "QUARTILE.INC", "QUARTILE.EXC",
+        "RANK.EQ", "RANK.AVG", "CEILING.MATH", "FLOOR.MATH",
+        "ISOWEEKNUM", "DAYS", "NUMBERVALUE", "AGGREGATE",
+    )
+
+    @classmethod
+    def _normalize_modern_functions(cls, formula: str) -> str:
+        """신형 함수 이름에 저장용 접두를 붙인다. 문자열 리터럴 안은 건드리지 않는다."""
+        text = str(formula or "")
+        if not text.startswith("="):
+            return text
+        segments = re.split(r'("[^"]*")', text)
+        xlws = "|".join(re.escape(n) for n in cls._XLWS_FUNCTIONS)
+        xlfn = "|".join(re.escape(n) for n in sorted(cls._XLFN_FUNCTIONS, key=len, reverse=True))
+        for i in range(0, len(segments), 2):
+            seg = segments[i]
+            seg = re.sub(
+                rf"(?<![A-Za-z0-9_.])({xlws})\(",
+                lambda m: f"_xlfn._xlws.{m.group(1).upper()}(",
+                seg,
+                flags=re.IGNORECASE,
+            )
+            seg = re.sub(
+                rf"(?<![A-Za-z0-9_.])({xlfn})\(",
+                lambda m: f"_xlfn.{m.group(1).upper()}(",
+                seg,
+                flags=re.IGNORECASE,
+            )
+            segments[i] = seg
+        return "".join(segments)
+
     def set_formula(self, workbook_id: str | None, sheet_name: str, range_ref: str, formula_a1: str) -> dict[str, Any]:
         path = self._resolve_workbook_path(workbook_id)
         wb = self._load_wb(path)
@@ -1027,7 +1072,31 @@ class FileExcelLiveService(ExcelLiveService):
             min_row, min_col, max_row, max_col = bounds
             applied = 0
             origin = f"{get_column_letter(min_col)}{min_row}"
+            formula_a1 = self._normalize_modern_functions(formula_a1)
             is_formula = str(formula_a1 or "").startswith("=")
+            # TRANSPOSE 같은 구형 배열 함수는 일반 수식으로 저장하면 레거시
+            # 암시적 교차로 해석돼 #VALUE!가 된다(2026-08-18 배터리 실측).
+            # 배열 수식으로 저장하면 최신 Excel이 열 때 동적 배열로 바꿔 준다.
+            if (
+                is_formula
+                and min_row == max_row
+                and min_col == max_col
+                and re.match(
+                    r"^=\s*(TRANSPOSE|MMULT|MINVERSE|MDETERM|FREQUENCY|LINEST|TREND|GROWTH)\(",
+                    formula_a1,
+                    re.IGNORECASE,
+                )
+            ):
+                ws.cell(row=min_row, column=min_col).value = ArrayFormula(
+                    ref=origin, text=formula_a1
+                )
+                self._save_wb(wb, path, value_changed_sheet=ws.title, changed_rows={min_row})
+                return {
+                    "applied_cells": 1,
+                    "address": origin,
+                    "formula": formula_a1,
+                    "array_formula": True,
+                }
             for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
                 for cell in row:
                     if is_formula and (cell.row != min_row or cell.column != min_col):
