@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
  *   confirmLabel?: string;
  *   cancelLabel?: string;
  *   confirmVariant?: 'default'|'destructive'|'outline'|'secondary'|'ghost';
+ *   requireExplicitChoice?: boolean;
  *   children?: React.ReactNode;
  *   onConfirm: () => void;
  *   onCancel: () => void;
@@ -41,6 +42,10 @@ export function AlertDialog({
   confirmLabel = "확인",
   cancelLabel = "취소",
   confirmVariant = "default",
+  // 취소에 실제 비용이 있는 다이얼로그(엑셀 승인 등)용. 켜면 배경 클릭·Escape로는
+  // 닫히지 않고 버튼으로만 답할 수 있다 — 팝업 뒤 파일 목록을 무심코 눌렀다가
+  // 승인 대기 중인 계획이 통째로 버려지는 사고를 막는다(2026-08-18 실측).
+  requireExplicitChoice = false,
   children,
   onConfirm,
   onCancel,
@@ -58,13 +63,13 @@ export function AlertDialog({
 
   // Close on Escape key
   useEffect(() => {
-    if (!open) return;
+    if (!open || requireExplicitChoice) return;
     const handleKey = (e) => {
       if (e.key === "Escape") onCancel();
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [open, onCancel]);
+  }, [open, onCancel, requireExplicitChoice]);
 
   if (!open) return null;
 
@@ -79,7 +84,7 @@ export function AlertDialog({
       <div
         className="flex min-h-full items-center justify-center p-4"
         onClick={(e) => {
-          if (e.target === e.currentTarget) onCancel();
+          if (e.target === e.currentTarget && !requireExplicitChoice) onCancel();
         }}
       >
         {/* Dialog panel */}
