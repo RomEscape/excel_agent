@@ -89,6 +89,11 @@ def resolve_context_range(
     getter = getattr(service, "get_active_selection_ref", None)
     if not callable(getter):
         return context_range
+    if getattr(service, "has_real_selection", True) is False and context_range:
+        # 파일 엔진의 '선택'은 드래그가 아니라 사용 범위 폴백이다. 그걸로
+        # 붙여넣기 문맥을 덮으면 A8:B9에 넣을 값이 A1 표 위에 써진다
+        # (2026-08-18 사람 말투 배터리 실측).
+        return context_range
     try:
         live = str(getter(workbook_id, sheet_name) or "").strip().upper()
     except Exception:

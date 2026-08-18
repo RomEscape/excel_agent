@@ -125,6 +125,9 @@ class FileExcelLiveService(ExcelLiveService):
     """파일 기반(openpyxl) Excel 편집 서비스. Excel 앱이 없어도 동작한다."""
 
     engine = "file"
+    # '선택'은 사용 범위 폴백일 뿐 실제 드래그가 아니다 — 선택 우선 해석이
+    # 붙여넣기 문맥을 덮으면 안 된다(2026-08-18 실측).
+    has_real_selection = False
 
     def __init__(self, workspace_root: Path | None = None) -> None:
         super().__init__(xw_module=None)

@@ -294,3 +294,24 @@ class TestTheGuiRobustnessScreenshot:
         assert plan and plan[0]["action"] == "excel_live.create_sheet"
         # 조사 하나 때문에 플래너로 가면 이름 끝 글자(과)가 잘린다.
         assert plan[0]["params"]["sheet_name"] == "지역성과", plan[0]
+
+
+class TestMessyHumanVocab:
+    """사람 말투 배터리(2026-08-18, 3라운드 41/41)가 잡은 어휘 구멍의 회귀."""
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "여기다가 합 좀 밑에다 적어줄래?",
+            "이 표 아래로 각 열 합 넣어주라",
+            "합계행 하나 만들어서 표 밑에 붙여줘",
+            "아래쪽에 총합 좀 계산해서 넣어줘",
+        ],
+    )
+    def test_messy_sum_phrasings_match(self, message):
+        got = match_aggregate_below(message)
+        assert got is not None and got[0] == "SUM", message
+
+    def test_merge_words_still_pass_through(self):
+        assert match_aggregate_below("A1:B2 병합해줘") is None
+        assert match_aggregate_below("시트를 통합해줘") is None

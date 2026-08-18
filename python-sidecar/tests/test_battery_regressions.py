@@ -185,3 +185,41 @@ class TestSingleGroupByIsNotAMacro:
 
     def test_a_dashboard_is_still_a_macro(self):
         assert looks_like_macro_request("매출 대시보드 만들어줘") is True
+
+
+class TestFormatCodeAliases:
+    """'comma'는 'mm' 때문에 코드처럼 보여 셀 서식이 말 그대로 comma가 됐다."""
+
+    @pytest.mark.parametrize("alias", ["comma", "thousand", "percent", "currency"])
+    def test_english_word_aliases_are_not_codes(self, alias):
+        assert _looks_like_format_code(alias) is False
+
+
+class TestNamedSheetCreation:
+    """"요약이라는 이름으로 시트 추가좀" → '이름으로' 시트가 생겼다 (배터리 실측)."""
+
+    def test_the_named_form_wins(self):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+
+        plan = _build_quick_action_plan("요약이라는 이름으로 시트 추가좀", None)
+        assert plan and plan[0]["params"]["sheet_name"] == "요약", plan
+
+    def test_the_trailing_name_form(self):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+
+        plan = _build_quick_action_plan("새로운 시트 하나 파줘 이름은 백업으로", None)
+        assert plan and plan[0]["params"]["sheet_name"] == "백업", plan
+
+
+class TestChartWordsBeatReadWords:
+    """"클레임 비중 도넛으로 보여줘"의 '보여줘'가 단순 조회로 새서 차트가 안 생겼다."""
+
+    def test_kind_word_plus_show_verb_becomes_a_chart(self):
+        from office_claw_sidecar.routers.excel_live import (
+            _chart_kind_from_message,
+            _chart_step_from_message,
+        )
+
+        assert _chart_kind_from_message("클레임 비중 도넛으로 보여줘") == "doughnut"
+        step = _chart_step_from_message("주문건수 추이 그래프 하나 그려줄래?")
+        assert step and step["params"]["chart_type"] == "line"

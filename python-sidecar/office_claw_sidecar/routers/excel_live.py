@@ -545,6 +545,10 @@ def _looks_like_format_code(code: str) -> bool:
     text = str(code or "").strip()
     if not text or re.search(r"[가-힣]", text):
         return False
+    # "comma"는 'mm'이 들어 있어 코드처럼 보였고, 셀 서식이 말 그대로 comma가
+    # 됐다(2026-08-18 사람 말투 배터리 실측). 영어 낱말 별칭은 코드가 아니다.
+    if text.lower() in {"comma", "thousand", "thousands", "number", "percent", "currency"}:
+        return False
     return bool(re.search(r"[0#@%.,]|yy|mm|dd|hh|ss", text, re.IGNORECASE)) or text.lower() in {
         "general",
         "text",
@@ -592,7 +596,10 @@ _AMBIGUITY_SENSITIVE_SLOTS = {
 # 된다. 두 목록이 어긋나면 이런 식으로 조용히 되묻기가 된다 — 같이 고쳐야 한다.
 _CHART_TYPE_MENTION = re.compile(
     r"(선\s*그래프|꺾은|라인|line|막대|bar|원형|파이|pie|영역|area|분산|scatter"
-    r"|도넛|도너츠|donut|doughnut|링\s*차트|바\s*차트|바\s*그래프)",
+    r"|도넛|도너츠|donut|doughnut|링\s*차트|바\s*차트|바\s*그래프"
+    # 종류를 함의하는 낱말도 종류 언급이다 — _CHART_KIND_WORDS와 같이 간다.
+    # "추이 그래프"가 종류 질문으로 새던 문제(2026-08-18 배터리 실측).
+    r"|추이|트렌드|비중|비율|구성비)",
     re.IGNORECASE,
 )
 # 계획 끝에 관례적으로 붙는 마무리 단계. 응답 액션으로 보고하면 실제 작업이 가려진다.
@@ -2550,6 +2557,30 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
                 }
             ]
 
+    # "요약이라는 이름으로 시트 추가좀", "이름은 백업으로 해서 시트 하나" —
+    # 이름을 따로 부르는 문형이 먼저다. 아니면 '이름으로'가 시트 이름이 된다
+    # (2026-08-18 사람 말투 배터리 실측: '이름으로' 시트가 생겼다).
+    named_sheet_match = re.search(
+        r"(?:([^\s,]+?)\s*(?:이?라는)\s*(?:이름(?:의|으로)?)?|이름은\s*([^\s,]+?)(?:으로|로)?)"
+        r"[^\n]{0,12}(?:시트|sheet)[^\n]{0,8}(?:만들|생성|추가|파\s*줘|파줘)",
+        text,
+        re.IGNORECASE,
+    ) or re.search(
+        r"(?:시트|sheet)[^\n]{0,10}(?:만들|생성|추가|파\s*줘|파줘)[^\n]{0,8}이름은\s*([^\s,]+?)(?:으로|로)?(?:\s|$)",
+        text,
+        re.IGNORECASE,
+    )
+    if named_sheet_match:
+        named = next((g for g in named_sheet_match.groups() if g), "").strip().strip("\"'")
+        if named:
+            return [
+                {
+                    "action": "excel_live.create_sheet",
+                    "params": {"sheet_name": named, "make_active": True},
+                    "reason": "빠른 규칙 기반 시트 생성",
+                }
+            ]
+
     create_sheet_match = re.search(
         # 조사(를/을/도)와 "하나/새로" 같은 사이말을 허용한다. "시트를 만들어줘"의
         # 를 하나 때문에 퀵이 미스나 플래너로 갔고, 플래너가 이름 끝 글자(과)를
@@ -4234,7 +4265,10 @@ _CHART_KIND_WORDS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(원형|파이|pie)", re.IGNORECASE), "pie"),
     (re.compile(r"(분산|산점|scatter)", re.IGNORECASE), "scatter"),
     (re.compile(r"(영역\s*차트|면적\s*차트|area\s*chart)", re.IGNORECASE), "area"),
-    (re.compile(r"(선\s*그래프|꺾은|라인|line|추이)", re.IGNORECASE), "line"),
+    (re.compile(r"(선\s*그래프|꺾은|라인|line|추이|트렌드)", re.IGNORECASE), "line"),
+    # 함의어는 맨 끝 — "비율을 원형 차트로"는 명시 종류(원형)가 이겨야 한다.
+    # "비중/비율"만 말했을 때의 부분-전체 그림 기본값이 도넛이다.
+    (re.compile(r"(비중|비율|구성비)", re.IGNORECASE), "doughnut"),
 )
 
 
@@ -7142,7 +7176,13 @@ async def _run_command(
     # 범위를 직접 지목한 조회는 이전 멀티턴의 답도, 플래너가 재해석할 대상도 아니다.
     # 규칙이 이미 확실히 아는 명령을 모델 기분에 맡기면 같은 문장이 매번 다르게 동작한다.
     # "D2:D20 수식 값 확인해줘"는 범위가 있어도 단순 조회가 아니라 수식 검증이다.
-    reads_only = not re.search(r"(수식|함수|formula)", req.message, re.IGNORECASE)
+    # "도넛으로 보여줘"의 '보여줘'는 조회가 아니라 시각화다 — 차트 어휘가 있으면
+    # 단순 조회 판정에서 뺀다(2026-08-18 사람 말투 배터리 실측: read로 새서
+    # 차트가 안 만들어졌다).
+    reads_only = not re.search(r"(수식|함수|formula)", req.message, re.IGNORECASE) and not (
+        re.search(r"(차트|그래프|chart)", req.message, re.IGNORECASE)
+        or _CHART_TYPE_MENTION.search(req.message or "")
+    )
     standalone_read_step = (
         None
         if operation_intent or not reads_only
@@ -7317,6 +7357,22 @@ async def _run_command(
                     )
                     if agg_steps:
                         quick_action_plan = agg_steps
+                        # "합계행 하나 만들어서 표 밑에 붙여줘"의 '표' 낱말이 표
+                        # 생성 인터뷰를 열면 확정된 집계 계획이 질문에 가로채인다
+                        # (2026-08-18 사람 말투 배터리 실측).
+                        hints.pop("table_intent", None)
+        # 차트 종류를 말한 문장("클레임 비중 도넛으로 보여줘")은 조회·정규화보다
+        # 차트가 우선이다 — '보여줘' 때문에 read로 새던 문형(같은 배터리 실측).
+        if not quick_action_plan:
+            chart_kind_hint = _chart_kind_from_message(req.message)
+            if (
+                chart_kind_hint
+                and re.search(r"(보여|그려|뽑아|만들|생성|시각화)", req.message or "")
+                and not re.search(r"(지워|삭제|없애|제거|치워)", req.message or "")
+            ):
+                chart_quick = _chart_step_from_message(req.message, default_kind=chart_kind_hint)
+                if chart_quick is not None:
+                    quick_action_plan = [chart_quick]
         # 크로스시트 사람 말투: "A4에 지역성과 시트 주문건수 합계를 가져와줘".
         # 원본 시트를 실제로 읽어 열을 찾고 =SUM('시트'!구간) 수식을 만든다.
         if not quick_action_plan and "시트" in (req.message or ""):
@@ -7348,6 +7404,7 @@ async def _run_command(
     if quick_first_action in {
         "excel_live.clear_range",
         "excel_live.delete_charts",
+        "excel_live.create_chart",
         "excel_live.apply_border",
         "excel_live.list_workbooks",
         "excel_live.select_workbook",
@@ -7937,6 +7994,17 @@ async def _run_command(
                     "intent": "edit",
                     "plan_source": "rule",
                 }
+            elif t_action == "excel_live.set_number_format" and re.search(
+                r"콤마|천\s*단위|comma", str(req.message or ""), re.IGNORECASE
+            ):
+                # 규칙 대안이 없어도 원문이 콤마를 말했으면 코드로 교정한다 —
+                # 'comma'가 그대로 셀 서식이 됐다(2026-08-18 배터리 실측).
+                for plan_step in parsed.get("action_plan") or []:
+                    if (
+                        isinstance(plan_step, dict)
+                        and plan_step.get("action") == "excel_live.set_number_format"
+                    ):
+                        (plan_step.setdefault("params", {}))["format_code"] = "#,##0"
 
     # 플래너가 고른 액션이 사용자의 말에 근거가 없으면, 근거 있는 규칙 후보로 되돌린다.
     # 같은 문장이 실행될 때마다 색칠·표생성·조건부서식으로 튀는 문제를 여기서 끊는다.

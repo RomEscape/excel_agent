@@ -26,7 +26,13 @@ _FUNC_VOCAB: list[tuple[re.Pattern[str], str, str]] = [
     (re.compile(r"최대|최댓값", re.IGNORECASE), "MAX", "최대"),
     (re.compile(r"최소|최솟값", re.IGNORECASE), "MIN", "최소"),
     (
-        re.compile(r"(모든|각|전체)\s*합|합계|총합|총\s*합|합(?:을|이|만|과|값)|더한\s*값|다\s*더해", re.IGNORECASE),
+        # "합 좀 밑에다", "각 열 합" 같은 반말·군더더기 꼴을 포함한다
+        # (2026-08-18 사람 말투 배터리 1라운드 실측: 두 꼴 다 되묻기로 샜다).
+        re.compile(
+            r"(?:모든|각|전체)\s*(?:열|칸|항목)?\s*합|합계|총합|총\s*합"
+            r"|합(?:을|이|만|과|값|\s+좀|이나)|더한\s*값|다\s*더해",
+            re.IGNORECASE,
+        ),
         "SUM",
         "합계",
     ),
