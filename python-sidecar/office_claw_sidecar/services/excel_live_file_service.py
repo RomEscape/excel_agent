@@ -25,6 +25,8 @@ from openpyxl.chart import (
     Reference,
     ScatterChart,
 )
+from openpyxl.chart.data_source import StrRef
+from openpyxl.chart.series import SeriesLabel
 from openpyxl.comments import Comment
 from openpyxl.formatting.rule import ColorScaleRule, DataBarRule, FormulaRule
 from openpyxl.formula.translate import Translator
@@ -407,6 +409,24 @@ class FileExcelLiveService(ExcelLiveService):
         if wb.calculation is None:
             wb.calculation = CalcProperties()
         wb.calculation.fullCalcOnLoad = True
+
+    @staticmethod
+    def _find_label_column(ws, value_col: int, min_row: int, max_row: int) -> int | None:
+        """값 열 왼쪽에서 카테고리 라벨로 쓸 열을 찾는다.
+
+        같은 행 구간에 글자 값이 절반 이상인 가장 가까운 열이다. 숫자 열(다른
+        지표)은 건너뛴다 — "D2:D5 도넛"의 라벨은 C(수량)가 아니라 A(센터명)다.
+        """
+        total = max_row - min_row + 1
+        if total <= 0:
+            return None
+        for col in range(value_col - 1, 0, -1):
+            cells = [ws.cell(row=r, column=col).value for r in range(min_row, max_row + 1)]
+            texts = sum(1 for v in cells if isinstance(v, str) and v.strip())
+            if texts * 2 >= total:
+                return col
+            # 비어 있는 열이면 더 왼쪽을 본다. 숫자 열도 지표일 뿐이니 계속 간다.
+        return None
 
     @staticmethod
     def _sanitize_sheet_name(sheet_name: str) -> str:
@@ -2328,23 +2348,51 @@ class FileExcelLiveService(ExcelLiveService):
                 kind = "line"
                 chart = LineChart()
             chart.title = str(title or "데이터 차트")
+            if kind not in {"pie", "doughnut"}:
+                # varyColors를 비워 두면 Excel이 단일 계열을 점마다 다른 색으로
+                # 그리고 범례도 점 단위로 만든다(2026-08-18 렌더 실측).
+                chart.varyColors = False
 
-            categories = Reference(ws, min_col=min_col, min_row=min_row + 1, max_row=max_row)
-            value_min_col = min(min_col + 1, max_col)
-            if kind in {"pie", "doughnut"}:
-                # 원형·도넛은 계열이 하나여야 한다. 여러 열을 주면 첫 계열만 그려지고
-                # 나머지는 조용히 사라진다.
-                values = Reference(ws, min_col=value_min_col, min_row=min_row, max_row=max_row)
+            if min_col == max_col:
+                # 값 한 열짜리 범위("B2:B9 데이터로"). 2026-08-18 렌더 실측 결함 셋:
+                # 첫 데이터가 계열 제목으로 삼켜져 한 점이 사라졌고, 카테고리가
+                # 값과 같은 셀을 가리켰고, 왼쪽 라벨 열은 무시됐다.
+                first_value = ws.cell(row=min_row, column=min_col).value
+                has_header = isinstance(first_value, str) and bool(first_value.strip())
+                data_min_row = min_row + 1 if has_header else min_row
+                values = Reference(ws, min_col=min_col, min_row=min_row, max_row=max_row)
+                chart.add_data(values, titles_from_data=has_header)
+                if not has_header:
+                    # 범위 바로 위 칸이 머리글이면 계열 이름으로 쓴다 — 아니면
+                    # 단일 계열의 "계열1" 범례는 정보가 없으니 치운다.
+                    above = ws.cell(row=min_row - 1, column=min_col).value if min_row > 1 else None
+                    if isinstance(above, str) and above.strip():
+                        header_ref = f"'{ws.title}'!{ws.cell(row=min_row - 1, column=min_col).coordinate}"
+                        chart.series[0].tx = SeriesLabel(strRef=StrRef(header_ref))
+                    else:
+                        chart.legend = None
+                label_col = self._find_label_column(ws, min_col, data_min_row, max_row)
+                if label_col:
+                    chart.set_categories(
+                        Reference(ws, min_col=label_col, min_row=data_min_row, max_row=max_row)
+                    )
             else:
-                values = Reference(
-                    ws,
-                    min_col=value_min_col,
-                    max_col=max_col,
-                    min_row=min_row,
-                    max_row=max_row,
-                )
-            chart.add_data(values, titles_from_data=True)
-            chart.set_categories(categories)
+                categories = Reference(ws, min_col=min_col, min_row=min_row + 1, max_row=max_row)
+                value_min_col = min_col + 1
+                if kind in {"pie", "doughnut"}:
+                    # 원형·도넛은 계열이 하나여야 한다. 여러 열을 주면 첫 계열만 그려지고
+                    # 나머지는 조용히 사라진다.
+                    values = Reference(ws, min_col=value_min_col, min_row=min_row, max_row=max_row)
+                else:
+                    values = Reference(
+                        ws,
+                        min_col=value_min_col,
+                        max_col=max_col,
+                        min_row=min_row,
+                        max_row=max_row,
+                    )
+                chart.add_data(values, titles_from_data=True)
+                chart.set_categories(categories)
 
             target_ws = ws
             if output_sheet:

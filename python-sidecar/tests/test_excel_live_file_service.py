@@ -198,3 +198,57 @@ def test_file_rename_and_delete_sheet(tmp_path, monkeypatch):
     listed = service.list_sheets(str(path))
     assert "임시" not in listed["sheets"]
     assert listed["sheets"] == ["Dashboard"]
+
+
+class TestSingleColumnChart:
+    """"B2:B9 데이터로 선 그래프" — 2026-08-18 렌더 실측에서 나온 결함 셋의 회귀.
+
+    첫 데이터가 계열 제목으로 삼켜져 한 점이 사라졌고, 카테고리가 값과 같은
+    셀(B3:B9)을 가리켰고, 왼쪽 라벨 열(A)은 무시됐다.
+    """
+
+    def _service_with_trend(self, tmp_path):
+        from openpyxl import Workbook as _WB
+
+        path = tmp_path / "trend.xlsx"
+        wb = _WB()
+        ws = wb.active
+        ws.title = "추이"
+        rows = [("주차", "정시배송률"), ("1주", 93.5), ("2주", 94.1), ("3주", 94.8), ("4주", 95.2)]
+        for r, (a, b) in enumerate(rows, start=1):
+            ws.cell(row=r, column=1, value=a)
+            ws.cell(row=r, column=2, value=b)
+        wb.save(path)
+        wb.close()
+        svc = FileExcelLiveService(workspace_root=tmp_path)
+        svc.select_workbook(str(path))
+        return svc, path
+
+    def test_no_data_point_is_eaten_and_labels_come_from_the_left(self, tmp_path):
+        from openpyxl import load_workbook
+
+        svc, path = self._service_with_trend(tmp_path)
+        svc.create_chart(str(path), "추이", "B2:B5", chart_type="line", title="추이")
+        wb = load_workbook(path)
+        chart = wb["추이"]._charts[0]
+        assert len(chart.series) == 1
+        s = chart.series[0]
+        # 값은 B2부터 — 첫 데이터(93.5)가 제목으로 사라지면 안 된다.
+        assert s.val.numRef.f.endswith("$B$2:$B$5"), s.val.numRef.f
+        # 카테고리는 왼쪽 라벨 열(A)이다 — 값과 같은 셀이 아니라.
+        cat_ref = s.cat.numRef.f if s.cat.numRef else s.cat.strRef.f
+        assert "$A$2:$A$5" in cat_ref, cat_ref
+        # 범위 위 칸(B1)의 머리글이 계열 이름이 된다 — "계열1" 범례 방지.
+        assert s.tx is not None and s.tx.strRef.f.endswith("B1"), s.tx
+        wb.close()
+
+    def test_a_header_inside_the_range_still_becomes_the_series_title(self, tmp_path):
+        from openpyxl import load_workbook
+
+        svc, path = self._service_with_trend(tmp_path)
+        svc.create_chart(str(path), "추이", "B1:B5", chart_type="line", title="추이")
+        wb = load_workbook(path)
+        s = wb["추이"]._charts[0].series[0]
+        assert s.tx is not None and s.tx.strRef.f.endswith("B1")
+        assert s.val.numRef.f.endswith("$B$2:$B$5"), s.val.numRef.f
+        wb.close()
