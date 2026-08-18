@@ -84,6 +84,7 @@ from office_claw_sidecar.services.excel_live_agent import (
     extract_create_table_slot_hints,
     extract_font_params,
     looks_like_existing_table_convert,
+    normalize_common_typos,
     parse_command_plan_with_llm,
     parse_command_rule_based,
     parse_excel_live_command,
@@ -1302,16 +1303,21 @@ def _background_fill_hex(lowered: str, font_color: str | None) -> str:
     배경을 가리키는 말이 없으면 빈 문자열 — "글씨 흰색 크게"가 배경 칠하기로
     새면 안 된다(2026-08-17 실측에서 이 오탐을 경계해 붙인 조건이다).
     """
-    if not re.search(r"(배경|채우기|칠하|칠해|음영|하이라이트)", lowered):
-        return ""
     colors = _quick_extract_colors(lowered)
     if not colors:
+        return ""
+    # "남색 바탕에 흰 글씨", "남색에 흰글씨" — '배경'이라는 낱말이 없어도 색이
+    # 둘이고 하나가 글자색이면 나머지는 배경이다(2026-08-18 지저분판 실측:
+    # '바탕'이 어휘 밖이라 머리글 채움이 통째로 빠졌다).
+    background_worded = bool(re.search(r"(배경|바탕|채우기|칠하|칠해|음영|하이라이트)", lowered))
+    two_colors_with_font = bool(font_color) and len({c.upper() for c in colors}) >= 2
+    if not background_worded and not two_colors_with_font:
         return ""
     # '배경'이라는 말과 붙어 있는 색이 가장 확실한 배경색이다 — "남색 배경에
     # 흰 글씨", "배경색 흰색으로 칠하고 글자 흰색" 둘 다 이 규칙 하나로 풀린다.
     for token in _QUICK_COLOR_PATTERN.finditer(lowered):
         window = lowered[max(0, token.start() - 8) : token.end() + 8]
-        if re.search(r"배경|채우|음영", window):
+        if re.search(r"배경|바탕|채우|음영", window):
             return _quick_color_hex(token.group(1))
     normalized_font = str(font_color or "").upper()
     for color in colors:
@@ -2939,7 +2945,11 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
         or font_params.get("color")
         or font_params.get("size")
     ) and not re.search(r"(테두리|경계선|border|괘선)", lowered):
-        header_font = bool(re.search(r"(머리글|헤더|header)", lowered))
+        # "첫줄/제목줄"도 1행이다 — 어휘 밖이라 활성 셀에 칠해졌다(2026-08-18
+        # 지저분판 실측: 첫줄 남색이 F7 한 칸 배경이 됐다).
+        header_font = bool(
+            re.search(r"(머리글|헤더|header|첫\s*줄|첫\s*행|1\s*행|제목\s*줄|맨\s*윗\s*줄|타이틀)", lowered)
+        )
         target = normalized_ctx or explicit_range or ("1:1" if header_font else "__ACTIVE_SELECTION__")
         font_params = font_params or {"bold": True}
         steps: list[dict[str, Any]] = []
@@ -7049,6 +7059,13 @@ async def _run_command(
     req: ExcelLiveCommandRequest,
     llm: LLMService,
 ):
+    # 오타 정규화가 맨 앞이다 — 규칙·힌트·플래너 전부 이 문장을 본다.
+    # "만들어조"·"함계"·"정열" 하나에 규칙이 미스나면 플래너 헛발질로 이어진다
+    # (2026-08-18 사용자 지시: 사람의 실수까지 고려한 강건성).
+    typo_normalized = normalize_common_typos(req.message)
+    if typo_normalized != req.message:
+        trace_note("typo_normalized", before=str(req.message)[:60], after=typo_normalized[:60])
+        req = req.model_copy(update={"message": typo_normalized})
     # 입구 게이트 — LLM을 부르기 전에 결정론으로 거른다.
     #
     # 라우팅 기본값이 "워크북이 열려 있으면 엑셀 경로"로 바뀌면서 이제 **모든 문장이**
@@ -7428,7 +7445,19 @@ async def _run_command(
     elif quick_first_action == "excel_live.fill_range":
         # 단순 색 채우기 요청은 fast path로 즉시 실행하는 편이 안정적이다.
         should_parse_with_llm = False
-    if _quick_plan_underfits_message(quick_first_action, req.message):
+    if quick_first_action == "excel_live.highlight_by_condition" and parse_text_equals_condition(
+        req.message
+    ):
+        # 값 일치 조건("대기인 애들만 분홍")은 문장에서 값·색이 다 나온다 —
+        # 플래너에 넘기면 조건이 뭉개져 0건 강조가 된다(2026-08-18 지저분판 실측).
+        should_parse_with_llm = False
+    if len(quick_plan_for_parse) <= 1 and _quick_plan_underfits_message(
+        quick_first_action, req.message
+    ):
+        # 미달 판정은 **한 단계짜리** 퀵 계획에만 건다. 여러 단계 계획(합계 줄,
+        # 2절 크로스시트)은 이미 문장의 절들을 다 받아낸 것인데, 미달로 플래너에
+        # 넘기면 행 전체 수식·1절 뭉개기 같은 헛발질로 바뀐다(2026-08-18
+        # 지저분판 ex1 실측: A7 라벨 자리에 =SUM(A2:A6), F4 미기록).
         # 규칙이 표현하지 못하는 요청은 플래너에게 넘긴다.
         should_parse_with_llm = True
     trace_route(

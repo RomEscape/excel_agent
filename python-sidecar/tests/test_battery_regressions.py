@@ -223,3 +223,77 @@ class TestChartWordsBeatReadWords:
         assert _chart_kind_from_message("클레임 비중 도넛으로 보여줘") == "doughnut"
         step = _chart_step_from_message("주문건수 추이 그래프 하나 그려줄래?")
         assert step and step["params"]["chart_type"] == "line"
+
+
+class TestTypoNormalization:
+    """사람의 오타("만들어조"·"함계"·"정열")를 표준형으로 — 2026-08-18 지시."""
+
+    @pytest.mark.parametrize(
+        ("raw", "fixed"),
+        [
+            ("지역성과 시트 만들어조", "지역성과 시트 만들어줘"),
+            ("함계를 표 아래 한줄로 부탁해", "합계를 표 아래 한줄로 부탁해"),
+            ("정열 좀 해줘", "정렬 좀 해줘"),
+            ("테두르 둘러줘", "테두리 둘러줘"),
+            ("막대 차투 그러줘", "막대 차트 그려줘"),
+        ],
+    )
+    def test_common_typos_are_fixed(self, raw, fixed):
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        assert normalize_common_typos(raw) == fixed
+
+    def test_clean_sentences_are_untouched(self):
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        msg = "A1:F6에 지역,주문건수 입력"
+        assert normalize_common_typos(msg) == msg
+
+
+class TestCommandSentencesAreNotCellValues:
+    """"합계를 표 아래에 한 줄로 넣어줘"가 활성 셀 값으로 들어갔다 (GUI 실측).
+
+    셀 지목 없이 네 낱말 넘는 문장은 값이 아니다 — 쓰지 말고 물러나서
+    뒤 단계가 되묻게 한다. '라고' 인용은 예외다.
+    """
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "합계를 표 아래에 한 줄로 넣어줘",
+            "이 값들 전부 다른 데로 옮겨 넣어줘",
+        ],
+    )
+    def test_long_command_clauses_back_off(self, message):
+        step = parse_command_rule_based(message)
+        assert step is None or step.get("action") != "excel_live.write_range" or (
+            step["params"].get("start_cell") != "__ACTIVE_CELL__"
+        ), step
+
+    def test_short_values_and_quotes_still_write(self):
+        step = parse_command_rule_based("완료 입력해줘")
+        assert step["params"]["values_2d"] == [["완료"]]
+        step2 = parse_command_rule_based("최종 점검 완료 되었음 이라고 입력해줘")
+        assert step2["params"]["values_2d"] == [["최종 점검 완료 되었음"]]
+
+
+class TestVerbSuffixesInBatchWrite:
+    """"넣어줘"의 줘가 \b와 결합 못 해 행 쓰기가 미스 → 단일 셀 규칙이
+    "A1:F6에"의 F6을 셀로 오인 → 문장 전체가 한 값 → 쉼표 재배열로 표 전체가
+    조용히 오염됐다(2026-08-18 지저분판 실측 — 이번 강건성 작업 최대의 수확).
+    """
+
+    BODY = "지역,주문건수; 수도권,10452; 충청권,3892"
+
+    @pytest.mark.parametrize("verb", ["입력", "입력해줘", "입력해주라", "넣어줘", "써줘"])
+    def test_every_suffix_keeps_all_rows(self, verb):
+        step = parse_command_rule_based(f"A1:B3에 {self.BODY} {verb}")
+        assert step["action"] == "excel_live.write_range"
+        v = step["params"]["values_2d"]
+        assert len(v) == 3 and v[1][0] == "수도권", v
+
+    def test_a_range_member_is_not_a_single_cell(self):
+        # F6이 A1:F6의 일부일 때 단일 셀 쓰기가 잡으면 안 된다.
+        step = parse_command_rule_based("A1:F6에 가,나,다,라,마,바 넣어줘")
+        assert step["params"]["start_cell"] == "A1"
+        assert len(step["params"]["values_2d"][0]) == 6

@@ -774,3 +774,23 @@ class TestExplicitSheetMentions:
     def test_a_message_without_any_sheet_word_yields_nothing(self):
         assert explicit_sheet_mentions("A1:C10 합계 구해줘") == []
         assert explicit_sheet_mentions("") == []
+
+
+class TestTextColumnEqualityNarrowing:
+    """값 일치 조건("상태가 대기인 애들만")의 기준 열은 글자 열이다 —
+    숫자 열만 인정하면 텍스트 조건이 못 좁혀져 0건 강조가 된다(2026-08-18)."""
+
+    def test_a_text_column_is_accepted_when_value_matching(self):
+        from office_claw_sidecar.services.excel_param_binder import _bind_condition_format
+
+        entry = {
+            "name": "지연경고",
+            "used_range": "A1:E6",
+            "columns": [
+                {"letter": "A", "header": "경고시간", "numeric": False},
+                {"letter": "E", "header": "상태", "numeric": False},
+            ],
+        }
+        params = {"target_range": "A:Z", "value": "대기", "operator": "==", "fill_color": "#FFC0CB"}
+        _bind_condition_format(params, message="상태가 대기인 애들만 분홍으로 칠해주라", entry=entry)
+        assert params["target_range"] == "E:E", params

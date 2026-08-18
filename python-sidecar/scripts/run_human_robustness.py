@@ -98,7 +98,6 @@ CASES = [
      lambda wb, r: "" if chart_count(wb) >= 1 else "차트 없음"),
     ("차트", "주문건수 추이 그래프 하나 그려줄래?", None,
      lambda wb, r: "" if chart_count(wb) >= 1 else "차트 없음"),
-    ("차트", "차트 다 지어줘", None, _ok),  # 오타(지워→지어) — 무엇이든 파괴만 없으면 통과
     # ── 조건 강조 ──
     ("강조", "클레임 10 넘는 데만 빨갛게 칠해줘", None,
      lambda wb, r: "" if (fill_of(wb, "F2") == "FFFF0000" or cf_count(wb) >= 1) else "F2(12) 강조 없음"),
@@ -144,10 +143,25 @@ CASES = [
     ("시트", "요약이라는 이름으로 시트 추가좀", None,
      lambda wb, r: "" if "요약" in wb.sheetnames else f"시트들={wb.sheetnames}"),
     ("시트", "이 시트 복사본 하나 만들어줘", None, _ok),
+    # ── 오타·흘려쓰기 (사람의 실수 — 알아듣거나, 정직하게 되묻거나) ──
+    ("오타", "합계 좀 밑에 너어줘", "A1:F6",
+     lambda wb, r: "" if has_formula(wb, "B7", "SUM") else "B7에 SUM 없음"),
+    ("오타", "함계를 표 아래 한줄로 만들어조", "A1:F6",
+     lambda wb, r: "" if has_formula(wb, "B7", "SUM") else "B7에 SUM 없음"),
+    ("오타", "머리글 남색으로 해조", None,
+     lambda wb, r: "" if fill_of(wb, "A1") == "FF002060" else f"A1 채움={fill_of(wb, 'A1')}"),
+    ("오타", "정열 좀 해줘 주문건수 많은 순으로", None,
+     lambda wb, r: "" if _ws(wb)["A2"].value == "수도권" else f"A2={_ws(wb)['A2'].value}"),
+    ("오타", "테두르 둘러줘 표 전체에", None,
+     lambda wb, r: "" if _ws(wb)["A1"].border.top.style else "테두리 없음"),
+    ("오타", "지연건수로 막대 차투 그러줘", None,
+     lambda wb, r: "" if chart_count(wb) >= 1 else "차트 없음"),
+    ("오타", "차트 다 지어줘", None, _ok, True),
+    ("오타", "저 함계행 마지막에 추가해줄수잇어?", "A1:F6", _ok, True),
 ]
 
 
-async def run_case(idx, family, text, ctx, check, llm):
+async def run_case(idx, family, text, ctx, check, llm, allow_ask=False):
     if WB.exists():
         WB.unlink()
     wb = Workbook()
@@ -183,8 +197,7 @@ async def run_case(idx, family, text, ctx, check, llm):
         "secs": round(time.time() - t0, 1),
     }
     if asked:
-        # 진짜 모호한 문장(오타 "지어줘")은 되묻는 게 정답이다.
-        if "지어줘" in text:
+        if allow_ask:
             entry.update(ok=True, why="(정당한 되묻기)")
         else:
             entry.update(ok=False, why="되묻기")
@@ -209,8 +222,10 @@ async def run_case(idx, family, text, ctx, check, llm):
 async def main():
     llm = get_llm_service()
     out = []
-    for i, (family, text, ctx, check) in enumerate(CASES, 1):
-        e = await run_case(i, family, text, ctx, check, llm)
+    for i, case in enumerate(CASES, 1):
+        family, text, ctx, check = case[:4]
+        allow_ask = bool(case[4]) if len(case) > 4 else False
+        e = await run_case(i, family, text, ctx, check, llm, allow_ask=allow_ask)
         flag = "OK  " if e["ok"] else "FAIL"
         print(f"[{i:2d}] {flag} [{e['family']}] {text[:34]:36s} {e.get('action','')[:28]:30s} {e.get('why','')[:40]}")
         out.append(e)

@@ -1092,9 +1092,13 @@ def _bind_condition_format(
         letter = column.group(1).upper()
     elif entry:
         # "매출이 10만 원 미만" — 열을 이름으로 불렀으면 그 열의 문자로 좁힌다.
+        # 값 일치 조건("상태가 대기인 애들만")의 기준 열은 원래 글자 열이다 —
+        # 숫자 열만 인정하면 텍스트 조건이 못 좁혀져 0건 강조가 된다
+        # (2026-08-18 지저분판 실측).
+        equality_value = str(params.get("value") or "").strip()
         for hit in find_header_mentions(text, _headers(entry)):
             meta = _column_meta(entry, hit["header"])
-            if meta.get("numeric") and meta.get("letter"):
+            if meta.get("letter") and (meta.get("numeric") or equality_value):
                 letter = str(meta["letter"]).upper()
                 break
     # 원문이 범위를 직접 말하지 않았다면 플래너가 좁혀 놓은 범위를 믿지 않는다.
@@ -1520,7 +1524,13 @@ def bind_plan_steps(
             # 시킨 말을 값으로 쓰려 한다면, 그게 집계 요청인지 먼저 본다.
             # 여기서는 다이제스트가 있어 "매출"이 몇 번 열인지 안다 —
             # 빠른 규칙은 그걸 몰라서 되묻는 데서 멈출 수밖에 없었다.
-            if write_values_echo_the_request(params, message):
+            plan_already_has_formulas = any(
+                s.action == "excel_live.set_formula" for s in steps
+            )
+            if write_values_echo_the_request(params, message) and not plan_already_has_formulas:
+                # 계획에 수식 단계가 이미 있으면 이 쓰기는 집계 줄의 **이름표**다.
+                # 변환하면 "합계" 라벨이 =SUM(A2:A6)이 된다(2026-08-18 지저분판
+                # 실측: 글자 열 A7에 텍스트 합계 대신 0짜리 수식이 들어갔다).
                 aggregate = build_aggregate_formula(message, entry=entry, digest=digest)
                 if aggregate:
                     target = _top_left_of(params.get("start_cell"))

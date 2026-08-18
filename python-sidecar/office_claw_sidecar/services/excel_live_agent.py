@@ -316,7 +316,9 @@ _TEXT_EQUALS_SKIP = frozenset(
     }
 )
 _TEXT_EQUALS_PATTERN = re.compile(
-    r"([가-힣A-Za-z0-9_]{2,20})(?:이면|면|인\s*행|인\s*셀|일\s*때)"
+    # "대기인 애들만" 같은 구어 꼴도 조건이다(2026-08-18 지저분판 실측:
+    # '인 애들'이 패턴 밖이라 상태 배지 강조가 통째로 빠졌다).
+    r"([가-힣A-Za-z0-9_]{2,20})(?:이면|면|인\s*행|인\s*셀|인\s*애들|인\s*것들|인\s*데|인\s*곳|일\s*때)"
 )
 _CONVERT_EXISTING_TABLE_PATTERN = re.compile(
     r"(엑셀\s*표|테이블로\s*(?:만들|변환|바꿔)|표로\s*(?:변환|바꿔)|listobject)",
@@ -850,10 +852,12 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
         return row_write_step
 
     # 예: "A1에 120 입력", "C3 셀에 777 입력해줘", "C3 값을 777로 입력", "C3 777 입력"
+    # 셀 토큰 앞의 부정 후읽기: "A1:F6에"의 F6은 범위의 일부지 셀이 아니다 —
+    # 이걸 셀로 오인하면 문장 전체가 그 칸의 값이 된다(2026-08-18 실측).
     single_write_patterns = [
-        r"([a-z]+\d+)\s*(?:셀)?\s*에\s*(?:값\s*)?['\"]?([^'\"]+?)['\"]?\s*(?:을|를)?\s*(?:로)?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|write|set|input)",
-        r"([a-z]+\d+)\s*(?:셀)?\s*값(?:을|를)?\s*['\"]?([^'\"]+?)['\"]?\s*(?:로)?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|write|set|input)",
-        r"\b([a-z]+\d+)\s+['\"]?([^'\"]+?)['\"]?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|write|set|input)\b",
+        r"(?<![:A-Za-z0-9])([a-z]+\d+)\s*(?:셀)?\s*에\s*(?:값\s*)?['\"]?([^'\"]+?)['\"]?\s*(?:을|를)?\s*(?:로)?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|write|set|input)",
+        r"(?<![:A-Za-z0-9])([a-z]+\d+)\s*(?:셀)?\s*값(?:을|를)?\s*['\"]?([^'\"]+?)['\"]?\s*(?:로)?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|write|set|input)",
+        r"(?<![:A-Za-z0-9])\b([a-z]+\d+)\s+['\"]?([^'\"]+?)['\"]?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|write|set|input)\b",
     ]
     # 셀은 지목했는데 넣을 값이 없는 문장("H1에 넣어줘")을 만났는지.
     valueless_cell_write = False
@@ -901,13 +905,25 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
         and not re.search(
             r"(수식|formula|헤더|header|색|highlight|강조|표시|열|column|row"
             r"|콤마|쉼표|서식|포맷|형식|소수점|퍼센트|%|자리|정렬|테두리|경계선"
-            r"|필터|차트|그래프|굵게|기울임|밑줄|병합)",
+            r"|필터|차트|그래프|굵게|기울임|밑줄|병합"
+            r"|합계|총합|평균|아래|밑에|위에|줄로|행에|시트)",
             lowered,
         )
     ):
         raw_value = implicit_single_write.group(1).strip()
+        quoted = bool(re.search(r"이?라고\s*$", implicit_single_write.group(1).strip()))
         raw_value = re.sub(r"\s*이?라고\s*$", "", raw_value)
-        if "수식" not in raw_value and "formula" not in raw_value.lower() and "=" not in raw_value:
+        # 셀 지목 없이 네 낱말 넘는 문장은 값이 아니라 명령일 가능성이 크다.
+        # "합계를 표 아래에 한 줄로"가 활성 셀(A1 머리글) 값으로 들어갔다
+        # (2026-08-18 GUI 실측). '라고' 인용이 없으면 쓰지 않고 물러난다 —
+        # 조용히 틀리느니 뒤 단계가 되묻는 쪽이 안전하다.
+        looks_like_command = not quoted and len(raw_value.split()) >= 4
+        if (
+            not looks_like_command
+            and "수식" not in raw_value
+            and "formula" not in raw_value.lower()
+            and "=" not in raw_value
+        ):
             value = _parse_literal_value(raw_value)
             return {
                 "action": "excel_live.write_range",
@@ -1511,8 +1527,47 @@ def _extract_quoted_headers(text: str) -> list[str]:
     return items if len(items) >= 2 else []
 
 
+# 실사용에서 자주 나오는 오타·흘려쓰기 → 규칙이 아는 표준형. 좁고 확실한
+# 짝만 둔다 — 과하게 넓히면 사용자가 쓰려던 값까지 고쳐 버린다.
+_COMMON_TYPO_PAIRS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"만들어\s*조(?=\s|$)"), "만들어줘"),
+    (re.compile(r"만드러\s*줘"), "만들어줘"),
+    (re.compile(r"넣어\s*조(?=\s|$)"), "넣어줘"),
+    (re.compile(r"너어\s*줘"), "넣어줘"),
+    (re.compile(r"해\s*조(?=\s|$)"), "해줘"),
+    (re.compile(r"그러\s*줘"), "그려줘"),
+    (re.compile(r"그레\s*줘"), "그려줘"),
+    (re.compile(r"정열"), "정렬"),
+    (re.compile(r"함계"), "합계"),
+    (re.compile(r"합게"), "합계"),
+    (re.compile(r"테두르(?=[^가-힣]|$)"), "테두리"),
+    (re.compile(r"테둘이"), "테두리"),
+    (re.compile(r"차투(?=[^가-힣]|$)"), "차트"),
+    (re.compile(r"쉬트(?=[^가-힣]|$)"), "시트"),
+    (re.compile(r"엑샐"), "엑셀"),
+)
+
+
+def normalize_common_typos(text: str) -> str:
+    """자주 나오는 오타를 표준형으로 고친다 — 규칙·플래너 모두 이 문장을 본다.
+
+    2026-08-18 사용자 지시: "사람이 입력한다고 생각하고 실수 이런 거 고려해서".
+    사람은 '만들어조', '함계', '정열'을 친다. 여기서 못 받으면 규칙이 미스나고
+    플래너가 헛발질한다.
+    """
+    out = str(text or "")
+    for pattern, repl in _COMMON_TYPO_PAIRS:
+        out = pattern.sub(repl, out)
+    return out
+
+
 _ROW_WRITE_PATTERN = re.compile(
-    r"\b([a-z]+\d+:[a-z]+\d+)\s*에\s*((?:[^\n]|\n)+?)\s*(입력(?:해)?|써|작성|적어|넣어|write|set)\b",
+    # 동사 뒤 \b는 한글 접미(줘/주라)와 결합할 수 없다 — "넣어줘"가 이 규칙을
+    # 통과 못 해 단일 셀 규칙이 "A1:F6에"의 F6을 셀로 오인했고, 문장 전체가
+    # 한 값이 된 뒤 쉼표로만 재배열돼 **표 전체가 조용히 오염**됐다
+    # (2026-08-18 지저분판 실측: 2행이 [10452,…,'12; 충청권',…]).
+    r"\b([a-z]+\d+:[a-z]+\d+)\s*에\s*((?:[^\n]|\n)+?)\s*"
+    r"(입력|기록|작성|적어|넣어|채워|써|write|set)(?:해)?(?:\s*(?:줘|주세요|주라|줄래|봐))?",
     re.IGNORECASE,
 )
 # 값 자리에 이런 낱말이 오면 값이 아니라 서식·차트 명령일 가능성이 크다 —

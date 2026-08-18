@@ -130,7 +130,14 @@ def build_cross_sheet_aggregate_plan(
         data_start = int(rng.group(2)) + 1
         data_end = int(rng.group(4))
         last_label = values[-1][0] if values[-1] else None
-        if isinstance(last_label, str) and last_label.strip().lower() in _TOTAL_ROW_LABELS:
+        last_row_has_formula = any(
+            isinstance(v, str) and v.startswith("=") for v in values[-1] or []
+        )
+        # 마지막 줄이 합계 이름표든, 수식이 든 줄이든 집계 줄이다 — 구간에
+        # 넣으면 이중 집계가 된다(2026-08-18 지저분판 실측: B2:B7이 나왔다).
+        if (
+            isinstance(last_label, str) and last_label.strip().lower() in _TOTAL_ROW_LABELS
+        ) or last_row_has_formula:
             data_end -= 1
         if data_end < data_start:
             continue
