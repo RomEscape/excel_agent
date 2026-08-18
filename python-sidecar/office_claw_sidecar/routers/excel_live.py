@@ -48,6 +48,7 @@ from office_claw_sidecar.services.decision_trace import (
 from office_claw_sidecar.services.excel_actions import execute_excel_action
 from office_claw_sidecar.services.excel_aggregate_below import (
     build_aggregate_below_plan,
+    build_cross_sheet_aggregate_plan,
     match_aggregate_below,
 )
 from office_claw_sidecar.services.excel_correction_context import (
@@ -1256,6 +1257,27 @@ def _quick_color_hex(word: str) -> str:
         return "#6AC36A"
     if token in {"흰색", "하얀색", "하양", "white", "화이트", "백색"}:
         return "#FFFFFF"
+    # 2026-08-18 실측: "남색 배경에 흰 글씨"의 남색이 어휘에 없어 흰색 하나만
+    # 잡혔고, 배경이 글자색(흰색)을 물려받아 흰 바탕에 흰 글씨가 됐다.
+    # 대시보드에서 실제로 부르는 색 이름들을 채운다.
+    if token in {"검정", "검은색", "검은", "black", "블랙"}:
+        return "#000000"
+    if token in {"남색", "네이비", "navy", "진파랑", "진한 파랑", "진한파랑"}:
+        return "#002060"
+    if token in {"연회색", "연한 회색", "연한회색"}:
+        return "#D9D9D9"
+    if token in {"회색", "그레이", "gray", "grey"}:
+        return "#808080"
+    if token in {"주황색", "주황", "오렌지", "orange"}:
+        return "#ED7D31"
+    if token in {"보라색", "보라", "퍼플", "purple"}:
+        return "#7030A0"
+    if token in {"분홍색", "분홍", "핑크", "pink"}:
+        return "#FFC0CB"
+    if token in {"하늘색", "하늘"}:
+        return "#9DC3E6"
+    if token in {"갈색", "브라운", "brown"}:
+        return "#843C0C"
     return "#FFFF00"
 
 
@@ -1273,22 +1295,38 @@ def _background_fill_hex(lowered: str, font_color: str | None) -> str:
     colors = _quick_extract_colors(lowered)
     if not colors:
         return ""
+    # '배경'이라는 말과 붙어 있는 색이 가장 확실한 배경색이다 — "남색 배경에
+    # 흰 글씨", "배경색 흰색으로 칠하고 글자 흰색" 둘 다 이 규칙 하나로 풀린다.
+    for token in _QUICK_COLOR_PATTERN.finditer(lowered):
+        window = lowered[max(0, token.start() - 8) : token.end() + 8]
+        if re.search(r"배경|채우|음영", window):
+            return _quick_color_hex(token.group(1))
     normalized_font = str(font_color or "").upper()
     for color in colors:
         if color.upper() != normalized_font:
             return color
-    # 글자색과 배경색을 같은 색으로 지시한 경우다. 그대로 쓴다.
+    # 남은 색이 글자색 하나뿐이고 배경 곁에 색이 없으면, 어휘 밖 색(예전의
+    # "남색")을 못 읽은 경우일 가능성이 크다. 글자색으로 배경을 덮으면 흰 바탕에
+    # 흰 글씨가 된다(2026-08-18 실측) — 칠하지 않는 쪽이 안전하다.
+    if len(colors) == 1 and normalized_font:
+        return ""
     return colors[0]
 
 
+# `#1F4E79` 같은 코드도 받는다. 대시보드 배색은 이름으로 부를 수 없는 색이 대부분이라,
+# 코드를 못 읽으면 전부 기본값(노랑)으로 칠해진다(2026-08-16 실측: 남색 제목 바가 노랗게 나왔다).
+_QUICK_COLOR_PATTERN = re.compile(
+    r"(#[0-9a-fA-F]{6}|노란색|노랑|노란|yellow|빨간색|빨강|빨간|red|파란색|파랑|blue"
+    r"|초록색|초록|green|흰색|하얀색|하양|white|화이트|백색"
+    r"|검은색|검정|검은|black|블랙|남색|네이비|navy|연회색|회색|그레이|gray|grey"
+    r"|주황색|주황|오렌지|orange|보라색|보라|퍼플|purple|분홍색|분홍|핑크|pink"
+    r"|하늘색|갈색|브라운|brown)",
+    re.IGNORECASE,
+)
+
+
 def _quick_extract_colors(text: str) -> list[str]:
-    # `#1F4E79` 같은 코드도 받는다. 대시보드 배색은 이름으로 부를 수 없는 색이 대부분이라,
-    # 코드를 못 읽으면 전부 기본값(노랑)으로 칠해진다(2026-08-16 실측: 남색 제목 바가 노랗게 나왔다).
-    matches = re.findall(
-        r"(#[0-9a-fA-F]{6}|노란색|노랑|노란|yellow|빨간색|빨강|빨간|red|파란색|파랑|blue|초록색|초록|green|흰색|하얀색|하양|white|화이트|백색)",
-        str(text or ""),
-        re.IGNORECASE,
-    )
+    matches = _QUICK_COLOR_PATTERN.findall(str(text or ""))
     out: list[str] = []
     for raw in matches:
         color = _quick_color_hex(raw)
@@ -7174,6 +7212,31 @@ async def _run_command(
                     )
                     if agg_steps:
                         quick_action_plan = agg_steps
+        # 크로스시트 사람 말투: "A4에 지역성과 시트 주문건수 합계를 가져와줘".
+        # 원본 시트를 실제로 읽어 열을 찾고 =SUM('시트'!구간) 수식을 만든다.
+        if not quick_action_plan and "시트" in (req.message or ""):
+
+            def _cross_sheet_reader(sheet: str) -> tuple[str, list]:
+                svc = get_excel_live_service()
+                ref = str(svc.get_used_range_ref(req.workbook_id, sheet) or "")
+                data = svc.read_range(req.workbook_id, sheet, ref)
+                return ref, (data.get("values") if isinstance(data, dict) else [])
+
+            cross_steps = build_cross_sheet_aggregate_plan(req.message, _cross_sheet_reader)
+            if cross_steps:
+                # 문장에 나온 시트는 **원본**이다. 대상 시트를 활성 시트로 못박지
+                # 않으면 시트 언급 해석이 원본 시트에 수식을 써 버린다(2026-08-18
+                # 실측: 대시보드 A4가 아니라 지역성과 A4의 데이터를 덮었다).
+                try:
+                    cross_active = _resolve_sheet_name(
+                        get_excel_live_service(), req.workbook_id, req.sheet_name
+                    )
+                except Exception:
+                    cross_active = ""
+                if cross_active:
+                    for cross_step in cross_steps:
+                        cross_step["params"]["sheet_name"] = cross_active
+                quick_action_plan = cross_steps
     quick_plan_for_parse = _normalize_plan_or_empty(quick_action_plan) if quick_action_plan else []
     quick_first_action = quick_plan_for_parse[0].action if quick_plan_for_parse else ""
     # "전체 지우기" 같은 고신뢰 퀵 액션은 LLM 변환 오차보다 규칙 우선이 안정적이다.

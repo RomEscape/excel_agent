@@ -18,6 +18,7 @@ from office_claw_sidecar.main import app
 from office_claw_sidecar.routers import excel_live as excel_live_router
 from office_claw_sidecar.services.excel_aggregate_below import (
     build_aggregate_below_plan,
+    build_cross_sheet_aggregate_plan,
     match_aggregate_below,
 )
 from office_claw_sidecar.services.excel_selection_context import mentions_selection
@@ -95,6 +96,59 @@ class TestPlanBuilding:
     def test_no_numbers_means_no_plan(self):
         assert build_aggregate_below_plan("SUM", "합계", "A1:B2", [["가", "나"], ["다", "라"]]) == []
         assert build_aggregate_below_plan("SUM", "합계", "A1:B2", None) == []
+
+
+class TestCrossSheetAggregate:
+    """"A4에 지역성과 시트 주문건수 합계를 가져와줘" — 2026-08-18 사람 말투 실측.
+
+    이 문형이 의도 정규화로 새서 **빈 값을 쓰고 성공으로 보고**됐다(가짜 성공,
+    KPI 4셀 미기록). 원본 시트를 읽어 =SUM('시트'!구간)을 만들어야 한다.
+    """
+
+    SOURCE = (
+        "A1:F7",
+        [
+            ["지역", "주문건수", "출고건수", "정시배송률", "지연건수", "클레임"],
+            ["수도권", 10452, 10158, 97.1, 145, 12],
+            ["충청권", 3892, 3773, 95.2, 89, 6],
+            ["호남권", 3214, 3086, 94.7, 112, 5],
+            ["영남권", 6789, 6512, 95.8, 174, 5],
+            ["강원제주", 2495, 2383, 92.6, 145, 0],
+            ["합계", 26842, 25912, None, 665, 28],
+        ],
+    )
+
+    def _reader(self, sheet):
+        assert sheet == "지역성과", sheet
+        return self.SOURCE
+
+    def test_the_formula_points_at_the_source_column_without_the_total_row(self):
+        steps = build_cross_sheet_aggregate_plan(
+            "A4에 지역성과 시트 주문건수 합계를 가져오는 수식 넣어줘", self._reader
+        )
+        assert [s["params"] for s in steps] == [
+            # 마지막 합계 줄(7행)은 구간에서 빠진다 — 넣으면 이중 집계다.
+            {"range_ref": "A4", "formula_a1": "=SUM('지역성과'!B2:B6)"}
+        ]
+
+    def test_two_clauses_in_one_sentence_inherit_the_sheet(self):
+        steps = build_cross_sheet_aggregate_plan(
+            "E4에는 지역성과 시트 지연건수 합계를, F4에는 클레임 합계를 가져와줘", self._reader
+        )
+        assert [s["params"]["range_ref"] for s in steps] == ["E4", "F4"]
+        assert steps[0]["params"]["formula_a1"] == "=SUM('지역성과'!E2:E6)"
+        assert steps[1]["params"]["formula_a1"] == "=SUM('지역성과'!F2:F6)"
+
+    def test_an_unknown_header_or_sheet_backs_off(self):
+        assert build_cross_sheet_aggregate_plan("A4에 지역성과 시트 없는열 합계 가져와줘", self._reader) == []
+
+        def _boom(_sheet):
+            raise RuntimeError("시트 없음")
+
+        assert build_cross_sheet_aggregate_plan("A4에 지역성과 시트 주문건수 합계 가져와줘", _boom) == []
+
+    def test_a_sentence_without_a_sheet_is_not_claimed(self):
+        assert build_cross_sheet_aggregate_plan("A4에 주문건수 합계 넣어줘", self._reader) == []
 
 
 class TestThePipeline:

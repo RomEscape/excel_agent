@@ -162,7 +162,9 @@ _FONT_COLOR_MARKER = re.compile(
 )
 _COLOR_TOKEN = re.compile(
     r"(#[0-9a-fA-F]{6}|노란색|노랑|노란|yellow|빨간색|빨강|빨간|red|파란색|파랑|blue"
-    r"|초록색|초록|green|흰색|하얀색|하양|white|화이트|백색|검정|검은색|검은|black)",
+    r"|초록색|초록|green|흰색|하얀색|하양|white|화이트|백색|검정|검은색|검은|black"
+    r"|남색|네이비|navy|연회색|회색|gray|grey|주황색|주황|orange|보라색|보라|purple"
+    r"|분홍색|분홍|핑크|pink|하늘색|갈색|brown)",
     re.IGNORECASE,
 )
 _COLORED_TEXT_PATTERN = re.compile(
@@ -178,7 +180,8 @@ _COLORED_TEXT_PATTERN = re.compile(
 _TEXT_THEN_COLOR_PATTERN = re.compile(
     r"(?:글씨|글자|텍스트|폰트|글꼴)\s*(?:도|만|은|는|를|을|의|색|색깔|색상)?\s*(?:을|를)?\s*"
     r"(#[0-9a-fA-F]{6}|노란색|노랑|yellow|빨간색|빨강|red|파란색|파랑|blue"
-    r"|초록색|초록|green|흰색|하얀색|하양|white|화이트|백색|검정|검은색|black)",
+    r"|초록색|초록|green|흰색|하얀색|하양|white|화이트|백색|검정|검은색|black"
+    r"|남색|네이비|navy|연회색|회색|주황색|주황|보라색|보라|분홍색|분홍|핑크|하늘색|갈색)",
     re.IGNORECASE,
 )
 # 글자색을 말하는 문장은 배경색 규칙이 가로채면 안 된다. "글씨 흰색으로"가 배경을
@@ -261,6 +264,24 @@ def _normalize_color(word: str) -> str:
         return "#FFFFFF"
     if normalized in {"검정", "검은색", "검은", "black", "블랙"}:
         return "#000000"
+    # 2026-08-18 실측: "남색 배경에 흰 글씨"의 남색이 어휘에 없어 배경이
+    # 글자색을 물려받았다. 대시보드에서 실제로 부르는 이름들을 채운다.
+    if normalized in {"남색", "네이비", "navy"}:
+        return "#002060"
+    if normalized in {"연회색", "연한 회색", "연한회색"}:
+        return "#D9D9D9"
+    if normalized in {"회색", "그레이", "gray", "grey"}:
+        return "#808080"
+    if normalized in {"주황색", "주황", "오렌지", "orange"}:
+        return "#ED7D31"
+    if normalized in {"보라색", "보라", "퍼플", "purple"}:
+        return "#7030A0"
+    if normalized in {"분홍색", "분홍", "핑크", "pink"}:
+        return "#FFC0CB"
+    if normalized in {"하늘색", "하늘"}:
+        return "#9DC3E6"
+    if normalized in {"갈색", "브라운", "brown"}:
+        return "#843C0C"
     return "#FFFF00"
 
 
@@ -705,10 +726,9 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
         col = str(col_match.group(1)).upper() if col_match else ""
         target_range = _extract_target_range_from_text(lowered) or (f"{col}:{col}" if col else "__USED_RANGE__")
         formula_col = col or "A"
-        color_match = re.search(
-            r"(#?[0-9a-fA-F]{6}|노란색|노랑|yellow|빨간색|빨강|red|초록색|초록|green|파란색|파랑|blue)",
-            lowered,
-        )
+        # 색 이름은 한 곳(_COLOR_TOKEN)만 본다 — 목록이 갈라져 있으면 "분홍색으로
+        # 강조"가 빨강 기본값으로 칠해진다(2026-08-18 사람 말투 실측).
+        color_match = _COLOR_TOKEN.search(lowered)
         fill = _normalize_color(color_match.group(1)) if color_match else "#FFC7CE"
         return {
             "action": "excel_live.apply_formula_cf",
@@ -723,10 +743,9 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
     # 예: "A열 50보다 큰 값 노란색으로 칠해줘", "A1:A20 >= 100 highlight"
     if re.search(r"(칠해|강조|표시|highlight|색|채워|배경|바꿔)", lowered):
         op_threshold = _parse_operator_threshold(lowered)
-        color_match = re.search(
-            r"(#?[0-9a-fA-F]{6}|노란색|노랑|yellow|빨간색|빨강|red|초록색|초록|green|파란색|파랑|blue)",
-            lowered,
-        )
+        # 색 이름은 한 곳(_COLOR_TOKEN)만 본다 — 목록이 갈라져 있으면 "분홍색으로
+        # 강조"가 빨강 기본값으로 칠해진다(2026-08-18 사람 말투 실측).
+        color_match = _COLOR_TOKEN.search(lowered)
         if op_threshold is None and text_equals:
             target_range = _extract_target_range_from_text(lowered) or "A:Z"
             return {

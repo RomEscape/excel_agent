@@ -895,6 +895,8 @@ def _result_sheet_from_message(message: str) -> str:
 
 
 _COLOR_WORDS: tuple[tuple[str, str], ...] = (
+    # 긴 낱말이 먼저다 — "연회색"이 "회색"에 먼저 걸리면 진회색이 된다.
+    ("연회색", "#F2F2F2"),
     ("빨", "#FF0000"),
     ("적색", "#FF0000"),
     ("red", "#FF0000"),
@@ -905,13 +907,27 @@ _COLOR_WORDS: tuple[tuple[str, str], ...] = (
     ("초록", "#00B050"),
     ("녹색", "#00B050"),
     ("green", "#00B050"),
+    # 하늘색이 "파랑"류보다 먼저 있어야 한다 — 둘 다 있는 문장은 드물지만
+    # 하늘색 문장이 파랑으로 뭉개지면 안 된다.
+    ("하늘색", "#9DC3E6"),
     ("파랑", "#0070C0"),
     ("파란", "#0070C0"),
     ("blue", "#0070C0"),
     ("회색", "#D9D9D9"),
-    ("연회색", "#F2F2F2"),
     ("gray", "#D9D9D9"),
     ("grey", "#D9D9D9"),
+    # 2026-08-18 사람 말투 실측: "분홍색으로 강조"가 어휘에 없어 플래너의
+    # 빨강이 그대로 나갔다. 강조에 실제로 쓰는 이름들을 채운다.
+    ("분홍", "#FFC0CB"),
+    ("핑크", "#FFC0CB"),
+    ("pink", "#FFC0CB"),
+    ("남색", "#002060"),
+    ("네이비", "#002060"),
+    ("navy", "#002060"),
+    ("보라", "#7030A0"),
+    ("purple", "#7030A0"),
+    ("갈색", "#843C0C"),
+    ("brown", "#843C0C"),
 )
 _COLUMN_ONLY_MENTION = re.compile(r"(?<![A-Za-z0-9])([A-Za-z])\s*열")
 _CONDITION_FORMAT_ACTIONS = {"excel_live.highlight_by_condition", "excel_live.fill_range"}
@@ -1431,6 +1447,24 @@ def bind_plan_steps(
                 params["key_column"] = sort_key
                 changes.append(f"key_column={sort_key}")
                 used.add(sort_key)
+
+        if (
+            step.action in {"excel_live.apply_data_bar", "excel_live.apply_color_scale"}
+            and len(candidates) == 1
+        ):
+            # "평균운행시간 열에 데이터 막대 넣어줘" — 열 이름을 말했는데 표 전체에
+            # 칠하면, 두 열에 각각 요청해도 같은 범위에 두 번 그린 셈이 된다
+            # (2026-08-18 사람 말투 실측: 노선 시트 데이터 막대 2건이 1건으로).
+            letter = _letter_for(entry, candidates[0])
+            current = str(params.get("target_range") or "").strip().upper()
+            span = re.match(r"(?:[^!]+!)?([A-Z]+)\d*:([A-Z]+)\d*$", current)
+            is_placeholder = current in {"", "__ACTIVE_SELECTION__", "__USED_RANGE__"}
+            if letter and (is_placeholder or (span and span.group(1) != span.group(2))):
+                last_row = _last_data_row(entry)
+                if last_row >= 2:
+                    params["target_range"] = f"{letter}2:{letter}{last_row}"
+                    changes.append(f"target_range={params['target_range']}")
+                    used.add(candidates[0])
 
         for slot in _COLUMN_SLOTS.get(step.action, ()):  # 단일 열 슬롯
             if slot not in params:

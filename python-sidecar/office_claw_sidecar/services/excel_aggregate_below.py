@@ -49,6 +49,79 @@ def match_aggregate_below(message: str) -> tuple[str, str] | None:
     return None
 
 
+# "A4에 지역성과 시트 주문건수 합계를 가져와줘" — 셀·원본 시트·열 이름·집계만
+# 말하는 크로스시트 문형. "E4에는 …를, F4에는 …를"처럼 한 문장에 여러 절이
+# 오면 시트 이름은 앞 절에서 이어받는다.
+_CROSS_SHEET = re.compile(
+    r"([A-Z]+\d+)\s*에(?:는|다가)?\s*(?:([^\s,]+?)\s*시트(?:의|에서)?\s*)?"
+    r"([가-힣A-Za-z0-9_]+?)\s*(?:의)?\s*(합계|총합|평균|개수|합)",
+    re.IGNORECASE,
+)
+_CROSS_SHEET_VERB = re.compile(r"가져|끌어|연결|수식|넣어|채워|기록")
+_TOTAL_ROW_LABELS = frozenset({"합계", "총계", "계", "total"})
+
+
+def build_cross_sheet_aggregate_plan(
+    message: str,
+    sheet_reader,
+) -> list[dict[str, Any]]:
+    """크로스시트 집계 수식 계획. sheet_reader(시트명) → (사용범위, values_2d).
+
+    원본 시트의 머리글에서 열을 찾아 =FUNC('시트'!열구간)을 만든다. 마지막 행이
+    합계 줄이면 구간에서 뺀다 — 넣으면 이중 집계다. 2026-08-18 사람 말투 실측:
+    이 문형이 의도 정규화로 새서 빈 값을 쓰고 성공으로 보고됐다(가짜 성공).
+    """
+    text = str(message or "")
+    if "시트" not in text or not _CROSS_SHEET_VERB.search(text):
+        return []
+    steps: list[dict[str, Any]] = []
+    current_sheet = ""
+    cache: dict[str, tuple[str, list[list[Any]]]] = {}
+    for m in _CROSS_SHEET.finditer(text):
+        cell = m.group(1).upper()
+        sheet = (m.group(2) or "").strip().strip("'\"")
+        header_word = m.group(3).strip()
+        func_word = m.group(4)
+        if sheet:
+            current_sheet = sheet
+        if not current_sheet:
+            continue
+        func = {"평균": "AVERAGE", "개수": "COUNT"}.get(func_word, "SUM")
+        try:
+            if current_sheet not in cache:
+                cache[current_sheet] = sheet_reader(current_sheet)
+            used_ref, values = cache[current_sheet]
+        except Exception:
+            return []
+        rng = _RANGE.match(str(used_ref or "").strip().upper())
+        if not rng or not values:
+            continue
+        headers = [str(v).strip() if v is not None else "" for v in values[0]]
+        if header_word not in headers:
+            continue
+        col_letter = get_column_letter(
+            column_index_from_string(rng.group(1)) + headers.index(header_word)
+        )
+        data_start = int(rng.group(2)) + 1
+        data_end = int(rng.group(4))
+        last_label = values[-1][0] if values[-1] else None
+        if isinstance(last_label, str) and last_label.strip().lower() in _TOTAL_ROW_LABELS:
+            data_end -= 1
+        if data_end < data_start:
+            continue
+        steps.append(
+            {
+                "action": "excel_live.set_formula",
+                "params": {
+                    "range_ref": cell,
+                    "formula_a1": f"={func}('{current_sheet}'!{col_letter}{data_start}:{col_letter}{data_end})",
+                },
+                "reason": f"{current_sheet} 시트 {header_word} {func_word}를 {cell}에",
+            }
+        )
+    return steps
+
+
 def build_aggregate_below_plan(
     func: str,
     label: str,
