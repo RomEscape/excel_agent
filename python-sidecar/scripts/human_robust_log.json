@@ -22,7 +22,7 @@
   "text": "이 표 아래로 각 열 합 넣어주라",
   "action": "excel_live.write_range",
   "reply": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5.",
-  "secs": 8.6,
+  "secs": 8.5,
   "ok": true,
   "why": ""
  },
@@ -31,7 +31,7 @@
   "text": "아래쪽에 총합 좀 계산해서 넣어줘",
   "action": "excel_live.write_range",
   "reply": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5.",
-  "secs": 8.6,
+  "secs": 8.5,
   "ok": true,
   "why": ""
  },
@@ -58,7 +58,7 @@
   "text": "첫줄 있잖아 그거 남색 배경으로 하고 글자는 흰색 굵게 부탁",
   "action": "excel_live.set_font",
   "reply": "1. 배경색 변경 — A1:F6 · 36개 셀\n2. 글자 서식 — A1:F6 · 36개 셀",
-  "secs": 1.4,
+  "secs": 1.5,
   "ok": true,
   "why": ""
  },
@@ -121,7 +121,7 @@
   "text": "주문건수 열 숫자 형식 좀 이쁘게 콤마로",
   "action": "excel_live.set_number_format",
   "reply": "표시 형식 — A1:F6",
-  "secs": 4.2,
+  "secs": 4.1,
   "ok": true,
   "why": ""
  },
@@ -166,7 +166,7 @@
   "text": "클레임 10 넘는 데만 빨갛게 칠해줘",
   "action": "excel_live.highlight_by_condition",
   "reply": "조건부 강조 — F1:F6 · 1개 셀",
-  "secs": 4.5,
+  "secs": 4.4,
   "ok": true,
   "why": ""
  },
@@ -247,7 +247,7 @@
   "text": "주문건수 많은 순으로 정렬해줘",
   "action": "excel_live.sort_range",
   "reply": "정렬 — A1:F6",
-  "secs": 2.6,
+  "secs": 2.5,
   "ok": true,
   "why": ""
  },
@@ -256,7 +256,7 @@
   "text": "클레임 기준으로 내림차순 정렬 부탁",
   "action": "excel_live.sort_range",
   "reply": "정렬 — A1:F6",
-  "secs": 2.6,
+  "secs": 2.7,
   "ok": true,
   "why": ""
  },
@@ -265,7 +265,7 @@
   "text": "정시배송률 낮은 순서대로 줄세워줘",
   "action": "excel_live.sort_range",
   "reply": "정렬 — A1:F6",
-  "secs": 2.6,
+  "secs": 2.5,
   "ok": true,
   "why": ""
  },
@@ -292,7 +292,7 @@
   "text": "A8에 비고 라고 적어줘",
   "action": "excel_live.write_range",
   "reply": "값 입력 — A8 · 값 1개 기록",
-  "secs": 2.7,
+  "secs": 2.6,
   "ok": true,
   "why": ""
  },
@@ -301,7 +301,7 @@
   "text": "G1:G6에 메모,1,2,3,4,5 입력해주라",
   "action": "excel_live.write_range",
   "reply": "값 입력 — G1:G6 · 값 6개 기록",
-  "secs": 6.2,
+  "secs": 6.1,
   "ok": true,
   "why": ""
  },
@@ -353,18 +353,18 @@
  {
   "family": "시트",
   "text": "이 시트 복사본 하나 만들어줘",
-  "action": "excel_live.create_sheet",
-  "reply": "엑셀 변경 작업을 실행합니다. — Copy 시트",
-  "secs": 3.2,
-  "ok": true,
-  "why": ""
+  "action": "excel_live.clarify",
+  "reply": "'Copy' 시트를 찾을 수 없습니다. 어느 시트에 작업할까요? 현재 시트: 지역성과",
+  "secs": 3.3,
+  "ok": false,
+  "why": "되묻기"
  },
  {
   "family": "오타",
   "text": "합계 좀 밑에 너어줘",
   "action": "excel_live.write_range",
   "reply": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5.",
-  "secs": 8.5,
+  "secs": 8.6,
   "ok": true,
   "why": ""
  },
@@ -373,7 +373,7 @@
   "text": "함계를 표 아래 한줄로 만들어조",
   "action": "excel_live.write_range",
   "reply": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5.",
-  "secs": 8.5,
+  "secs": 8.6,
   "ok": true,
   "why": ""
  },
@@ -418,7 +418,7 @@
   "text": "차트 다 지어줘",
   "action": "excel_live.chart",
   "reply": "차트 종류를 선택해 주세요. 예: 선 그래프 / 막대 그래프 / 원형 차트",
-  "secs": 3.6,
+  "secs": 3.8,
   "ok": true,
   "why": "(정당한 되묻기)"
  },

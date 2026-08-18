@@ -153,7 +153,11 @@ def _extract_target_range_from_text(text: str) -> str | None:
 
 # "글자 크기 16", "16pt", "폰트 크기를 14로"
 _FONT_SIZE_PATTERN = re.compile(
-    r"(?:글자|글씨|폰트|글꼴|텍스트|font)?\s*(?:크기|사이즈|size)\s*(?:를|을)?\s*(\d{1,3})|(\d{1,3})\s*(?:pt|포인트)",
+    # "폰트 14로"처럼 크기라는 낱말 없이 숫자만 붙는 꼴도 크기다(2026-08-18
+    # 사냥: bold만 적용되고 크기가 무시됐다).
+    r"(?:글자|글씨|폰트|글꼴|텍스트|font)?\s*(?:크기|사이즈|size)\s*(?:를|을)?\s*(\d{1,3})"
+    r"|(\d{1,3})\s*(?:pt|포인트)"
+    r"|(?:글자|글씨|폰트|글꼴)\s*(?:를|을)?\s*(\d{1,3})\s*(?:으로|로)\b",
     re.IGNORECASE,
 )
 # 글자색을 가리키는 말. 배경색과 반드시 갈라야 한다 — 안 그러면 배경을 칠해 버린다.
@@ -204,14 +208,14 @@ def extract_font_params(text: str) -> dict[str, Any]:
     lowered = str(text or "").lower()
     out: dict[str, Any] = {}
 
-    if re.search(r"(굵게|볼드|bold|굵은|두껍)", lowered):
+    if re.search(r"(굵게|볼드|bold|굵은|두껍|진하게|진한)", lowered):
         out["bold"] = True
     elif re.search(r"(굵기\s*(?:해제|없|빼)|보통\s*굵기|not\s*bold)", lowered):
         out["bold"] = False
 
     size_match = _FONT_SIZE_PATTERN.search(lowered)
     if size_match:
-        raw = size_match.group(1) or size_match.group(2)
+        raw = size_match.group(1) or size_match.group(2) or size_match.group(3)
         try:
             size = float(raw)
         except (TypeError, ValueError):
@@ -318,7 +322,7 @@ _TEXT_EQUALS_SKIP = frozenset(
 _TEXT_EQUALS_PATTERN = re.compile(
     # "대기인 애들만" 같은 구어 꼴도 조건이다(2026-08-18 지저분판 실측:
     # '인 애들'이 패턴 밖이라 상태 배지 강조가 통째로 빠졌다).
-    r"([가-힣A-Za-z0-9_]{2,20})(?:이면|면|인\s*행|인\s*셀|인\s*애들|인\s*것들|인\s*데|인\s*곳|일\s*때)"
+    r"([가-힣A-Za-z0-9_]{2,20})(?:이면|면|인\s*행|인\s*셀|인\s*애들|인\s*것들|인\s*것만|인\s*건|인\s*거|인\s*데|인\s*곳|일\s*때)"
 )
 _CONVERT_EXISTING_TABLE_PATTERN = re.compile(
     r"(엑셀\s*표|테이블로\s*(?:만들|변환|바꿔)|표로\s*(?:변환|바꿔)|listobject)",
@@ -685,7 +689,7 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
         }
 
     # 예: "A1:C10 읽어줘", "B열 보여줘"
-    read_verbs = r"(읽어|읽기|보여|조회|확인|read|show|display)"
+    read_verbs = r"(읽어|읽기|보여|조회|확인|알려|read|show|display)"
     if (
         re.search(read_verbs, lowered)
         and not re.search(write_verbs, lowered)
@@ -743,7 +747,18 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
         }
 
     # 예: "A열 50보다 큰 값 노란색으로 칠해줘", "A1:A20 >= 100 highlight"
-    if re.search(r"(칠해|강조|표시|highlight|색|채워|배경|바꿔)", lowered):
+    _fill_trigger = re.search(r"(칠해|강조|표시|highlight|색|채워|배경|바꿔)", lowered)
+    if _fill_trigger and (
+        # "C3에 100 채워줘"는 값 입력이지 색칠이 아니다 — 색 언급 없는
+        # 채워/바꿔 단독 트리거는 물러난다(2026-08-18 사냥: 노란 칠 오실행).
+        _fill_trigger.group(1) not in {"채워", "바꿔"}
+        or _COLOR_TOKEN.search(lowered)
+        or "배경" in lowered
+    ):
+        if re.search(r"급증|급감|이상치|임박|근접|평소보다|지난주보다|지난달보다", lowered):
+            # 계산할 수 없는 조건("급증한 값")으로 전체를 칠하면 안 된다
+            # (2026-08-18 사냥: 통짜 칠 오실행). 물러나면 해석 카드가 받는다.
+            return None
         op_threshold = _parse_operator_threshold(lowered)
         # 색 이름은 한 곳(_COLOR_TOKEN)만 본다 — 목록이 갈라져 있으면 "분홍색으로
         # 강조"가 빨강 기본값으로 칠해진다(2026-08-18 사람 말투 실측).
@@ -855,9 +870,9 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
     # 셀 토큰 앞의 부정 후읽기: "A1:F6에"의 F6은 범위의 일부지 셀이 아니다 —
     # 이걸 셀로 오인하면 문장 전체가 그 칸의 값이 된다(2026-08-18 실측).
     single_write_patterns = [
-        r"(?<![:A-Za-z0-9])([a-z]+\d+)\s*(?:셀)?\s*에(?:다가?)?\s*(?:값\s*)?['\"]?([^'\"]+?)['\"]?\s*(?:을|를)?\s*(?:로)?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|write|set|input)",
-        r"(?<![:A-Za-z0-9])([a-z]+\d+)\s*(?:셀)?\s*값(?:을|를)?\s*['\"]?([^'\"]+?)['\"]?\s*(?:로)?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|write|set|input)",
-        r"(?<![:A-Za-z0-9])\b([a-z]+\d+)\s+['\"]?([^'\"]+?)['\"]?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|write|set|input)\b",
+        r"(?<![:A-Za-z0-9])([a-z]+\d+)\s*(?:셀)?\s*에(?:다가?)?\s*(?:값\s*)?['\"]?([^'\"]+?)['\"]?\s*(?:을|를)?\s*(?:로)?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|채워(?:줘)?|write|set|input)",
+        r"(?<![:A-Za-z0-9])([a-z]+\d+)\s*(?:셀)?\s*값(?:을|를)?\s*['\"]?([^'\"]+?)['\"]?\s*(?:로)?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|채워(?:줘)?|write|set|input)",
+        r"(?<![:A-Za-z0-9])\b([a-z]+\d+)\s+['\"]?([^'\"]+?)['\"]?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|채워(?:줘)?|write|set|input)\b",
     ]
     # 셀은 지목했는데 넣을 값이 없는 문장("H1에 넣어줘")을 만났는지.
     valueless_cell_write = False
@@ -892,7 +907,7 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
 
     # 예: "777 입력해줘" (셀 미지정) -> 현재 선택 셀에 기록
     implicit_single_write = re.search(
-        r"^\s*['\"]?([^'\"]+?)['\"]?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|write|set|input)\s*$",
+        r"^\s*['\"]?([^'\"]+?)['\"]?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|채워(?:줘)?|write|set|input)\s*$",
         text,
         re.IGNORECASE,
     )
@@ -1605,6 +1620,14 @@ def parse_explicit_row_write(text: str, *, strong_verb_only: bool = False) -> di
     if not (left_col and right_col and row_match):
         return None
     raw_values = row_write.group(2).strip()
+    # "서울, 부산, 대구 **순서대로**" — 꼬리 부사는 값이 아니다(2026-08-18 사냥).
+    raw_values = re.sub(r"\s*(?:순서대로|차례대로|순으로|각각|전부|모두)\s*$", "", raw_values)
+    # 복합문("…넣고 D2에 합계 써줘")의 뒤 절이 값으로 흘러들면 표가 오염된다.
+    # 값 안에 또 다른 절이 보이면 물러난다 — 해석 카드가 받는다.
+    if re.search(r"(?:넣고|쓰고|입력하고|적고)\s", raw_values) or re.search(
+        r"[A-Za-z]{1,3}\d{1,7}\s*에", raw_values
+    ):
+        return None
     # 수식 명령은 write_range가 아니라 set_formula 경로로 내려가야 한다.
     if "수식" in raw_values or "formula" in raw_values.lower() or "=" in raw_values:
         return None
@@ -1619,6 +1642,15 @@ def parse_explicit_row_write(text: str, *, strong_verb_only: bool = False) -> di
         vertical_tokens = _split_header_tokens(row_groups[0])
         if len(vertical_tokens) > 1:
             row_groups = vertical_tokens
+    elif col_count > 1 and len(row_groups) == 1:
+        flat_tokens = _split_header_tokens(row_groups[0])
+        if len(flat_tokens) > col_count and len(flat_tokens) % col_count == 0:
+            # "A1:B2에 상품,수량,사과,3,배,5" — 열 수의 배수면 격자로 나눈다.
+            # 안 나누면 첫 행만 쓰이고 나머지 값이 사라진다(2026-08-18 사냥).
+            row_groups = [
+                ",".join(str(t) for t in flat_tokens[i : i + col_count])
+                for i in range(0, len(flat_tokens), col_count)
+            ]
     rows_2d = []
     for group in row_groups:
         tokens = _split_header_tokens(group)
@@ -1664,6 +1696,10 @@ def parse_rangeless_row_write(text: str, target_range: str) -> dict | None:
     # 안 벗기면 "여기에 지역"이 첫 칸 값이 된다(2026-08-18 GUI 실측: F9 한 칸에
     # 문장 전체가 텍스트로 들어갔다).
     body = re.sub(r"^(?:여기(?:에|에다|다가)?|이\s*(?:곳|쪽|자리|범위|영역)에?|요기에?)\s*", "", body)
+    body = re.sub(r"\s*(?:순서대로|차례대로|순으로|각각|전부|모두)\s*$", "", body)
+    if re.search(r"(?:넣고|쓰고|입력하고|적고)\s", body):
+        # 복합문의 뒤 절이 값으로 흘러들면 오염이다 — 해석 카드가 받는다.
+        return None
     if not body or RANGE_REF_PATTERN.search(body):
         # 범위를 말했으면 기존 행 쓰기 규칙 소유다.
         return None

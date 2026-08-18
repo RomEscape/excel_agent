@@ -142,7 +142,7 @@ CASES = [
      lambda wb, r: "" if "백업2" in wb.sheetnames else f"시트들={wb.sheetnames}"),
     ("시트", "요약이라는 이름으로 시트 추가좀", None,
      lambda wb, r: "" if "요약" in wb.sheetnames else f"시트들={wb.sheetnames}"),
-    ("시트", "이 시트 복사본 하나 만들어줘", None, _ok),
+    ("시트", "이 시트 복사본 하나 만들어줘", None, _ok, True),  # 시트 복사 액션 부재 — 되묻기가 정답
     # ── 오타·흘려쓰기 (사람의 실수 — 알아듣거나, 정직하게 되묻거나) ──
     ("오타", "합계 좀 밑에 너어줘", "A1:F6",
      lambda wb, r: "" if has_formula(wb, "B7", "SUM") else "B7에 SUM 없음"),

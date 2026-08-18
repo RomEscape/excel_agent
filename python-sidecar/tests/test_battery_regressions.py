@@ -342,3 +342,57 @@ class TestGapHuntBatchOne:
         # 정상 좁은 삭제(값만)는 그대로 동작해야 한다.
         plan = _build_quick_action_plan("여기 값만 지워줘", "A1:D9")
         assert plan and plan[-1]["action"] == "excel_live.clear_range"
+
+
+class TestGapHuntBatchTwo:
+    """5렌즈 백로그 2차 소화(2026-08-18) — 조용한 파괴 잔여 14종의 회귀 핀."""
+
+    def test_sheet_deletion_words_do_not_clear_contents(self):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+
+        q = _build_quick_action_plan("임시 시트 지워줘", None)
+        assert q is None or q[0]["action"] != "excel_live.clear_range", q
+
+    def test_font_size_without_the_word_size(self):
+        from office_claw_sidecar.services.excel_live_agent import extract_font_params
+
+        assert extract_font_params("여기 폰트 14로 바꿔줘").get("size") == 14.0
+        assert extract_font_params("머리글 진하게 해줘").get("bold") is True
+
+    @pytest.mark.parametrize(
+        ("message", "value"),
+        [("미납인 건 빨간색으로 칠해줘", "미납"), ("상태가 품절인 것만 빨간색으로", "품절")],
+    )
+    def test_colloquial_equality_forms(self, message, value):
+        from office_claw_sidecar.services.excel_live_agent import parse_text_equals_condition
+
+        assert parse_text_equals_condition(message) == value
+
+    def test_fill_words_without_color_are_writes(self):
+        r = parse_command_rule_based("C3에 100 채워줘")
+        assert r["action"] == "excel_live.write_range"
+        assert r["params"]["values_2d"] == [[100]]
+
+    def test_trailing_adverbs_and_compound_clauses(self):
+        r = parse_command_rule_based("A2:C2에 서울, 부산, 대구 순서대로 입력해줘")
+        assert r["params"]["values_2d"] == [["서울", "부산", "대구"]]
+        r2 = parse_command_rule_based("A2:C2에 서울,부산,대구 넣고 D2에 합계 써줘")
+        assert r2 is None or "넣고" not in str(r2.get("params", {}).get("values_2d", ""))
+
+    def test_grid_reshape_when_tokens_fill_the_range(self):
+        r = parse_command_rule_based("A1:B2에 상품,수량,사과,3,배,5 입력해줘")
+        assert r["params"]["values_2d"] == [["상품", "수량"], ["사과", 3], ["배", 5]]
+
+    def test_compound_korean_numerals_and_minus(self):
+        from office_claw_sidecar.services.korean_number import parse_condition
+
+        assert parse_condition("매출이 3만 5천 원 이상이면") == (">=", 35000.0, False)
+        assert parse_condition("수익률이 마이너스인 종목") == ("<", 0.0, False)
+
+    def test_vague_conditions_back_off_instead_of_painting(self):
+        r = parse_command_rule_based("지난주보다 급증한 센서값 빨간색으로 강조해줘")
+        assert r is None or r.get("action") != "excel_live.fill_range", r
+
+    def test_tell_me_is_a_read(self):
+        r = parse_command_rule_based("B2 값 알려줘")
+        assert r and r["action"] == "excel_live.read_range"

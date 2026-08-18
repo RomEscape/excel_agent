@@ -21,8 +21,23 @@ _SCALES: tuple[tuple[str, float], ...] = (
 )
 
 _NUMBER_WITH_SCALE = re.compile(
-    r"(-?\d[\d,]*(?:\.\d+)?)\s*(조|억|만|천|백)?\s*(%|퍼센트|프로)?",
+    # "3만 5천"처럼 배수 표현이 이어지는 복합 수사를 받는다 — 하나만 보면
+    # 뒤쪽 "5천"이 잡혀 35000이 5000이 된다(2026-08-18 사냥 실측).
+    r"(-?\d[\d,]*(?:\.\d+)?)\s*(조|억|만|천|백)?(?:\s*(\d[\d,]*(?:\.\d+)?)\s*(천|백))?\s*(%|퍼센트|프로)?",
 )
+
+
+def _scaled(raw: str, scale: str | None) -> float | None:
+    try:
+        value = float(raw.replace(",", ""))
+    except (TypeError, ValueError):
+        return None
+    if scale:
+        for name, factor in _SCALES:
+            if scale == name:
+                value *= factor
+                break
+    return value
 
 
 def parse_amount(text: str) -> float | None:
@@ -30,16 +45,13 @@ def parse_amount(text: str) -> float | None:
     match = _NUMBER_WITH_SCALE.search(str(text or ""))
     if not match or not match.group(1):
         return None
-    try:
-        value = float(match.group(1).replace(",", ""))
-    except ValueError:
+    value = _scaled(match.group(1), match.group(2))
+    if value is None:
         return None
-    scale = match.group(2)
-    if scale:
-        for name, factor in _SCALES:
-            if scale == name:
-                value *= factor
-                break
+    if match.group(3):
+        tail = _scaled(match.group(3), match.group(4))
+        if tail is not None:
+            value += tail
     return value
 
 
@@ -76,7 +88,7 @@ _CONDITION_WORDS: dict[str, str] = {
 # "10만 원 미만" — 숫자와 비교어 사이에 단위·조사가 끼어드는 것을 허용한다.
 # 긴 표현부터 시도해야 "같지 않음"이 "같음"에 먹히지 않는다.
 _CONDITION_PATTERN = re.compile(
-    r"(-?\d[\d,]*(?:\.\d+)?)\s*(조|억|만|천|백)?\s*(?:%|퍼센트|프로)?\s*"
+    r"(-?\d[\d,]*(?:\.\d+)?)\s*(조|억|만|천|백)?(?:\s*(\d[\d,]*(?:\.\d+)?)\s*(천|백))?\s*(?:%|퍼센트|프로)?\s*"
     r"(?:원|개|건|점|명|kg|일)?\s*(?:이|가|은|는|을|를|도|에)?\s*"
     r"(" + "|".join(sorted(_CONDITION_WORDS, key=len, reverse=True)) + r")"
 )
@@ -95,10 +107,13 @@ def parse_condition(text: str) -> tuple[str, float, bool] | None:
         except ValueError:
             return None
 
+    # "마이너스/음수인 값" — 숫자 없이 부호만 말하는 조건(2026-08-18 사냥).
+    if re.search(r"마이너스|음수", lowered):
+        return "<", 0.0, False
     match = _CONDITION_PATTERN.search(lowered)
     if not match:
         return None
     amount = parse_amount(match.group(0))
     if amount is None:
         return None
-    return _CONDITION_WORDS[match.group(3)], amount, is_percent(match.group(0))
+    return _CONDITION_WORDS[match.group(5)], amount, is_percent(match.group(0))

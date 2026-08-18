@@ -1953,13 +1953,15 @@ def _detect_operation_intent(message: str) -> str:
             "제일 많이",
             "많이 했",
         ],
-    ) or _matches_any_pattern(
+    ) or (_matches_any_pattern(
         lowered,
         [
             r"(큰|높은|많은|작은|낮은|적은)\s*(값|순|순서)",
             r"(정렬|배치|재배치|줄세우).{0,8}(해|해줘|하|해봐)",
         ],
-    ):
+    ) and not re.search(r"(가운데|중앙|왼쪽|오른쪽|양쪽)\s*(?:로|으로)?\s*정렬", lowered)):
+        # "가운데 정렬"은 맞춤(alignment)이지 데이터 정렬이 아니다 — 정렬로
+        # 오인해 기준 열을 물은 뒤 행 순서를 섞었다(2026-08-18 사냥).
         return "sort"
     if _contains_any_keyword(
         lowered,
@@ -2843,7 +2845,7 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
         ]
 
     if (range_ref or col_range_ref) and any(
-        token in lowered for token in ["읽어", "보여", "확인", "조회", "read", "show", "display"]
+        token in lowered for token in ["읽어", "보여", "확인", "조회", "알려", "read", "show", "display"]
     ):
         target_range = range_ref or col_range_ref
         return [
@@ -3123,6 +3125,12 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
         # 실행돼 데이터가 조용히 사라졌다(2026-08-18 5렌즈 사냥, 조용한 파괴
         # 4건). 여기서 물러나면 해석 카드/되묻기가 받는다 — 안 하고 묻는 쪽이
         # 항상 싸다.
+        if re.search(r"[^\s,]+\s*시트\s*(?:을|를)?\s*(?:지워|삭제|없애|제거|치워)", lowered) and not re.search(
+            r"시트\s*(?:의|에\s*있|내용|값|안)", lowered
+        ):
+            # "임시 시트 지워줘"가 선택 영역 내용 삭제로 실행됐다(2026-08-18
+            # 사냥). 시트를 지목한 삭제는 여기(내용 비우기) 소관이 아니다.
+            return None
         if re.search(
             # "값만/내용만"은 정상 좁은 삭제(값만 지움)가 이미 있으므로 막지
             # 않는다 — 여기서 거르는 건 통째 삭제로 오실행되던 위험 한정사다.
