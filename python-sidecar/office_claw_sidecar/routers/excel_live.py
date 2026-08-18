@@ -46,6 +46,10 @@ from office_claw_sidecar.services.decision_trace import (
     route as trace_route,
 )
 from office_claw_sidecar.services.excel_actions import execute_excel_action
+from office_claw_sidecar.services.excel_aggregate_below import (
+    build_aggregate_below_plan,
+    match_aggregate_below,
+)
 from office_claw_sidecar.services.excel_correction_context import (
     build_below_formula_plan,
     build_correction_plan,
@@ -7134,6 +7138,42 @@ async def _run_command(
             != "excel_live.write_range"
         ):
             quick_action_plan = [preempt_write]
+        # 사람 말투 집계: "붙여넣은 것들 합을 밑에 기록해줘" — 좌표도 수식도 없다.
+        # 대상은 문장 범위 → context_range(살아 있는 선택 포함) → 사용 범위 순서로
+        # 찾고, 실제 값을 읽어 숫자 열마다 집계 수식을 아랫줄에 놓는다.
+        if not quick_action_plan:
+            agg_match = match_aggregate_below(req.message)
+            if agg_match is not None:
+                agg_func, agg_label = agg_match
+                range_in_msg = RANGE_REF_PATTERN.search(req.message or "")
+                agg_target = (
+                    range_in_msg.group(0).upper() if range_in_msg else ""
+                ) or str(req.context_range or "").strip().upper()
+                agg_service = get_excel_live_service()
+                if not agg_target or ":" not in agg_target:
+                    used_getter = getattr(agg_service, "get_used_range_ref", None)
+                    if callable(used_getter):
+                        try:
+                            agg_target = str(
+                                used_getter(req.workbook_id, req.sheet_name) or ""
+                            ).strip().upper()
+                        except Exception:
+                            agg_target = ""
+                if agg_target and ":" in agg_target:
+                    try:
+                        agg_read = agg_service.read_range(
+                            req.workbook_id,
+                            _resolve_sheet_name(agg_service, req.workbook_id, req.sheet_name),
+                            agg_target,
+                        )
+                        agg_values = agg_read.get("values") if isinstance(agg_read, dict) else None
+                    except Exception:
+                        agg_values = None
+                    agg_steps = build_aggregate_below_plan(
+                        agg_func, agg_label, agg_target, agg_values
+                    )
+                    if agg_steps:
+                        quick_action_plan = agg_steps
     quick_plan_for_parse = _normalize_plan_or_empty(quick_action_plan) if quick_action_plan else []
     quick_first_action = quick_plan_for_parse[0].action if quick_plan_for_parse else ""
     # "전체 지우기" 같은 고신뢰 퀵 액션은 LLM 변환 오차보다 규칙 우선이 안정적이다.
