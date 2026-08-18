@@ -8599,8 +8599,19 @@ def _plan_approval_gate(ctx: PlanExecution, plan: list[PlanStep]) -> ExcelLiveAc
         for step in plan
         if (tool := get_tool(step.action)) and tool.permission == PermissionLevel.CONFIRM
     ]
+    # 확신 3분기: 규칙(plan_source=rule)이 아닌 계획은 모델의 **해석**이다.
+    # 해석은 SAFE로 분류된 편집이라도 실행 전에 확인을 받는다 — 커버리지
+    # 구멍이 조용한 오답 대신 "이렇게 이해했어요" 질문으로 나타나게 하는
+    # 구조적 장치다(2026-08-18, 3개월 반복 루프의 근본 대책).
+    plan_from_model = str(ctx.parsed.get("plan_source") or "") != "rule"
     if not confirm_steps:
-        return None
+        if plan_from_model:
+            model_edit_steps = [step for step in plan if step.action in EDIT_ACTIONS]
+            if not model_edit_steps:
+                return None
+            confirm_steps = model_edit_steps
+        else:
+            return None
 
     head = confirm_steps[0]
     # 계획이 시트를 지정했으면 그 시트만 본다. 지정하지 않았을 때만 원문을 넘겨,
@@ -8651,6 +8662,13 @@ def _plan_approval_gate(ctx: PlanExecution, plan: list[PlanStep]) -> ExcelLiveAc
         pending.summary = f"다음 {len(plan)}단계를 실행합니다.\n{steps_text}"
         if any(step.action in _DESTRUCTIVE_ACTIONS for step in plan):
             pending.summary += "\n\n⚠ 표시 단계는 데이터가 지워지거나 재배치됩니다. 실행 후 '되돌리기'로 복구할 수 있습니다."
+    if plan_from_model:
+        pending.interpretation = True
+        pending.summary = (
+            "이렇게 이해했어요:\n"
+            + pending.summary
+            + "\n\n해석이 다르면 취소하고 원하시는 작업을 다시 말씀해 주세요."
+        )
     _pending_approvals[pending.approval_id] = PendingExcelApproval(
         action=head.action,
         params=head.params,

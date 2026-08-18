@@ -15,6 +15,10 @@ class ApprovalRequest(BaseModel):
     args_preview: dict       # 사용자가 검토할 핵심 인자 (민감 데이터 마스킹 적용)
     session_id: str
     created_at: str          # ISO 8601 UTC 타임스탬프
+    # 확신 3분기(2026-08-18): 규칙이 아니라 **모델이 해석한** 계획이면 True.
+    # 프런트는 이걸 "이렇게 이해했어요 — 맞나요?" 카드로 그려, 커버리지 구멍이
+    # 조용한 오답 대신 확인 질문으로 나타나게 한다.
+    interpretation: bool = False
 
 
 class ApprovalResponse(BaseModel):

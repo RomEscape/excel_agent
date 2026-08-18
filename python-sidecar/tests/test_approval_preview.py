@@ -92,3 +92,53 @@ class TestApprovalCardContent:
         assert body["approval_required"] is True
         assert "C3" in body["pending_approval"]["summary"]
         assert body["pending_approval"]["tool_display_name"] == "값 입력"
+
+
+class TestInterpretationCard:
+    """확신 3분기(2026-08-18): 모델이 해석한 계획은 "이렇게 이해했어요" 카드를
+    거친다. 규칙 계획은 기존 승인 그대로 — 커버리지 구멍이 조용한 오답 대신
+    확인 질문으로 나타나게 하는 구조적 장치다."""
+
+    @pytest.fixture(autouse=True)
+    def _service(self, monkeypatch):
+        fake = _FakeExcelService()
+        monkeypatch.setattr(router, "get_excel_live_service", lambda: fake)
+        router._pending_operation_slots.clear()
+        router._pending_create_table_slots.clear()
+        router._pending_approvals.clear()
+
+        async def _no_llm(_message, llm_service, context):
+            raise ValueError("skip")
+
+        monkeypatch.setattr(router, "parse_excel_live_command", _no_llm)
+
+    def _post(self, message, session):
+        payload = {"message": message, "session_id": session, "approve": False}
+        return client.post("/excel-live/command", json=payload, headers=HEADERS).json()
+
+    def test_a_model_plan_gets_the_interpretation_card(self, monkeypatch):
+        async def _llm_plan(_message, llm_service, context):
+            return {
+                "action_plan": [
+                    {"action": "excel_live.write_range",
+                     "params": {"start_cell": "B2", "values_2d": [[123]]}}
+                ],
+                "action": "excel_live.write_range",
+                "params": {},
+                "reason": "플래너 해석",
+                "intent": "edit",
+            }
+
+        monkeypatch.setattr(router, "parse_excel_live_command", _llm_plan)
+        body = self._post("그 값 백이십삼으로 바꿔놔", "sess-interp-1")
+        assert body.get("approval_required") is True, body.get("reason")
+        pending = body.get("pending_approval") or {}
+        assert pending.get("interpretation") is True
+        assert str(pending.get("summary", "")).startswith("이렇게 이해했어요"), pending.get("summary")
+
+    def test_a_rule_plan_keeps_the_plain_approval(self):
+        body = self._post("A2:C2에 가,나,다 입력", "sess-interp-2")
+        assert body.get("approval_required") is True
+        pending = body.get("pending_approval") or {}
+        assert pending.get("interpretation") in (False, None), pending
+        assert not str(pending.get("summary", "")).startswith("이렇게 이해했어요")
