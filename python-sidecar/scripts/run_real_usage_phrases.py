@@ -58,13 +58,13 @@ def _fresh_book():
     wb.close()
 
 
-async def run_one(idx, text, ctx, llm):
+async def run_one(idx, text, ctx, llm, rep=0):
     _fresh_book()
     invalidate_excel_engine_cache()
     get_excel_live_service().select_workbook(str(WB))
     t0 = time.time()
     try:
-        req = ExcelLiveCommandRequest(message=text, session_id=f"test-real-{idx}", workbook_id=None, approve=False)
+        req = ExcelLiveCommandRequest(message=text, session_id=f"test-real-{idx}-r{rep}", workbook_id=None, approve=False)
         if ctx:
             req = req.model_copy(update={"context_range": ctx})
         resp = await _run_command(req, llm)
@@ -99,8 +99,10 @@ async def main():
     out = []
     for i, ph in enumerate(PHRASES, 1):
         e = await run_one(i, ph["text"], ph.get("context_range"), llm)
-        for _ in range(repeat - 1):
-            again = await run_one(i, ph["text"], ph.get("context_range"), llm)
+        for rep in range(1, repeat):
+            # 회차마다 세션을 갈아야 한다 — 같으면 1회차의 되묻기 슬롯이 2회차 답변으로
+            # 소비돼 비결정으로 오판된다(2026-08-18 실측: 표 인터뷰 4건).
+            again = await run_one(i, ph["text"], ph.get("context_range"), llm, rep=rep)
             if (again["ok"], again["action"], again.get("asked")) != (e["ok"], e["action"], e.get("asked")):
                 e = dict(e, ok=False, why=f"비결정: {e['action']} vs {again['action']}")
                 break
