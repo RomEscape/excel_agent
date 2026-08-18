@@ -790,6 +790,24 @@ class FileExcelLiveService(ExcelLiveService):
         finally:
             wb.close()
 
+    def delete_charts(self, workbook_id: str | None, sheet_name: str) -> dict[str, Any]:
+        """시트의 차트를 전부 지운다.
+
+        2026-08-18 GUI 실측: "차트 같은 거 다 지워줘"에 삭제 액션이 없어
+        차트 **생성** 슬롯("차트 종류를 선택해 주세요")으로 샜다.
+        """
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            deleted = len(ws._charts or [])
+            ws._charts = []
+            self._save_wb(wb, path)
+            # 지울 차트가 없었으면 그 사실을 보고한다 — "완료"만 나가면 무동작이다.
+            return {"deleted": deleted, "no_change": deleted == 0, "sheet": ws.title}
+        finally:
+            wb.close()
+
     def clear_range(self, workbook_id: str | None, sheet_name: str, target_range: str) -> dict[str, Any]:
         path = self._resolve_workbook_path(workbook_id)
         wb = self._load_wb(path)

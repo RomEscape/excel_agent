@@ -173,6 +173,12 @@ TOOL_REGISTRY: list[ToolDef] = [
         example_triggers=["안에 내용 전부 지워줘", "범위 비워줘", "깨끗하게 비워"],
     ),
     ToolDef(
+        name="excel_live.delete_charts",
+        description="시트의 차트를 전부 삭제",
+        permission=PermissionLevel.CONFIRM,
+        example_triggers=["차트 다 지워줘", "그래프 삭제해줘", "차트 같은 거 다 지워줘"],
+    ),
+    ToolDef(
         name="excel_live.apply_border",
         description="지정 범위에 경계선(테두리) 적용",
         permission=PermissionLevel.CONFIRM,

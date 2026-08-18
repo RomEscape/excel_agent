@@ -170,6 +170,9 @@ class _FakeExcelService:
         self._written[str(target_range).strip().upper()] = [[None]]
         return {"cleared_cells": 12, "address": target_range}
 
+    def delete_charts(self, workbook_id, sheet_name):
+        return {"deleted": 2, "no_change": False, "sheet": sheet_name or "Sheet1"}
+
     def apply_border(self, workbook_id, sheet_name, target_range, line_style, weight, color):
         self._last_border = {
             "workbook_id": workbook_id,

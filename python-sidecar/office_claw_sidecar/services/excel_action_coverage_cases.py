@@ -932,6 +932,33 @@ def _b_chart(digest: dict[str, Any], rng: random.Random) -> Case | None:
     )
 
 
+@_register("excel_live.delete_charts")
+def _b_delete_charts(digest: dict[str, Any], rng: random.Random) -> Case | None:
+    # 문장이 다이제스트에 의존해야 레코드마다 달라진다 — 같은 문장 반복은
+    # 모델이 통째로 외운다(test_instructions_vary_per_action).
+    sheet = str(digest.get("active_sheet") or "시트")
+    text = rng.choice(
+        [
+            "차트 다 지워줘",
+            "그래프 전부 삭제해줘",
+            f"{sheet} 시트 차트 같은 거 다 없애줘",
+            f"{sheet} 시트에 있는 그래프 다 지워줘",
+            "여기 차트들 좀 치워줘",
+        ]
+    )
+    return (
+        text,
+        [
+            _step(
+                "excel_live.delete_charts",
+                {},
+                "시트의 차트 전부 삭제",
+            )
+        ],
+        "차트 삭제",
+    )
+
+
 @_register("excel_live.validate_data")
 def _b_validate_data(digest: dict[str, Any], rng: random.Random) -> Case | None:
     text = rng.choice(["이상한 값 있는지 점검해줘", "빈칸이나 음수 있나 봐줘", "데이터 문제 있는지 검사"])

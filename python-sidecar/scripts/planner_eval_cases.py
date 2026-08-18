@@ -257,6 +257,7 @@ CORE: list[EvalCase] = [
     _c("core-027", "core", "병원", "미납인 줄 강조해 주세요", f"{A}highlight_by_condition"),
     _c("core-028", "core", "카페", "매장별 매출 막대그래프로 그려줘", f"{A}create_chart"),
     _c("core-029", "core", "학원", "반별 평균 점수 차트 만들어 주세요", f"{A}create_chart"),
+    _c("core-029d", "core", "카페", "차트 다 지워줘", f"{A}delete_charts"),
     _c("core-030", "core", "물류", "운송장번호 같은 거 중복 지워줘", f"{A}dedupe_rows"),
     _c("core-031", "core", "병원", "환자번호 기준으로 중복 행 정리해줘", f"{A}dedupe_rows"),
     _c("core-032", "core", "카페", "지금 시트 내용 좀 보여줘", f"{A}read_range"),

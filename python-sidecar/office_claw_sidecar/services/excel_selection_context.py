@@ -93,4 +93,12 @@ def resolve_context_range(
         live = str(getter(workbook_id, sheet_name) or "").strip().upper()
     except Exception:
         return context_range
-    return live or context_range
+    if not live:
+        return context_range
+    ctx = str(context_range or "").strip().upper()
+    if ":" not in live and ":" in ctx:
+        # 한 칸짜리 '선택'은 드래그가 아니라 커서다. 붙여넣기로 인식한 범위를
+        # 커서 위치로 덮으면 표 전체 명령이 한 칸에 적용된다(2026-08-18 실측:
+        # 빈 시트에서 A1:F3 붙여넣기 문맥이 A1으로 축소돼 쓰기가 막혔다).
+        return context_range
+    return live

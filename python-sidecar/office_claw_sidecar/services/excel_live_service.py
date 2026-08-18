@@ -1039,6 +1039,21 @@ class ExcelLiveService:
             "sheet_name": str(getattr(out_ws, "name", "") or ""),
         }
 
+    def delete_charts(self, workbook_id: str | None, sheet_name: str) -> dict[str, Any]:
+        """시트의 차트를 전부 지운다 — 삭제 액션 부재로 생성 슬롯에 새던 문형."""
+        target_id = workbook_id or self._selected_workbook_id
+        if not target_id:
+            raise WorkbookNotFoundError("workbook_id가 필요합니다.")
+        wb = self._find_workbook(target_id)
+        ws = self._find_sheet(wb, sheet_name)
+        try:
+            deleted = int(ws.api.ChartObjects().Count)
+            if deleted:
+                ws.api.ChartObjects().Delete()
+        except Exception as exc:  # pragma: no cover - COM 환경 의존
+            raise ExcelLiveError(f"차트 삭제 실패: {exc}") from exc
+        return {"deleted": deleted, "no_change": deleted == 0, "sheet": str(ws.name)}
+
     def create_chart(
         self,
         workbook_id: str | None,

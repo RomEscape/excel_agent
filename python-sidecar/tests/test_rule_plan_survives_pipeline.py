@@ -253,3 +253,43 @@ class TestPasteThenWriteFlow:
         assert ("write_range", "A1") in service.calls, service.calls
         # 슬롯도 사라져 다음 턴이 자유로워야 한다.
         assert "sess-rule-pipeline" not in excel_live_router._pending_operation_slots
+
+
+class TestTheThreePasteScreenshots:
+    """2026-08-18 GUI 스크린샷의 실제 문장 셋 — 그대로 재현한다."""
+
+    def test_paste_with_here_prefix_writes_all_rows_not_one_cell(self, service):
+        # "여기에 …" 접두가 붙자 단일 쓰기 규칙이 문장 전체를 F9 한 칸에 넣었다.
+        body = _run(
+            "여기에 지역,주문건수,출고건수,정시배송률,지연건수,클레임; "
+            "수도권,10452,10158,97.1,145,12; 충청권,3892,3773,95.2,89,6 입력해줘",
+            context_range="A1:F9",
+        )
+        assert body["ok"] is True
+        assert not (body.get("result") or {}).get("ask_follow_up"), body.get("reason")
+        assert ("write_range", "A1") in service.calls, service.calls
+        assert len(service.written) == 3, service.written
+        assert service.written[0][0] == "지역", service.written[0]
+
+    def test_delete_charts_and_reset_in_one_sentence(self, service):
+        # "여기 안에 차트 같은거 다 지워주고 셀 초기화 전체 해줘"가
+        # 차트 **생성** 슬롯("차트 종류를 선택해 주세요")으로 샜다.
+        body = _run(
+            "여기 안에 차트 같은거 다 지워주고 셀 초기화 전체 해줘",
+            context_range="A1:T21",
+        )
+        assert body["ok"] is True
+        assert not (body.get("result") or {}).get("ask_follow_up"), body.get("reason")
+        actions = [a for a, _ in service.calls]
+        assert "clear_range" in actions, actions
+        # delete_charts는 범위 기록이 없는 액션이라 calls 훅 밖 — 실행 리포트의
+        # 1단계(차트 삭제)로 확인한다.
+        report = str((body.get("result") or {}).get("execution_report", ""))
+        assert "차트 삭제" in report, report
+
+    def test_charts_only_deletion_keeps_the_values(self, service):
+        # "차트 다 지워줘"는 값을 건드리면 안 된다.
+        body = _run("차트 다 지워줘")
+        assert body["ok"] is True
+        actions = [a for a, _ in service.calls]
+        assert "clear_range" not in actions, f"차트만 지우랬는데 값을 비운다: {actions}"

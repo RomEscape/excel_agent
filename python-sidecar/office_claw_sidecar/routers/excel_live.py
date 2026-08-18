@@ -3062,11 +3062,36 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
             normalized_ctx=normalized_ctx,
             explicit_range=explicit_range,
         )
+        chart_mentioned = bool(re.search(r"(차트|그래프|chart)", lowered))
+        cell_scope_mentioned = bool(
+            re.search(r"(셀|내용|값|전체|전부|초기화|리셋|서식|데이터|표|뭐든)", lowered)
+        )
+        if chart_mentioned and not cell_scope_mentioned:
+            # "차트 다 지워줘" — 차트만 지목했으면 값은 건드리지 않는다.
+            # 삭제 액션 부재로 차트 **생성** 슬롯("차트 종류를 선택해 주세요")에
+            # 새던 문형이다(2026-08-18 GUI 실측).
+            return [
+                {
+                    "action": "excel_live.delete_charts",
+                    "params": {},
+                    "reason": "빠른 규칙 기반 차트 삭제",
+                }
+            ]
         if not whole_sheet_reset and not explicit_range and _clear_request_targets_a_subset(lowered):
             # 지울 대상이 따로 지목된 문장. 규칙으로 밀면 시트가 통째로 비워진다.
             return None
         target = normalized_ctx or explicit_range or ("__USED_RANGE__" if whole_sheet_reset else "__ACTIVE_SELECTION__")
         steps: list[dict[str, Any]] = []
+        if chart_mentioned:
+            # "차트 같은 거 다 지워주고 셀 초기화 전체 해줘" — 차트는 clear_range로
+            # 안 지워진다. 리셋 계획 맨 앞에 차트 삭제를 넣는다.
+            steps.append(
+                {
+                    "action": "excel_live.delete_charts",
+                    "params": {},
+                    "reason": "빠른 규칙 기반 차트 삭제",
+                }
+            )
         # "표를 없애줘"는 값만 지우라는 뜻이 아니다 — 테두리·배경까지 걷어내야
         # 사용자 눈에 표가 사라진다. clear_range는 서식을 남기므로, 값만 지우면
         # 빈 칸에 테두리만 남아 "아무것도 안 됐다"로 보인다(2026-08-17 실측:
@@ -5824,6 +5849,13 @@ def _dispatch_action(
             has_header=bool(params.get("has_header", True)),
         )
 
+    if action == "excel_live.delete_charts":
+        resolved_wb = _resolve_workbook_id(service, workbook_id)
+        resolved_sheet = _resolve_sheet_name(
+            service, resolved_wb, str(params.get("sheet_name") or "").strip() or sheet_name
+        )
+        return service.delete_charts(resolved_wb, resolved_sheet)
+
     if action == "excel_live.create_chart":
         resolved_wb = _resolve_workbook_id(service, workbook_id)
         # 앞 단계가 만든 집계표를 그리는 경우, 원본 시트가 아니라 결과 시트를 봐야 한다.
@@ -6417,6 +6449,7 @@ def _action_summary(action: str) -> str:
 # 승인 카드 제목용 짧은 한국어 이름. 원시 액션 문자열("excel_live.create_table")이
 # 제목으로 뜨던 것을 사람 말로 바꾼다(로드맵 2-3 프리뷰-승인).
 _ACTION_DISPLAY = {
+    "excel_live.delete_charts": "차트 삭제",
     "excel_live.write_range": "값 입력",
     "excel_live.create_table": "표 생성",
     "excel_live.highlight_by_condition": "조건부 강조",
@@ -7196,8 +7229,10 @@ async def _run_command(
             quick_action_plan = [preempt_write]
         # 붙여넣기 뒤의 자연스러운 문형: 좌표 없이 값 나열 + "입력해줘".
         # 대상은 붙여넣기 문맥(context_range)이다. 2026-08-18 GUI 실측:
-        # 이 문형이 값 낱말('건수') 오인으로 새서 붙여넣기 흐름이 막혔다.
-        if preempt_write is None and not quick_action_plan:
+        # 이 문형이 값 낱말('건수') 오인으로 새서 붙여넣기 흐름이 막혔고,
+        # 퀵 규칙에 양보했더니 "여기에 …" 단일 쓰기 규칙이 문장 전체를 F9 한
+        # 칸에 텍스트로 넣었다. 파서가 잡았으면(값 나열+동사 확정) 퀵을 이긴다.
+        if preempt_write is None:
             paste_write = parse_rangeless_row_write(
                 req.message, str(req.context_range or "")
             )
@@ -7269,6 +7304,7 @@ async def _run_command(
     # "전체 지우기" 같은 고신뢰 퀵 액션은 LLM 변환 오차보다 규칙 우선이 안정적이다.
     if quick_first_action in {
         "excel_live.clear_range",
+        "excel_live.delete_charts",
         "excel_live.apply_border",
         "excel_live.list_workbooks",
         "excel_live.select_workbook",
@@ -7704,12 +7740,19 @@ async def _run_command(
     if explicit_write and _TABLE_KEYWORD_PATTERN.search(req.message):
         # "B2부터 3행 3열 표 만들어줘"는 범위가 있어도 표 생성이 맞다.
         explicit_write = False
-    if explicit_write and pending_operation is None and operation_intent:
+    if explicit_write and pending_operation is None and (operation_intent or operation_hints.get("intent")):
         # 값 나열에 "비교 기준", "총 주문 건수" 같은 낱말이 섞이면 힌트 추출이
         # 작업 의도로 오인해 새 멀티턴 슬롯을 연다(2026-08-18 ex2 재현 실측:
         # KPI 라벨 행 2건이 compare/count 되묻기로 샜다). 진행 중인 멀티턴이
         # 없고 범위·값을 다 말한 쓰기가 확정돼 있으면 힌트는 값의 일부다 —
         # 여기서 지워 아래 모든 슬롯 생성 지점이 열리지 않게 한다.
+        operation_hints = {}
+        operation_intent = ""
+    if pending_operation is None and (operation_intent or operation_hints.get("intent")) and not should_parse_with_llm:
+        # 고신뢰 퀵 규칙이 이미 계획을 확정한 턴이다. 이때 힌트가 새 멀티턴
+        # 슬롯을 열면 확정된 계획이 되묻기에 가로채인다(2026-08-18 GUI 실측:
+        # "차트 같은거 다 지워주고 셀 초기화"의 '차트'가 생성 슬롯을 열어
+        # 삭제+초기화 계획 대신 "차트 종류를 선택해 주세요"가 나갔다).
         operation_hints = {}
         operation_intent = ""
 
@@ -8290,13 +8333,26 @@ async def _run_command(
     }
     # 그래프를 요구했는데 종류를 못 정해 계획에 넣지도 못했다면, 있지도 않은 차트를
     # 만들었다고 답하는 대신 종류를 묻는다. 집계 문장의 부수 차트는 묻지 않는다.
-    if pending_operation is None and chart_requested and not chart_planned and not chart_with_aggregate:
+    #
+    # 차트 **삭제** 계획이 있으면 문장의 '차트'는 지울 대상이지 만들 대상이 아니다
+    # (2026-08-18 GUI 실측: "차트 같은거 다 지워주고 셀 초기화"에 종류를 물었다).
+    chart_deletion_planned = any(
+        step.action == "excel_live.delete_charts" for step in current_plan
+    )
+    if (
+        pending_operation is None
+        and chart_requested
+        and not chart_planned
+        and not chart_with_aggregate
+        and not chart_deletion_planned
+    ):
         unresolved_pairs = unresolved_pairs | {("excel_live.create_chart", "chart_type")}
     if (
         pending_operation is None
         and chart_only
         and not _CHART_TYPE_MENTION.search(req.message)
         and not chart_with_aggregate
+        and not chart_deletion_planned
     ):
         unresolved_pairs = unresolved_pairs | {("excel_live.create_chart", "chart_type")}
 

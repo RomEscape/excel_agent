@@ -1599,6 +1599,10 @@ def parse_rangeless_row_write(text: str, target_range: str) -> dict | None:
     if verb is None:
         return None
     body = source[: verb.start()].strip()
+    # "여기에 지역,주문건수,…" — 붙여넣은 자리를 가리키는 말은 값이 아니다.
+    # 안 벗기면 "여기에 지역"이 첫 칸 값이 된다(2026-08-18 GUI 실측: F9 한 칸에
+    # 문장 전체가 텍스트로 들어갔다).
+    body = re.sub(r"^(?:여기(?:에|에다|다가)?|이\s*(?:곳|쪽|자리|범위|영역)에?|요기에?)\s*", "", body)
     if not body or RANGE_REF_PATTERN.search(body):
         # 범위를 말했으면 기존 행 쓰기 규칙 소유다.
         return None

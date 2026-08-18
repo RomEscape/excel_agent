@@ -250,6 +250,7 @@ def build_planner_prompt(
         "- excel_live.find_duplicates (중복을 지우지 않고 '찾기/확인')\n"
         "- excel_live.pivot_table\n"
         "- excel_live.create_chart\n"
+        "- excel_live.delete_charts (차트/그래프 '삭제')\n"
         "- excel_live.validate_data\n"
         "- excel_live.recalculate (수식 갱신/새로고침)\n"
         "- excel_live.export_pdf\n"
