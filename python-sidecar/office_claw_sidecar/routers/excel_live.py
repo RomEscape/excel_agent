@@ -7383,20 +7383,28 @@ async def _run_command(
                         range_in_msg.group(0).upper() if range_in_msg else ""
                     ) or str(req.context_range or "").strip().upper()
                 agg_service = get_excel_live_service()
+                # GUI는 workbook_id를 비워 보낸다("선택된 통합문서"). None을 그대로
+                # 넘기면 xlwings가 조용히 실패해 훅이 빈 계획을 낸다 — 2026-08-18
+                # GUI 실측: 인프로세스·HTTP(명시 id) 전부 통과했는데 GUI만 실패한
+                # 원인. 모든 훅은 해석된 id를 쓴다.
+                try:
+                    hook_wb = _resolve_workbook_id(agg_service, req.workbook_id)
+                except Exception:
+                    hook_wb = req.workbook_id
                 if not agg_target or ":" not in agg_target:
                     used_getter = getattr(agg_service, "get_used_range_ref", None)
                     if callable(used_getter):
                         try:
                             agg_target = str(
-                                used_getter(req.workbook_id, req.sheet_name) or ""
+                                used_getter(hook_wb, req.sheet_name) or ""
                             ).strip().upper()
                         except Exception:
                             agg_target = ""
                 if agg_target and ":" in agg_target:
                     try:
                         agg_read = agg_service.read_range(
-                            req.workbook_id,
-                            _resolve_sheet_name(agg_service, req.workbook_id, req.sheet_name),
+                            hook_wb,
+                            _resolve_sheet_name(agg_service, hook_wb, req.sheet_name),
                             agg_target,
                         )
                         agg_values = agg_read.get("values") if isinstance(agg_read, dict) else None
@@ -7429,8 +7437,9 @@ async def _run_command(
 
             def _cross_sheet_reader(sheet: str) -> tuple[str, list]:
                 svc = get_excel_live_service()
-                ref = str(svc.get_used_range_ref(req.workbook_id, sheet) or "")
-                data = svc.read_range(req.workbook_id, sheet, ref)
+                wb_id = _resolve_workbook_id(svc, req.workbook_id)
+                ref = str(svc.get_used_range_ref(wb_id, sheet) or "")
+                data = svc.read_range(wb_id, sheet, ref)
                 return ref, (data.get("values") if isinstance(data, dict) else [])
 
             cross_steps = build_cross_sheet_aggregate_plan(req.message, _cross_sheet_reader)
@@ -7439,8 +7448,11 @@ async def _run_command(
                 # 않으면 시트 언급 해석이 원본 시트에 수식을 써 버린다(2026-08-18
                 # 실측: 대시보드 A4가 아니라 지역성과 A4의 데이터를 덮었다).
                 try:
+                    _svc_for_sheet = get_excel_live_service()
                     cross_active = _resolve_sheet_name(
-                        get_excel_live_service(), req.workbook_id, req.sheet_name
+                        _svc_for_sheet,
+                        _resolve_workbook_id(_svc_for_sheet, req.workbook_id),
+                        req.sheet_name,
                     )
                 except Exception:
                     cross_active = ""

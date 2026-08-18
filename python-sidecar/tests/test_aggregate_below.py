@@ -315,3 +315,82 @@ class TestMessyHumanVocab:
     def test_merge_words_still_pass_through(self):
         assert match_aggregate_below("A1:B2 병합해줘") is None
         assert match_aggregate_below("시트를 통합해줘") is None
+
+
+class TestGuiShapedRequests:
+    """GUI는 workbook_id를 **비워** 보낸다("선택된 통합문서") — 2026-08-18 실측.
+
+    인프로세스 러너·배터리·유닛은 전부 id를 명시했기에 이 조건을 한 번도 밟지
+    않았고, 사람 말투 훅들이 GUI에서만 조용히 죽었다("합계를 표 아래에"가 표
+    인터뷰로 샘). 여기서는 id 없이·시트 없이 보내 훅이 서비스가 아는 선택 통합
+    문서로 도는지 확인한다. 실 서비스가 None에 어떻게 반응하는지까지 흉내 낸다.
+    """
+
+    @pytest.fixture()
+    def service(self, monkeypatch):
+        class _Strict(_FakeExcelService):
+            def __init__(self):
+                super().__init__()
+                self.formulas: list[tuple[str, str]] = []
+
+            def _need_id(self, workbook_id):
+                if not workbook_id:
+                    # 실제 xlwings 서비스는 None을 못 푼다.
+                    raise ValueError("workbook_id가 필요합니다.")
+
+            def get_used_range_ref(self, workbook_id, sheet_name):
+                self._need_id(workbook_id)
+                return "A1:F6"
+
+            def read_range(self, workbook_id, sheet_name, range_ref):
+                self._need_id(workbook_id)
+                return super().read_range(workbook_id, sheet_name, range_ref)
+
+            def get_active_selection_ref(self, workbook_id, sheet_name):
+                self._need_id(workbook_id)
+                return "B1:F7"
+
+            def set_formula(self, workbook_id, sheet_name, range_ref, formula_a1):
+                self.formulas.append((str(range_ref), str(formula_a1)))
+                return super().set_formula(workbook_id, sheet_name, range_ref, formula_a1)
+
+        fake = _Strict()
+        fake._written["B1:F7"] = [
+            ["주문건수", "출고건수", "정시배송률", "지연건수", "클레임"],
+            [10452, 10158, 97.1, 145, 12],
+            [3892, 3773, 95.2, 89, 6],
+            [3214, 3086, 94.7, 112, 5],
+            [6789, 6512, 95.8, 174, 5],
+            [2495, 2383, 92.6, 145, 0],
+            [None, None, None, None, None],
+        ]
+        monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: fake)
+        excel_live_router._pending_operation_slots.clear()
+        excel_live_router._pending_create_table_slots.clear()
+
+        async def _no_llm(_message, llm_service, context):
+            raise ValueError("skip")
+
+        monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _no_llm)
+        return fake
+
+    def test_totals_below_works_without_a_workbook_id(self, service):
+        payload = {
+            "message": "합계를 표 아래에 한 줄로 넣어줘",
+            "session_id": "sess-gui-null",
+            "approve": False,
+            "workbook_id": None,
+            "sheet_name": None,
+            "context_range": "B1:F7",
+        }
+        body = client.post("/excel-live/command", json=payload, headers=HEADERS).json()
+        approval_id = (body.get("pending_approval") or {}).get("approval_id")
+        if body.get("approval_required") and approval_id:
+            body = client.post(
+                "/excel-live/approval",
+                json={"approval_id": approval_id, "approved": True},
+                headers=HEADERS,
+            ).json()
+        assert body["ok"] is True
+        assert not (body.get("result") or {}).get("ask_follow_up"), body.get("reason")
+        assert any(f.startswith("=SUM(") for _c, f in service.formulas), service.formulas

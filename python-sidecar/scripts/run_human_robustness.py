@@ -156,7 +156,7 @@ CASES = [
      lambda wb, r: "" if _ws(wb)["A1"].border.top.style else "테두리 없음"),
     ("오타", "지연건수로 막대 차투 그러줘", None,
      lambda wb, r: "" if chart_count(wb) >= 1 else "차트 없음"),
-    ("오타", "차트 다 지어줘", None, _ok, True),
+    ("오타", "차트 다 지어줘", None, _ok),  # 지어→지워 정규화 후 차트 삭제로 결정적
     ("오타", "저 함계행 마지막에 추가해줄수잇어?", "A1:F6", _ok, True),
 ]
 
@@ -172,9 +172,13 @@ async def run_case(idx, family, text, ctx, check, llm, allow_ask=False):
     wb.save(WB)
     wb.close()
     invalidate_excel_engine_cache()
+    # GUI 조건 그대로: workbook_id 없이 "선택된 통합문서"로 돈다(2026-08-18 실측 —
+    # id를 명시한 러너들은 전부 통과했는데 GUI만 실패했던 사각지대).
+    from office_claw_sidecar.services.excel_live_service import get_excel_live_service
+    get_excel_live_service().select_workbook(str(WB))
 
     req = ExcelLiveCommandRequest(
-        message=text, session_id=f"test-robust-{idx}", workbook_id=str(WB), approve=False
+        message=text, session_id=f"test-robust-{idx}", workbook_id=None, approve=False
     )
     if ctx:
         req = req.model_copy(update={"context_range": ctx})
@@ -220,12 +224,21 @@ async def run_case(idx, family, text, ctx, check, llm, allow_ask=False):
 
 
 async def main():
+    import os
+    repeat = max(1, int(os.environ.get("ROBUST_REPEAT", "1")))
     llm = get_llm_service()
     out = []
     for i, case in enumerate(CASES, 1):
         family, text, ctx, check = case[:4]
         allow_ask = bool(case[4]) if len(case) > 4 else False
         e = await run_case(i, family, text, ctx, check, llm, allow_ask=allow_ask)
+        # "한 번 되면 되는 게 아니라 여러 번 100%"(사용자) — 같은 문장을 반복해
+        # 결과가 흔들리면 그 자체가 실패다.
+        for _ in range(repeat - 1):
+            again = await run_case(i, family, text, ctx, check, llm, allow_ask=allow_ask)
+            if again["ok"] != e["ok"] or again.get("action") != e.get("action"):
+                e = dict(e, ok=False, why=f"비결정: {e.get('action')} vs {again.get('action')}")
+                break
         flag = "OK  " if e["ok"] else "FAIL"
         print(f"[{i:2d}] {flag} [{e['family']}] {text[:34]:36s} {e.get('action','')[:28]:30s} {e.get('why','')[:40]}")
         out.append(e)
