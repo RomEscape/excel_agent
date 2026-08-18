@@ -1839,6 +1839,13 @@ def _detect_operation_intent(message: str) -> str:
         # 열 이름 바꾸기·열 추가·열 삭제. 슬롯 대화로 끌고 가면 되묻기만 하고 끝난다.
         # 플래너에게 넘겨 rename_column/add_column/drop_column을 고르게 한다.
         return ""
+    if _chart_kind_from_message(lowered) and re.search(
+        r"(그려|그러|뽑아|만들|생성|보여|시각화|차트|그래프)", lowered
+    ) and not re.search(r"(지워|삭제|없애|제거|치워)", lowered):
+        # "지연건수는 막대로 그러줘" — 종류 낱말+그리기 동사는 차트다. 값 낱말
+        # ('건수')이 formula/countif로 먼저 잡히면 종류를 말했는데도 되묻는다
+        # (2026-08-18 ex5 대화형 각본 정찰).
+        return "chart"
     if _looks_like_named_formula(str(message or "")):
         # "이익률 열에 매출이익 나누기 매출" — 열 이름만으로 계산을 말한 경우.
         return "formula"
@@ -3013,6 +3020,26 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
             }
         ]
 
+    # 병합 — "A1부터 L1까지 병합해줘" / "A1:L1 병합" / "제목 줄은 A1부터 H1까지
+    # 합쳐줘". 규칙이 없어 플래너 의존이었다(2026-08-18 사람 말투 각본 정찰:
+    # 7건이 LLM 경로). "합계"의 '합'과 헷갈리지 않게 병합/합쳐/합치기만 받는다.
+    if re.search(r"(병합|합쳐|합치|merge)", lowered) and not re.search(r"(해제|풀어|unmerge|취소)", lowered):
+        span = re.search(
+            r"\b([A-Za-z]{1,3}\d{1,7})\s*(?:부터|에서|~|-)\s*([A-Za-z]{1,3}\d{1,7})\s*(?:까지)?",
+            text,
+        )
+        merge_target = (
+            f"{span.group(1).upper()}:{span.group(2).upper()}" if span else (explicit_range or normalized_ctx or "")
+        )
+        if merge_target and ":" in merge_target:
+            return [
+                {
+                    "action": "excel_live.merge_cells",
+                    "params": {"target_range": merge_target},
+                    "reason": "빠른 규칙 기반 셀 병합",
+                }
+            ]
+
     if re.search(r"데이터\s*막대|data\s*bar", lowered):
         target = normalized_ctx or explicit_range or "__ACTIVE_SELECTION__"
         return [
@@ -4016,12 +4043,17 @@ def _extract_operation_hints(message: str) -> dict[str, Any]:
                 hints["params"]["agg"] = "sum"
 
     if hints["intent"] == "chart":
-        if any(token in lowered for token in ["선 그래프", "추이", "변화"]):
+        # 종류 어휘는 한 곳(_CHART_KIND_WORDS)만 본다 — 슬롯 파서가 도넛/영역/분산·
+        # "선그래프"(띄어쓰기 없음)를 몰라 종류를 말했는데도 되묻기가 반복됐다
+        # (2026-08-18 ex5 대화형 각본 실측: "GMV로 도넛 차트"에 종류 질문 → 다음
+        # 턴까지 슬롯이 삼킴).
+        kind_from_words = _chart_kind_from_message(lowered)
+        if kind_from_words:
+            hints["params"]["chart_type"] = kind_from_words
+        elif any(token in lowered for token in ["변화"]):
             hints["params"]["chart_type"] = "line"
-        elif any(token in lowered for token in ["막대", "비교"]):
+        elif "비교" in lowered:
             hints["params"]["chart_type"] = "bar"
-        elif any(token in lowered for token in ["원형", "비율"]):
-            hints["params"]["chart_type"] = "pie"
         if "발표" in lowered:
             hints["params"]["title"] = "발표용 핵심 차트"
         if "매출" in lowered:
@@ -4360,7 +4392,12 @@ def _chart_step_from_message(message: str, *, default_kind: str = ""):
     kind = _chart_kind_from_message(message) or str(default_kind or "").strip()
     if not kind:
         return None
-    params: dict[str, Any] = {"source_range": "__ACTIVE_SELECTION__", "chart_type": kind}
+    # "G2:G9로 막대 그래프" — 문장에 범위가 있으면 그게 원본이다. 활성 선택으로
+    # 고정하면 표가 둘인 시트에서 엉뚱한 영역을 그린다(2026-08-18 사람 말투 각본
+    # 정찰). 셀 하나짜리 참조(A4 등)는 범위가 아니므로 제외.
+    explicit = RANGE_REF_PATTERN.search(str(message or ""))
+    source = explicit.group(0).upper() if explicit and ":" in explicit.group(0) else "__ACTIVE_SELECTION__"
+    params: dict[str, Any] = {"source_range": source, "chart_type": kind}
     title = _extract_quoted_chart_title(message)
     if title:
         params["title"] = title
@@ -7494,6 +7531,7 @@ async def _run_command(
         "excel_live.clear_range",
         "excel_live.delete_charts",
         "excel_live.create_chart",
+        "excel_live.merge_cells",
         "excel_live.apply_border",
         "excel_live.list_workbooks",
         "excel_live.select_workbook",

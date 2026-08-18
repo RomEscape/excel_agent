@@ -1,0 +1,582 @@
+[
+ {
+  "text": "Sales_Data 시트 머리글을 굵게 해줘",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "Sales_Data로 매출 대시보드 만들어줘",
+  "context_range": null,
+  "seen": 28
+ },
+ {
+  "text": "Dashboard 시트 A4에 총매출 입력해줘",
+  "context_range": null,
+  "seen": 5
+ },
+ {
+  "text": "Sales_Data 시트 H1에 넣어줘",
+  "context_range": null,
+  "seen": 4
+ },
+ {
+  "text": "Sales_Data 시트 정렬해줘",
+  "context_range": null,
+  "seen": 4
+ },
+ {
+  "text": "Sales_Data 시트 H1에 총매출 넣어줘",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "물류 배송 관제 대시보드 만들어줘",
+  "context_range": null,
+  "seen": 7
+ },
+ {
+  "text": "내가 드래그한 영역에 출석부를 위한 표를 만들어줘",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "일별로 만들어줄래?",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "필요 없는 행 지워줘",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "여기에 표 만들어줘",
+  "context_range": null,
+  "seen": 2
+ },
+ {
+  "text": "5*5로 표 만들어주고 금액, 장소, 날짜, 요건, 비고 이렇게 넣어줘",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "이 부분에 표 만들어줘",
+  "context_range": "A1:D9",
+  "seen": 2
+ },
+ {
+  "text": "이 범위로 표를 만들어줄 수 있어?",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "일단 저 엑셀을 깔끔하게 비워줄래?",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "지금 선택한 범위 읽어줘",
+  "context_range": null,
+  "seen": 6
+ },
+ {
+  "text": "() 여기를 원래대로 되돌려줘 안에 표를 없애줘",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "매출 시트에 표 만들어줘",
+  "context_range": null,
+  "seen": 10
+ },
+ {
+  "text": "5행 4열로",
+  "context_range": null,
+  "seen": 20
+ },
+ {
+  "text": "매출 시트 A1:D1에 날짜,지역,담당자,금액 입력",
+  "context_range": null,
+  "seen": 6
+ },
+ {
+  "text": "거기 굵게 해줘",
+  "context_range": null,
+  "seen": 6
+ },
+ {
+  "text": "매출 시트 A1:D1 배경색 #1E6B4F로 칠해줘",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "글자도 흰색으로",
+  "context_range": null,
+  "seen": 16
+ },
+ {
+  "text": "테두리도 넣어줘",
+  "context_range": null,
+  "seen": 6
+ },
+ {
+  "text": "매출 시트 F1에 합계 입력",
+  "context_range": null,
+  "seen": 10
+ },
+ {
+  "text": "그 아래 칸에 금액 합계 수식 넣어줘",
+  "context_range": null,
+  "seen": 10
+ },
+ {
+  "text": "매출 시트 A10에 서울 입력",
+  "context_range": null,
+  "seen": 14
+ },
+ {
+  "text": "아니 부산으로 바꿔줘",
+  "context_range": null,
+  "seen": 22
+ },
+ {
+  "text": "이 부분은 원래대로 초기화해줄 수 있어? 표 없애줘",
+  "context_range": "A1:D9",
+  "seen": 18
+ },
+ {
+  "text": "C2:C3 비워줘",
+  "context_range": null,
+  "seen": 2
+ },
+ {
+  "text": "A1:D9 여기 부분 초기화시켜줄 수 있어?",
+  "context_range": null,
+  "seen": 12
+ },
+ {
+  "text": "A1:D9 초기화해줘",
+  "context_range": null,
+  "seen": 11
+ },
+ {
+  "text": "여기 초기화해줘",
+  "context_range": "A1:D9",
+  "seen": 11
+ },
+ {
+  "text": "A1:D9 리셋해줘",
+  "context_range": null,
+  "seen": 11
+ },
+ {
+  "text": "여기 표 없애줘",
+  "context_range": "A1:D9",
+  "seen": 11
+ },
+ {
+  "text": "A1:D9 표 지워줘",
+  "context_range": null,
+  "seen": 11
+ },
+ {
+  "text": "여기 서식 없애줘",
+  "context_range": "A1:D9",
+  "seen": 11
+ },
+ {
+  "text": "A1:D9 싹 지워줘",
+  "context_range": null,
+  "seen": 11
+ },
+ {
+  "text": "A1:D9 깨끗하게 지워줘",
+  "context_range": null,
+  "seen": 11
+ },
+ {
+  "text": "A1:D9 값만 지워줘",
+  "context_range": null,
+  "seen": 11
+ },
+ {
+  "text": "A1:D9 내용만 비워줘",
+  "context_range": null,
+  "seen": 11
+ },
+ {
+  "text": "A1:D9 비워줘",
+  "context_range": null,
+  "seen": 11
+ },
+ {
+  "text": "A1:D9 내용 지워줘",
+  "context_range": null,
+  "seen": 11
+ },
+ {
+  "text": "여기 값 지워줘",
+  "context_range": "A1:D9",
+  "seen": 11
+ },
+ {
+  "text": "A1:D9 테두리 지워줘",
+  "context_range": null,
+  "seen": 12
+ },
+ {
+  "text": "여기 테두리 없애줘",
+  "context_range": "A1:D9",
+  "seen": 11
+ },
+ {
+  "text": "이 부분의 표를 지워줄 수 있어? 초기화시켜줘",
+  "context_range": "A1:D9",
+  "seen": 1
+ },
+ {
+  "text": "A1:D13 여기에 출석부를 본격적으로 만들기 시작하자",
+  "context_range": null,
+  "seen": 4
+ },
+ {
+  "text": "일별로 만들어줘",
+  "context_range": "A1:D13",
+  "seen": 8
+ },
+ {
+  "text": "A1:D1 배경 노란색으로 칠해줘",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "A1:D1 글자 빨간색으로 바꿔줘",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "A1:D1 굵게 해줘",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "A1:D9 테두리 넣어줘",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "금액에 천 단위 콤마 넣어줘",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "D2:D9 소수점 둘째 자리까지 보이게 해줘",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "F2에 금액 합계 수식 넣어줘",
+  "context_range": null,
+  "seen": 16
+ },
+ {
+  "text": "F3에 금액 평균 구하는 수식 넣어줘",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "F4에 가장 큰 금액 넣어줘",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "F5에 거래 건수 세는 수식 넣어줘",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "금액 기준으로 내림차순 정렬해줘",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "금액 낮은 순으로 정렬해줘",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "지역이 서울인 행만 남겨줘",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "중복된 행 지워줘",
+  "context_range": null,
+  "seen": 10
+ },
+ {
+  "text": "A12에 합계 라고 입력해줘",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "서울을 전부 SEOUL로 바꿔줘",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "A10:D10에 2026-01-09, 인천, 최영호, 88000 입력해줘",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "A1부터 3행 4열 표 만들어줘",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "회의록 표 만들어줘",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "응 그렇게 해줘",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "A1:D13 여기에 출석부 만들어줘",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "일별로",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "지역별 금액 합계 집계표 만들어줘",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "A1:D1 배경 남색으로 칠해줘",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "그 아래 칸에는 평균 넣어줘",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "A12에 서울 입력",
+  "context_range": null,
+  "seen": 8
+ },
+ {
+  "text": "금액 전부 합쳐서 F2에 보여줄래?",
+  "context_range": null,
+  "seen": 2
+ },
+ {
+  "text": "비싼 거래가 먼저 보이게 좀 정리해줬으면 해",
+  "context_range": null,
+  "seen": 2
+ },
+ {
+  "text": "서울 거래만 추려줘",
+  "context_range": null,
+  "seen": 2
+ },
+ {
+  "text": "금액 숫자 읽기 편하게 콤마 좀 찍어줄래?",
+  "context_range": null,
+  "seen": 2
+ },
+ {
+  "text": "혹시 A1:D1 좀 노랗게 해줄래?",
+  "context_range": null,
+  "seen": 2
+ },
+ {
+  "text": "지역이 제주인 행만 남겨줘",
+  "context_range": null,
+  "seen": 2
+ },
+ {
+  "text": "제주를 전부 JEJU로 바꿔줘",
+  "context_range": null,
+  "seen": 2
+ },
+ {
+  "text": "여기에 표 좀 넣어줄 수 있어?",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "이거 엑셀 전체 깔끔하게 비워줄 수 있어?",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "경계선을 다 지우지는 마",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "아니 기본 경계선을 전체에 다 적용해줘",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "아니 모든 엑셀 셀에 다 기본 경계선 적용해줘",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "배송_데이터 시트 A1:C3에 테두리 넣어줘",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "이 부분을 깔끔하게 초기화시켜줄 수 있어?",
+  "context_range": "A1:D9",
+  "seen": 1
+ },
+ {
+  "text": "A1:D9 여기에 출석부 형태로 표를 만들어줘 날짜, 이름, 출석 여부, 비고 이렇게 헤더를 만들어줘",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "A5:F5에 총 매출,총 순이익,총 주문 건수,신규 고객 수,고객 만족도,식자재 원가율 입력",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "A3:D3에 조회 기간 2026-06-01~2026-06-30,브랜드 푸드AI 키친,비교 기준 전월 대비,업데이트 2026-07-01 09:30 입력",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "A7:F7에 순위,SKU,상품명,이슈유형,재고상태,영향예측 입력",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "엑셀 전체 초기화해줘",
+  "context_range": "A1:D9",
+  "seen": 1
+ },
+ {
+  "text": "A10:D32 여기도 초기화해줘",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "지역성과 시트 만들어줘",
+  "context_range": "A10:D32",
+  "seen": 4
+ },
+ {
+  "text": "지역성과 시트 A1:F1에 지역,주문건수,출고건수,정시배송률,지연건수,클레임 입력",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "지역성과 시트 A2:F2에 수도권,10452,10158,97.1,145,12 입력",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "A1:Q18 여기 있는 내용 전부 초기화시켜줘",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "A1:O16 여기 있는거 막대 차트든 뭐든 다 지워줘",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "지역,주문건수,출고건수,정시배송률,지연건수,클레임; 수도권,10452,10158,97.1,145,12; 충청권,3892,3773,95.2,89,6; 호남권,3214,3086,94.7,112,5; 영남권,6789,6512,95.8,174,5; 강원제주,2495,2383,92.6,145,0 입력해줘",
+  "context_range": "A1:F6",
+  "seen": 1
+ },
+ {
+  "text": "지역성과 시트 A1:F6에 지역,주문건수,출고건수,정시배송률,지연건수,클레임; 수도권,10452,10158,97.1,145,12; 충청권,3892,3773,95.2,89,6; 호남권,3214,3086,94.7,112,5; 영남권,6789,6512,95.8,174,5; 강원제주,2495,2383,92.6,145,0 입력",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "상태가 있는 B열",
+  "context_range": "A1:F6",
+  "seen": 1
+ },
+ {
+  "text": "A1:T21 여기 안에 차트 같은거 다 지워주고 셀 초기화 전체 해줘",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "이거 전체 초기화해줘",
+  "context_range": "A1:N18",
+  "seen": 1
+ },
+ {
+  "text": "A1:F9 여기에 지역,주문건수,출고건수,정시배송률,지연건수,클레임; 수도권,10452,10158,97.1,145,12; 충청권,3892,3773,95.2,89,6; 호남권,3214,3086,94.7,112,5; 영남권,6789,6512,95.8,174,5; 강원제주,2495,2383,92.6,145,0 입력해줘",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "여기 안에 차트 같은거 다 지워주고 셀 초기화 전체 해줘",
+  "context_range": "A1:T21",
+  "seen": 5
+ },
+ {
+  "text": "A1:G7 여기 안에 내용 다 지워줘",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "지역성과 시트를 만들어줘",
+  "context_range": "A1:F6",
+  "seen": 1
+ },
+ {
+  "text": "지역성 시트가 아니라 '",
+  "context_range": "A1:F6",
+  "seen": 1
+ },
+ {
+  "text": "지역성 시트가 아니라 '지역성과' 시트를 만들어줘",
+  "context_range": "A1:F6",
+  "seen": 1
+ },
+ {
+  "text": "지역성과 시트에 이 영역에 지역,주문건수,출고건수,정시배송률,지연건수,클레임; 수도권,10452,10158,97.1,145,12; 충청권,3892,3773,95.2,89,6; 호남권,3214,3086,94.7,112,5; 영남권,6789,6512,95.8,174,5; 강원제주,2495,2383,92.6,145,0 입력해줘",
+  "context_range": "A1:F6",
+  "seen": 1
+ },
+ {
+  "text": "합계를 표 아래에 한 줄로 넣어줘",
+  "context_range": "A1:F6",
+  "seen": 3
+ },
+ {
+  "text": "A7:F7 합계를 여기 위치에 열 별로 합계를 만들어줘",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "A1:H7 여기 깨끗하게 비워줘",
+  "context_range": null,
+  "seen": 1
+ },
+ {
+  "text": "A1:F7 여기 전체 셀 좀 비워줘",
+  "context_range": null,
+  "seen": 1
+ }
+]

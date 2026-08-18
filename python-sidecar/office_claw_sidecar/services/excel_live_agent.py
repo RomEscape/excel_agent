@@ -322,7 +322,9 @@ _TEXT_EQUALS_SKIP = frozenset(
 _TEXT_EQUALS_PATTERN = re.compile(
     # "대기인 애들만" 같은 구어 꼴도 조건이다(2026-08-18 지저분판 실측:
     # '인 애들'이 패턴 밖이라 상태 배지 강조가 통째로 빠졌다).
-    r"([가-힣A-Za-z0-9_]{2,20})(?:이면|면|인\s*행|인\s*셀|인\s*애들|인\s*것들|인\s*것만|인\s*건|인\s*거|인\s*데|인\s*곳|일\s*때)"
+    # "매우 부족인 셀만" — 값이 두 낱말일 수 있다(2026-08-18 ex2 사람 말투 각본
+    # 정찰: '부족'만 잡혀 반대 셀이 칠해졌다). 한 칸 띄어쓴 두 낱말까지 받는다.
+    r"((?:(?:매우|아주|약간|다소|조금|완전|거의)\s)?[가-힣A-Za-z0-9_]{2,20})(?:이면|면|인\s*행|인\s*셀|인\s*애들|인\s*것들|인\s*것만|인\s*건|인\s*거|인\s*데|인\s*곳|일\s*때)"
 )
 _CONVERT_EXISTING_TABLE_PATTERN = re.compile(
     r"(엑셀\s*표|테이블로\s*(?:만들|변환|바꿔)|표로\s*(?:변환|바꿔)|listobject)",
@@ -334,6 +336,10 @@ def parse_text_equals_condition(message: str) -> str | None:
     """'발주필요인 행' / '미납이면'처럼 값 동등 조건을 뽑는다."""
     for match in _TEXT_EQUALS_PATTERN.finditer(str(message or "")):
         token = str(match.group(1) or "").strip()
+        # "매우 부족이면"의 서술격 '이'가 값 꼬리에 붙는다 — 어미와 붙은 뒤에서
+        # 벗긴다(값 자체가 '이'로 끝나는 낱말은 그 앞 어절이 있을 때만).
+        if match.group(0).endswith("면") and token.endswith("이") and len(token) >= 3:
+            token = token[:-1]
         if not token or token.casefold() in _TEXT_EQUALS_SKIP:
             continue
         if re.fullmatch(r"-?\d+(?:\.\d+)?", token):
@@ -932,7 +938,11 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
         # "합계를 표 아래에 한 줄로"가 활성 셀(A1 머리글) 값으로 들어갔다
         # (2026-08-18 GUI 실측). '라고' 인용이 없으면 쓰지 않고 물러난다 —
         # 조용히 틀리느니 뒤 단계가 되묻는 쪽이 안전하다.
-        looks_like_command = not quoted and len(raw_value.split()) >= 4
+        # 세미콜론 배치 나열("지역,…; 수도권,…")이 한 칸 값으로 들어가는 것도 명령이다
+        # — 붙여넣기 문맥이 없을 때의 최후 방어(2026-08-18 실사용 문장 배터리).
+        looks_like_command = not quoted and (
+            len(raw_value.split()) >= 4 or (";" in raw_value and "," in raw_value)
+        )
         if (
             not looks_like_command
             and "수식" not in raw_value
@@ -1703,6 +1713,9 @@ def parse_rangeless_row_write(text: str, target_range: str) -> dict | None:
     # "여기에 지역,주문건수,…" — 붙여넣은 자리를 가리키는 말은 값이 아니다.
     # 안 벗기면 "여기에 지역"이 첫 칸 값이 된다(2026-08-18 GUI 실측: F9 한 칸에
     # 문장 전체가 텍스트로 들어갔다).
+    # "지역성과 시트에 이 영역에 …" — 시트 지목과 지시어가 겹쳐 붙어도 값이
+    # 아니다(2026-08-18 실사용 문장 배터리 실측: 문장 전체가 A1 값으로 들어갔다).
+    body = re.sub(r"^[^\s,]+\s*시트(?:에|의|에서|에다가?)?\s*", "", body)
     body = re.sub(r"^(?:여기(?:에|에다|다가)?|이\s*(?:곳|쪽|자리|범위|영역)에?|요기에?)\s*", "", body)
     body = re.sub(r"\s*(?:순서대로|차례대로|순으로|각각|전부|모두)\s*$", "", body)
     if re.search(r"(?:넣고|쓰고|입력하고|적고)\s", body):

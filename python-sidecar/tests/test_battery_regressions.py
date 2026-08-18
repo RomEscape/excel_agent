@@ -415,3 +415,38 @@ class TestThreeRoundHumanRunFindings:
         # 빨갛게 칠해져 상태 배지 강조와 겹쳤다.
         plan = _build_quick_action_plan("머리글 행은 빨간색 배경에 흰 글씨로 굵게 해줘", "A1:E6")
         assert {s["params"]["target_range"] for s in plan} == {"A1:E1"}, plan
+
+
+class TestChartSlotKindVocab:
+    """차트 슬롯의 종류 파서가 도넛·선그래프(붙여쓰기)를 몰라 종류를 말해도
+    되묻기가 반복됐다(2026-08-18 ex5 대화형 각본). 어휘는 한 곳만 본다."""
+
+    @pytest.mark.parametrize(
+        ("message", "kind"),
+        [("GMV로 도넛 차트 그려줘", "doughnut"), ("정시배송률 추이 선그래프로", "line"),
+         ("지연건수는 막대로 그러줘", "bar"), ("클레임 비중 원형으로 그려줘", "pie")],
+    )
+    def test_slot_kind_matches_shared_vocab(self, message, kind):
+        from office_claw_sidecar.routers.excel_live import _extract_operation_hints
+
+        hints = _extract_operation_hints(message)
+        assert hints.get("params", {}).get("chart_type") == kind, hints
+
+
+class TestRealUsagePhraseBattery:
+    """사용자의 실사용 문장 116개 배터리(2026-08-18) 유일 실패의 회귀 핀."""
+
+    def test_sheet_plus_deictic_prefix_is_not_a_value(self):
+        from office_claw_sidecar.services.excel_live_agent import parse_rangeless_row_write
+
+        r = parse_rangeless_row_write(
+            "지역성과 시트에 이 영역에 지역,주문건수,출고건수; 수도권,10452,10158 입력해줘", "A1:C2"
+        )
+        assert r["params"]["values_2d"][0] == ["지역", "주문건수", "출고건수"], r
+
+    def test_a_semicolon_list_never_becomes_one_cell_value(self):
+        # 문맥이 없어도 배치 나열은 한 칸 값이 아니다 — 물러나서 되묻는다.
+        step = parse_command_rule_based("지역,주문건수; 수도권,10452; 충청권,3892 입력해줘")
+        assert step is None or step["params"].get("start_cell") != "__ACTIVE_CELL__" or (
+            ";" not in str(step["params"].get("values_2d"))
+        ), step
