@@ -162,7 +162,7 @@ _FONT_COLOR_MARKER = re.compile(
 )
 _COLOR_TOKEN = re.compile(
     r"(#[0-9a-fA-F]{6}|노란색|노랑|노란|yellow|빨간색|빨강|빨간|red|파란색|파랑|blue"
-    r"|초록색|초록|green|흰색|하얀색|하양|white|화이트|백색|검정|검은색|검은|black"
+    r"|초록색|초록|green|흰색|하얀색|하양|하얗|white|화이트|백색|검정|검은색|검은|까맣|black"
     r"|남색|네이비|navy|연회색|회색|gray|grey|주황색|주황|orange|보라색|보라|purple"
     r"|분홍색|분홍|핑크|pink|하늘색|갈색|brown)",
     re.IGNORECASE,
@@ -250,19 +250,19 @@ def _normalize_color(word: str) -> str:
     hex_match = re.fullmatch(r"#?([0-9a-f]{6})", normalized)
     if hex_match:
         return f"#{hex_match.group(1).upper()}"
-    if normalized in {"노란색", "노랑", "노란", "yellow"}:
+    if normalized in {"노란색", "노랑", "노란", "노랗", "yellow"}:
         return "#FFFF00"
-    if normalized in {"빨간색", "빨강", "빨간", "red"}:
+    if normalized in {"빨간색", "빨강", "빨간", "빨갛", "red"}:
         return "#FF0000"
     if normalized in {"초록색", "초록", "초록색으로", "green"}:
         return "#00FF00"
-    if normalized in {"파란색", "파랑", "blue"}:
+    if normalized in {"파란색", "파랑", "파랗", "blue"}:
         return "#0000FF"
     # 글자색으로 가장 많이 쓰는 두 색이 빠져 있었다. 없으면 노랑으로 폴백해서
     # "제목 글씨 흰색으로"가 노란 글씨가 됐다(2026-08-16 실측).
-    if normalized in {"흰색", "하얀색", "하양", "흰", "white", "화이트", "백색"}:
+    if normalized in {"흰색", "하얀색", "하양", "하얗", "흰", "white", "화이트", "백색"}:
         return "#FFFFFF"
-    if normalized in {"검정", "검은색", "검은", "black", "블랙"}:
+    if normalized in {"검정", "검은색", "검은", "까맣", "black", "블랙"}:
         return "#000000"
     # 2026-08-18 실측: "남색 배경에 흰 글씨"의 남색이 어휘에 없어 배경이
     # 글자색을 물려받았다. 대시보드에서 실제로 부르는 이름들을 채운다.
@@ -855,7 +855,7 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
     # 셀 토큰 앞의 부정 후읽기: "A1:F6에"의 F6은 범위의 일부지 셀이 아니다 —
     # 이걸 셀로 오인하면 문장 전체가 그 칸의 값이 된다(2026-08-18 실측).
     single_write_patterns = [
-        r"(?<![:A-Za-z0-9])([a-z]+\d+)\s*(?:셀)?\s*에\s*(?:값\s*)?['\"]?([^'\"]+?)['\"]?\s*(?:을|를)?\s*(?:로)?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|write|set|input)",
+        r"(?<![:A-Za-z0-9])([a-z]+\d+)\s*(?:셀)?\s*에(?:다가?)?\s*(?:값\s*)?['\"]?([^'\"]+?)['\"]?\s*(?:을|를)?\s*(?:로)?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|write|set|input)",
         r"(?<![:A-Za-z0-9])([a-z]+\d+)\s*(?:셀)?\s*값(?:을|를)?\s*['\"]?([^'\"]+?)['\"]?\s*(?:로)?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|write|set|input)",
         r"(?<![:A-Za-z0-9])\b([a-z]+\d+)\s+['\"]?([^'\"]+?)['\"]?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|write|set|input)\b",
     ]
@@ -1566,8 +1566,8 @@ _ROW_WRITE_PATTERN = re.compile(
     # 통과 못 해 단일 셀 규칙이 "A1:F6에"의 F6을 셀로 오인했고, 문장 전체가
     # 한 값이 된 뒤 쉼표로만 재배열돼 **표 전체가 조용히 오염**됐다
     # (2026-08-18 지저분판 실측: 2행이 [10452,…,'12; 충청권',…]).
-    r"\b([a-z]+\d+:[a-z]+\d+)\s*에\s*((?:[^\n]|\n)+?)\s*"
-    r"(입력|기록|작성|적어|넣어|채워|써|write|set)(?:해)?(?:\s*(?:줘|주세요|주라|줄래|봐))?",
+    r"\b([a-z]+\d+:[a-z]+\d+)\s*에(?:다가?)?\s*((?:[^\n]|\n)+?)\s*"
+    r"(입력|기록|작성|적어|넣어|채워|써|write|set)(?:해)?(?:\s*(?:줘요|줘|주세요|주라|줄래|놔|둬|봐))?",
     re.IGNORECASE,
 )
 # 값 자리에 이런 낱말이 오면 값이 아니라 서식·차트 명령일 가능성이 크다 —
@@ -1613,6 +1613,12 @@ def parse_explicit_row_write(text: str, *, strong_verb_only: bool = False) -> di
     # 수십 턴이 든다(2026-08-18, 85턴 재현 대화가 과하다는 지적).
     # 행 안은 기존 그대로 쉼표 나열이다.
     row_groups = [g.strip() for g in re.split(r"[;\n]", raw_values) if g.strip()]
+    if col_count == 1 and len(row_groups) == 1:
+        # 세로 범위(B2:B4)에 가로 나열("12000, 8500, 9300")이 오면 열을 따라
+        # 내려 쓴다 — 안 그러면 첫 값만 쓰이고 나머지는 사라진다(2026-08-18 사냥).
+        vertical_tokens = _split_header_tokens(row_groups[0])
+        if len(vertical_tokens) > 1:
+            row_groups = vertical_tokens
     rows_2d = []
     for group in row_groups:
         tokens = _split_header_tokens(group)
@@ -1650,7 +1656,7 @@ def parse_rangeless_row_write(text: str, target_range: str) -> dict | None:
     lowered_src = source.lower()
     if not source or "=" in source or "수식" in source or "헤더" in lowered_src or "header" in lowered_src:
         return None
-    verb = re.search(r"(입력|기록|넣어|채워|써)\s*(?:해)?\s*(?:줘|주세요|줄래)?\s*[.!]?\s*$", source)
+    verb = re.search(r"(입력|기록|넣어|채워|써)\s*(?:해)?\s*(?:줘요|줘|주세요|주라|줄래|놔|둬|봐)?\s*[~.!?…]*\s*$", source)
     if verb is None:
         return None
     body = source[: verb.start()].strip()
@@ -1693,6 +1699,11 @@ def _split_header_tokens(source: str) -> list[str]:
     빗금·세로줄은 쉼표가 아예 없는 나열에서만 구분자다.
     """
     text = str(source or "")
+    # "12,000" 같은 천 단위 표기는 나열 구분자가 아니다 — 쪼개면 값이 셀들로
+    # 흩어져 아래 행까지 덮는다(2026-08-18 5렌즈 사냥). 숫자,숫자3자리(뒤가
+    # 숫자가 아님) 꼴만 이어붙인다. "10452,10158"은 5자리라, "29,104%"는
+    # %가 붙어 별개 값이라 안 붙는다(ex2 주간실적 실측 데이터).
+    text = re.sub(r"(?<=\d),(?=\d{3}(?:[\s,;.)]|원|$))", "", text)
     if "," in text:
         return [token.strip() for token in text.split(",") if token.strip()]
     return [token.strip() for token in re.split(r"[/|]", text) if token.strip()]

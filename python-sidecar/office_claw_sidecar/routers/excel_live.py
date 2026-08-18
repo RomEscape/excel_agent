@@ -1260,20 +1260,20 @@ def _quick_color_hex(word: str) -> str:
     token = str(word or "").strip().lower()
     if re.fullmatch(r"#[0-9a-f]{6}", token):
         return token.upper()
-    if token in {"노란색", "노랑", "노란", "yellow"}:
+    if token in {"노란색", "노랑", "노란", "노랗", "yellow"}:
         return "#FFFF00"
-    if token in {"빨간색", "빨강", "red"}:
+    if token in {"빨간색", "빨강", "빨간", "빨갛", "red"}:
         return "#FF4D4F"
-    if token in {"파란색", "파랑", "blue"}:
+    if token in {"파란색", "파랑", "파랗", "blue"}:
         return "#4F8CFF"
     if token in {"초록색", "초록", "green"}:
         return "#6AC36A"
-    if token in {"흰색", "하얀색", "하양", "white", "화이트", "백색"}:
+    if token in {"흰색", "하얀색", "하양", "하얗", "white", "화이트", "백색"}:
         return "#FFFFFF"
     # 2026-08-18 실측: "남색 배경에 흰 글씨"의 남색이 어휘에 없어 흰색 하나만
     # 잡혔고, 배경이 글자색(흰색)을 물려받아 흰 바탕에 흰 글씨가 됐다.
     # 대시보드에서 실제로 부르는 색 이름들을 채운다.
-    if token in {"검정", "검은색", "검은", "black", "블랙"}:
+    if token in {"검정", "검은색", "검은", "까맣", "black", "블랙"}:
         return "#000000"
     if token in {"남색", "네이비", "navy", "진파랑", "진한 파랑", "진한파랑"}:
         return "#002060"
@@ -1334,9 +1334,9 @@ def _background_fill_hex(lowered: str, font_color: str | None) -> str:
 # `#1F4E79` 같은 코드도 받는다. 대시보드 배색은 이름으로 부를 수 없는 색이 대부분이라,
 # 코드를 못 읽으면 전부 기본값(노랑)으로 칠해진다(2026-08-16 실측: 남색 제목 바가 노랗게 나왔다).
 _QUICK_COLOR_PATTERN = re.compile(
-    r"(#[0-9a-fA-F]{6}|노란색|노랑|노란|yellow|빨간색|빨강|빨간|red|파란색|파랑|blue"
-    r"|초록색|초록|green|흰색|하얀색|하양|white|화이트|백색"
-    r"|검은색|검정|검은|black|블랙|남색|네이비|navy|연회색|회색|그레이|gray|grey"
+    r"(#[0-9a-fA-F]{6}|노란색|노랑|노란|노랗|yellow|빨간색|빨강|빨간|빨갛|red|파란색|파랑|파랗|blue"
+    r"|초록색|초록|green|흰색|하얀색|하양|하얗|white|화이트|백색"
+    r"|검은색|검정|검은|까맣|black|블랙|남색|네이비|navy|연회색|회색|그레이|gray|grey"
     r"|주황색|주황|오렌지|orange|보라색|보라|퍼플|purple|분홍색|분홍|핑크|pink"
     r"|하늘색|갈색|브라운|brown)",
     re.IGNORECASE,
@@ -1344,7 +1344,15 @@ _QUICK_COLOR_PATTERN = re.compile(
 
 
 def _quick_extract_colors(text: str) -> list[str]:
-    matches = _QUICK_COLOR_PATTERN.findall(str(text or ""))
+    source = str(text or "")
+    matches = []
+    for m in _QUICK_COLOR_PATTERN.finditer(source):
+        tail = source[m.end() : m.end() + 6]
+        # "빨간색 **말고** 노란색" — 제외 지시가 붙은 색은 후보가 아니다
+        # (2026-08-18 사냥: 첫 색을 집어 빨강으로 칠했다).
+        if re.match(r"\s*(?:은|는|을|를)?\s*(?:말고|빼고|제외|아니)", tail):
+            continue
+        matches.append(m.group(1))
     out: list[str] = []
     for raw in matches:
         color = _quick_color_hex(raw)
@@ -3110,6 +3118,19 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
             normalized_ctx=normalized_ctx,
             explicit_range=explicit_range,
         )
+        # 한정사가 있으면 통째 삭제 금지 — "서식만 지워줘(값은 그대로)",
+        # "중복된 행은 지워줘", "합계 행만", "필터 초기화"가 범위 전체 clear로
+        # 실행돼 데이터가 조용히 사라졌다(2026-08-18 5렌즈 사냥, 조용한 파괴
+        # 4건). 여기서 물러나면 해석 카드/되묻기가 받는다 — 안 하고 묻는 쪽이
+        # 항상 싸다.
+        if re.search(
+            # "값만/내용만"은 정상 좁은 삭제(값만 지움)가 이미 있으므로 막지
+            # 않는다 — 여기서 거르는 건 통째 삭제로 오실행되던 위험 한정사다.
+            r"(서식만|스타일만|필터|중복(된|되는)?\s*(행|줄|값)"
+            r"|합계\s*행|마지막\s*행|은\s*그대로|는\s*그대로|빼고|말고)",
+            lowered,
+        ):
+            return None
         chart_mentioned = bool(re.search(r"(차트|그래프|chart)", lowered))
         cell_scope_mentioned = bool(
             re.search(r"(셀|내용|값|전체|전부|초기화|리셋|서식|데이터|표|뭐든)", lowered)
@@ -3179,7 +3200,11 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
         })
         return steps
 
-    if any(token in lowered for token in ["저장", "save"]):
+    if any(token in lowered for token in ["저장", "save"]) and not re.search(
+        # "아직 저장하지 마"가 저장을 **실행**했다(2026-08-18 사냥). 부정이
+        # 붙은 저장은 저장이 아니다.
+        r"저장\s*(?:은|는)?\s*하지\s*(?:마|말)|저장하지\s*(?:마|말)", lowered
+    ):
         if "pdf" in lowered:
             # "PDF로 저장" 은 통합문서 저장이 아니라 내보내기다.
             return [

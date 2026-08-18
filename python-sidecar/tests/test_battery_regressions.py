@@ -297,3 +297,48 @@ class TestVerbSuffixesInBatchWrite:
         step = parse_command_rule_based("A1:F6에 가,나,다,라,마,바 넣어줘")
         assert step["params"]["start_cell"] == "A1"
         assert len(step["params"]["values_2d"][0]) == 6
+
+
+class TestGapHuntBatchOne:
+    """5렌즈 사냥(2026-08-18, 70건) 중 최고 위험 6종의 회귀 핀."""
+
+    def test_negated_save_does_not_save(self):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+
+        assert _build_quick_action_plan("아직 저장하지 마", None) is None
+        plan = _build_quick_action_plan("저장해줘", None)
+        assert plan and plan[0]["action"] == "excel_live.save_workbook"
+
+    def test_excluded_colors_are_skipped(self):
+        from office_claw_sidecar.routers.excel_live import _quick_extract_colors
+
+        assert _quick_extract_colors("빨간색 말고 노란색으로 칠해줘") == ["#FFFF00"]
+
+    def test_conjugated_colors_resolve(self):
+        from office_claw_sidecar.routers.excel_live import _quick_extract_colors
+
+        assert _quick_extract_colors("F열 빨갛게 칠해줘") == ["#FF4D4F"]
+        assert _quick_extract_colors("까맣게 칠해줘") == ["#000000"]
+
+    def test_locative_da_ga_is_not_a_value(self):
+        assert parse_command_rule_based("B3에다 500 넣어줘")["params"]["values_2d"] == [[500]]
+        v = parse_command_rule_based("A2:C2에다가 이름,나이,점수 입력해줘")["params"]["values_2d"]
+        assert v == [["이름", "나이", "점수"]]
+
+    def test_vertical_range_takes_a_horizontal_list_downward(self):
+        v = parse_command_rule_based("B2:B4에 12,000, 8,500, 9,300 입력해줘")["params"]["values_2d"]
+        assert v == [[12000], [8500], [9300]]
+
+    def test_thousand_commas_do_not_split_but_lists_do(self):
+        v = parse_command_rule_based("A44:E44에 토 07/05,278000,28,29,104% 입력")["params"]["values_2d"]
+        assert v == [["토 07/05", 278000, 28, 29, "104%"]]
+
+    def test_subset_qualifiers_block_the_blanket_clear(self):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+
+        assert _build_quick_action_plan("표 서식만 지워줘, 값은 그대로 두고", "A1:D9") is None
+        assert _build_quick_action_plan("A1:C10에서 중복된 행은 지워줘", None) is None
+        assert _build_quick_action_plan("합계 행만 지워줘", "A1:F7") is None
+        # 정상 좁은 삭제(값만)는 그대로 동작해야 한다.
+        plan = _build_quick_action_plan("여기 값만 지워줘", "A1:D9")
+        assert plan and plan[-1]["action"] == "excel_live.clear_range"
