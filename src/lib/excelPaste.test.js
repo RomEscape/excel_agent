@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildPasteBlock, displayMessageText, looksLikeExcelPaste, pasteShape, rangeShape } from "./excelPaste.js";
+import { buildPasteBlock, displayMessageText, looksLikeExcelPaste, pasteHasValues, pasteShape, rangeShape } from "./excelPaste.js";
 
 // Excel에서 A1:D3을 복사하면 이런 모양으로 붙는다.
 const EXCEL_TABLE = "날짜\t지역\t담당자\t금액\n2026-01-01\t서울\t김철수\t120000\n2026-01-02\t경기\t이영희\t85000";
@@ -85,4 +85,29 @@ test("범위 태그만 있는 메시지도 안내 문구는 남긴다", () => {
   const shown = displayMessageText(buildPasteBlock(EXCEL_TABLE, "A1:D3"));
   assert.match(shown, /A1:D3 범위로 인식했습니다/);
   assert.equal(shown.includes("[[EXCEL_"), false);
+});
+
+// ---- 2026-08-19: 다른 앱·통합문서에서 가져온 표는 값을 살려 보낸다 ----
+test("빈 셀만 복사한 붙여넣기는 값이 없다", () => {
+  assert.equal(pasteHasValues("\t\t\n\t\t\n"), false);
+  assert.equal(pasteHasValues("지역\t주문건수\n수도권\t10452"), true);
+});
+
+test("값을 살릴 때는 탭·줄바꿈 그대로 표를 이어 붙인다", () => {
+  const out = buildPasteBlock("지역\t주문건수\r\n수도권\t10452\r\n", "A1", { keepValues: true });
+  const lines = out.split("\n");
+  assert.equal(lines[0], "[[EXCEL_RANGE:A1]]");
+  assert.match(lines[1], /밖에서 가져온 표 2행 × 2열 — A1부터/);
+  assert.deepEqual(lines.slice(2), ["지역\t주문건수", "수도권\t10452"]);
+  // 말풍선에는 안내와 값이 보이고 마크업은 안 보인다.
+  const shown = displayMessageText(`${out} 입력해줘`);
+  assert.equal(shown.includes("[[EXCEL_"), false);
+  assert.match(shown, /^📋 밖에서 가져온 표/);
+  assert.match(shown, /수도권\t10452/);
+});
+
+test("값을 살리지 않는 기본 동작은 그대로다", () => {
+  const out = buildPasteBlock("지역\t주문건수\n수도권\t10452", "A1:B2");
+  assert.equal(out.split("\n").length, 2);
+  assert.match(out, /엑셀에서 붙여넣은 2행 × 2열 — A1:B2 범위로 인식했습니다/);
 });

@@ -129,6 +129,12 @@ RANGE_REF_PATTERN = re.compile(
     r"(?![A-Za-z0-9:])"
 )
 
+# 값 앞에 붙는 지시어·범위 지목("여기에", "이 칸에", "A1:F6 여기에") — 값이 아니다.
+_DEICTIC_VALUE_PREFIX = re.compile(
+    r"^(?:(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}(?::[A-Za-z]{1,3}\d{1,7})?\s*)?"
+    r"(?:여기(?:에|에다|다가|다)?|요기에?|이\s*(?:곳|쪽|자리|칸|셀|범위|영역)에?)\s*"
+)
+
 # "C열", "C 열을"처럼 조사가 붙어도 열 문자를 인식한다.
 COLUMN_LETTER_PATTERN = re.compile(r"(?<![A-Za-z0-9])([A-Za-z])\s*열")
 
@@ -421,6 +427,12 @@ def _parse_literal_value(raw: str) -> Any:
         return int(text)
     if re.fullmatch(r"-?\d+\.\d+", text):
         return float(text)
+    # "1,234" · "12,345.67" — 탭 구분 표(TSV)에서 흔한 천 단위 표기는 숫자다
+    # (2026-08-19 붙여넣기 흐름 강건화). 쉼표 나열에서는 토크나이저가 먼저
+    # 쪼개므로 여기까지 오지 않는다.
+    if re.fullmatch(r"-?\d{1,3}(?:,\d{3})+(?:\.\d+)?", text):
+        plain = text.replace(",", "")
+        return float(plain) if "." in plain else int(plain)
     return text
 
 
@@ -872,6 +884,16 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
     if row_write_step is not None:
         return row_write_step
 
+    # 예: "E15에 A15에서 C15 뺀 값 넣어줘" — 셀 둘의 사칙연산을 사람 말로 부른 수식.
+    # 단일 쓰기 규칙보다 먼저 봐야 한다 — 아니면 'A15에서 C15 뺀'이 텍스트로 써진다.
+    arithmetic_step = parse_cell_arithmetic_write(text)
+    if arithmetic_step is not None:
+        return arithmetic_step
+    # 예: "B8에 에너지_상세 시트 B2 값 가져와줘" — 다른 시트 한 칸 참조.
+    cross_ref_step = parse_cross_sheet_cell_ref(text)
+    if cross_ref_step is not None:
+        return cross_ref_step
+
     # 예: "A1에 120 입력", "C3 셀에 777 입력해줘", "C3 값을 777로 입력", "C3 777 입력"
     # 셀 토큰 앞의 부정 후읽기: "A1:F6에"의 F6은 범위의 일부지 셀이 아니다 —
     # 이걸 셀로 오인하면 문장 전체가 그 칸의 값이 된다(2026-08-18 실측).
@@ -887,10 +909,17 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
         if not single_write:
             continue
         cell = single_write.group(1).upper()
+        if pattern is single_write_patterns[2] and re.search(r"[,;]", single_write.group(2)):
+            # "CO2 농도,512 입력" — 조사 없이 붙은 셀 닮은 토큰 뒤에 값 나열이 오면
+            # 그 토큰은 셀이 아니라 값이다(2026-08-19 ex4 정적 프로브: CO2가 셀로
+            # 오인돼 [['농도,512']]가 됐다). 나열 쓰기는 다른 규칙 몫이다.
+            continue
         raw_value = re.sub(r"\s*(?:값|value)\s*$", "", single_write.group(2).strip(), flags=re.IGNORECASE)
         # "합계 라고 입력해줘"의 '라고'는 인용 조사지 값이 아니다.
         # 2026-08-17 배터리 실측: A12에 '합계 라고'가 그대로 들어갔다.
         raw_value = re.sub(r"\s*이?라고\s*$", "", raw_value)
+        # "A3 여기에 합계 써줘" — 셀 뒤에 붙은 지시어는 값이 아니다(2026-08-19).
+        raw_value = _DEICTIC_VALUE_PREFIX.sub("", raw_value).strip()
         if "수식" in raw_value or "formula" in raw_value.lower() or "=" in raw_value:
             continue
         if not raw_value:
@@ -934,6 +963,13 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
         raw_value = implicit_single_write.group(1).strip()
         quoted = bool(re.search(r"이?라고\s*$", implicit_single_write.group(1).strip()))
         raw_value = re.sub(r"\s*이?라고\s*$", "", raw_value)
+        # "여기에 입력해줘" — 붙여넣기 뒤 값을 빠뜨린 문장이다. 지시어는 값이
+        # 아니고, 벗기면 남는 값이 없다. 계획을 만들면 활성 셀(A1 제목)에 '여기에'가
+        # 써진다(2026-08-19 붙여넣기 흐름 실측). 값이 남으면 그 값만 쓰고, 없으면
+        # 물러나서 되묻게 한다.
+        raw_value = _DEICTIC_VALUE_PREFIX.sub("", raw_value).strip()
+        if not raw_value:
+            return None
         # 셀 지목 없이 네 낱말 넘는 문장은 값이 아니라 명령일 가능성이 크다.
         # "합계를 표 아래에 한 줄로"가 활성 셀(A1 머리글) 값으로 들어갔다
         # (2026-08-18 GUI 실측). '라고' 인용이 없으면 쓰지 않고 물러난다 —
@@ -1599,7 +1635,9 @@ _ROW_WRITE_PATTERN = re.compile(
     # 통과 못 해 단일 셀 규칙이 "A1:F6에"의 F6을 셀로 오인했고, 문장 전체가
     # 한 값이 된 뒤 쉼표로만 재배열돼 **표 전체가 조용히 오염**됐다
     # (2026-08-18 지저분판 실측: 2행이 [10452,…,'12; 충청권',…]).
-    r"\b([a-z]+\d+:[a-z]+\d+)\s*에(?:다가?)?\s*((?:[^\n]|\n)+?)\s*"
+    # 범위 뒤 지시어("A1:D6 여기에 …")도 대상 지목이다 — 프론트가 "여기" 문장에
+    # 붙여넣기 범위를 접두하면 이 꼴이 된다(2026-08-19 붙여넣기 흐름 실측).
+    r"\b([a-z]+\d+:[a-z]+\d+)\s*(?:여기(?:에다가|에다|다가|다|에)?|이\s*(?:범위|영역|자리|곳)에?|에(?:다가?)?)\s*((?:[^\n]|\n)+?)\s*"
     r"(입력|기록|작성|적어|넣어|채워|써|write|set)(?:해)?(?:\s*(?:줘요|줘|주세요|주라|줄래|놔|둬|봐))?",
     re.IGNORECASE,
 )
@@ -1626,9 +1664,16 @@ def parse_explicit_row_write(text: str, *, strong_verb_only: bool = False) -> di
         return None
     if strong_verb_only:
         verb = row_write.group(3)
-        if verb.startswith(("넣", "적")):
+        listed = "," in row_write.group(2) or ";" in row_write.group(2)
+        # "K2:K181에 데이터 막대 넣어줘"는 서식이지 쓰기가 아니라 넣어/적어를 뺐다.
+        # 값 나열(쉼표·세미콜론)이 있으면 그 걱정이 없다 — "A1:D6 여기에 a,b; c,d
+        # 넣어줘"는 확정 쓰기다(2026-08-19 붙여넣기 흐름 실측: 이 문형이 플래너로
+        # 새 '78,22'가 활성 셀에 텍스트로 들어갔다).
+        if verb.startswith(("넣", "적")) and not listed:
             return None
-        if _ROW_WRITE_FORMAT_VOCAB.search(row_write.group(2)):
+        if _ROW_WRITE_FORMAT_VOCAB.search(row_write.group(2)) and not (
+            listed and len(_split_header_tokens(row_write.group(2).split(";")[0])) >= 3
+        ):
             return None
     range_ref = row_write.group(1).upper()
     left, right = range_ref.split(":")
@@ -1699,53 +1744,180 @@ def parse_rangeless_row_write(text: str, target_range: str) -> dict | None:
     낱말('건수')의 의도 오인으로 새서 붙여넣기 흐름이 통째로 막혔다.
     문장이 통째로 값 나열일 때만 잡는다 — 산문을 쓰기로 채가면 안 된다.
     """
-    rng = re.match(r"^([A-Z]+)(\d+):([A-Z]+)(\d+)$", str(target_range or "").strip().upper())
-    if not rng:
+    ctx = str(target_range or "").strip().upper()
+    rng = re.match(r"^([A-Z]+)(\d+):([A-Z]+)(\d+)$", ctx)
+    # 한 칸만 잡고 복사한 경우("A1")도 붙여넣기 문맥이다 — 시작 칸으로 삼고
+    # 열 수는 첫 줄의 값 개수로 정한다(2026-08-19 붙여넣기 흐름 강건화).
+    single = None if rng else re.match(r"^([A-Z]+)(\d+)$", ctx)
+    if not rng and not single:
         return None
     source = str(text or "").strip()
     lowered_src = source.lower()
     if not source or "=" in source or "수식" in source or "헤더" in lowered_src or "header" in lowered_src:
         return None
     verb = re.search(r"(입력|기록|넣어|채워|써)\s*(?:해)?\s*(?:줘요|줘|주세요|주라|줄래|놔|둬|봐)?\s*[~.!?…]*\s*$", source)
-    if verb is None:
-        return None
-    body = source[: verb.start()].strip()
+    if verb is not None:
+        body = source[: verb.start()].strip()
+    else:
+        # 동사가 앞에 오는 사람도 있다: "이거 입력해줘: 지역,…; 수도권,…" /
+        # "넣어줘 지역,…". 뒤에 값 나열이 이어지면 같은 뜻이다(2026-08-19).
+        lead = re.match(
+            r"^(?:이거|이것|이거를|이걸|다음|아래|여기(?:에|다)?)?\s*(?:값\s*(?:을|를)?\s*)?"
+            r"(?:입력|기록|넣어|채워|써)\s*(?:해)?\s*(?:줘요|줘|주세요|주라|줄래|놔|둬|봐)?\s*[:：~.!?…-]*\s*",
+            source,
+        )
+        if lead is None or lead.end() >= len(source):
+            return None
+        body = source[lead.end():].strip()
     # "여기에 지역,주문건수,…" — 붙여넣은 자리를 가리키는 말은 값이 아니다.
     # 안 벗기면 "여기에 지역"이 첫 칸 값이 된다(2026-08-18 GUI 실측: F9 한 칸에
     # 문장 전체가 텍스트로 들어갔다).
     # "지역성과 시트에 이 영역에 …" — 시트 지목과 지시어가 겹쳐 붙어도 값이
     # 아니다(2026-08-18 실사용 문장 배터리 실측: 문장 전체가 A1 값으로 들어갔다).
     body = re.sub(r"^[^\s,]+\s*시트(?:에|의|에서|에다가?)?\s*", "", body)
-    body = re.sub(r"^(?:여기(?:에|에다|다가)?|이\s*(?:곳|쪽|자리|범위|영역)에?|요기에?)\s*", "", body)
+    body = re.sub(r"^(?:여기(?:에다가|에다|다가|다|에)?|이\s*(?:곳|쪽|자리|범위|영역)에?|요기에?)\s*", "", body)
     body = re.sub(r"\s*(?:순서대로|차례대로|순으로|각각|전부|모두)\s*$", "", body)
     if re.search(r"(?:넣고|쓰고|입력하고|적고)\s", body):
         # 복합문의 뒤 절이 값으로 흘러들면 오염이다 — 해석 카드가 받는다.
         return None
-    if not body or RANGE_REF_PATTERN.search(body):
-        # 범위를 말했으면 기존 행 쓰기 규칙 소유다.
+    if not body:
         return None
-    if _ROW_WRITE_FORMAT_VOCAB.search(body):
+    # 범위를 **대상으로** 말했으면("A2:F6에", "B3부터") 기존 행 쓰기 규칙 소유다.
+    # 값 안의 셀 닮은 토큰("철근 (D25)", "단열재 (T100)")은 데이터다 — 그것 때문에
+    # 물러나면 자재 목록 같은 표는 붙여넣기로 못 넣는다(2026-08-19 강건화).
+    if re.search(
+        r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}:[A-Za-z]{1,3}\d{1,7}(?![A-Za-z0-9])", body
+    ) or re.search(
+        r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}\s*(?:에다가?|에|부터|까지|셀|칸|범위)(?![A-Za-z0-9가-힣])",
+        body,
+    ):
         return None
     row_groups = [g.strip() for g in re.split(r"[;\n]", body) if g.strip()]
+    if _ROW_WRITE_FORMAT_VOCAB.search(body) and (
+        not row_groups or len(_split_header_tokens(row_groups[0])) < 3
+    ):
+        # "테두리 넣어줘"류가 쓰기로 채이지 않게 — 단, 값이 셋 이상 나열된
+        # 격자 안의 "필터 차압 상승" 같은 낱말은 데이터다(2026-08-19 ex4 실측).
+        return None
     if not row_groups:
         return None
-    col_count = _column_span(rng.group(1), rng.group(3))
+    if rng:
+        col_count = _column_span(rng.group(1), rng.group(3))
+        start_cell = f"{rng.group(1)}{rng.group(2)}"
+    else:
+        col_count = len(_split_header_tokens(row_groups[0]))
+        start_cell = f"{single.group(1)}{single.group(2)}"
+        if col_count < 2 and len(row_groups) < 2:
+            # 한 칸에 낱말 하나 — 단일 쓰기 규칙이 더 잘 안다.
+            return None
     rows_2d = []
-    for group in row_groups:
-        tokens = _split_header_tokens(group)
+    token_rows = [_split_header_tokens(group) for group in row_groups]
+    # 잡은 범위보다 값이 넓으면(예: A1:E6을 잡고 6열을 붙임) 잘라 버리지 않는다 —
+    # 마지막 열이 조용히 사라지는 것보다 Excel 붙여넣기처럼 오른쪽으로 흘리는 편이
+    # 사람이 기대하는 결과다(2026-08-19 붙여넣기 흐름 강건화).
+    width = max([col_count] + [len(t) for t in token_rows])
+    for tokens in token_rows:
         if len(tokens) < 2 and col_count > 1:
             return None
-        row_values = [_parse_literal_value(t) for t in tokens[:col_count]]
-        if len(row_values) < col_count:
-            row_values.extend([""] * (col_count - len(row_values)))
+        row_values = [_parse_literal_value(t) for t in tokens[:width]]
+        if len(row_values) < width:
+            row_values.extend([""] * (width - len(row_values)))
         rows_2d.append(row_values)
     if not rows_2d:
         return None
     return {
         "action": "excel_live.write_range",
-        "params": {"start_cell": f"{rng.group(1)}{rng.group(2)}", "values_2d": rows_2d},
+        "params": {"start_cell": start_cell, "values_2d": rows_2d},
         "reason": f"붙여넣은 범위에 값 {len(rows_2d)}행 입력",
     }
+
+
+_ARITH_CELL = r"([A-Za-z]{1,3}\d{1,7})"
+_ARITH_TARGET = re.compile(
+    rf"(?<![A-Za-z0-9:]){_ARITH_CELL}\s*(?:셀|칸)?\s*에(?:는|다가?)?\s+(.+?)\s*"
+    r"(?:넣어|입력|써|적어|채워|계산해서\s*넣어|계산해\s*넣어)\s*(?:해)?\s*"
+    r"(?:줘요|줘|주세요|주라|줄래|놔|둬|봐)?\s*[~.!?…]*$",
+    re.IGNORECASE,
+)
+# 연산 표현 — 순서가 중요하다(뺄셈의 "에서"가 덧셈의 "에"에 먹히지 않게 뺄셈 먼저).
+_ARITH_FORMS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(rf"{_ARITH_CELL}\s*(?:에서|빼기|-|−|마이너스)\s*{_ARITH_CELL}\s*(?:을|를)?\s*(?:뺀|빼준|차감한|마이너스한|차이|차)?\s*(?:값)?", re.I), "-"),
+    (re.compile(rf"{_ARITH_CELL}\s*(?:와|과|랑|하고|이랑)\s*{_ARITH_CELL}\s*(?:의)?\s*(?:차이|차)\s*(?:값)?", re.I), "-"),
+    (re.compile(rf"{_ARITH_CELL}\s*(?:나누기|/|÷)\s*{_ARITH_CELL}\s*(?:한|의)?\s*(?:값|몫)?", re.I), "/"),
+    (re.compile(rf"{_ARITH_CELL}\s*(?:을|를)?\s*{_ARITH_CELL}\s*(?:로|으로)\s*나눈\s*(?:값)?", re.I), "/"),
+    (re.compile(rf"{_ARITH_CELL}\s*(?:곱하기|\*|×|x)\s*{_ARITH_CELL}\s*(?:한|의)?\s*(?:값)?", re.I), "*"),
+    (re.compile(rf"{_ARITH_CELL}\s*(?:와|과|랑|에|하고|이랑)\s*{_ARITH_CELL}\s*(?:을|를)?\s*(?:곱한|곱해서|곱해준|곱)\s*(?:값)?", re.I), "*"),
+    (re.compile(rf"{_ARITH_CELL}\s*(?:더하기|\+|플러스)\s*{_ARITH_CELL}\s*(?:한|의)?\s*(?:값)?", re.I), "+"),
+    (re.compile(rf"{_ARITH_CELL}\s*(?:와|과|랑|에|하고|이랑)\s*{_ARITH_CELL}\s*(?:을|를)?\s*(?:더한|더해서|더해준|합한|합친|합|합계|합산한)\s*(?:값)?", re.I), "+"),
+]
+
+
+_CROSS_SHEET_CELL_REF = re.compile(
+    rf"(?<![A-Za-z0-9:]){_ARITH_CELL}\s*(?:셀|칸)?\s*에(?:는|다가?)?\s+"
+    r"([^\s,;]+?)\s*시트(?:의|에서|에)?\s*"
+    rf"{_ARITH_CELL}\s*(?:셀|칸)?\s*(?:의)?\s*(?:값)?\s*(?:을|를)?\s*(?:그대로)?\s*"
+    r"(?:가져와|가져다|끌어와|끌어다|참조해|연결해|불러와|넣어|써|입력해|복사해)\s*"
+    r"(?:줘요|줘|주세요|주라|줄래|놔|둬|봐)?\s*[~.!?…]*$",
+    re.IGNORECASE,
+)
+
+
+def parse_cross_sheet_cell_ref(text: str) -> dict | None:
+    """"B8에 에너지_상세 시트 B2 값 가져와줘" → set_formula(B8, "='에너지_상세'!B2").
+
+    한 칸을 다른 시트에서 참조하는 문형. 사람은 "=에너지_상세!B2 수식"이라고 하지
+    않는다(2026-08-19 ex4 각본 — 검증 문형이 없어 리터럴로 대체됐던 자리).
+    """
+    source = str(text or "").strip()
+    if not source or "=" in source:
+        return None
+    found = _CROSS_SHEET_CELL_REF.search(source)
+    if found is None:
+        return None
+    target, sheet, ref = found.group(1).upper(), found.group(2).strip(), found.group(3).upper()
+    if not sheet or sheet.lower() in {"이", "그", "저", "현재", "같은", "다른"}:
+        return None
+    quoted = sheet.replace("'", "''")
+    return {
+        "action": "excel_live.set_formula",
+        "params": {"range_ref": target, "formula_a1": f"='{quoted}'!{ref}"},
+        "reason": "다른 시트 한 칸 참조 수식",
+    }
+
+
+def parse_cell_arithmetic_write(text: str) -> dict | None:
+    """"E15에 A15에서 C15 뺀 값 넣어줘" → set_formula(E15, "=A15-C15").
+
+    사람은 "=A15-C15 수식 넣어줘"라고 하지 않는다(2026-08-19 ex5 대화 각본 —
+    사람 말투 문형이 없어 뺄셈 한 칸이 각본에서 빠졌다). 셀 둘의 사칙연산을
+    말로 부른 문장을 결정적으로 수식으로 바꾼다. 셀 셋 이상·범위 연산은 다루지
+    않는다 — 그건 열 단위 수식 빌더 몫이다.
+    """
+    source = str(text or "").strip()
+    if not source or "=" in source:
+        return None
+    target = _ARITH_TARGET.search(source)
+    if target is None:
+        return None
+    expr = target.group(2).strip()
+    # 값 나열이면 산술이 아니다("E1에 a,b,c 입력").
+    if "," in expr or ";" in expr:
+        return None
+    for pattern, op in _ARITH_FORMS:
+        found = pattern.search(expr)
+        if found is None:
+            continue
+        # 표현식 밖에 다른 셀이 더 있으면 세 항 연산이다 — 추측하지 않는다.
+        cells = re.findall(_ARITH_CELL, expr)
+        if len(cells) != 2:
+            return None
+        left, right = found.group(1).upper(), found.group(2).upper()
+        return {
+            "action": "excel_live.set_formula",
+            "params": {"range_ref": target.group(1).upper(), "formula_a1": f"={left}{op}{right}"},
+            "reason": f"두 셀의 {op} 연산 수식",
+        }
+    return None
 
 
 def _split_header_tokens(source: str) -> list[str]:
@@ -1756,6 +1928,11 @@ def _split_header_tokens(source: str) -> list[str]:
     빗금·세로줄은 쉼표가 아예 없는 나열에서만 구분자다.
     """
     text = str(source or "")
+    # 탭이 있으면 그것이 구분자다 — 다른 앱·통합문서에서 복사한 표(TSV)는 칸 안에
+    # 쉼표("1,234", "서울, 경기")가 흔해 쉼표로 쪼개면 열이 밀린다. 빈 칸은
+    # 빈 값으로 남겨 열을 맞춘다(2026-08-19 붙여넣기 흐름 강건화).
+    if "\t" in text:
+        return [token.strip() for token in text.split("\t")]
     # "12,000" 같은 천 단위 표기는 나열 구분자가 아니다 — 쪼개면 값이 셀들로
     # 흩어져 아래 행까지 덮는다(2026-08-18 5렌즈 사냥). 숫자,숫자3자리(뒤가
     # 숫자가 아님) 꼴만 이어붙인다. "10452,10158"은 5자리라, "29,104%"는

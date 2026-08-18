@@ -6,7 +6,7 @@
   "action": "excel_live.set_font",
   "asked": false,
   "reply": "글자 서식 — A1:F1 · 6개 셀",
-  "secs": 0.1
+  "secs": 0.2
  },
  {
   "text": "Sales_Data로 매출 대시보드 만들어줘",
@@ -15,7 +15,7 @@
   "action": "excel_live.macro_plan",
   "asked": false,
   "reply": "28단계로 나눴습니다. 확인 후 실행해 주세요.",
-  "secs": 14.7
+  "secs": 12.8
  },
  {
   "text": "Dashboard 시트 A4에 총매출 입력해줘",
@@ -24,7 +24,7 @@
   "action": "excel_live.clarify",
   "asked": true,
   "reply": "'Dashboard' 시트를 찾을 수 없습니다. 어느 시트에 작업할까요? 현재 시트: 지역성과, 매출, Sales_Data",
-  "secs": 9.5
+  "secs": 4.9
  },
  {
   "text": "Sales_Data 시트 H1에 넣어줘",
@@ -33,7 +33,7 @@
   "action": "excel_live.clarify",
   "asked": true,
   "reply": "어떤 작업을 원하시는지 한 단계만 더 구체화해 주세요. 예: 표 생성 / 정렬·필터 / 계산 수식 / 피벗 집계 / 차트 / 검증 중 하나와 기준 열.",
-  "secs": 9.7
+  "secs": 7.8
  },
  {
   "text": "Sales_Data 시트 정렬해줘",
@@ -42,7 +42,7 @@
   "action": "excel_live.sort_rows",
   "asked": false,
   "reply": "엑셀 변경 작업을 실행합니다. — A1:C1",
-  "secs": 4.8
+  "secs": 3.7
  },
  {
   "text": "Sales_Data 시트 H1에 총매출 넣어줘",
@@ -51,7 +51,7 @@
   "action": "excel_live.write_range",
   "asked": false,
   "reply": "값 입력 — H1 · 값 1개 기록",
-  "secs": 7.2
+  "secs": 4.1
  },
  {
   "text": "물류 배송 관제 대시보드 만들어줘",
@@ -60,7 +60,7 @@
   "action": "excel_live.macro_plan",
   "asked": false,
   "reply": "36단계로 나눴습니다. 확인 후 실행해 주세요.",
-  "secs": 30.4
+  "secs": 28.3
  },
  {
   "text": "내가 드래그한 영역에 출석부를 위한 표를 만들어줘",
@@ -69,7 +69,7 @@
   "action": "excel_live.create_table",
   "asked": true,
   "reply": "출석부는 일별/월별 중 어떤 형식으로 만들까요? (기본: 월별)",
-  "secs": 0.0
+  "secs": 0.1
  },
  {
   "text": "일별로 만들어줄래?",
@@ -78,7 +78,7 @@
   "action": "excel_live.sort",
   "asked": true,
   "reply": "어떤 열 기준으로 정렬할까요? 예: 매출 열 기준 내림차순",
-  "secs": 17.3
+  "secs": 7.6
  },
  {
   "text": "필요 없는 행 지워줘",
@@ -87,7 +87,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 1.7
+  "secs": 1.9
  },
  {
   "text": "여기에 표 만들어줘",
@@ -96,7 +96,7 @@
   "action": "excel_live.create_table",
   "asked": false,
   "reply": "표 생성 — A1:F6 · 6×6",
-  "secs": 1.7
+  "secs": 1.9
  },
  {
   "text": "5*5로 표 만들어주고 금액, 장소, 날짜, 요건, 비고 이렇게 넣어줘",
@@ -105,7 +105,7 @@
   "action": "excel_live.write_range",
   "asked": false,
   "reply": "1. 표 생성 — A8:E12 · 5×5\n2. 값 입력 — A8:E8 · 값 5개 기록",
-  "secs": 3.3
+  "secs": 3.7
  },
  {
   "text": "이 부분에 표 만들어줘",
@@ -114,7 +114,7 @@
   "action": "excel_live.create_table",
   "asked": false,
   "reply": "표 생성 — A1:D9 · 9×4",
-  "secs": 1.7
+  "secs": 2.1
  },
  {
   "text": "이 범위로 표를 만들어줄 수 있어?",
@@ -123,7 +123,7 @@
   "action": "excel_live.create_table",
   "asked": false,
   "reply": "표 생성 — A1:F6 · 6×6",
-  "secs": 1.6
+  "secs": 2.1
  },
  {
   "text": "일단 저 엑셀을 깔끔하게 비워줄래?",
@@ -132,7 +132,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "1. 테두리 적용 — A1:F6 · 36개 셀\n2. 배경색 변경 — A1:F6 · 36개 셀\n3. 내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 3.3
+  "secs": 3.8
  },
  {
   "text": "지금 선택한 범위 읽어줘",
@@ -141,7 +141,7 @@
   "action": "excel_live.read_range",
   "asked": false,
   "reply": "엑셀 변경 작업을 실행합니다. — A1:F6",
-  "secs": 6.0
+  "secs": 4.6
  },
  {
   "text": "() 여기를 원래대로 되돌려줘 안에 표를 없애줘",
@@ -150,7 +150,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "1. 테두리 적용 — A1:F6 · 36개 셀\n2. 배경색 변경 — A1:F6 · 36개 셀\n3. 내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 3.4
+  "secs": 3.7
  },
  {
   "text": "매출 시트에 표 만들어줘",
@@ -168,7 +168,7 @@
   "action": "excel_live.clarify",
   "asked": true,
   "reply": "어떤 작업을 원하시는지 한 단계만 더 구체화해 주세요. 예: 표 생성 / 정렬·필터 / 계산 수식 / 피벗 집계 / 차트 / 검증 중 하나와 기준 열.",
-  "secs": 11.0
+  "secs": 6.9
  },
  {
   "text": "매출 시트 A1:D1에 날짜,지역,담당자,금액 입력",
@@ -177,7 +177,7 @@
   "action": "excel_live.write_range",
   "asked": false,
   "reply": "값 입력 — A1:D1 · 값 4개 기록",
-  "secs": 4.2
+  "secs": 4.0
  },
  {
   "text": "거기 굵게 해줘",
@@ -186,7 +186,7 @@
   "action": "excel_live.set_font",
   "asked": false,
   "reply": "글자 서식 — A1:F6 · 36개 셀",
-  "secs": 0.8
+  "secs": 1.0
  },
  {
   "text": "매출 시트 A1:D1 배경색 #1E6B4F로 칠해줘",
@@ -204,7 +204,7 @@
   "action": "excel_live.set_font",
   "asked": false,
   "reply": "글자 서식 — A1:F6 · 36개 셀",
-  "secs": 0.9
+  "secs": 1.0
  },
  {
   "text": "테두리도 넣어줘",
@@ -222,7 +222,7 @@
   "action": "excel_live.write_range",
   "asked": false,
   "reply": "값 입력 — F1 · 값 1개 기록",
-  "secs": 5.7
+  "secs": 3.9
  },
  {
   "text": "그 아래 칸에 금액 합계 수식 넣어줘",
@@ -231,7 +231,7 @@
   "action": "excel_live.write_range",
   "asked": false,
   "reply": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 10.5
+  "secs": 11.4
  },
  {
   "text": "매출 시트 A10에 서울 입력",
@@ -240,7 +240,7 @@
   "action": "excel_live.write_range",
   "asked": false,
   "reply": "값 입력 — A10 · 값 1개 기록",
-  "secs": 1.6
+  "secs": 1.5
  },
  {
   "text": "아니 부산으로 바꿔줘",
@@ -249,7 +249,7 @@
   "action": "excel_live.find_replace",
   "asked": false,
   "reply": "찾아 바꾸기 — A1:F6 · 0개 셀 치환",
-  "secs": 5.8
+  "secs": 8.3
  },
  {
   "text": "이 부분은 원래대로 초기화해줄 수 있어? 표 없애줘",
@@ -258,7 +258,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "1. 테두리 적용 — A1:D9 · 36개 셀\n2. 배경색 변경 — A1:D9 · 36개 셀\n3. 내용 비우기 — A1:D9 · 값 24개 삭제",
-  "secs": 3.3
+  "secs": 3.7
  },
  {
   "text": "C2:C3 비워줘",
@@ -267,7 +267,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "내용 비우기 — C2:C3 · 값 2개 삭제",
-  "secs": 1.6
+  "secs": 1.8
  },
  {
   "text": "A1:D9 여기 부분 초기화시켜줄 수 있어?",
@@ -276,7 +276,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "1. 테두리 적용 — A1:D9 · 36개 셀\n2. 배경색 변경 — A1:D9 · 36개 셀\n3. 내용 비우기 — A1:D9 · 값 24개 삭제",
-  "secs": 3.3
+  "secs": 3.6
  },
  {
   "text": "A1:D9 초기화해줘",
@@ -285,7 +285,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "1. 테두리 적용 — A1:D9 · 36개 셀\n2. 배경색 변경 — A1:D9 · 36개 셀\n3. 내용 비우기 — A1:D9 · 값 24개 삭제",
-  "secs": 3.3
+  "secs": 3.6
  },
  {
   "text": "여기 초기화해줘",
@@ -294,7 +294,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "1. 테두리 적용 — A1:D9 · 36개 셀\n2. 배경색 변경 — A1:D9 · 36개 셀\n3. 내용 비우기 — A1:D9 · 값 24개 삭제",
-  "secs": 3.3
+  "secs": 3.7
  },
  {
   "text": "A1:D9 리셋해줘",
@@ -303,7 +303,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "1. 테두리 적용 — A1:D9 · 36개 셀\n2. 배경색 변경 — A1:D9 · 36개 셀\n3. 내용 비우기 — A1:D9 · 값 24개 삭제",
-  "secs": 3.4
+  "secs": 3.6
  },
  {
   "text": "여기 표 없애줘",
@@ -312,7 +312,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "1. 테두리 적용 — A1:D9 · 36개 셀\n2. 배경색 변경 — A1:D9 · 36개 셀\n3. 내용 비우기 — A1:D9 · 값 24개 삭제",
-  "secs": 3.3
+  "secs": 3.7
  },
  {
   "text": "A1:D9 표 지워줘",
@@ -321,7 +321,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "1. 테두리 적용 — A1:D9 · 36개 셀\n2. 배경색 변경 — A1:D9 · 36개 셀\n3. 내용 비우기 — A1:D9 · 값 24개 삭제",
-  "secs": 3.2
+  "secs": 3.7
  },
  {
   "text": "여기 서식 없애줘",
@@ -330,7 +330,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "1. 테두리 적용 — A1:D9 · 36개 셀\n2. 배경색 변경 — A1:D9 · 36개 셀\n3. 내용 비우기 — A1:D9 · 값 24개 삭제",
-  "secs": 3.3
+  "secs": 3.6
  },
  {
   "text": "A1:D9 싹 지워줘",
@@ -339,7 +339,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "1. 테두리 적용 — A1:D9 · 36개 셀\n2. 배경색 변경 — A1:D9 · 36개 셀\n3. 내용 비우기 — A1:D9 · 값 24개 삭제",
-  "secs": 3.3
+  "secs": 3.6
  },
  {
   "text": "A1:D9 깨끗하게 지워줘",
@@ -348,7 +348,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "1. 테두리 적용 — A1:D9 · 36개 셀\n2. 배경색 변경 — A1:D9 · 36개 셀\n3. 내용 비우기 — A1:D9 · 값 24개 삭제",
-  "secs": 3.3
+  "secs": 3.6
  },
  {
   "text": "A1:D9 값만 지워줘",
@@ -357,7 +357,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "내용 비우기 — A1:D9 · 값 24개 삭제",
-  "secs": 1.6
+  "secs": 1.8
  },
  {
   "text": "A1:D9 내용만 비워줘",
@@ -366,7 +366,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "내용 비우기 — A1:D9 · 값 24개 삭제",
-  "secs": 1.7
+  "secs": 1.9
  },
  {
   "text": "A1:D9 비워줘",
@@ -375,7 +375,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "내용 비우기 — A1:D9 · 값 24개 삭제",
-  "secs": 1.7
+  "secs": 1.8
  },
  {
   "text": "A1:D9 내용 지워줘",
@@ -384,7 +384,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "내용 비우기 — A1:D9 · 값 24개 삭제",
-  "secs": 1.6
+  "secs": 1.8
  },
  {
   "text": "여기 값 지워줘",
@@ -393,7 +393,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "내용 비우기 — A1:D9 · 값 24개 삭제",
-  "secs": 1.7
+  "secs": 1.9
  },
  {
   "text": "A1:D9 테두리 지워줘",
@@ -402,7 +402,7 @@
   "action": "excel_live.apply_border",
   "asked": false,
   "reply": "테두리 적용 — A1:D9 · 36개 셀",
-  "secs": 0.9
+  "secs": 1.0
  },
  {
   "text": "여기 테두리 없애줘",
@@ -420,7 +420,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "1. 테두리 적용 — A1:D9 · 36개 셀\n2. 배경색 변경 — A1:D9 · 36개 셀\n3. 내용 비우기 — A1:D9 · 값 24개 삭제",
-  "secs": 3.3
+  "secs": 3.5
  },
  {
   "text": "A1:D13 여기에 출석부를 본격적으로 만들기 시작하자",
@@ -438,7 +438,7 @@
   "action": "excel_live.sort_range",
   "asked": false,
   "reply": "정렬 — A1:F6",
-  "secs": 15.0
+  "secs": 9.5
  },
  {
   "text": "A1:D1 배경 노란색으로 칠해줘",
@@ -447,7 +447,7 @@
   "action": "excel_live.fill_range",
   "asked": false,
   "reply": "배경색 변경 — A1:D1 · 4개 셀",
-  "secs": 0.9
+  "secs": 1.0
  },
  {
   "text": "A1:D1 글자 빨간색으로 바꿔줘",
@@ -456,7 +456,7 @@
   "action": "excel_live.set_font",
   "asked": false,
   "reply": "글자 서식 — A1:D1 · 4개 셀",
-  "secs": 0.9
+  "secs": 1.0
  },
  {
   "text": "A1:D1 굵게 해줘",
@@ -465,7 +465,7 @@
   "action": "excel_live.set_font",
   "asked": false,
   "reply": "글자 서식 — A1:D1 · 4개 셀",
-  "secs": 0.9
+  "secs": 1.0
  },
  {
   "text": "A1:D9 테두리 넣어줘",
@@ -474,7 +474,7 @@
   "action": "excel_live.apply_border",
   "asked": false,
   "reply": "테두리 적용 — A1:D9 · 36개 셀",
-  "secs": 0.9
+  "secs": 1.0
  },
  {
   "text": "금액에 천 단위 콤마 넣어줘",
@@ -483,7 +483,7 @@
   "action": "excel_live.set_number_format",
   "asked": false,
   "reply": "표시 형식 — A1:F6",
-  "secs": 8.3
+  "secs": 4.8
  },
  {
   "text": "D2:D9 소수점 둘째 자리까지 보이게 해줘",
@@ -492,7 +492,7 @@
   "action": "excel_live.set_number_format",
   "asked": false,
   "reply": "표시 형식 — D2:D9",
-  "secs": 9.9
+  "secs": 4.6
  },
  {
   "text": "F2에 금액 합계 수식 넣어줘",
@@ -501,7 +501,7 @@
   "action": "excel_live.set_formula",
   "asked": false,
   "reply": "수식 적용 — F2 · 수식 1칸",
-  "secs": 6.8
+  "secs": 5.4
  },
  {
   "text": "F3에 금액 평균 구하는 수식 넣어줘",
@@ -510,7 +510,7 @@
   "action": "excel_live.set_formula",
   "asked": false,
   "reply": "수식 적용 — F3 · 수식 1칸",
-  "secs": 7.0
+  "secs": 5.5
  },
  {
   "text": "F4에 가장 큰 금액 넣어줘",
@@ -519,7 +519,7 @@
   "action": "excel_live.clarify",
   "asked": true,
   "reply": "어떤 값을 넣을지 정하지 못했습니다. 계산 결과를 원하시면 어떤 열을 기준으로 할지 알려 주세요 (예: 매출 열의 최댓값).",
-  "secs": 2.2
+  "secs": 1.3
  },
  {
   "text": "F5에 거래 건수 세는 수식 넣어줘",
@@ -528,7 +528,7 @@
   "action": "excel_live.set_formula",
   "asked": false,
   "reply": "수식 적용 — F5 · 수식 1칸",
-  "secs": 7.4
+  "secs": 5.2
  },
  {
   "text": "금액 기준으로 내림차순 정렬해줘",
@@ -537,7 +537,7 @@
   "action": "excel_live.sort_range",
   "asked": false,
   "reply": "정렬 — A1:F6",
-  "secs": 2.9
+  "secs": 3.2
  },
  {
   "text": "금액 낮은 순으로 정렬해줘",
@@ -546,7 +546,7 @@
   "action": "excel_live.sort_range",
   "asked": false,
   "reply": "정렬 — A1:F6",
-  "secs": 3.8
+  "secs": 3.2
  },
  {
   "text": "지역이 서울인 행만 남겨줘",
@@ -555,7 +555,7 @@
   "action": "excel_live.filter_rows",
   "asked": false,
   "reply": "행 필터 — A1:F6 · 제거된 행 없음",
-  "secs": 3.7
+  "secs": 3.2
  },
  {
   "text": "중복된 행 지워줘",
@@ -564,7 +564,7 @@
   "action": "excel_live.dedupe_rows",
   "asked": false,
   "reply": "중복 제거 — A1:F6 · 제거된 행 없음",
-  "secs": 5.2
+  "secs": 5.3
  },
  {
   "text": "A12에 합계 라고 입력해줘",
@@ -573,7 +573,7 @@
   "action": "excel_live.write_range",
   "asked": false,
   "reply": "값 입력 — A12 · 값 1개 기록",
-  "secs": 2.9
+  "secs": 3.1
  },
  {
   "text": "서울을 전부 SEOUL로 바꿔줘",
@@ -582,7 +582,7 @@
   "action": "excel_live.find_replace",
   "asked": false,
   "reply": "찾아 바꾸기 — A1:F6 · 0개 셀 치환",
-  "secs": 9.1
+  "secs": 4.9
  },
  {
   "text": "A10:D10에 2026-01-09, 인천, 최영호, 88000 입력해줘",
@@ -591,7 +591,7 @@
   "action": "excel_live.write_range",
   "asked": false,
   "reply": "값 입력 — A10:D10 · 값 4개 기록",
-  "secs": 8.3
+  "secs": 6.1
  },
  {
   "text": "A1부터 3행 4열 표 만들어줘",
@@ -600,7 +600,7 @@
   "action": "excel_live.create_table",
   "asked": false,
   "reply": "표 생성 — A1:D3 · 3×4",
-  "secs": 1.8
+  "secs": 1.9
  },
  {
   "text": "회의록 표 만들어줘",
@@ -609,7 +609,7 @@
   "action": "excel_live.create_table",
   "asked": true,
   "reply": "회의록 표에 날짜/참석자/안건/결정사항/담당자/기한 항목으로 만들까요?",
-  "secs": 0.0
+  "secs": 0.1
  },
  {
   "text": "응 그렇게 해줘",
@@ -618,7 +618,7 @@
   "action": "excel_live.sort",
   "asked": true,
   "reply": "어떤 열 기준으로 정렬할까요? 예: 매출 열 기준 내림차순",
-  "secs": 14.1
+  "secs": 7.9
  },
  {
   "text": "A1:D13 여기에 출석부 만들어줘",
@@ -636,7 +636,7 @@
   "action": "excel_live.read_range",
   "asked": false,
   "reply": "엑셀 변경 작업을 실행합니다. — A1:F6",
-  "secs": 7.7
+  "secs": 4.3
  },
  {
   "text": "지역별 금액 합계 집계표 만들어줘",
@@ -645,7 +645,7 @@
   "action": "excel_live.pivot_table",
   "asked": false,
   "reply": "집계표(피벗 형태)를 생성합니다 __ACTIVE_SELECTION__에서 실패했습니다 — '지역' 열은 숫자가 아니라 sum 집계를 할 수 없습니다. (요청 value_field='금액', row_field='지역') (작업 실행이 안정성 검증을 통과하지 못했습니다. 복구 정보로 원상 ",
-  "secs": 11.3
+  "secs": 8.6
  },
  {
   "text": "A1:D1 배경 남색으로 칠해줘",
@@ -663,7 +663,7 @@
   "action": "excel_live.write_range",
   "asked": false,
   "reply": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 10.5
+  "secs": 11.6
  },
  {
   "text": "A12에 서울 입력",
@@ -672,7 +672,7 @@
   "action": "excel_live.write_range",
   "asked": false,
   "reply": "값 입력 — A12 · 값 1개 기록",
-  "secs": 3.0
+  "secs": 3.1
  },
  {
   "text": "금액 전부 합쳐서 F2에 보여줄래?",
@@ -681,7 +681,7 @@
   "action": "excel_live.write_range",
   "asked": false,
   "reply": "값 입력 — F2 · 값 1개 기록",
-  "secs": 4.0
+  "secs": 3.1
  },
  {
   "text": "비싼 거래가 먼저 보이게 좀 정리해줬으면 해",
@@ -690,7 +690,7 @@
   "action": "excel_live.sort",
   "asked": true,
   "reply": "어떤 열 기준으로 정렬할까요? 예: 매출 열 기준 내림차순",
-  "secs": 2.5
+  "secs": 2.4
  },
  {
   "text": "서울 거래만 추려줘",
@@ -699,7 +699,7 @@
   "action": "excel_live.filter_rows",
   "asked": false,
   "reply": "행 필터 — A1:F6 · 제거된 행 없음",
-  "secs": 2.8
+  "secs": 3.1
  },
  {
   "text": "금액 숫자 읽기 편하게 콤마 좀 찍어줄래?",
@@ -708,7 +708,7 @@
   "action": "excel_live.set_number_format",
   "asked": false,
   "reply": "표시 형식 — A1:F6",
-  "secs": 7.3
+  "secs": 5.0
  },
  {
   "text": "혹시 A1:D1 좀 노랗게 해줄래?",
@@ -717,7 +717,7 @@
   "action": "excel_live.clarify",
   "asked": true,
   "reply": "어떤 작업을 원하시는지 한 단계만 더 구체화해 주세요. 예: 표 생성 / 정렬·필터 / 계산 수식 / 피벗 집계 / 차트 / 검증 중 하나와 기준 열.",
-  "secs": 8.4
+  "secs": 7.1
  },
  {
   "text": "지역이 제주인 행만 남겨줘",
@@ -726,7 +726,7 @@
   "action": "excel_live.filter_rows",
   "asked": false,
   "reply": "행 필터 — A1:F6 · 제거된 행 없음",
-  "secs": 3.6
+  "secs": 2.8
  },
  {
   "text": "제주를 전부 JEJU로 바꿔줘",
@@ -735,7 +735,7 @@
   "action": "excel_live.find_replace",
   "asked": false,
   "reply": "찾아 바꾸기 — A1:F6 · 1개 셀 치환",
-  "secs": 6.5
+  "secs": 5.2
  },
  {
   "text": "여기에 표 좀 넣어줄 수 있어?",
@@ -744,7 +744,7 @@
   "action": "excel_live.create_table",
   "asked": false,
   "reply": "표 생성 — A1:F6 · 6×6",
-  "secs": 7.2
+  "secs": 5.1
  },
  {
   "text": "이거 엑셀 전체 깔끔하게 비워줄 수 있어?",
@@ -753,7 +753,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "1. 테두리 적용 — A1:F6 · 36개 셀\n2. 배경색 변경 — A1:F6 · 36개 셀\n3. 내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 3.3
+  "secs": 3.6
  },
  {
   "text": "경계선을 다 지우지는 마",
@@ -771,7 +771,7 @@
   "action": "excel_live.apply_border",
   "asked": false,
   "reply": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 0.9
+  "secs": 1.0
  },
  {
   "text": "아니 모든 엑셀 셀에 다 기본 경계선 적용해줘",
@@ -789,7 +789,7 @@
   "action": "excel_live.clarify",
   "asked": true,
   "reply": "'배송_데이터' 시트를 찾을 수 없습니다. 어느 시트에 작업할까요? 현재 시트: 지역성과, 매출, Sales_Data",
-  "secs": 0.0
+  "secs": 0.1
  },
  {
   "text": "이 부분을 깔끔하게 초기화시켜줄 수 있어?",
@@ -798,7 +798,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "1. 테두리 적용 — A1:D9 · 36개 셀\n2. 배경색 변경 — A1:D9 · 36개 셀\n3. 내용 비우기 — A1:D9 · 값 24개 삭제",
-  "secs": 3.4
+  "secs": 3.6
  },
  {
   "text": "A1:D9 여기에 출석부 형태로 표를 만들어줘 날짜, 이름, 출석 여부, 비고 이렇게 헤더를 만들어줘",
@@ -807,7 +807,7 @@
   "action": "excel_live.write_range",
   "asked": false,
   "reply": "1. 표 생성 — A1:D9 · 9×4\n2. 값 입력 — A1:D1 · 값 4개 기록",
-  "secs": 3.3
+  "secs": 3.6
  },
  {
   "text": "A5:F5에 총 매출,총 순이익,총 주문 건수,신규 고객 수,고객 만족도,식자재 원가율 입력",
@@ -816,7 +816,7 @@
   "action": "excel_live.write_range",
   "asked": false,
   "reply": "값 입력 — A5:F5 · 값 6개 기록",
-  "secs": 6.6
+  "secs": 4.6
  },
  {
   "text": "A3:D3에 조회 기간 2026-06-01~2026-06-30,브랜드 푸드AI 키친,비교 기준 전월 대비,업데이트 2026-07-01 09:30 입력",
@@ -825,7 +825,7 @@
   "action": "excel_live.write_range",
   "asked": false,
   "reply": "값 입력 — A3:D3 · 값 4개 기록",
-  "secs": 12.7
+  "secs": 7.3
  },
  {
   "text": "A7:F7에 순위,SKU,상품명,이슈유형,재고상태,영향예측 입력",
@@ -834,7 +834,7 @@
   "action": "excel_live.write_range",
   "asked": false,
   "reply": "값 입력 — A7:F7 · 값 6개 기록",
-  "secs": 11.5
+  "secs": 9.8
  },
  {
   "text": "엑셀 전체 초기화해줘",
@@ -843,7 +843,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "1. 테두리 적용 — A1:D9 · 36개 셀\n2. 배경색 변경 — A1:D9 · 36개 셀\n3. 내용 비우기 — A1:D9 · 값 24개 삭제",
-  "secs": 3.3
+  "secs": 3.7
  },
  {
   "text": "A10:D32 여기도 초기화해줘",
@@ -852,7 +852,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "1. 테두리 적용 — A10:D32 · 92개 셀\n2. 배경색 변경 — A10:D32 · 92개 셀\n3. 내용 비우기 — A10:D32 · 값 0개 삭제",
-  "secs": 3.3
+  "secs": 3.9
  },
  {
   "text": "지역성과 시트 만들어줘",
@@ -870,7 +870,7 @@
   "action": "excel_live.write_range",
   "asked": false,
   "reply": "값 입력 — A1:F1 · 값 6개 기록",
-  "secs": 6.6
+  "secs": 4.5
  },
  {
   "text": "지역성과 시트 A2:F2에 수도권,10452,10158,97.1,145,12 입력",
@@ -879,7 +879,7 @@
   "action": "excel_live.write_range",
   "asked": false,
   "reply": "값 입력 — A2:F2 · 값 6개 기록",
-  "secs": 8.3
+  "secs": 4.3
  },
  {
   "text": "A1:Q18 여기 있는 내용 전부 초기화시켜줘",
@@ -888,7 +888,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "1. 테두리 적용 — A1:Q18 · 306개 셀\n2. 배경색 변경 — A1:Q18 · 306개 셀\n3. 내용 비우기 — A1:Q18 · 값 36개 삭제",
-  "secs": 3.4
+  "secs": 3.6
  },
  {
   "text": "A1:O16 여기 있는거 막대 차트든 뭐든 다 지워줘",
@@ -897,7 +897,7 @@
   "action": "excel_live.create_chart",
   "asked": false,
   "reply": "1. 차트 삭제\n2. 내용 비우기 — A1:O16 · 값 36개 삭제\n3. 차트를 생성합니다. — A1:O16",
-  "secs": 3.4
+  "secs": 3.6
  },
  {
   "text": "지역,주문건수,출고건수,정시배송률,지연건수,클레임; 수도권,10452,10158,97.1,145,12; 충청권,3892,3773,95.2,89,6; 호남권,3214,3086,94.7,112,5; 영남권,6789,6512,95.8,174,5; 강원제주,2495,2383,92.6,145,0 입력해줘",
@@ -906,7 +906,7 @@
   "action": "excel_live.write_range",
   "asked": false,
   "reply": "값 입력 — A1:F6 · 값 36개 기록",
-  "secs": 12.4
+  "secs": 9.0
  },
  {
   "text": "지역성과 시트 A1:F6에 지역,주문건수,출고건수,정시배송률,지연건수,클레임; 수도권,10452,10158,97.1,145,12; 충청권,3892,3773,95.2,89,6; 호남권,3214,3086,94.7,112,5; 영남권,6789,6512,95.8,174,5; 강원제주,2495,2383,92.6,145,0 입력",
@@ -915,7 +915,7 @@
   "action": "excel_live.write_range",
   "asked": false,
   "reply": "값 입력 — A1:F6 · 값 36개 기록",
-  "secs": 9.8
+  "secs": 7.2
  },
  {
   "text": "상태가 있는 B열",
@@ -924,7 +924,7 @@
   "action": "excel_live.read_range",
   "asked": false,
   "reply": "엑셀 변경 작업을 실행합니다. — A1:F6",
-  "secs": 5.4
+  "secs": 4.2
  },
  {
   "text": "A1:T21 여기 안에 차트 같은거 다 지워주고 셀 초기화 전체 해줘",
@@ -933,7 +933,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "1. 차트 삭제\n2. 테두리 적용 — A1:T21 · 420개 셀\n3. 배경색 변경 — A1:T21 · 420개 셀\n4. 내용 비우기 — A1:T21 · 값 36개 삭제",
-  "secs": 4.2
+  "secs": 4.7
  },
  {
   "text": "이거 전체 초기화해줘",
@@ -942,7 +942,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "1. 테두리 적용 — A1:N18 · 252개 셀\n2. 배경색 변경 — A1:N18 · 252개 셀\n3. 내용 비우기 — A1:N18 · 값 36개 삭제",
-  "secs": 3.3
+  "secs": 3.7
  },
  {
   "text": "A1:F9 여기에 지역,주문건수,출고건수,정시배송률,지연건수,클레임; 수도권,10452,10158,97.1,145,12; 충청권,3892,3773,95.2,89,6; 호남권,3214,3086,94.7,112,5; 영남권,6789,6512,95.8,174,5; 강원제주,2495,2383,92.6,145,0 입력해줘",
@@ -951,7 +951,7 @@
   "action": "excel_live.verify_formula_result",
   "asked": false,
   "reply": "1. 수식 적용 — C2 · 수식 1칸\n2. 엑셀 변경 작업을 실행합니다. — C2",
-  "secs": 13.2
+  "secs": 9.8
  },
  {
   "text": "여기 안에 차트 같은거 다 지워주고 셀 초기화 전체 해줘",
@@ -960,7 +960,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "1. 차트 삭제\n2. 테두리 적용 — A1:T21 · 420개 셀\n3. 배경색 변경 — A1:T21 · 420개 셀\n4. 내용 비우기 — A1:T21 · 값 36개 삭제",
-  "secs": 4.2
+  "secs": 4.7
  },
  {
   "text": "A1:G7 여기 안에 내용 다 지워줘",
@@ -969,7 +969,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "내용 비우기 — A1:G7 · 값 36개 삭제",
-  "secs": 1.6
+  "secs": 1.9
  },
  {
   "text": "지역성과 시트를 만들어줘",
@@ -987,7 +987,7 @@
   "action": "excel_live.select_sheet",
   "asked": false,
   "reply": "사용자 요청 실행",
-  "secs": 6.1
+  "secs": 3.7
  },
  {
   "text": "지역성 시트가 아니라 '지역성과' 시트를 만들어줘",
@@ -1000,12 +1000,12 @@
  },
  {
   "text": "지역성과 시트에 이 영역에 지역,주문건수,출고건수,정시배송률,지연건수,클레임; 수도권,10452,10158,97.1,145,12; 충청권,3892,3773,95.2,89,6; 호남권,3214,3086,94.7,112,5; 영남권,6789,6512,95.8,174,5; 강원제주,2495,2383,92.6,145,0 입력해줘",
-  "ok": false,
-  "why": "A1 오염: 지역성과 시트에 이 영역에 지역",
+  "ok": true,
+  "why": "",
   "action": "excel_live.write_range",
   "asked": false,
   "reply": "값 입력 — A1:F6 · 값 36개 기록",
-  "secs": 28.9
+  "secs": 7.4
  },
  {
   "text": "합계를 표 아래에 한 줄로 넣어줘",
@@ -1014,7 +1014,7 @@
   "action": "excel_live.write_range",
   "asked": false,
   "reply": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 10.7
+  "secs": 11.7
  },
  {
   "text": "A7:F7 합계를 여기 위치에 열 별로 합계를 만들어줘",
@@ -1023,7 +1023,7 @@
   "action": "excel_live.write_range",
   "asked": false,
   "reply": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 10.8
+  "secs": 11.6
  },
  {
   "text": "A1:H7 여기 깨끗하게 비워줘",
@@ -1032,7 +1032,7 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "1. 테두리 적용 — A1:H7 · 56개 셀\n2. 배경색 변경 — A1:H7 · 56개 셀\n3. 내용 비우기 — A1:H7 · 값 36개 삭제",
-  "secs": 3.4
+  "secs": 3.6
  },
  {
   "text": "A1:F7 여기 전체 셀 좀 비워줘",
@@ -1041,6 +1041,6 @@
   "action": "excel_live.clear_range",
   "asked": false,
   "reply": "내용 비우기 — A1:F7 · 값 36개 삭제",
-  "secs": 1.7
+  "secs": 1.8
  }
 ]

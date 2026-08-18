@@ -85,8 +85,10 @@ from office_claw_sidecar.services.excel_live_agent import (
     extract_font_params,
     looks_like_existing_table_convert,
     normalize_common_typos,
+    parse_cell_arithmetic_write,
     parse_command_plan_with_llm,
     parse_command_rule_based,
+    parse_cross_sheet_cell_ref,
     parse_excel_live_command,
     parse_explicit_row_write,
     parse_rangeless_row_write,
@@ -120,7 +122,7 @@ from office_claw_sidecar.services.excel_live_table_presets import (
     find_variant,
     get_table_preset,
 )
-from office_claw_sidecar.services.excel_macro_coverage import parse_rect
+from office_claw_sidecar.services.excel_macro_coverage import parse_rect, rect_to_ref
 from office_claw_sidecar.services.excel_macro_planner import (
     MacroStepPlan,
     decompose_macro_request,
@@ -155,6 +157,7 @@ from office_claw_sidecar.services.excel_selection_context import (
     resolve_context_range,
 )
 from office_claw_sidecar.services.excel_step_repair import RepairContext, repair_step
+from office_claw_sidecar.services.excel_table_region import expand_to_table_region
 from office_claw_sidecar.services.excel_workbook_digest import (
     build_workbook_digest,
     invalidate_digest_cache,
@@ -1433,6 +1436,12 @@ _AGGREGATE_SENSITIVE_QUICK_ACTIONS = frozenset(
         "excel_live.fill_range",
         "excel_live.sort_range",
     }
+)
+# 값 없이 쓰기 동사만 온 문장 — 붙여넣기 뒤 값을 빠뜨린 실수("여기에 입력해줘").
+_BARE_WRITE_REQUEST = re.compile(
+    r"^(?:(?:[A-Za-z]{1,3}\d{1,7}(?::[A-Za-z]{1,3}\d{1,7})?)\s*)?"
+    r"(?:여기(?:에|에다|다가|다)?|요기에?|이\s*(?:곳|쪽|자리|칸|셀|범위|영역)에?)?\s*(?:값\s*(?:을|를)?\s*)?"
+    r"(?:입력|기록|넣어|채워|써|적어)\s*(?:해)?\s*(?:줘요|줘|주세요|주라|줄래|놔|둬|봐)?\s*[~.!?…]*$"
 )
 _AGGREGATE_REQUEST_PATTERN = re.compile(
     r"(교차표|피벗|pivot)"
@@ -6781,7 +6790,24 @@ def get_selection():
         address = str(service.get_active_selection_ref(None, None) or "")
     except Exception:
         address = ""
-    return {"available": True, "address": address.upper()}
+    # 선택 영역이 비어 있는지도 알려 준다. 프론트는 이걸로 "같은 통합문서의 표를
+    # 참조하려고 복사"(값 버리고 주소만)와 "다른 앱·통합문서에서 데이터를 가져와
+    # 붙여넣기"(값을 살려 보내야 함)를 가른다(2026-08-19 붙여넣기 흐름 강건화).
+    empty: bool | None = None
+    if address:
+        try:
+            wb_id = _resolve_workbook_id(service, None)
+            read = service.read_range(wb_id, None, address.upper())
+            values = read.get("values") if isinstance(read, dict) else None
+            if isinstance(values, list):
+                empty = all(
+                    (cell is None or str(cell).strip() == "")
+                    for row in values
+                    for cell in (row if isinstance(row, list) else [row])
+                )
+        except Exception:
+            empty = None
+    return {"available": True, "address": address.upper(), "empty": empty}
 
 
 @router.get("/backups")
@@ -7380,7 +7406,9 @@ async def _run_command(
     # 확실하다. 값 낱말("영향예측", "조회 기간")이 forecast·read 같은 퀵 규칙을
     # 켜면 라벨 행이 통째로 사라진다(2026-08-18 ex5 재현 실측). 완결 문형이
     # 이기게 퀵 계획을 쓰기로 갈아끼운다 — 서식 어휘가 값에 섞이면 선점하지 않는다.
+    row_write_confirmed = False
     if pending_slot is None and pending_operation is None:
+        paste_write = None
         preempt_write = parse_explicit_row_write(req.message, strong_verb_only=True)
         if preempt_write is not None and (
             not quick_action_plan
@@ -7399,6 +7427,54 @@ async def _run_command(
             )
             if paste_write is not None:
                 quick_action_plan = [paste_write]
+            elif _BARE_WRITE_REQUEST.match(str(req.message or "").strip()):
+                # 붙여넣기 뒤 값을 빠뜨린 문장("여기에 입력해줘"). 무엇을 넣을지
+                # 모르는 채 실행하면 활성 셀이 덮인다 — 붙여넣은 범위를 밝히며
+                # 값을 되묻는다. 다음 턴의 값 나열은 같은 문맥으로 바로 써진다.
+                paste_ref = str(req.context_range or "").strip().upper()
+                where = f"붙여넣은 {paste_ref}에 " if paste_ref else ""
+                question = (
+                    f"{where}어떤 값을 넣을까요? 값을 쉼표로, 줄은 세미콜론(;)으로 "
+                    "구분해 적어 주세요. 예: 지역,주문건수; 수도권,10452"
+                )
+                trace_route("quick_rule:hit", why="값 없는 쓰기 요청 — 값을 되묻는다")
+                return ExcelLiveActionResponse(
+                    ok=True,
+                    action="excel_live.clarify",
+                    reason=question,
+                    result={
+                        "ask_follow_up": True,
+                        "follow_up_question": question,
+                        "operation_intent": "clarify",
+                        "missing_slot": "values_2d",
+                    },
+                )
+        # 범위(문장 또는 붙여넣기 문맥)·값 격자·쓰기 동사를 다 갖춘 문장은 규칙이
+        # 확정한 것이다. 플래너를 부르면 같은 문장이 어떤 날은 규칙, 어떤 날은
+        # 모델(해석 카드)로 갈려 대화가 흔들린다(2026-08-19 붙여넣기 흐름 실측:
+        # 한 줄 머리글 붙여넣기가 해석 카드로 떴다). 여기서 확정해 둔다.
+        row_write_confirmed = preempt_write is not None or paste_write is not None
+        # "E15에 A15에서 C15 뺀 값 넣어줘" — 두 셀 사칙연산은 결정적 수식이다.
+        # set_formula는 고신뢰 목록에 있어 모델을 부르지 않는다(2026-08-19).
+        if quick_action_plan is None or not quick_action_plan:
+            arithmetic_step = parse_cell_arithmetic_write(req.message) or parse_cross_sheet_cell_ref(req.message)
+            if arithmetic_step is not None:
+                if "!" in str((arithmetic_step.get("params") or {}).get("formula_a1", "")):
+                    # 문장에 나온 시트는 **원본**이다. 대상 시트를 활성 시트로 못박지
+                    # 않으면 시트 언급 해석이 원본 시트에 수식을 쓴다(2026-08-19 ex4
+                    # 5라운드 실측: '에너지_상세'!B8에 써 놓고 성공 보고 — 대시보드 B8은 빈 칸).
+                    try:
+                        _svc_for_ref = get_excel_live_service()
+                        ref_active = _resolve_sheet_name(
+                            _svc_for_ref,
+                            _resolve_workbook_id(_svc_for_ref, req.workbook_id),
+                            req.sheet_name,
+                        )
+                    except Exception:
+                        ref_active = ""
+                    if ref_active:
+                        arithmetic_step["params"]["sheet_name"] = ref_active
+                quick_action_plan = [arithmetic_step]
         # 사람 말투 집계: "붙여넣은 것들 합을 밑에 기록해줘" — 좌표도 수식도 없다.
         # 대상은 문장 범위 → context_range(살아 있는 선택 포함) → 사용 범위 순서로
         # 찾고, 실제 값을 읽어 숫자 열마다 집계 수식을 아랫줄에 놓는다.
@@ -7436,6 +7512,7 @@ async def _run_command(
                         agg_dest_cols = (dest_parts.group(1), dest_parts.group(3))
             if agg_match is not None:
                 agg_func, agg_label = agg_match
+                agg_target_from_context = False
                 if agg_dest_row:
                     # 대상 줄 바로 위까지가 데이터다. 머리글은 빌더가 걸러낸다.
                     agg_target = (
@@ -7446,6 +7523,7 @@ async def _run_command(
                     agg_target = (
                         range_in_msg.group(0).upper() if range_in_msg else ""
                     ) or str(req.context_range or "").strip().upper()
+                    agg_target_from_context = not range_in_msg and bool(agg_target)
                 agg_service = get_excel_live_service()
                 # GUI는 workbook_id를 비워 보낸다("선택된 통합문서"). None을 그대로
                 # 넘기면 xlwings가 조용히 실패해 훅이 빈 계획을 낸다 — 2026-08-18
@@ -7464,6 +7542,35 @@ async def _run_command(
                             ).strip().upper()
                         except Exception:
                             agg_target = ""
+                if agg_target and agg_target_from_context:
+                    # 문맥은 직전 명령의 **결과 주소**(머리글 한 줄 등)일 때가 많다.
+                    # "표 아래"의 표는 그 줄이 속한 이어진 표 전체다 — CurrentRegion
+                    # 처럼 넓힌다(2026-08-19 GUI 충실 러너 실측: 머리글 서식 뒤
+                    # 합계 요청이 머리글 한 줄만 보고 빈 계획을 냈다).
+                    try:
+                        used_getter = getattr(agg_service, "get_used_range_ref", None)
+                        used_ref = (
+                            str(used_getter(hook_wb, req.sheet_name) or "").strip().upper()
+                            if callable(used_getter)
+                            else ""
+                        )
+                        rect_ctx = parse_rect(agg_target)
+                        rect_used = parse_rect(used_ref) if used_ref else None
+                        if rect_ctx and rect_used:
+                            used_read = agg_service.read_range(
+                                hook_wb,
+                                _resolve_sheet_name(agg_service, hook_wb, req.sheet_name),
+                                used_ref,
+                            )
+                            used_values = (
+                                used_read.get("values") if isinstance(used_read, dict) else None
+                            )
+                            if isinstance(used_values, list):
+                                grown = expand_to_table_region(rect_ctx, rect_used, used_values)
+                                if grown != rect_ctx:
+                                    agg_target = rect_to_ref(*grown)
+                    except Exception:
+                        pass
                 if agg_target and ":" in agg_target:
                     try:
                         agg_read = agg_service.read_range(
@@ -7555,14 +7662,19 @@ async def _run_command(
     elif quick_first_action == "excel_live.fill_range":
         # 단순 색 채우기 요청은 fast path로 즉시 실행하는 편이 안정적이다.
         should_parse_with_llm = False
+    if row_write_confirmed and quick_first_action == "excel_live.write_range":
+        # 붙여넣기·좌표 행 쓰기는 값 격자까지 규칙이 확정했다 — 모델 몫이 없다.
+        should_parse_with_llm = False
     if quick_first_action == "excel_live.highlight_by_condition" and parse_text_equals_condition(
         req.message
     ):
         # 값 일치 조건("대기인 애들만 분홍")은 문장에서 값·색이 다 나온다 —
         # 플래너에 넘기면 조건이 뭉개져 0건 강조가 된다(2026-08-18 지저분판 실측).
         should_parse_with_llm = False
-    if len(quick_plan_for_parse) <= 1 and _quick_plan_underfits_message(
-        quick_first_action, req.message
+    if (
+        len(quick_plan_for_parse) <= 1
+        and not (row_write_confirmed and quick_first_action == "excel_live.write_range")
+        and _quick_plan_underfits_message(quick_first_action, req.message)
     ):
         # 미달 판정은 **한 단계짜리** 퀵 계획에만 건다. 여러 단계 계획(합계 줄,
         # 2절 크로스시트)은 이미 문장의 절들을 다 받아낸 것인데, 미달로 플래너에
@@ -8084,6 +8196,9 @@ async def _run_command(
                     "params": preferred_write[0].params,
                     "reason": "범위와 값을 지목한 쓰기",
                     "intent": "edit",
+                    # 값 격자는 결정적 규칙이 뽑았다 — 모델 해석이 아니므로 해석
+                    # 카드를 띄우지 않는다(2026-08-19 붙여넣기 흐름 실측).
+                    "plan_source": "rule",
                 }
 
     # 플래너 파라미터가 명백히 오염됐고 빠른 규칙이 대안을 갖고 있으면 규칙을 쓴다.

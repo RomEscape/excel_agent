@@ -293,3 +293,118 @@ class TestTheThreePasteScreenshots:
         assert body["ok"] is True
         actions = [a for a, _ in service.calls]
         assert "clear_range" not in actions, f"차트만 지우랬는데 값을 비운다: {actions}"
+
+
+class TestPasteFlowHardening20260819:
+    """2026-08-19 붙여넣기 흐름 강건화 — GUI 충실 러너로 잡힌 네 가지.
+
+    ① 값 없이 "여기에 입력해줘"만 오면 활성 셀(A1 제목)에 '여기에'가 써졌다 → 값을 되묻는다.
+    ② 한 줄 머리글 붙여넣기가 플래너로 가 해석 카드가 떴다 → 확정 쓰기는 모델을 부르지 않는다.
+    ③ 값 안의 셀 닮은 토큰("철근 (D25)")이 범위 지목으로 오인돼 파서가 물러났다.
+    ④ 6×5 격자가 값 하나의 '산출' 때문에 되뇜(echo) 판정을 받아 되묻기로 샜다.
+    """
+
+    def test_bare_write_after_paste_asks_for_values_instead_of_writing(self, service):
+        body = _run("여기에 입력해줘", context_range="A1:F6")
+        assert (body.get("result") or {}).get("ask_follow_up") is True, body.get("reason")
+        assert "어떤 값을 넣을까요" in str(body.get("reason") or "")
+        assert not [c for c in service.calls if c[0] == "write_range"], service.calls
+
+    def test_bare_write_with_prefixed_range_asks_too(self, service):
+        # 프론트가 "여기" 지시어를 보고 범위를 접두한 형태.
+        body = _run("A1:F6 여기에 입력해줘")
+        assert (body.get("result") or {}).get("ask_follow_up") is True, body.get("reason")
+        assert not [c for c in service.calls if c[0] == "write_range"], service.calls
+
+    def test_single_header_row_paste_is_a_rule_plan_not_an_interpretation(self, service):
+        body = _run(
+            "전체주문건수,총출고건수,정시배송률,배송중건수,지연건수,클레임 입력",
+            context_range="A3:F3",
+        )
+        assert body["ok"] is True
+        assert not (body.get("result") or {}).get("ask_follow_up"), body.get("reason")
+        pending = body.get("pending_approval") or {}
+        assert not pending.get("interpretation"), pending
+        assert ("write_range", "A3") in service.calls, service.calls
+        assert service.written[0][0] == "전체주문건수"
+
+    def test_cell_like_tokens_inside_values_are_data(self, service):
+        body = _run(
+            "No,구분,자재코드,품목,현재수량; 1,자재,STL-400,철근 (D25),12.3톤; "
+            "9,자재,THK-050,단열재 (T100),310㎡ 입력해줘",
+            context_range="A35:E37",
+        )
+        assert body["ok"] is True
+        assert not (body.get("result") or {}).get("ask_follow_up"), body.get("reason")
+        assert ("write_range", "A35") in service.calls, service.calls
+        assert service.written[1][3] == "철근 (D25)", service.written
+
+    def test_grid_with_a_compute_word_in_one_value_is_not_an_echo(self, service):
+        body = _run(
+            "A48:E50에 항목,수동 작업 방식,AI 자동화 적용 후,개선 효과,비고; "
+            "도면 검토,평균 24시간 / 1회,평균 2.1시간 / 1회,91.3% 단축,AI 도면 자동 검토; "
+            "물량 산출,평균 8시간 / 1건,평균 1.2시간 / 1건,85.0% 단축,AI 물량 자동 산출 입력"
+        )
+        assert body["ok"] is True
+        assert not (body.get("result") or {}).get("ask_follow_up"), body.get("reason")
+        assert ("write_range", "A48") in service.calls, service.calls
+        assert len(service.written) == 3
+
+    def test_single_cell_paste_context_uses_first_row_width(self, service):
+        # 한 칸(A1)만 잡고 복사한 뒤 값 나열을 붙인 경우.
+        body = _run("지역,주문건수,출고건수; 수도권,10452,10158 넣어조", context_range="A1")
+        assert body["ok"] is True
+        assert not (body.get("result") or {}).get("ask_follow_up"), body.get("reason")
+        assert ("write_range", "A1") in service.calls, service.calls
+        assert service.written == [["지역", "주문건수", "출고건수"], ["수도권", 10452, 10158]], service.written
+
+
+class TestCellArithmeticInHumanWords:
+    """2026-08-19: "E15에 A15에서 C15 뺀 값 넣어줘" — 수식 문자열 없이 두 셀 연산."""
+
+    def test_subtraction_becomes_a_formula_not_text(self, service):
+        body = _run("E15에 A15에서 C15 뺀 값 넣어주라")
+        assert body["ok"] is True, body.get("reason")
+        assert body["action"] == "excel_live.set_formula", body["action"]
+        assert not (body.get("pending_approval") or {}).get("interpretation")
+        assert not [c for c in service.calls if c[0] == "write_range"], service.calls
+
+    def test_other_operators(self):
+        from office_claw_sidecar.services.excel_live_agent import parse_cell_arithmetic_write
+
+        assert parse_cell_arithmetic_write("F3에 B3랑 C3 더한 값 써줘")["params"]["formula_a1"] == "=B3+C3"
+        assert parse_cell_arithmetic_write("F3에 B3를 C3로 나눈 값 넣어줘")["params"]["formula_a1"] == "=B3/C3"
+        assert parse_cell_arithmetic_write("F3에 B3 곱하기 C3 넣어줘")["params"]["formula_a1"] == "=B3*C3"
+        # 값 나열·세 항·문자열 수식은 건드리지 않는다.
+        assert parse_cell_arithmetic_write("E1에 a,b,c 입력") is None
+        assert parse_cell_arithmetic_write("E15에 A15에서 C15 뺀 값에 D15 더한 값 넣어줘") is None
+        assert parse_cell_arithmetic_write("E15에 =A15-C15 수식 넣어줘") is None
+
+
+class TestExternalTsvPaste:
+    """2026-08-19: 다른 앱·통합문서에서 복사한 표(탭·줄바꿈)를 값째로 붙여넣는다."""
+
+    def test_tsv_rows_with_commas_inside_cells_are_written_as_a_grid(self, service):
+        body = _run("금액\t비고\n1,234\t서울, 경기\n5,678\t부산\n입력해줘", context_range="E1")
+        assert body["ok"] is True, body.get("reason")
+        assert not (body.get("result") or {}).get("ask_follow_up"), body.get("reason")
+        assert ("write_range", "E1") in service.calls, service.calls
+        assert service.written == [["금액", "비고"], [1234, "서울, 경기"], [5678, "부산"]], service.written
+
+    def test_tsv_into_a_selected_block(self, service):
+        body = _run("현장명\t5/27(화)\n서울타워 오피스\t맑음 24/15°C 넣어줘", context_range="A62:B63")
+        assert body["ok"] is True, body.get("reason")
+        assert ("write_range", "A62") in service.calls, service.calls
+        assert service.written[1] == ["서울타워 오피스", "맑음 24/15°C"], service.written
+
+    def test_cross_sheet_cell_ref_lands_on_the_active_sheet_not_the_source(self, service):
+        # 2026-08-19 ex4 5라운드 실측: '에너지_상세'!B8에 쓰고 성공 보고 — 대시보드 B8은 빈 칸.
+        service._sheet_names.append("에너지_상세")
+        service._active_sheet = "Sheet1"
+        body = _run("B8에 에너지_상세 시트 B2 값 가져와줘")
+        assert body["ok"] is True, body.get("reason")
+        assert body["action"] == "excel_live.set_formula", body["action"]
+        last = getattr(service, "_last_formula", {}) or {}
+        assert last.get("formula_a1") == "='에너지_상세'!B2", last
+        assert last.get("sheet_name") == "Sheet1", last
+        assert last.get("range_ref") == "B8", last

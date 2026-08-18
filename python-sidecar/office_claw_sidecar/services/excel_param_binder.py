@@ -701,6 +701,17 @@ def write_values_echo_the_request(params: dict[str, Any], message: str) -> bool:
     values = params.get("values_2d")
     if not isinstance(values, list) or not values:
         return False
+    # 2행 × 2열 이상의 격자는 지시문의 되뇜이 아니라 **표 데이터**다. 값 하나가
+    # 우연히 계산 낱말을 품어도("AI 물량 자동 산출", "평균 24시간 / 1회") 표를
+    # 통째로 되묻기로 보내면 안 된다(2026-08-19 ex7 건설 대화 실측: 6×5 격자가
+    # '산출' 한 낱말 때문에 "어떤 값을 넣을지 정하지 못했습니다"로 샜다).
+    filled_rows = [
+        [c for c in (row if isinstance(row, list) else [row]) if c is not None and str(c).strip() != ""]
+        for row in values
+    ]
+    filled_rows = [r for r in filled_rows if r]
+    if len(filled_rows) >= 2 and max(len(r) for r in filled_rows) >= 2:
+        return False
     for row in values:
         cells = row if isinstance(row, list) else [row]
         for cell in cells:

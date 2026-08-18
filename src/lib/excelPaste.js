@@ -57,14 +57,45 @@ export function rangeShape(ref) {
   return rows > 0 && cols > 0 ? { rows, cols } : null;
 }
 
-export function buildPasteBlock(text, address) {
+/** 붙여넣은 표에 값이 하나라도 있는가 — 빈 셀만 복사한 경우와 가른다. */
+export function pasteHasValues(text) {
+  return String(text ?? "")
+    .split(/\r\n?|\n/)
+    .some((line) => line.split("\t").some((cell) => cell.trim() !== ""));
+}
+
+/** 붙여넣은 표를 줄바꿈·탭만 남긴 깨끗한 TSV로. 끝의 빈 줄은 뗀다. */
+export function normalizeTsv(text) {
+  return String(text ?? "")
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/[ \u00a0]+$/g, ""))
+    .filter((line, idx, arr) => !(idx === arr.length - 1 && line.trim() === ""))
+    .join("\n")
+    .replace(/\n+$/g, "");
+}
+
+/**
+ * 붙여넣기를 채팅창에 넣을 문구로 바꾼다.
+ *
+ * 기본(같은 통합문서에서 복사): 값을 버리고 주소만 남긴다 — 값은 백엔드가 그 범위를
+ * 읽으면 되고, 표를 문장에 섞으면 명령이 읽히지 않는다.
+ *
+ * `keepValues`(다른 앱·통합문서에서 가져온 데이터 — 선택 영역이 비어 있는데 붙여넣은
+ * 표에는 값이 있을 때): 값을 **탭·줄바꿈 그대로** 이어 붙인다. 사람이 뒤에 "입력해줘"만
+ * 붙이면 사이드카의 붙여넣기 쓰기 규칙이 탭을 칸, 줄을 행으로 읽어 그 범위(또는 한 칸
+ * 선택이면 그 칸부터)에 쓴다(2026-08-19 붙여넣기 흐름 강건화 — 전에는 값이 통째로
+ * 사라져 "복붙한 값이 안 들어간다"가 됐다).
+ */
+export function buildPasteBlock(text, address, options = {}) {
   const ref = String(address || "").toUpperCase();
   if (!ref) return String(text ?? "");
+  const keepValues = Boolean(options && options.keepValues);
   // 행×열은 **범위에서** 센다. 붙여넣은 텍스트로 세면 빈 줄이 걸러져
   // "9행 × 4열 — A1:D13"처럼 서로 안 맞는 숫자가 나간다(2026-08-17 실측 —
   // 사용자가 "인식되는 범위도 다르고"라고 지적한 그 화면). 값은 어차피
-  // 백엔드가 범위로 읽으므로 범위가 기준이다.
-  const { rows, cols } = rangeShape(ref) || pasteShape(text);
+  // 백엔드가 범위로 읽으므로 범위가 기준이다. 값을 살려 보낼 때는 표 자체가 기준이다.
+  const { rows, cols } = keepValues ? pasteShape(text) : rangeShape(ref) || pasteShape(text);
   // 안내 문구는 반드시 **제거 가능한 표시** 안에 둔다.
   //
   // 2026-08-17 실측: 괄호 문구를 맨 텍스트로 뒀더니 `stripExcelContextBlock`이
@@ -72,10 +103,12 @@ export function buildPasteBlock(text, address) {
   //   "(엑셀에서 붙여넣은 9행 × 4열 — A1:D9 범위로 인식했습니다) 여기를 원래대로…"
   // 게다가 그 안의 `A1:D9`가 "문장에 범위가 있다"로 잡혀 context_range 전달까지
   // 막았다. 사용자에게 보여 줄 말과 모델에게 보낼 말은 갈라 놓아야 한다.
-  return [
-    `[[EXCEL_RANGE:${ref}]]`,
-    `[[EXCEL_PASTE_NOTE]]엑셀에서 붙여넣은 ${rows}행 × ${cols}열 — ${ref} 범위로 인식했습니다[[/EXCEL_PASTE_NOTE]]`,
-  ].join("\n");
+  const note = keepValues
+    ? `밖에서 가져온 표 ${rows}행 × ${cols}열 — ${ref}부터 넣습니다`
+    : `엑셀에서 붙여넣은 ${rows}행 × ${cols}열 — ${ref} 범위로 인식했습니다`;
+  const lines = [`[[EXCEL_RANGE:${ref}]]`, `[[EXCEL_PASTE_NOTE]]${note}[[/EXCEL_PASTE_NOTE]]`];
+  if (keepValues) lines.push(normalizeTsv(text));
+  return lines.join("\n");
 }
 
 /**
