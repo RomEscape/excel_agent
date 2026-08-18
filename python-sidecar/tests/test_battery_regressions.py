@@ -396,3 +396,22 @@ class TestGapHuntBatchTwo:
     def test_tell_me_is_a_read(self):
         r = parse_command_rule_based("B2 값 알려줘")
         assert r and r["action"] == "excel_live.read_range"
+
+
+class TestThreeRoundHumanRunFindings:
+    """사람 말투판 GUI 조건 ×3 라운드(2026-08-18)가 파일 검증에서 잡은 값 오염 2종."""
+
+    def test_a_decimal_is_never_merged_with_the_next_thousand_group(self):
+        # "92.6,145,0"이 92.6145로 붙어 열이 밀렸다.
+        v = parse_command_rule_based("A1:F1에 강원제주,2495,2383,92.6,145,0 입력")["params"]["values_2d"]
+        assert v == [["강원제주", 2495, 2383, 92.6, 145, 0]], v
+        # 진짜 천 단위는 여전히 붙는다.
+        assert parse_command_rule_based("B2:B4에 12,000, 8,500, 9,300 입력해줘")["params"]["values_2d"] == [[12000], [8500], [9300]]
+
+    def test_header_row_styling_targets_only_the_first_row_of_the_context(self):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+
+        # 직전 쓰기 범위 A1:E6이 컨텍스트여도 "머리글 행"은 A1:E1이다 — 표 전체가
+        # 빨갛게 칠해져 상태 배지 강조와 겹쳤다.
+        plan = _build_quick_action_plan("머리글 행은 빨간색 배경에 흰 글씨로 굵게 해줘", "A1:E6")
+        assert {s["params"]["target_range"] for s in plan} == {"A1:E1"}, plan

@@ -1747,7 +1747,14 @@ def _split_header_tokens(source: str) -> list[str]:
     # 흩어져 아래 행까지 덮는다(2026-08-18 5렌즈 사냥). 숫자,숫자3자리(뒤가
     # 숫자가 아님) 꼴만 이어붙인다. "10452,10158"은 5자리라, "29,104%"는
     # %가 붙어 별개 값이라 안 붙는다(ex2 주간실적 실측 데이터).
-    text = re.sub(r"(?<=\d),(?=\d{3}(?:[\s,;.)]|원|$))", "", text)
+    # 병합 조건: 앞 수는 소수점 없이 1~3자리로 끝나고("12" · "1,234"), 뒤는
+    # 정확히 3자리 후 경계다. "92.6,145,0"의 92.6은 소수라 145와 붙지 않는다
+    # (2026-08-18 사람 말투 3라운드 실측: 92.6145로 병합돼 열이 밀렸다).
+    text = re.sub(
+        r"(?<![\d.])(\d{1,3}),(?=\d{3}(?![\d.%])(?:[\s,;)]|원|$))",
+        r"\1",
+        text,
+    )
     if "," in text:
         return [token.strip() for token in text.split(",") if token.strip()]
     return [token.strip() for token in re.split(r"[/|]", text) if token.strip()]

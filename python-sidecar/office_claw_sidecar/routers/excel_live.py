@@ -2960,7 +2960,18 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
         header_font = bool(
             re.search(r"(머리글|헤더|header|첫\s*줄|첫\s*행|1\s*행|제목\s*줄|맨\s*윗\s*줄|타이틀)", lowered)
         )
-        target = normalized_ctx or explicit_range or ("1:1" if header_font else "__ACTIVE_SELECTION__")
+        if header_font and not explicit_range:
+            # "머리글 행은 빨간 배경" — 머리글을 콕 집었으면 직전 쓰기 범위(A1:E6)가
+            # 아니라 **그 표의 첫 행**이다. 컨텍스트를 우선하면 표 전체가 칠해진다
+            # (2026-08-18 사람 말투 3라운드 실측: 30셀 전부 빨강 → 상태 배지 오염).
+            ctx_rows = re.match(r"^([A-Z]+)(\d+):([A-Z]+)(\d+)$", str(normalized_ctx or "").upper())
+            target = (
+                f"{ctx_rows.group(1)}{ctx_rows.group(2)}:{ctx_rows.group(3)}{ctx_rows.group(2)}"
+                if ctx_rows
+                else "1:1"
+            )
+        else:
+            target = normalized_ctx or explicit_range or "__ACTIVE_SELECTION__"
         font_params = font_params or {"bold": True}
         steps: list[dict[str, Any]] = []
         # "배경색 …로 칠하고 글자 굵게" — 한 문장에 둘 다 있으면 둘 다 한다.
