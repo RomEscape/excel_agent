@@ -577,6 +577,7 @@ def _action_lacks_evidence(action: str, message: str) -> bool:
 # 사라지고, 사용자는 "필터 완료" 메시지만 본다.
 _AMBIGUITY_SENSITIVE_SLOTS = {
     ("excel_live.sort_range", "key_column"),
+    ("excel_live.sort_rows", "key_column"),
     ("excel_live.dedupe_rows", "key_columns"),
     ("excel_live.create_chart", "chart_type"),
     ("excel_live.filter_rows", "column"),
@@ -2139,6 +2140,7 @@ def _action_to_operation_intent(action: str) -> str:
         "excel_live.set_formula": "formula",
         "excel_live.verify_formula_result": "formula",
         "excel_live.sort_range": "sort",
+        "excel_live.sort_rows": "sort",
         "excel_live.filter_rows": "filter",
         "excel_live.dedupe_rows": "dedupe",
         "excel_live.pivot_table": "pivot",
@@ -7124,6 +7126,20 @@ async def _run_command(
                 action="excel_live.safety_stop",
                 reason=CRISIS_REPLY,
                 result={"route_to_chat": False, "safety": True},
+            )
+        # 부정 지시("아직 저장하지 마", "지우지 마")는 실행 요청이 아니다. 플래너에
+        # 넘기면 부정을 못 보고 그 행동을 계획하고, 해석 카드조차 "저장합니다"로
+        # 뜬다(2026-08-18 대화형 러너 실측). 결정적으로 알아듣고 확인만 준다.
+        negated = re.search(
+            r"(저장|삭제|지우|정렬|병합|실행|바꾸|넣|칠하|만들)[^\n]{0,6}?(?:하지|지)\s*(?:마|말|않)",
+            str(req.message or ""),
+        )
+        if negated and not re.search(r"(대신|말고)\s", str(req.message or "")):
+            return ExcelLiveActionResponse(
+                ok=True,
+                action="excel_live.noop",
+                reason="네, 하지 않겠습니다. 다음 작업을 말씀해 주세요.",
+                result={"noop": True, "negated": negated.group(1)},
             )
 
     # 지금 끌어 둔 영역이 옛 주소를 이긴다.

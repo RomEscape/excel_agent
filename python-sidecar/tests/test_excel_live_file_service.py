@@ -324,3 +324,25 @@ class TestSortPinsTheTotalsRow:
         assert col == ["가", "다", "나", "합계"], col
         assert str(wb2["거래내역"]["B5"].value).startswith("=SUM"), wb2["거래내역"]["B5"].value
         wb2.close()
+
+
+class TestSortPinsEveryTailAggregateRow:
+    def test_sum_and_average_rows_both_stay_at_the_bottom(self, tmp_path):
+        from openpyxl import Workbook as _WB
+        from openpyxl import load_workbook
+
+        path = tmp_path / "sort2.xlsx"
+        wb = _WB()
+        ws = wb.active
+        ws.title = "지역성과"
+        for row in [["지역", "주문건수"], ["가", 300], ["나", 100], ["다", 200],
+                    ["합계", "=SUM(B2:B4)"], ["평균", "=AVERAGE(B2:B4)"]]:
+            ws.append(row)
+        wb.save(path)
+        svc = FileExcelLiveService(workspace_root=tmp_path)
+        svc.select_workbook(str(path))
+        svc.sort_range(str(path), "지역성과", "A1:B6", key_column="B", order="desc")
+        wb2 = load_workbook(path)
+        col = [wb2["지역성과"].cell(row=r, column=1).value for r in range(2, 7)]
+        assert col == ["가", "다", "나", "합계", "평균"], col
+        wb2.close()

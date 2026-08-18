@@ -394,3 +394,18 @@ class TestGuiShapedRequests:
         assert body["ok"] is True
         assert not (body.get("result") or {}).get("ask_follow_up"), body.get("reason")
         assert any(f.startswith("=SUM(") for _c, f in service.formulas), service.formulas
+
+
+class TestMultipleTailAggregateRows:
+    """대화형 러너(2026-08-18)가 잡은 이중 집계: 합계+평균 두 줄이 꼬리에 있을 때
+    한 줄만 빼면 =SUM('시트'!B2:B7)이 나온다. 꼬리 집계 줄은 전부 뺀다."""
+
+    def test_two_tail_rows_are_both_excluded(self):
+        rows = [
+            ["지역", "주문건수"], ["수도권", 10452], ["충청권", 3892],
+            ["합계", "=SUM(B2:B3)"], ["평균", "=AVERAGE(B2:B3)"],
+        ]
+        steps = build_cross_sheet_aggregate_plan(
+            "A4에 지역성과 시트 주문건수 합계 가져와줘", lambda s: ("A1:B5", rows)
+        )
+        assert steps[0]["params"]["formula_a1"] == "=SUM('지역성과'!B2:B3)"

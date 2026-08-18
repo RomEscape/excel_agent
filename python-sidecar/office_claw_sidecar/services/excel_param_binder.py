@@ -53,6 +53,9 @@ _REQUIRED_COLUMN_SLOTS: dict[str, tuple[str, ...]] = {
 # 원문이 기준을 말하지 않았다면 플래너가 채운 값이 그럴듯해도 믿지 않는다.
 _REQUIRE_EXPLICIT_COLUMN: dict[str, tuple[str, ...]] = {
     "excel_live.sort_range": ("key_column",),
+    # 플래너는 sort_rows로 내기도 한다. 목록에 없으면 "정렬 좀"에 학습셋 열
+    # 이름('이름')을 지어내 실행까지 간다(2026-08-18 대화형 러너 실측).
+    "excel_live.sort_rows": ("key_column",),
     "excel_live.dedupe_rows": ("key_columns",),
 }
 # 결과를 새 시트에 쓰는 액션. output_sheet 오염을 정리한다.

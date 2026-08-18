@@ -83,7 +83,7 @@ _CROSS_SHEET = re.compile(
     re.IGNORECASE,
 )
 _CROSS_SHEET_VERB = re.compile(r"가져|끌어|연결|수식|넣어|채워|기록")
-_TOTAL_ROW_LABELS = frozenset({"합계", "총계", "계", "total"})
+_TOTAL_ROW_LABELS = frozenset({"합계", "총계", "계", "총합", "평균", "최대", "최소", "개수", "total", "sum", "avg", "average"})
 
 
 def build_cross_sheet_aggregate_plan(
@@ -129,16 +129,19 @@ def build_cross_sheet_aggregate_plan(
         )
         data_start = int(rng.group(2)) + 1
         data_end = int(rng.group(4))
-        last_label = values[-1][0] if values[-1] else None
-        last_row_has_formula = any(
-            isinstance(v, str) and v.startswith("=") for v in values[-1] or []
-        )
-        # 마지막 줄이 합계 이름표든, 수식이 든 줄이든 집계 줄이다 — 구간에
-        # 넣으면 이중 집계가 된다(2026-08-18 지저분판 실측: B2:B7이 나왔다).
-        if (
-            isinstance(last_label, str) and last_label.strip().lower() in _TOTAL_ROW_LABELS
-        ) or last_row_has_formula:
+        # 꼬리의 집계 줄(합계·평균 등 이름표 또는 수식 줄)은 **전부** 구간에서
+        # 뺀다 — 한 줄만 빼면 합계+평균 두 줄일 때 이중 집계가 된다(2026-08-18
+        # 대화형 러너 실측: =SUM('지역성과'!B2:B7)).
+        idx = len(values) - 1
+        while idx >= 1 and data_end > data_start:
+            row = values[idx] or []
+            label = row[0] if row else None
+            has_formula = any(isinstance(v, str) and str(v).startswith("=") for v in row)
+            is_agg = isinstance(label, str) and label.strip().lower() in _TOTAL_ROW_LABELS
+            if not (has_formula or is_agg):
+                break
             data_end -= 1
+            idx -= 1
         if data_end < data_start:
             continue
         steps.append(

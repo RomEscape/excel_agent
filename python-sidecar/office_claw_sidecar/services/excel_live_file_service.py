@@ -1319,18 +1319,21 @@ class FileExcelLiveService(ExcelLiveService):
             return {"sorted_rows": 0, "address": payload.get("address", target_range)}
         # 꼬리 합계행(이름표가 합계류거나 수식이 든 마지막 줄)은 데이터가 아니다 —
         # 같이 정렬하면 합계가 데이터 사이에 섞인다(2026-08-18 멀티턴 사냥).
-        pinned_tail = None
-        if len(body) > 1:
+        # 꼬리의 집계 줄은 **여러 줄**일 수 있다(합계 + 평균). 마지막 한 줄만
+        # 고정하면 합계 줄이 데이터 사이로 섞인다(2026-08-18 대화형 러너 실측:
+        # 합계가 2행으로 올라가고 크로스시트 SUM이 이중 집계).
+        pinned_tail_rows: list[list] = []
+        _AGG_LABELS = {"합계", "총계", "계", "총합", "평균", "최대", "최소", "개수", "total", "sum", "avg", "average"}
+        while len(body) > 1:
             tail = body[-1]
             tail_label = tail[0] if tail else None
             tail_has_formula = any(isinstance(v, str) and str(v).startswith("=") for v in tail)
-            if tail_has_formula or (
-                isinstance(tail_label, str)
-                and tail_label.strip().lower() in {"합계", "총계", "계", "total"}
-            ):
-                pinned_tail = body.pop()
-                if computed_body:
-                    computed_body = computed_body[:-1]
+            is_agg_label = isinstance(tail_label, str) and tail_label.strip().lower() in _AGG_LABELS
+            if not (tail_has_formula or is_agg_label):
+                break
+            pinned_tail_rows.insert(0, body.pop())
+            if computed_body:
+                computed_body = computed_body[:-1]
         # 수식 열을 기준으로 정렬할 때 문자열("=I2*J2")로 줄을 세우면 뒤죽박죽이 된다.
         sort_source = computed_body if len(computed_body) == len(body) else body
         address = str(payload.get("address", target_range))
@@ -1363,10 +1366,10 @@ class FileExcelLiveService(ExcelLiveService):
             body_start_row=body_start_row,
         )
         final_values = [header, *out_values] if has_header and header is not None else out_values
-        if pinned_tail is not None:
-            # 고정된 합계행은 원래 자리(맨 아래)에 그대로 돌아간다 — 행이 안
+        if pinned_tail_rows:
+            # 고정된 집계 줄들은 원래 자리(맨 아래)에 그대로 돌아간다 — 행이 안
             # 움직였으니 수식 참조도 손댈 필요가 없다.
-            final_values.append(pinned_tail)
+            final_values.extend(pinned_tail_rows)
         self.clear_range(workbook_id, sheet_name, address)
         self.write_range(
             workbook_id=workbook_id,
