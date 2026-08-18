@@ -288,6 +288,7 @@ def set_outcome_from_response(response: Any) -> None:
     ok = getattr(response, "ok", None)
     asked = bool(result.get("ask_follow_up"))
     approval = bool(getattr(response, "approval_required", False))
+    pending = getattr(response, "pending_approval", None)
     turn.outcome = compact(
         {
             "ok": ok,
@@ -296,6 +297,11 @@ def set_outcome_from_response(response: Any) -> None:
             "ask_follow_up": asked,
             "follow_up_question": result.get("follow_up_question", ""),
             "approval_required": approval,
+            # 사용자가 화면에서 실제로 읽는 두 문구 — 무엇을 어디에 얼마나
+            # 했는지(실행 리포트)와 무엇을 승인해 달라 했는지(승인 카드).
+            # 이게 없으면 로그만 봐서는 에이전트가 뭐라고 답했는지 모른다.
+            "execution_report": result.get("execution_report", ""),
+            "approval_summary": getattr(pending, "summary", "") if pending else "",
             "executed_steps": result.get("executed_steps"),
             "failure_detail": result.get("failure_detail", ""),
             "auto_rollbacks": result.get("auto_rollbacks") or [],

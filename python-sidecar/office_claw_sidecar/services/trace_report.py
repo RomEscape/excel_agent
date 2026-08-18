@@ -282,6 +282,12 @@ def render(turn: dict[str, Any], *, show_prompt: bool = False) -> str:
     add("[FINAL]", str(verdict))
     if outcome.get("reason"):
         cont(str(outcome.get("reason")))
+    # 사용자가 화면에서 읽은 답변 그대로 — 무엇을 했다고 보고했고(실행 리포트),
+    # 무엇을 승인해 달라 했는지(승인 카드). 되묻기 질문은 verdict가 이미 보여준다.
+    if outcome.get("execution_report"):
+        add("[REPLY]", str(outcome.get("execution_report")))
+    if outcome.get("approval_summary"):
+        add("[APPROVAL]", str(outcome.get("approval_summary")))
     return "\n".join(lines)
 
 

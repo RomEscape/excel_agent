@@ -81,6 +81,7 @@ from office_claw_sidecar.services.excel_live_agent import (
     parse_command_plan_with_llm,
     parse_command_rule_based,
     parse_excel_live_command,
+    parse_explicit_row_write,
     parse_text_equals_condition,
 )
 from office_claw_sidecar.services.excel_live_executor import (
@@ -7121,6 +7122,18 @@ async def _run_command(
         or pending_operation is not None
         or hints.get("table_intent")
     )
+    # 범위·값·강한 쓰기 동사(입력/작성/써)를 다 갖춘 문장은 키워드 규칙보다
+    # 확실하다. 값 낱말("영향예측", "조회 기간")이 forecast·read 같은 퀵 규칙을
+    # 켜면 라벨 행이 통째로 사라진다(2026-08-18 ex5 재현 실측). 완결 문형이
+    # 이기게 퀵 계획을 쓰기로 갈아끼운다 — 서식 어휘가 값에 섞이면 선점하지 않는다.
+    if pending_slot is None and pending_operation is None:
+        preempt_write = parse_explicit_row_write(req.message, strong_verb_only=True)
+        if preempt_write is not None and (
+            not quick_action_plan
+            or str((quick_action_plan[0] or {}).get("action", ""))
+            != "excel_live.write_range"
+        ):
+            quick_action_plan = [preempt_write]
     quick_plan_for_parse = _normalize_plan_or_empty(quick_action_plan) if quick_action_plan else []
     quick_first_action = quick_plan_for_parse[0].action if quick_plan_for_parse else ""
     # "전체 지우기" 같은 고신뢰 퀵 액션은 LLM 변환 오차보다 규칙 우선이 안정적이다.
@@ -7605,10 +7618,7 @@ async def _run_command(
         planner_actions = [
             str(s.get("action", "")) for s in parsed["action_plan"] if isinstance(s, dict)
         ]
-        if parsed.get("plan_source") == "intent" and planner_actions != ["excel_live.write_range"]:
-            # 정규화가 쓰기 아닌 액션을 골랐다면 그건 의도된 분류다 — 덮지 않는다.
-            pass
-        elif planner_actions == ["excel_live.write_range"]:
+        if planner_actions == ["excel_live.write_range"]:
             # 액션이 같아도 **값은 규칙 것**을 쓴다. 2026-08-17 배터리 실측:
             # "A12에 합계 라고 입력해줘"에서 규칙은 '합계'를 뽑았는데 플래너의
             # '합계 라고'가 액션이 같다는 이유로 살아남아 그대로 셀에 들어갔다.
@@ -7630,6 +7640,14 @@ async def _run_command(
         else:
             # "K2:K181에 데이터 막대 넣어줘"는 범위+넣어줘라서 쓰기 폴백이 생긴다.
             # 이미 데이터 막대·수식·표를 골랐으면 그 계획을 쓰기로 덮지 않는다.
+            #
+            # 정규화(intent) 계획도 같은 목록으로 거른다. 예전에는 "쓰기 아닌
+            # 분류는 의도"라고 전부 존중했는데, 2026-08-18 ex5 재현 실측에서
+            # "A7:F7에 순위,SKU,… 입력"의 값 낱말(순위)을 pivot_table로
+            # 오분류해 라벨 행이 통째로 사라졌다. 범위·값·입력 동사를 다 갖춘
+            # 문장에서는 결정적 규칙이 모델 분류보다 정확하다 — 목록에 있는
+            # 서식·차트류만 예외다. 재배치류(정렬·필터·중복 제거)는 "정렬해서
+            # 입력해줘" 같은 문형이 실재해 목록에 남긴다.
             parsed_action = planner_actions[0] if planner_actions else ""
             if parsed_action not in {
                 "excel_live.apply_data_bar",
@@ -7643,6 +7661,10 @@ async def _run_command(
                 "excel_live.fill_range",
                 "excel_live.apply_border",
                 "excel_live.create_chart",
+                "excel_live.sort_range",
+                "excel_live.sort_rows",
+                "excel_live.filter_rows",
+                "excel_live.dedupe_rows",
             }:
                 parsed = {
                     "action_plan": [step.__dict__ for step in preferred_write],

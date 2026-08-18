@@ -172,6 +172,29 @@ class TestKeywordBearingValuesStillWrite:
         )
         assert [a for a, _ in service.calls] == ["write_range"], service.calls
 
+    def test_an_intent_misclassification_cannot_erase_the_row(self, service, monkeypatch):
+        """2026-08-18 ex5 재현 실측: "A7:F7에 순위,SKU,… 입력"의 '순위'를
+        정규화가 pivot_table로 오분류했고, "쓰기 아닌 분류는 의도" 면제가
+        그대로 통과시켜 라벨 행이 사라졌다. 완결된 쓰기는 모델 분류를 이긴다."""
+
+        async def _intent_pivot(_message, llm_service, context):
+            return {
+                "action_plan": [
+                    {"action": "excel_live.pivot_table", "params": {"group_by": "순위"}}
+                ],
+                "action": "excel_live.pivot_table",
+                "params": {},
+                "reason": "정규화 오분류 흉내",
+                "intent": "edit",
+                "plan_source": "intent",
+            }
+
+        monkeypatch.setattr(excel_live_router, "parse_excel_live_command", _intent_pivot)
+        body = _run("A7:F7에 순위,SKU,상품명,이슈유형,재고상태,영향예측 입력")
+        assert body["ok"] is True
+        assert [a for a, _ in service.calls] == ["write_range"], service.calls
+        assert service.written == [["순위", "SKU", "상품명", "이슈유형", "재고상태", "영향예측"]]
+
     def test_a_bare_comparison_request_still_opens_the_slot(self, service):
         # 반대 방향: 쓸 값이 없는 진짜 비교 요청은 여전히 질문해야 한다.
         body = _run("전월이랑 비교해줘")

@@ -826,51 +826,9 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
 
     # 예: "B2:D2에 이름,수량,금액 입력"
     #     "A2:C4에 가,1,2; 나,3,4; 다,5,6 입력"  ← 세미콜론·줄바꿈이 행 구분자
-    row_write = re.search(
-        r"\b([a-z]+\d+:[a-z]+\d+)\s*에\s*((?:[^\n]|\n)+?)\s*(입력(?:해)?|써|작성|적어|넣어|write|set)\b",
-        text,
-        re.IGNORECASE,
-    )
-    if row_write and "헤더" not in lowered and "header" not in lowered:
-        range_ref = row_write.group(1).upper()
-        left, right = range_ref.split(":")
-        left_col = re.match(r"([A-Z]+)\d+", left)
-        right_col = re.match(r"([A-Z]+)\d+", right)
-        row_match = re.match(r"[A-Z]+(\d+)", left)
-        if left_col and right_col and row_match:
-            raw_values = row_write.group(2).strip()
-            # 수식 명령은 write_range가 아니라 set_formula 경로로 내려가야 한다.
-            if (
-                "수식" in raw_values
-                or "formula" in raw_values.lower()
-                or "=" in raw_values
-            ):
-                pass
-            else:
-                col_count = _column_span(left_col.group(1), right_col.group(1))
-                # 세미콜론·줄바꿈은 행 구분자다. "한 턴 = 한 행"만 되면 표 하나에
-                # 수십 턴이 든다(2026-08-18, 85턴 재현 대화가 과하다는 지적).
-                # 행 안은 기존 그대로 쉼표 나열이다.
-                row_groups = [g.strip() for g in re.split(r"[;\n]", raw_values) if g.strip()]
-                rows_2d = []
-                for group in row_groups:
-                    tokens = _split_header_tokens(group)
-                    if not tokens:
-                        continue
-                    row_values = [_parse_literal_value(t) for t in tokens[:col_count]]
-                    if len(row_values) < col_count:
-                        row_values.extend([""] * (col_count - len(row_values)))
-                    rows_2d.append(row_values)
-                if rows_2d:
-                    return {
-                        "action": "excel_live.write_range",
-                        "params": {"start_cell": left, "values_2d": rows_2d},
-                        "reason": (
-                            "행 범위 값 입력 요청"
-                            if len(rows_2d) == 1
-                            else f"여러 행({len(rows_2d)}) 값 일괄 입력 요청"
-                        ),
-                    }
+    row_write_step = parse_explicit_row_write(text)
+    if row_write_step is not None:
+        return row_write_step
 
     # 예: "A1에 120 입력", "C3 셀에 777 입력해줘", "C3 값을 777로 입력", "C3 777 입력"
     single_write_patterns = [
@@ -1532,6 +1490,75 @@ def _extract_quoted_headers(text: str) -> list[str]:
         if value:
             items.append(value)
     return items if len(items) >= 2 else []
+
+
+_ROW_WRITE_PATTERN = re.compile(
+    r"\b([a-z]+\d+:[a-z]+\d+)\s*에\s*((?:[^\n]|\n)+?)\s*(입력(?:해)?|써|작성|적어|넣어|write|set)\b",
+    re.IGNORECASE,
+)
+# 값 자리에 이런 낱말이 오면 값이 아니라 서식·차트 명령일 가능성이 크다 —
+# 선점(strong) 모드에서는 쓰기로 채가지 않고 원래 규칙에 맡긴다.
+_ROW_WRITE_FORMAT_VOCAB = re.compile(
+    r"(콤마|서식|형식|퍼센트|굵게|기울임|테두리|경계선|배경|색상|차트|그래프|데이터\s*막대|병합|정렬|필터|틀\s*고정)"
+)
+
+
+def parse_explicit_row_write(text: str, *, strong_verb_only: bool = False) -> dict | None:
+    """"범위에 값,값 입력" 완결 쓰기를 파싱한다. 세미콜론·줄바꿈이 행 구분자다.
+
+    strong_verb_only는 값 낱말("예측", "순위")이 다른 키워드 규칙을 켠 문장
+    위에 씌우는 선점용이다 — 이때는 "넣어"류를 빼고(데이터 막대 넣어줘와
+    충돌) 서식 어휘가 값에 섞이면 물러난다. 2026-08-18 ex5 재현 실측:
+    "A7:F7에 순위,…,영향예측 입력"의 '예측'이 forecast_linear 퀵 규칙에
+    잡혀 라벨 행이 통째로 사라졌다.
+    """
+    source = str(text or "")
+    lowered = source.lower()
+    row_write = _ROW_WRITE_PATTERN.search(source)
+    if not row_write or "헤더" in lowered or "header" in lowered:
+        return None
+    if strong_verb_only:
+        verb = row_write.group(3)
+        if verb.startswith(("넣", "적")):
+            return None
+        if _ROW_WRITE_FORMAT_VOCAB.search(row_write.group(2)):
+            return None
+    range_ref = row_write.group(1).upper()
+    left, right = range_ref.split(":")
+    left_col = re.match(r"([A-Z]+)\d+", left)
+    right_col = re.match(r"([A-Z]+)\d+", right)
+    row_match = re.match(r"[A-Z]+(\d+)", left)
+    if not (left_col and right_col and row_match):
+        return None
+    raw_values = row_write.group(2).strip()
+    # 수식 명령은 write_range가 아니라 set_formula 경로로 내려가야 한다.
+    if "수식" in raw_values or "formula" in raw_values.lower() or "=" in raw_values:
+        return None
+    col_count = _column_span(left_col.group(1), right_col.group(1))
+    # 세미콜론·줄바꿈은 행 구분자다. "한 턴 = 한 행"만 되면 표 하나에
+    # 수십 턴이 든다(2026-08-18, 85턴 재현 대화가 과하다는 지적).
+    # 행 안은 기존 그대로 쉼표 나열이다.
+    row_groups = [g.strip() for g in re.split(r"[;\n]", raw_values) if g.strip()]
+    rows_2d = []
+    for group in row_groups:
+        tokens = _split_header_tokens(group)
+        if not tokens:
+            continue
+        row_values = [_parse_literal_value(t) for t in tokens[:col_count]]
+        if len(row_values) < col_count:
+            row_values.extend([""] * (col_count - len(row_values)))
+        rows_2d.append(row_values)
+    if not rows_2d:
+        return None
+    return {
+        "action": "excel_live.write_range",
+        "params": {"start_cell": left, "values_2d": rows_2d},
+        "reason": (
+            "행 범위 값 입력 요청"
+            if len(rows_2d) == 1
+            else f"여러 행({len(rows_2d)}) 값 일괄 입력 요청"
+        ),
+    }
 
 
 def _split_header_tokens(source: str) -> list[str]:
