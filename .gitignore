@@ -41,7 +41,10 @@ env/
 # 에디터·OS
 .vscode/
 .idea/
-.claude/
+# 디렉터리째 무시하면 하위 예외가 안 먹는다 — 내용만 무시하고 스킬은 되살린다.
+.claude/*
+# 스킬은 팀이 공유해야 한다 — 개발일지·로그 확인 규칙이 여기 들어 있다.
+!.claude/skills/
 *.swp
 *.swo
 .DS_Store
