@@ -142,7 +142,10 @@ const ERROR_MAPPINGS = [
 
   // Disk full
   {
-    pattern: /disk.*full|no.*space/i,
+    // 2026-08-19 실측: /no.*space/가 "…can**no**t … work**space**" 같은 연결 오류까지 잡아
+    // 사이드카가 잠깐 죽은 순간에 "디스크 공간이 부족합니다"가 떴다. 디스크 오류의
+    // 실제 문구(ENOSPC, "no space left", "not enough space", "disk full")만 잡는다.
+    pattern: /ENOSPC|disk\s*(is\s*)?full|no space left|not enough (disk )?space|insufficient (disk )?space|디스크 공간/i,
     message: "디스크 공간이 부족합니다. 불필요한 파일을 삭제해 주세요.",
   },
 
