@@ -1671,6 +1671,10 @@ def _extract_quoted_headers(text: str) -> list[str]:
 _COMMON_TYPO_PAIRS: tuple[tuple[re.Pattern[str], str], ...] = (
     # 된소리 오타 — 자판에서 Shift가 붙어 나온다(2026-08-19 블라인드 게이트: '씨트'가 규칙을 통째로 빗나가게 했다).
     (re.compile(r"씨트"), "시트"),
+    # 이 한 글자가 배경 단계를 통째로 날렸다 — "남색 배겅에 흰글씨"에서 fill_range가 계획에서 빠졌다
+    # (2026-08-19 블라인드 게이트 header_navy 3건).
+    (re.compile(r"배겅|배걍|배굥"), "배경"),
+    (re.compile(r"굴게|국게"), "굵게"),
     (re.compile(r"씰"), "셀"),
     (re.compile(r"만들어\s*조(?=\s|$)"), "만들어줘"),
     (re.compile(r"만드러\s*줘"), "만들어줘"),

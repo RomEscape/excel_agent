@@ -2575,7 +2575,7 @@ _NUMBER_FORMAT_HINTS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"소수(?:점)?\s*(?:한|1)\s*자리|첫째\s*자리"), "0.0"),
     (re.compile(r"(퍼센트|백분율|%\s*(로|표시|형식))", re.IGNORECASE), "0.0%"),
     (re.compile(r"(통화|원화|₩|금액\s*기호)", re.IGNORECASE), '"₩"#,##0'),
-    (re.compile(r"(천\s*단위|세\s*자리|쉼표|콤마|comma)", re.IGNORECASE), "#,##0"),
+    (re.compile(r"(천\s*단위|1,?000\s*단위|세\s*자리|쉼표|콤마|comma)", re.IGNORECASE), "#,##0"),
     (re.compile(r"(날짜\s*형식|yyyy)", re.IGNORECASE), "yyyy-mm-dd"),
 )
 _EXPLICIT_FORMAT_CODE = re.compile(r"([#0][#0,\.]*(?:%|)|yyyy[-/][mM]{1,2}[-/]dd)")
@@ -2594,9 +2594,15 @@ def _quick_number_format_step(text: str, target: str) -> dict[str, Any] | None:
     explicit = ""
     for match in _EXPLICIT_FORMAT_CODE.finditer(str(text or "")):
         token = match.group(1)
-        if len(token) >= 3 and any(ch in token for ch in "#0"):
-            explicit = token
-            break
+        if len(token) < 3:
+            continue
+        # 맨숫자("1,000", "1000")는 사람이 적은 **수량**이지 서식 코드가 아니다.
+        # 그대로 쓰면 "1,000 단위 comma format"이 format_code='000'이 되어
+        # 콤마 대신 세 자리 0 채움이 걸린다(2026-08-19 블라인드 게이트 실측).
+        if not any(ch in token for ch in "#%."):
+            continue
+        explicit = token
+        break
     code = explicit
     if not code:
         for pattern, fmt in _NUMBER_FORMAT_HINTS:

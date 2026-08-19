@@ -1000,3 +1000,57 @@ class TestAutofitRule:
         plan = _build_quick_action_plan(normalize_common_typos(text), None)
         actions = [str(s.get("action")) for s in (plan or [])]
         assert "excel_live.autofit_columns" not in actions, (text, plan)
+
+
+class TestPlanWasWrongNotExecution:
+    """2026-08-19~20: 사후조건을 붙이고도 게이트가 안 움직인 이유 — 이 셋은 **계획이 틀렸고 실행은 충실했다**.
+
+    증상만 보고 "사후조건이 잡을 수 있다"고 분류했던 것이 오판이었다. 계획 params를 열어 보고 알았다:
+      · `형식=000` → 계획이 실제로 `format_code='000'`을 요청했다("1,000"의 숫자를 코드로 오인)
+      · 배경 없음 → `fill_range` 단계가 계획에 **아예 없었다**('배겅' 오타로 규칙이 미스)
+    """
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "주문건수와 출고건수 컬럼은 1,000 단위 comma format으로 해 주세요.",
+            "주문건수 1000단위 쉼표",
+            "여기 주문건수 출고건수는 1000단위로 쉼표 넣어줘",
+            "B2:C8은 천 단위 콤마로",
+        ],
+    )
+    def test_a_thousands_phrase_never_becomes_a_literal_zero_code(self, text):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        plan = _build_quick_action_plan(normalize_common_typos(text), None)
+        assert plan and plan[0]["action"] == "excel_live.set_number_format", (text, plan)
+        assert plan[0]["params"]["format_code"] == "#,##0", (text, plan)
+
+    @pytest.mark.parametrize(
+        "text, code",
+        [("D2:D6 소수 둘째 자리", "0.00"), ("정시배송률 퍼센트로 보여줘", "0.0%"), ("소수 한 자리로 표시", "0.0")],
+    )
+    def test_other_format_requests_are_unaffected(self, text, code):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        plan = _build_quick_action_plan(normalize_common_typos(text), None)
+        assert plan and plan[0]["params"]["format_code"] == code, (text, plan)
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "머리글 행 남색 배겅에 흰글씨 굵게 해주세요",
+            "표 첫 줄을 남색 배경에 흰색 굴게",
+            "머리글 행 남색 배경에 흰 글씨 굵게 해줘",
+        ],
+    )
+    def test_a_single_typo_must_not_drop_the_fill_step(self, text):
+        # '배겅' 한 글자가 fill_range를 계획에서 통째로 날려 "배경만 빠진" 결과가 성공으로 보고됐다.
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        plan = _build_quick_action_plan(normalize_common_typos(text), None)
+        actions = [str(s.get("action")) for s in (plan or [])]
+        assert "excel_live.fill_range" in actions and "excel_live.set_font" in actions, (text, plan)
