@@ -1807,3 +1807,93 @@ class TestValueEqualsHighlightAndFormulaHead:
         from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
 
         assert match_aggregate_below(normalize_common_typos(text)) == ("AVERAGE", "평균")
+
+
+class TestBinderDoesNotUndoAConfirmedHighlight:
+    """게이트7: 규칙이 통합문서를 보고 확정한 강조를 **바인더가 되돌렸다.**
+
+    - "…대기 건을 **빨**리 찾아야 해서요, … **분홍색**으로 칠해 주세요" → D2·D4가 **빨강**.
+      색 어휘에 한 음절 `("빨", "#FF0000")`이 있어 '빨리'에 걸렸다.
+    - "…**운송장**이 몇 개인지 …, **상태 열에서** 대기인 셀만" → 확정한 `D2:D5`가 `A:A`로
+      되돌아가 0칸 강조가 됐다(머리글 첫 히트가 운송장).
+    """
+
+    ENTRY = {
+        "name": "지연경고",
+        "used_range": "A1:D5",
+        "columns": [
+            {"letter": "A", "header": "운송장"},
+            {"letter": "B", "header": "구간"},
+            {"letter": "C", "header": "지연시간"},
+            {"letter": "D", "header": "상태"},
+        ],
+        "sample_rows": [["T1", "서울", "2", "대기"]],
+    }
+
+    def _bind(self, params, message):
+        from office_claw_sidecar.services.excel_param_binder import _bind_condition_format
+
+        _bind_condition_format(params, message=message, entry=self.ENTRY, digest={"sheets": [self.ENTRY]})
+        return params
+
+    def test_a_hurry_word_is_not_the_color_red(self) -> None:
+        params = self._bind(
+            {"target_range": "D2:D5", "operator": "==", "threshold": 0, "value": "대기", "fill_color": "#FFC0CB"},
+            "지연경고 표에서 대기 건을 빨리 찾아야 해서요, 상태가 '대기'인 셀만 분홍색으로 칠해 주세요.",
+        )
+        assert params["fill_color"].upper() == "#FFC0CB", params
+
+    @pytest.mark.parametrize(
+        ("message", "expected"),
+        [("빨간색으로 칠해줘", "#FF0000"), ("빨갛게 강조", "#FF0000"), ("빨강 강조", "#FF0000")],
+    )
+    def test_real_red_words_still_work(self, message: str, expected: str) -> None:
+        params = self._bind({"target_range": "D2:D5", "value": "대기"}, message)
+        assert params["fill_color"].upper() == expected.upper()
+
+    def test_a_column_scoped_range_is_not_widened(self) -> None:
+        params = self._bind(
+            {"target_range": "D2:D5", "operator": "==", "threshold": 0, "value": "대기"},
+            "회의 때 대기 중인 운송장이 몇 개인지 봐야 해서요, 상태 열에서 대기인 셀만 분홍색으로 강조해 주세요",
+        )
+        assert params["target_range"] == "D2:D5", params
+
+    def test_a_broad_range_is_still_narrowed_to_the_named_column(self) -> None:
+        params = self._bind(
+            {"target_range": "A:Z", "operator": "==", "threshold": 0, "value": "대기"},
+            "상태 열에서 대기인 셀만 분홍색으로 강조해 주세요",
+        )
+        assert params["target_range"] in {"D:D", "D2:D5"}, params
+
+    def test_the_named_column_beats_the_first_mention(self) -> None:
+        params = self._bind(
+            {"target_range": "A:Z", "operator": "==", "threshold": 0, "value": "대기"},
+            "대기 중인 운송장이 몇 개인지 보려고요, 상태 열에서 대기인 셀만 강조",
+        )
+        assert params["target_range"].startswith("D"), params
+
+
+class TestBareAggregateAfterPaste:
+    """붙여넣기 직후의 `합계!` 한 마디 — 뜻이 하나뿐이다(그 표 아래 합계 줄)."""
+
+    @pytest.mark.parametrize(
+        ("message", "expected"),
+        [
+            ("합계!", ("SUM", "합계")),
+            ("합계", ("SUM", "합계")),
+            ("ㅇㅇ 평균", ("AVERAGE", "평균")),
+            ("총합 좀", ("SUM", "총합")),
+        ],
+    )
+    def test_it_fires_only_with_a_paste_context(self, message: str, expected) -> None:
+        from office_claw_sidecar.routers.excel_live import _bare_aggregate_after_paste
+
+        assert _bare_aggregate_after_paste(message, "A1:F6") == expected
+        # 맥락이 없으면 어디에 넣을지 모른다 — 추측하지 않는다.
+        assert _bare_aggregate_after_paste(message, None) is None
+
+    @pytest.mark.parametrize("message", ["합계를 어디에 넣지", "평균이 얼마야?", "합계 열 만들어줘", "지역"])
+    def test_it_does_not_fire_on_longer_sentences(self, message: str) -> None:
+        from office_claw_sidecar.routers.excel_live import _bare_aggregate_after_paste
+
+        assert _bare_aggregate_after_paste(message, "A1:F6") is None

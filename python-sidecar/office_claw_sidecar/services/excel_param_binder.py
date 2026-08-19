@@ -1100,7 +1100,12 @@ def _result_sheet_from_message(message: str) -> str:
 _COLOR_WORDS: tuple[tuple[str, str], ...] = (
     # 긴 낱말이 먼저다 — "연회색"이 "회색"에 먼저 걸리면 진회색이 된다.
     ("연회색", "#F2F2F2"),
-    ("빨", "#FF0000"),
+    # 한 음절 '빨'은 '**빨**리'·'**빨**래'에도 걸린다 — 분홍 요청이 빨강이 됐다
+    # (2026-08-20 게이트7 실측: "빨리 찾아야 해서요 … 분홍색으로" → D2·D4가 빨강).
+    ("빨강", "#FF0000"),
+    ("빨간", "#FF0000"),
+    ("빨갛", "#FF0000"),
+    ("빨개", "#FF0000"),
     ("적색", "#FF0000"),
     ("red", "#FF0000"),
     ("주황", "#FFA500"),
@@ -1313,14 +1318,29 @@ def _bind_condition_format(
         # 숫자 열만 인정하면 텍스트 조건이 못 좁혀져 0건 강조가 된다
         # (2026-08-18 지저분판 실측).
         equality_value = str(params.get("value") or "").strip()
-        for hit in find_header_mentions(text, _headers(entry)):
+        hits = list(find_header_mentions(text, _headers(entry)))
+        # "…**운송장**이 몇 개인지 …, **상태 열에서** 대기인 셀만" — 첫 히트로 고르면
+        # 운송장(A열)이 이긴다. `<머리글> 열/칸/컬럼`으로 콕 집은 것이 먼저다.
+        named = [
+            hit
+            for hit in hits
+            if re.search(
+                rf"{re.escape(str(hit['header']))}\s*(?:열|칸|컬럼|column)", text, re.IGNORECASE
+            )
+        ]
+        for hit in named + hits:
             meta = _column_meta(entry, hit["header"])
             if meta.get("letter") and (meta.get("numeric") or equality_value):
                 letter = str(meta["letter"]).upper()
                 break
     # 원문이 범위를 직접 말하지 않았다면 플래너가 좁혀 놓은 범위를 믿지 않는다.
     trusted = bool(_EXPLICIT_RANGE_MENTION.search(text))
-    if letter and (broad or not trusted):
+    # 이미 한 열로, 행까지 지정해 좁혀진 범위가 **원문이 부른 그 열과 같으면** 그대로 둔다.
+    # 통합문서를 보고 확정한 범위를 되돌리면 0칸 강조가 된다(2026-08-20 게이트7).
+    # 다른 열이면 플래너의 추측이므로 원문이 이긴다(기존 규칙 그대로).
+    scoped = re.fullmatch(r"([A-Z]{1,3})\d{1,7}:([A-Z]{1,3})\d{1,7}", current)
+    same_column_scope = bool(scoped and letter and scoped.group(1) == scoped.group(2) == letter)
+    if letter and (broad or (not trusted and not same_column_scope)):
         params["target_range"] = f"{prefix}{letter}:{letter}"
         changes.append(f"target_range={prefix}{letter}:{letter}")
     elif prefix and current:

@@ -1544,6 +1544,36 @@ def _value_equals_highlight(message: str, digest: dict[str, Any]) -> list[dict[s
     return []
 
 
+#: 붙여넣기 직후의 한 마디 집계 — "합계!", "평균 좀".
+_BARE_AGGREGATE = re.compile(
+    r"^\s*(?:ㅇㅇ\s*)?(합계|총합계|총합|총계|평균|개수|소계)\s*(?:좀|만|도|은|는|을|를)?\s*[!.~…]*\s*$"
+)
+_BARE_AGGREGATE_FUNC = {
+    "합계": "SUM",
+    "총합계": "SUM",
+    "총합": "SUM",
+    "총계": "SUM",
+    "소계": "SUM",
+    "평균": "AVERAGE",
+    "개수": "COUNT",
+}
+
+
+def _bare_aggregate_after_paste(message: str, context_range: str | None) -> tuple[str, str] | None:
+    """"합계!" — 방금 붙여넣은 표가 있으면 그 아래 한 줄이라는 뜻이다.
+
+    맥락이 없으면 어디에 넣을지 모르므로 물러난다(추측하지 않는다).
+    """
+    if not str(context_range or "").strip():
+        return None
+    m = _BARE_AGGREGATE.match(str(message or ""))
+    if not m:
+        return None
+    label = m.group(1)
+    func = _BARE_AGGREGATE_FUNC.get(label)
+    return (func, label) if func else None
+
+
 def _quick_parse_condition(text: str) -> tuple[str, float] | None:
     lowered = str(text or "").lower()
     # "10만 원 미만"처럼 단위가 낀 임계값은 전용 파서가 맡는다(숫자만 보면 10이 된다).
@@ -8349,6 +8379,8 @@ async def _run_command(
         )
         if not quick_action_plan or trivial_quick_write:
             agg_match = match_aggregate_below(req.message)
+            if agg_match is None:
+                agg_match = _bare_aggregate_after_paste(req.message, req.context_range)
             agg_dest_row = 0
             if agg_match is None:
                 # "A7:F7 합계를 여기 위치에 열 별로 합계를 만들어줘" — 방향 낱말
