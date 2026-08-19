@@ -191,3 +191,58 @@ class TestFailSafe:
             result={"changed_cells": 1},
         )
         assert ok is True
+
+
+class TestSheetsAndCharts:
+    """2026-08-19 게이트: 시트를 안 만들고도, 차트를 안 그리고도 성공으로 보고됐다."""
+
+    class SheetService(FakeService):
+        def __init__(self, sheets, snapshot=None):
+            super().__init__(snapshot=snapshot)
+            self._sheets = sheets
+
+        def list_sheets(self, workbook_id):
+            return {"sheets": self._sheets}
+
+    def test_a_sheet_that_was_not_created_is_caught(self):
+        svc = self.SheetService(["Sheet", "지역성과"])
+        ok, detail = check("excel_live.create_sheet", {"sheet_name": "요약"}, svc, result={"created": True})
+        assert ok is False and "sheet_not_created" in detail
+
+    def test_a_created_sheet_passes_even_with_spacing_differences(self):
+        svc = self.SheetService(["Sheet", "재고관리"])
+        ok, _ = check("excel_live.create_sheet", {"sheet_name": "재고 관리"}, svc, result={"created": True})
+        assert ok is True
+
+    def test_a_rename_that_did_not_happen_is_caught(self):
+        svc = self.SheetService(["Sheet", "지역성과"])
+        ok, detail = check(
+            "excel_live.rename_sheet", {"sheet_name": "지역성과", "new_name": "지역별실적"}, svc, result={"renamed": True}
+        )
+        assert ok is False and "sheet_not_renamed" in detail
+
+    def test_a_rename_that_left_the_original_is_caught(self):
+        svc = self.SheetService(["Sheet", "지역성과", "지역별실적"])
+        ok, detail = check(
+            "excel_live.rename_sheet", {"sheet_name": "지역성과", "new_name": "지역별실적"}, svc, result={"renamed": True}
+        )
+        assert ok is False and "sheet_rename_left_original" in detail
+
+    def test_a_chart_that_was_not_created_is_caught(self):
+        svc = FakeService({"chart_count": 0})
+        ok, detail = check("excel_live.create_chart", {"sheet_name": "S", "source_range": "B2:B5"}, svc, result={"created": True})
+        assert ok is False and "chart_not_created" in detail
+
+    def test_charts_left_behind_after_delete_are_caught(self):
+        svc = FakeService({"chart_count": 2})
+        ok, detail = check("excel_live.delete_charts", {"sheet_name": "S"}, svc, result={"deleted": 1})
+        assert ok is False and "charts_not_deleted" in detail
+
+    def test_a_clean_delete_passes(self):
+        svc = FakeService({"chart_count": 0})
+        ok, _ = check("excel_live.delete_charts", {"sheet_name": "S"}, svc, result={"deleted": 2})
+        assert ok is True
+
+    def test_an_unlistable_workbook_passes_rather_than_blocking(self):
+        ok, _ = check("excel_live.create_sheet", {"sheet_name": "요약"}, FakeService(), result={"created": True})
+        assert ok is True

@@ -580,6 +580,47 @@ def _verify_format_effect(
             return False, "freeze_not_applied:틀 고정이 걸리지 않았습니다"
         return None
 
+    if action in {"excel_live.create_sheet", "excel_live.rename_sheet"}:
+        # "요약 시트 만들어줘"가 시트를 안 만들고도 성공으로 보고됐다(2026-08-19 게이트 3건).
+        lister = getattr(service, "list_sheets", None)
+        if not callable(lister):
+            return None
+        try:
+            names = [str(n) for n in (lister(workbook_id) or {}).get("sheets", [])]
+        except Exception:
+            return None
+        if not names:
+            return None
+        squashed = {re.sub(r"\s+", "", n).casefold() for n in names}
+
+        def _present(value: str) -> bool:
+            return re.sub(r"\s+", "", str(value or "")).casefold() in squashed
+
+        if action == "excel_live.create_sheet":
+            want = str(params.get("sheet_name") or "").strip()
+            if want and not _present(want):
+                return False, f"sheet_not_created:'{want}' 시트가 생기지 않았습니다"
+            return None
+        new_name = str(params.get("new_name") or "").strip()
+        old_name = str(params.get("sheet_name") or "").strip()
+        if new_name and not _present(new_name):
+            return False, f"sheet_not_renamed:'{new_name}'로 바뀌지 않았습니다"
+        if old_name and new_name and _present(old_name) and old_name != new_name:
+            return False, f"sheet_rename_left_original:'{old_name}'가 그대로 남아 있습니다"
+        return None
+
+    if action in {"excel_live.create_chart", "excel_live.delete_charts"}:
+        target_sheet = str(params.get("output_sheet") or params.get("sheet_name") or "").strip() or sheet_name
+        snap = _format_snapshot(service, workbook_id, target_sheet, "A1:A1")
+        if snap is None or "chart_count" not in snap:
+            return None
+        count = int(snap.get("chart_count") or 0)
+        if action == "excel_live.create_chart" and count < 1:
+            return False, "chart_not_created:차트가 만들어지지 않았습니다"
+        if action == "excel_live.delete_charts" and count > 0:
+            return False, f"charts_not_deleted:차트 {count}개가 남아 있습니다"
+        return None
+
     if action == "excel_live.find_replace":
         # 찾을 글자가 그대로 남아 있으면 치환은 일어나지 않은 것이다(2026-08-19 게이트 5건).
         find_text = str(params.get("find_text") or "").strip()
