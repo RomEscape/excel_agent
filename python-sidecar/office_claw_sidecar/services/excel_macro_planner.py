@@ -139,7 +139,14 @@ def looks_like_macro_request(message: str) -> bool:
         return False
     if not _requests_composite_artifact(text):
         return False
-    return bool(_SCALE_VERB.search(text))
+    # 산출물어와 규모 동사가 **같은 절**에 있어야 한다. 사람은 사정을 먼저 말한다 —
+    # "**보고서**에 그래프가 있으면 좋겠다고 해서요, … 그래프를 **만들어** 주세요"는
+    # 대시보드 구축이 아니라 차트 하나다(2026-08-20 게이트8: 이런 문장 3개가
+    # 21단계 매크로로 분해되고 정작 아무것도 안 만들어졌다).
+    for clause in re.split(r"[,.;·\n]|(?<=요)\s+(?=[가-힣])", text):
+        if _requests_composite_artifact(clause) and _SCALE_VERB.search(clause):
+            return True
+    return False
 
 
 def _fewshot_block() -> str:

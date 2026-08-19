@@ -1897,3 +1897,102 @@ class TestBareAggregateAfterPaste:
         from office_claw_sidecar.routers.excel_live import _bare_aggregate_after_paste
 
         assert _bare_aggregate_after_paste(message, "A1:F6") is None
+
+
+class TestMacroPlannerDoesNotEatSimpleRequests:
+    """머리말의 '보고서'와 본문의 '만들어'를 합쳐 매크로로 오인하던 문제.
+
+    2026-08-20 게이트8의 조용한 오실행 4건 중 3건이 이 하나였다.
+    `보고서 앞쪽에 요약 페이지가 필요하다고 해서요, 요약이라는 이름의 새 시트를 만들어 주세요.`
+    → 21단계 매크로로 분해되고 **시트는 안 만들어졌다**.
+    """
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "보고서 앞쪽에 요약 페이지가 필요하다고 해서요, 요약이라는 이름의 새 시트를 만들어 주세요.",
+            "보고서에 시각 자료가 있으면 좋겠다고 해서요, 정시배송률 열을 가지고 꺾은선 그래프를 하나 만들어 주시면 감사하겠습니다",
+            "보고서에 그래프를 하나 넣으라고 하셔서요, 지연건수 열을 가지고 막대 그래프를 만들어 주시면 감사하겠습니다.",
+            "요약 시트 만들어줘",
+        ],
+    )
+    def test_a_reason_preamble_is_not_a_deliverable(self, message: str) -> None:
+        from office_claw_sidecar.services.excel_macro_planner import looks_like_macro_request
+
+        assert looks_like_macro_request(message) is False, message
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "대시보드 만들어줘",
+            "매출 대시보드 하나 만들어 주세요",
+            "월간 보고서 만들어줘",
+            "영업 현황판 좀 구성해줘",
+        ],
+    )
+    def test_a_real_composite_request_still_goes_to_the_macro_planner(self, message: str) -> None:
+        from office_claw_sidecar.services.excel_macro_planner import looks_like_macro_request
+
+        assert looks_like_macro_request(message) is True, message
+
+
+class TestNumberFormatScopedToNamedColumns:
+    """표시 형식도 "어느 열"이 낱말로만 있다(2026-08-20 게이트8 `comma_cols`).
+
+    `여기 주문건수 출고건수는 1000단위로 쉼표 넣어줘` → **B2:B3만** 바뀌었다.
+    규칙은 `#,##0`을 정확히 냈는데 범위가 표 전체라 플래너로 넘어갔고, 플래너가 좁게 집었다.
+    """
+
+    DIGEST = {
+        "active_sheet": "지역성과",
+        "sheets": [
+            {
+                "name": "지역성과",
+                "used_range": "A1:F6",
+                "columns": [
+                    {"letter": "A", "header": "지역"},
+                    {"letter": "B", "header": "주문건수"},
+                    {"letter": "C", "header": "출고건수"},
+                    {"letter": "D", "header": "정시배송률"},
+                    {"letter": "E", "header": "지연건수"},
+                    {"letter": "F", "header": "클레임"},
+                ],
+            }
+        ],
+    }
+
+    def _plan(self, target="__ACTIVE_SELECTION__", code="#,##0"):
+        return [{"action": "excel_live.set_number_format", "params": {"target_range": target, "format_code": code}}]
+
+    def test_two_named_columns_become_two_steps(self) -> None:
+        from office_claw_sidecar.routers.excel_live import _scope_number_format_to_headers
+
+        plan = self._plan()
+        out = _scope_number_format_to_headers(plan, "주문건수 출고건수는 천 단위 콤마로", self.DIGEST)
+        assert out == "B2:B6,C2:C6", out
+        assert [s["params"]["target_range"] for s in plan] == ["B2:B6", "C2:C6"]
+        assert all(s["params"]["format_code"] == "#,##0" for s in plan)
+
+    def test_one_named_column(self) -> None:
+        from office_claw_sidecar.routers.excel_live import _scope_number_format_to_headers
+
+        plan = self._plan(code="0.0")
+        assert _scope_number_format_to_headers(plan, "정시배송률 소수 한 자리!", self.DIGEST) == "D2:D6"
+
+    @pytest.mark.parametrize(
+        "message",
+        ["표 전체 천 단위 콤마", "주문출고콤마", "B2:C6 콤마로", "전부 콤마"],
+    )
+    def test_it_does_not_guess(self, message: str) -> None:
+        """머리글을 못 짚거나 원문이 범위를 적었으면 그대로 둔다."""
+        from office_claw_sidecar.routers.excel_live import _scope_number_format_to_headers
+
+        plan = self._plan()
+        assert _scope_number_format_to_headers(plan, message, self.DIGEST) == ""
+        assert len(plan) == 1
+
+    def test_an_explicit_range_in_the_plan_is_left_alone(self) -> None:
+        from office_claw_sidecar.routers.excel_live import _scope_number_format_to_headers
+
+        plan = self._plan(target="B2:B6")
+        assert _scope_number_format_to_headers(plan, "주문건수 천 단위 콤마", self.DIGEST) == ""

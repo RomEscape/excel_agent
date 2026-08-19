@@ -1499,6 +1499,54 @@ def _spans_multiple_columns(target: str) -> bool:
     return bool(rect and rect.group(1) != rect.group(2))
 
 
+def _scope_number_format_to_headers(
+    plan: list[dict[str, Any]] | None, message: str, digest: dict[str, Any]
+) -> str:
+    """표시 형식 대상을 문장이 부른 머리글의 열들로 좁힌다. 좁혔으면 요약 문자열을 돌려준다.
+
+    "주문건수 출고건수는 천 단위 쉼표" → B·C 두 열에만. 표 전체에 걸면 글자 열까지 바뀐다.
+    """
+    if not plan or len(plan) != 1 or not isinstance(plan[0], dict):
+        return ""
+    step = plan[0]
+    if str(step.get("action") or "") != "excel_live.set_number_format":
+        return ""
+    params = dict(step.get("params") or {})
+    if not _spans_multiple_columns(str(params.get("target_range") or "")):
+        return ""
+    if re.search(r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}\s*:\s*[A-Za-z]{1,3}\d{1,7}", str(message or "")):
+        return ""
+    entry = _digest_active_entry(digest)
+    columns = [c for c in (entry.get("columns") or []) if isinstance(c, dict)]
+    compact = _norm_header(str(message or ""))
+    named = [
+        c
+        for c in columns
+        if _norm_header(str(c.get("header") or "")) and _norm_header(str(c.get("header") or "")) in compact
+    ]
+    if not named or len(named) == len(columns):
+        return ""
+    used = str(entry.get("used_range") or "")
+    last_row = int(m.group(1)) if (m := re.search(r"(\d+)$", used)) else 0
+    if last_row < 2:
+        return ""
+    letters = [str(c.get("letter") or "").strip().upper() for c in named]
+    letters = [x for x in letters if x]
+    if not letters:
+        return ""
+    ranges = [f"{x}2:{x}{last_row}" for x in letters]
+    base = dict(params)
+    plan[:] = [
+        {
+            "action": "excel_live.set_number_format",
+            "params": {**base, "target_range": rng},
+            "reason": step.get("reason") or "빠른 규칙 기반 표시 형식",
+        }
+        for rng in ranges
+    ]
+    return ",".join(ranges)
+
+
 def _value_equals_highlight(message: str, digest: dict[str, Any]) -> list[dict[str, Any]]:
     """"상태 대기 분홍 강조!" / "대기만 분홍" — 값과 색만 있는 강조 문장.
 
@@ -8090,10 +8138,17 @@ async def _run_command(
     # 갈라내야 단순 명령이 왕복 비용을 물지 않는다.
     # 대기 슬롯이 있으면 그 문장은 되묻기에 대한 답변이고, approve=True는 매크로
     # 실행기가 하위 명령을 돌릴 때 쓰는 경로라 둘 다 여기로 들어오면 안 된다.
+    # 규칙이 이미 문장을 다 담았으면(부족하지 않으면) 매크로로 쪼갤 일이 아니다.
+    # "요약이라는 이름의 새 시트를 만들어 주세요"가 21단계로 분해됐다(2026-08-20 게이트8).
+    _early_quick = _build_quick_action_plan(req.message, req.context_range)
+    _rule_covers_message = bool(_early_quick) and not _quick_plan_underfits_message(
+        str((_early_quick[0] or {}).get("action") or ""), req.message
+    )
     if (
         not req.approve
         and pending_slot is None
         and pending_operation is None
+        and not _rule_covers_message
         and looks_like_macro_request(req.message)
     ):
         macro_response = await _plan_macro_response(req, llm)
@@ -8606,6 +8661,9 @@ async def _run_command(
         "excel_live.freeze_panes",
         "excel_live.find_replace",
         "excel_live.autofit_columns",
+        # 형식 코드는 규칙이 더 잘 읽는다 — 플래너는 "소수 한 자리"를 `0.1`로 적었다
+        # (2026-08-20 게이트4~8: 규칙+교정으로 percent_format이 24/24가 됐다).
+        "excel_live.set_number_format",
     }:
         should_parse_with_llm = False
         llm_decision_reason = "high_confidence_action"
@@ -8722,6 +8780,13 @@ async def _run_command(
             quick_plan_for_parse = _normalize_plan_or_empty(quick_action_plan)
             quick_first_action = quick_plan_for_parse[0].action if quick_plan_for_parse else ""
             trace_note("highlight_scope", detail=_scoped, action=quick_first_action)
+        _fmt_scoped = _scope_number_format_to_headers(quick_action_plan, req.message, workbook_digest)
+        if _fmt_scoped:
+            should_parse_with_llm = False
+            llm_decision_reason = "number_format_scoped_to_header"
+            quick_plan_for_parse = _normalize_plan_or_empty(quick_action_plan)
+            quick_first_action = quick_plan_for_parse[0].action if quick_plan_for_parse else ""
+            trace_note("number_format_scope", detail=_fmt_scoped, action=quick_first_action)
 
     def _validate_steps(steps):
         return _validate_plan_for_request(steps, req)
