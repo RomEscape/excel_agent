@@ -185,13 +185,29 @@ _NUMBER_FORMAT_ALIASES: dict[str, str] = {
 _LOOKS_LIKE_FORMAT_CODE = re.compile(r"[#0%@]|yyyy|mm|dd|General", re.IGNORECASE)
 
 
+#: "소수 한 자리"를 `0.1`로 옮겨 적은 코드. 엑셀에서 `.` 뒤의 1은 자릿수가 아니라
+#: **리터럴 1**이라 97.14가 `97.11`로 보인다(2026-08-20 게이트4 percent_format 5건).
+_DECIMAL_COUNT_CODE = re.compile(r"^(#,##0|0)\.([1-9])$")
+
+
+def _repair_decimal_places(text: str) -> str:
+    """`0.1` → `0.0`, `#,##0.2` → `#,##0.00`. 이미 0만 있는 코드는 그대로 둔다."""
+    m = _DECIMAL_COUNT_CODE.match(text)
+    if not m:
+        return text
+    return f"{m.group(1)}." + "0" * int(m.group(2))
+
+
 def _normalize_number_format(value: Any) -> str:
     text = str(value or "").strip()
     if not text:
         return ""
     if _LOOKS_LIKE_FORMAT_CODE.search(text):
-        return text
-    return _NUMBER_FORMAT_ALIASES.get(text.lower(), _NUMBER_FORMAT_ALIASES.get(text, text))
+        return _repair_decimal_places(text)
+    resolved = _NUMBER_FORMAT_ALIASES.get(
+        text.lower(), _NUMBER_FORMAT_ALIASES.get(text, text)
+    )
+    return _repair_decimal_places(str(resolved))
 
 
 def _extract_table_shape(message: str) -> tuple[int, int] | None:

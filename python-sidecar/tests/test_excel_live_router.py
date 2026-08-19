@@ -538,12 +538,16 @@ def test_action_without_workbook_id_uses_first_open_workbook(monkeypatch):
     assert body["result"]["written_cells"] == 3
 
 
-def test_conditional_color_request_reaches_the_planner(monkeypatch):
-    """"100만도 안 되는 건 빨갛게"는 fill_range fast path로 새면 안 된다.
+def test_conditional_color_request_keeps_its_condition(monkeypatch):
+    """"100만도 안 되는 건 빨갛게"는 조건을 잃고 통짜로 칠해지면 안 된다.
 
-    조건을 표현하지 못하는 규칙이 먼저 잡으면 조건이 사라진 채 열 전체가 칠해진다.
+    2026-08-18에는 규칙이 조건을 표현하지 못해 **플래너를 거치는 것**이 유일한 보호였다.
+    지금은 규칙이 `< 1000000`을 그대로 읽고 머리글('매출')로 열까지 좁힌다
+    (2026-08-20). 그래서 이 테스트가 지키는 것은 경로가 아니라 **결과**다 —
+    조건부 강조로, 조건이 살아 있고, 범위가 열 하나로 좁혀져 있어야 한다.
     """
-    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
+    fake = _FakeExcelService()
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: fake)
     calls: list[str] = []
 
     async def _plan_parse(message, llm_service, context):
@@ -578,8 +582,13 @@ def test_conditional_color_request_reaches_the_planner(monkeypatch):
         headers=HEADERS,
     )
     assert resp.status_code == 200
-    assert calls, "조건이 붙은 색칠 요청인데 플래너를 거치지 않았다"
     assert resp.json()["action"] == "excel_live.highlight_by_condition"
+    applied = fake._last_highlight
+    assert applied, "조건부 강조가 실행되지 않았다"
+    assert applied["operator"] == "<", applied
+    assert float(applied["threshold"]) == 1000000.0, applied
+    # 통짜(A:Z·전체 선택)로 새면 조건이 있어도 엉뚱한 열이 칠해진다.
+    assert applied["target_range"] not in {"A:Z", "__ACTIVE_SELECTION__", "__USED_RANGE__"}, applied
 
 
 def test_command_rule_based_highlight(monkeypatch):

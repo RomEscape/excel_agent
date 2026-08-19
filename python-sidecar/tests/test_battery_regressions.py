@@ -1559,3 +1559,146 @@ class TestGate4Regressions:
         assert fill["params"]["fill_color"] == "#002060", text
         assert fill["params"]["target_range"] == "1:1", text
         assert font["params"].get("bold") is True, text
+
+
+class TestHighlightScopedToHeaderColumn:
+    """조건부 강조의 **대상 열**을 머리글로 확정한다(2026-08-20 게이트5).
+
+    게이트5에 남은 조건부 강조 실패 9건 중 7건은 조건이 이미 정확했다.
+    `클레임이 10보다 큰 셀만 빨간색으로 칠혀 주세요.` → 규칙이 `> 10`까지 읽어 놓고
+    범위만 `__ACTIVE_SELECTION__`이라, 플래너로 넘어가 F2 대신 **F3**이 빨개졌다.
+    """
+
+    DIGEST = {
+        "active_sheet": "지역성과",
+        "sheets": [
+            {
+                "name": "지역성과",
+                "used_range": "A1:F6",
+                "columns": [
+                    {"letter": "A", "header": "지역"},
+                    {"letter": "B", "header": "주문건수"},
+                    {"letter": "C", "header": "출고건수"},
+                    {"letter": "D", "header": "정시배송률"},
+                    {"letter": "E", "header": "지연건수"},
+                    {"letter": "F", "header": "클레임"},
+                ],
+            }
+        ],
+    }
+
+    def _plan(self, **params):
+        base = {"target_range": "__ACTIVE_SELECTION__", "operator": ">", "threshold": 10.0}
+        base.update(params)
+        return [{"action": "excel_live.highlight_by_condition", "params": base}]
+
+    @pytest.mark.parametrize(
+        ("message", "expected"),
+        [
+            ("클레임이 10보다 큰 셀만 빨간색으로 칠혀 주세요.", "F2:F6"),
+            ("클레임10↑빨강", "F2:F6"),
+            ("지연건수 3 넘는 칸 빨갛게", "E2:E6"),
+            ("정시배송률 95 밑도는 셀 노랗게", "D2:D6"),
+        ],
+    )
+    def test_the_named_header_decides_the_column(self, message: str, expected: str) -> None:
+        from office_claw_sidecar.routers.excel_live import _scope_highlight_to_header_column
+
+        plan = self._plan()
+        assert _scope_highlight_to_header_column(plan, message, self.DIGEST) == expected
+        assert plan[0]["params"]["target_range"] == expected
+
+    def test_an_explicit_range_is_left_alone(self) -> None:
+        from office_claw_sidecar.routers.excel_live import _scope_highlight_to_header_column
+
+        plan = self._plan(target_range="F2:F6")
+        assert _scope_highlight_to_header_column(plan, "F2:F6에서 10 넘는 것", self.DIGEST) == ""
+        assert plan[0]["params"]["target_range"] == "F2:F6"
+
+    @pytest.mark.parametrize("message", ["10 넘는 셀 빨갛게", "건수 10 넘는 셀 빨갛게"])
+    def test_an_unresolvable_header_stays_with_the_planner(self, message: str) -> None:
+        """머리글이 없거나 여러 개에 걸리면 추측하지 않는다 — 예전처럼 플래너 몫이다.
+
+        '건수'는 주문건수·출고건수·지연건수 셋에 걸린다.
+        """
+        from office_claw_sidecar.routers.excel_live import _scope_highlight_to_header_column
+
+        assert _scope_highlight_to_header_column(self._plan(), message, self.DIGEST) == ""
+
+    def test_other_actions_are_untouched(self) -> None:
+        from office_claw_sidecar.routers.excel_live import _scope_highlight_to_header_column
+
+        plan = [{"action": "excel_live.fill_range", "params": {"target_range": "__ACTIVE_SELECTION__"}}]
+        assert _scope_highlight_to_header_column(plan, "클레임 빨갛게", self.DIGEST) == ""
+
+
+class TestFormatCodeDecimalPlaces:
+    """`0.1`은 표시 형식이 아니라 "소수 한 자리"라는 뜻이다(2026-08-20 게이트4·5).
+
+    엑셀에서 `.` 뒤의 `1`은 자릿수가 아니라 리터럴이라 97.14가 `97.11`로 보인다.
+    `percent_format` 5문장이 전부 이 값으로 틀렸다.
+    """
+
+    @pytest.mark.parametrize(
+        ("given", "expected"),
+        [
+            ("0.1", "0.0"),
+            ("0.2", "0.00"),
+            ("0.3", "0.000"),
+            ("#,##0.1", "#,##0.0"),
+            ("0.0", "0.0"),
+            ("0.00", "0.00"),
+            ("#,##0", "#,##0"),
+            ("0.0%", "0.0%"),
+        ],
+    )
+    def test_a_digit_count_is_read_as_places(self, given: str, expected: str) -> None:
+        from office_claw_sidecar.services.excel_live_plan_validator import _normalize_number_format
+
+        assert _normalize_number_format(given) == expected
+
+
+class TestPlanSanityCatchesPreamblesAndCircularFormulas:
+    """게이트4·5가 드러낸 두 부류 — 둘 다 사후조건으로는 못 잡는다."""
+
+    def test_a_preamble_is_not_a_value(self) -> None:
+        """`새로 데이터를 받아서 다시 넣어야 해서요` 가 A1에 그대로 박혔다."""
+        from office_claw_sidecar.services.excel_plan_sanity import check_plan_sanity
+
+        issues = check_plan_sanity(
+            [
+                {
+                    "action": "excel_live.write_range",
+                    "params": {"start_cell": "A1", "values_2d": [["새로 데이터를 받아서 다시 넣어야 해서요"]]},
+                }
+            ],
+            message="새로 데이터를 받아서 다시 넣어야 해서요, 지금 붙여넣은 표 안의 값을 전부 지워 주세요.",
+        )
+        assert [i.code for i in issues] == ["value_is_a_directive"]
+
+    def test_a_formula_that_refers_to_its_own_cell_is_caught(self) -> None:
+        """`요약!A2 = =SUM(A2:A2)` — 엑셀은 0을 보여 주고 사후조건은 통과시킨다."""
+        from office_claw_sidecar.services.excel_plan_sanity import check_plan_sanity
+
+        issues = check_plan_sanity(
+            [{"action": "excel_live.set_formula", "params": {"range_ref": "A2", "formula_a1": "=SUM(A2:A2)"}}],
+            message="A2에 지역성과 시트 주문건수 합계를 수식으로 넣어 주세요",
+        )
+        assert [i.code for i in issues] == ["formula_refers_to_itself"]
+
+    @pytest.mark.parametrize(
+        ("cell", "formula"),
+        [
+            ("A2", "=SUM(지역성과!B2:B6)"),
+            ("B7", "=SUM(B2:B6)"),
+            ("B8", "=AVERAGE(B2:B7)"),
+        ],
+    )
+    def test_ordinary_formulas_pass(self, cell: str, formula: str) -> None:
+        from office_claw_sidecar.services.excel_plan_sanity import check_plan_sanity
+
+        issues = check_plan_sanity(
+            [{"action": "excel_live.set_formula", "params": {"range_ref": cell, "formula_a1": formula}}],
+            message="합계 넣어줘",
+        )
+        assert issues == []

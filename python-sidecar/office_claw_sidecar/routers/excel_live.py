@@ -47,6 +47,7 @@ from office_claw_sidecar.services.decision_trace import (
 )
 from office_claw_sidecar.services.excel_actions import execute_excel_action
 from office_claw_sidecar.services.excel_aggregate_below import (
+    _norm_header,
     build_aggregate_below_plan,
     build_cross_sheet_aggregate_plan,
     match_aggregate_below,
@@ -1384,6 +1385,68 @@ def _quick_extract_colors(text: str) -> list[str]:
         if not out or out[-1] != color:
             out.append(color)
     return out
+
+
+#: 조건부 강조가 "어느 열인지 모른다"는 뜻으로 남기는 범위들.
+_UNSCOPED_HIGHLIGHT_TARGETS = frozenset({"", "A:Z", "__ACTIVE_SELECTION__", "__USED_RANGE__"})
+
+
+def _digest_active_entry(digest: dict[str, Any]) -> dict[str, Any]:
+    active = str((digest or {}).get("active_sheet") or "")
+    for sheet in (digest or {}).get("sheets") or []:
+        if str(sheet.get("name")) == active:
+            return sheet
+    sheets = (digest or {}).get("sheets") or [{}]
+    return sheets[0] if sheets else {}
+
+
+def _header_column_from_message(message: str, columns: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """문장이 부른 머리글이 **유일하게** 짚이면 그 열을 돌려준다."""
+    compact = _norm_header(str(message or ""))
+    if not compact:
+        return None
+    hits = [
+        column
+        for column in columns
+        if _norm_header(str(column.get("header") or ""))
+        and _norm_header(str(column.get("header") or "")) in compact
+    ]
+    if not hits:
+        return None
+    if len(hits) == 1:
+        return hits[0]
+    # 여러 머리글이 걸리면 가장 긴 것 하나만 — "주문건수"와 "건수"가 함께 있을 때.
+    longest = max(len(_norm_header(str(c.get("header") or ""))) for c in hits)
+    finalists = [c for c in hits if len(_norm_header(str(c.get("header") or ""))) == longest]
+    return finalists[0] if len(finalists) == 1 else None
+
+
+def _scope_highlight_to_header_column(
+    plan: list[dict[str, Any]] | None, message: str, digest: dict[str, Any]
+) -> str:
+    """조건부 강조의 범위를 머리글 열로 좁힌다. 좁혔으면 그 범위를, 아니면 빈 문자열."""
+    if not plan or len(plan) != 1 or not isinstance(plan[0], dict):
+        return ""
+    step = plan[0]
+    if str(step.get("action") or "") != "excel_live.highlight_by_condition":
+        return ""
+    params = dict(step.get("params") or {})
+    if str(params.get("target_range") or "").strip().upper() not in _UNSCOPED_HIGHLIGHT_TARGETS:
+        return ""
+    entry = _digest_active_entry(digest)
+    columns = [c for c in (entry.get("columns") or []) if isinstance(c, dict)]
+    column = _header_column_from_message(message, columns)
+    if column is None:
+        return ""
+    letter = str(column.get("letter") or "").strip().upper()
+    used = str(entry.get("used_range") or "")
+    last_row = int(m.group(1)) if (m := re.search(r"(\d+)$", used)) else 0
+    if not letter or last_row < 2:
+        return ""
+    scoped = f"{letter}2:{letter}{last_row}"
+    params["target_range"] = scoped
+    step["params"] = params
+    return scoped
 
 
 def _quick_parse_condition(text: str) -> tuple[str, float] | None:
@@ -8480,6 +8543,19 @@ async def _run_command(
             active_sheet_hint=req.sheet_name,
             use_cache=False,
         )
+    # 조건부 강조는 조건(연산자·임계값·색)까지 규칙이 이미 정확히 읽는데 **열만** 비어 있었다.
+    # 그 상태로 플래너에 넘기면 엉뚱한 칸이 칠해진다(2026-08-20 게이트5 실측:
+    # F2 대신 F3이 빨갛고, 대기가 아닌 줄이 분홍이 됐다). 머리글로 열을 확정할 수 있으면
+    # 규칙이 계획을 확정한다 — 못 하면 예전처럼 플래너 몫이다.
+    if quick_action_plan and pending_slot is None and pending_operation is None:
+        _scoped = _scope_highlight_to_header_column(quick_action_plan, req.message, workbook_digest)
+        if _scoped:
+            should_parse_with_llm = False
+            llm_decision_reason = "highlight_scoped_to_header"
+            quick_plan_for_parse = _normalize_plan_or_empty(quick_action_plan)
+            quick_first_action = quick_plan_for_parse[0].action if quick_plan_for_parse else ""
+            trace_note("highlight_scope", detail=_scoped, action=quick_first_action)
+
     def _validate_steps(steps):
         return _validate_plan_for_request(steps, req)
 
@@ -9800,6 +9876,8 @@ def _sanity_question(issues: list) -> str:
         return f"{head.detail} 그 문장을 글자 그대로 넣을까요, 아니면 계산 결과를 넣을까요?"
     if head.code == "writes_to_the_source_sheet":
         return f"{head.detail} 어느 시트에 쓸까요?"
+    if head.code == "formula_refers_to_itself":
+        return f"{head.detail} 어느 범위를 계산할까요?"
     return f"{head.detail} 이대로 진행할까요?"
 
 

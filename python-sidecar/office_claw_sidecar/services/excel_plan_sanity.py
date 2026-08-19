@@ -41,7 +41,17 @@ _DIRECTIVE_FRAGMENT = re.compile(
     r"|(?:굵게|테두리|콤마|천\s*단위|틀\s*고정|병합))"
 )
 
+# 사람은 사정을 먼저 말하고 명령을 뒤에 한다("…필요하다고 해서요, A1에 …").
+# 이 꼬리로 끝나는 조각은 데이터가 아니다(2026-08-20 게이트4 clear_table:
+# A1에 '새로 데이터를 받아서 다시 넣어야 해서요'가 그대로 박혔다).
+_PREAMBLE_TAIL = re.compile(
+    r"(?:해서요|하셔서요|해서|하셔서|때문에|필요하다고|좋겠다고|하라고|라고\s*해서|"
+    r"싶어서요|싶어서|해야\s*해서요|해야\s*해서|드려요)\s*[,·]?\s*$"
+)
+
 _WRITE_ACTIONS = frozenset({"excel_live.write_range"})
+#: 쓸 칸이 수식 범위 안에 들어가면 순환 참조다.
+_FORMULA_ACTIONS = frozenset({"excel_live.set_formula"})
 
 
 @dataclass
@@ -91,6 +101,8 @@ def _looks_like_command_value(value: str, *, single_cell: bool = True) -> str:
         return "시트 이름과 집계 낱말이 함께 든 문장은 값이 아니라 수식 요청입니다"
     if _DIRECTIVE_FRAGMENT.match(text):
         return "자리·서식을 가리키는 말이 값으로 들어갔습니다"
+    if _PREAMBLE_TAIL.search(text):
+        return "사정을 설명하는 머리말이 값으로 들어갔습니다"
     return ""
 
 
@@ -104,6 +116,51 @@ def _destination_before_sheet(message: str) -> str:
     if mention is None:
         return ""
     return str(mention.group(1)).strip().strip("'\"")
+
+
+def _cell_index(ref: str) -> tuple[int, int] | None:
+    """"B7" → (열 7? 아니라 (행, 열)). 못 읽으면 None."""
+    m = re.fullmatch(r"([A-Za-z]{1,3})(\d{1,7})", str(ref or "").strip())
+    if not m:
+        return None
+    col = 0
+    for ch in m.group(1).upper():
+        col = col * 26 + (ord(ch) - 64)
+    return int(m.group(2)), col
+
+
+def _circular_formula_issues(action: str, params: dict[str, Any]) -> list[SanityIssue]:
+    """쓸 칸이 수식이 참조하는 범위 안에 있으면 순환이다.
+
+    `요약!A2 = =SUM(A2:A2)` — 엑셀은 0을 보여 주고, 사후조건은 "수식이 들어갔다"고 통과시킨다
+    (2026-08-20 게이트4 cross_sheet_sum).
+    """
+    target = _cell_index(str(params.get("range_ref") or params.get("target_range") or ""))
+    formula = str(params.get("formula_a1") or params.get("formula") or "")
+    if target is None or not formula:
+        return []
+    for m in re.finditer(
+        r"(?<![A-Za-z0-9_!])([A-Za-z]{1,3}\d{1,7})\s*:\s*([A-Za-z]{1,3}\d{1,7})", formula
+    ):
+        # 시트를 넘어 참조하면(`지역성과!B2:B6`) 순환이 아니다.
+        if formula[: m.start()].rstrip().endswith("!"):
+            continue
+        start, end = _cell_index(m.group(1)), _cell_index(m.group(2))
+        if start is None or end is None:
+            continue
+        row_lo, row_hi = sorted((start[0], end[0]))
+        col_lo, col_hi = sorted((start[1], end[1]))
+        if row_lo <= target[0] <= row_hi and col_lo <= target[1] <= col_hi:
+            return [
+                SanityIssue(
+                    code="formula_refers_to_itself",
+                    action=action,
+                    detail=(
+                        f"수식 `{formula[:40]}`이 쓸 칸 자신을 참조합니다(순환)"
+                    ),
+                )
+            ]
+    return []
 
 
 def check_plan_sanity(
@@ -141,6 +198,10 @@ def check_plan_sanity(
                         )
                     )
                     break
+
+        # S7 — 쓸 칸이 수식 범위 안에 있는가(순환 참조).
+        if action in _FORMULA_ACTIONS:
+            issues.extend(_circular_formula_issues(action, params))
 
         # S5 — 대상 시트가 사실은 원본인가.
         target_sheet = str(params.get("sheet_name") or "").strip()
