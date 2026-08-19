@@ -81,16 +81,25 @@ def match_aggregate_columns(message: str) -> tuple[str, str] | None:
 # "전부 더해서", "합"으로 18/24가 새어 텍스트가 써졌다).
 _AGG_WORD = r"(합계|총합계|총합|총계|합산|평균|개수|합|다\s*더한\s*값|전부\s*더한\s*값|더한\s*값|전부\s*더해서|다\s*더해서|더해서)"
 # ① 셀이 앞: "A2에 지역성과 시트 주문건수 합계 가져와"
+# 머리글은 "총 임대료(원)" · "매출 비중(%)" · "평균 대기시간(분)"처럼 공백·괄호·기호를 품는다.
+# 한 낱말만 허용하면 이런 머리글이 통째로 안 잡혀 계획이 비고, 플래너가 텍스트를 쓴다(2026-08-19 실측).
+_HEADER_TOKEN = r"([가-힣A-Za-z0-9_%][가-힣A-Za-z0-9_%()\[\]/·.\- ]{0,38}?)"
+
 _CROSS_SHEET = re.compile(
     r"([A-Z]+\d+)\s*(?:셀|칸)?\s*(?:에(?:는|다가|다)?)?\s*(?:([^\s,]+?)\s*(?:시트|탭)(?:의|에서|에\s*있는|안에\s*있는|안의|에)?\s*)?"
     # 시트 낱말 없이 이름만 온 경우("A2에 지역성과 주문건수 합계") — 알려진 시트 이름일 때만 채택한다.
     r"(?:([^\s,]+?)\s+)?"
-    r"([가-힣A-Za-z0-9_]+?)\s*(?:의|을|를)?\s*" + _AGG_WORD,
+    + _HEADER_TOKEN
+    + r"\s*(?:의|을|를)?\s*"
+    + _AGG_WORD,
     re.IGNORECASE,
 )
 # ② 셀이 뒤: "지역성과 시트 주문건수 합계를 A2로 끌어와" / "지역성과 주문건수 전부 더해서 A2에 넣어"
 _CROSS_SHEET_CELL_LAST = re.compile(
-    r"(?:([^\s,]+?)\s*(?:시트|탭)(?:의|에서|에\s*있는|안에\s*있는|안의|에)?\s*)?([가-힣A-Za-z0-9_]+?)\s*(?:의|을|를)?\s*" + _AGG_WORD
+    r"(?:([^\s,]+?)\s*(?:시트|탭)(?:의|에서|에\s*있는|안에\s*있는|안의|에)?\s*)?"
+    + _HEADER_TOKEN
+    + r"\s*(?:의|을|를)?\s*"
+    + _AGG_WORD
     + r"\s*(?:을|를|값을|값)?\s*(?:여기\s*)?([A-Z]+\d+)\s*(?:셀|칸)?\s*(?:에|로|으로|에다가?|다)?",
     re.IGNORECASE,
 )
@@ -98,6 +107,34 @@ _CROSS_SHEET_CELL_LAST = re.compile(
 _QUANTIFIER_ONLY = re.compile(r"(?:다|전부|모두|싹|전|모|총|일괄|죄다|몽땅|통째로?)")
 _CROSS_SHEET_VERB = re.compile(r"가져|끌어|연결|수식|넣어|채워|기록|불러|참조|더해|계산|놔|놓아|써|입력")
 _TOTAL_ROW_LABELS = frozenset({"합계", "총계", "계", "총합", "평균", "최대", "최소", "개수", "total", "sum", "avg", "average"})
+
+
+def _norm_header(text: str) -> str:
+    """머리글 비교용 정규화 — 단위 꼬리·공백·대소문자를 지운다."""
+    out = re.sub(r"\s*[(\[（][^)\]）]*[)\]）]\s*$", "", str(text or "").strip())
+    return re.sub(r"\s+", "", out).casefold()
+
+
+def _match_header(word: str, headers: list[str]) -> int | None:
+    """사람이 부른 머리글을 실제 머리글 목록에서 찾는다.
+
+    "예산"과 "예산(원)", "총 임대료(원)"과 "총임대료(원)"이 같은 것을 가리키는데
+    정확 일치만 보면 계획이 비고, 그러면 플래너가 텍스트를 쓴다(2026-08-19 실측).
+    """
+    target = str(word or "").strip()
+    if not target:
+        return None
+    if target in headers:
+        return headers.index(target)
+    norm = _norm_header(target)
+    if not norm:
+        return None
+    normalized = [_norm_header(h) for h in headers]
+    if norm in normalized:
+        return normalized.index(norm)
+    # 부분 일치는 **유일할 때만** — 여러 머리글에 걸리면 추측이 된다.
+    hits = [i for i, h in enumerate(normalized) if h and (h.startswith(norm) or norm.startswith(h))]
+    return hits[0] if len(hits) == 1 else None
 
 
 def build_cross_sheet_aggregate_plan(
@@ -133,11 +170,15 @@ def build_cross_sheet_aggregate_plan(
             else:
                 # 시트가 아닌 낱말이면 머리글의 앞부분이다("평균 운행시간" 같은 두 낱말 머리글).
                 header_tok = f"{bare} {header_tok}".strip()
-        elif bare and _QUANTIFIER_ONLY.fullmatch(header_tok):
-            # "성적부 시트 결석 다 더한 값" — 게으른 머리글 그룹이 수량 부사('다','전부','총')를 집고
-            # 진짜 머리글('결석')은 앞 그룹으로 밀렸다. 그러면 계획이 비고, 플래너가 **원본 시트에**
-            # 지역 SUM을 써서 학생 이름 칸을 덮었다(2026-08-19 결과 워크북 감사, 러너는 성공으로 셈).
-            header_tok = bare
+        elif bare:
+            # 앞 토큰이 머리글의 일부인지("총 임대료(원)") 수량 부사인지("결석 **다** 더한 값")는
+            # 문장만 봐서는 못 가른다 — '총'은 둘 다다. **추측하지 말고 실제 머리글에 물어본다**:
+            # 두 후보를 다 넘기고, 시트의 머리글 목록에 있는 쪽을 고르게 한다
+            # (2026-08-19 5라운드 감사: 못 가려서 계획이 비었고 플래너가 '=' 없는 문자열을 셀에 썼다).
+            if _QUANTIFIER_ONLY.fullmatch(header_tok):
+                header_tok = bare
+            else:
+                header_tok = [f"{bare} {header_tok}".strip(), header_tok]
         matches.append((m.group(1).upper(), sheet_tok, header_tok, m.group(5)))
     if not matches:
         for m in _CROSS_SHEET_CELL_LAST.finditer(text):
@@ -153,9 +194,15 @@ def build_cross_sheet_aggregate_plan(
             current_sheet = sheet
         if not current_sheet:
             continue
+        # 후보가 여럿일 수 있다(위 "총 임대료(원)" 갈림). 아래 매칭이 실제 머리글로 가른다.
+        candidates = list(header_word) if isinstance(header_word, list) else [header_word]
         # 시트 이름이 머리글 낱말 앞에 붙어 들어온 경우("지역성과 주문건수" → 머리글 '주문건수')
-        if current_sheet and header_word.startswith(current_sheet) and len(header_word) > len(current_sheet):
-            header_word = header_word[len(current_sheet):].strip()
+        candidates = [
+            c[len(current_sheet):].strip()
+            if current_sheet and c.startswith(current_sheet) and len(c) > len(current_sheet)
+            else c
+            for c in candidates
+        ]
         func = "AVERAGE" if "평균" in func_word else ("COUNT" if ("개수" in func_word or "건수" in func_word) else "SUM")
         try:
             if current_sheet not in cache:
@@ -167,11 +214,12 @@ def build_cross_sheet_aggregate_plan(
         if not rng or not values:
             continue
         headers = [str(v).strip() if v is not None else "" for v in values[0]]
-        if header_word not in headers:
-            continue
-        col_letter = get_column_letter(
-            column_index_from_string(rng.group(1)) + headers.index(header_word)
+        header_idx = next(
+            (idx for idx in (_match_header(c, headers) for c in candidates) if idx is not None), None
         )
+        if header_idx is None:
+            continue
+        col_letter = get_column_letter(column_index_from_string(rng.group(1)) + header_idx)
         data_start = int(rng.group(2)) + 1
         data_end = int(rng.group(4))
         # 꼬리의 집계 줄(합계·평균 등 이름표 또는 수식 줄)은 **전부** 구간에서

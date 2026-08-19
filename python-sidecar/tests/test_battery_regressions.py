@@ -816,3 +816,60 @@ class TestWorkbookAuditFindings:
 
         step = parse_command_rule_based("성적부 시트 결석 합계를 B10에 넣어줘")
         assert step is None or step["action"] != "excel_live.write_range", step
+
+
+class TestCrossSheetHeaderMatching:
+    """2026-08-19 5라운드 워크북 감사: 괄호·공백이 든 머리글을 못 잡아 계획이 비었고,
+    그 틈에 플래너가 **'=' 없는 문자열** 'SUM(렌트롤!D2:D100)'을 셀에 텍스트로 썼다."""
+
+    def _reader(self):
+        data = {
+            "렌트롤": (
+                "A1:Q10",
+                [
+                    ["자산 코드", "건물명", "층", "호수", "용도", "임차인", "전용면적", "임대면적", "시작일",
+                     "만료일", "계약형태", "보증금", "기본임대료", "관리비", "총 임대료(원)", "평당임대료", "점유상태"],
+                    ["A", "B", 1, 2, "c", "d", 1, 2, "e", "f", "g", 1, 2, 3, 4, 5, "h"],
+                ],
+            ),
+            "간트관리": ("A1:F5", [["WBS", "작업", "유형", "예산(원)", "시작", "종료"], ["1", "a", "b", 100, "c", "d"]]),
+            "성적부": ("A1:F11", [["번호", "이름", "출석률(%)", "출석", "지각", "결석"], [1, "김", 90, 20, 1, 2]]),
+        }
+        return lambda sheet: data.get(sheet)
+
+    @pytest.mark.parametrize(
+        "text, formula",
+        [
+            # 괄호·공백이 든 머리글
+            ("B73에다 렌트롤 시트 총 임대료(원) 다 더한 값 가져와줘", "=SUM('렌트롤'!O2:O10)"),
+            ("B73에 렌트롤 시트 총 임대료 합계 가져와", "=SUM('렌트롤'!O2:O10)"),
+            # 단위 꼬리만 다른 경우
+            ("B21에 간트관리 시트에 있는 예산 총합 가져와줄래", "=SUM('간트관리'!D2:D5)"),
+            # 수량 부사가 머리글 자리를 뺏는 경우(기존 회귀)
+            ("B10에다 성적부 시트 결석 다 더한 값 가져와줘", "=SUM('성적부'!F2:F11)"),
+        ],
+    )
+    def test_headers_with_units_and_spaces_resolve(self, text, formula):
+        from office_claw_sidecar.services.excel_aggregate_below import build_cross_sheet_aggregate_plan
+
+        plan = build_cross_sheet_aggregate_plan(
+            text, self._reader(), sheet_names=["Sheet", "렌트롤", "간트관리", "성적부", "대시보드"]
+        )
+        assert plan, text
+        assert plan[0]["params"]["formula_a1"] == formula, (text, plan)
+
+    def test_an_unknown_header_still_backs_off(self):
+        # 없는 머리글을 추측해서 아무 열이나 잡으면 안 된다 — 되묻기로 가야 한다.
+        from office_claw_sidecar.services.excel_aggregate_below import build_cross_sheet_aggregate_plan
+
+        plan = build_cross_sheet_aggregate_plan(
+            "B21에 간트관리 시트 없는열 합계 가져와", self._reader(), sheet_names=["Sheet", "간트관리"]
+        )
+        assert plan == []
+
+    def test_an_ambiguous_partial_header_backs_off(self):
+        # 부분 일치가 여럿이면 고르지 않는다.
+        from office_claw_sidecar.services.excel_aggregate_below import _match_header
+
+        assert _match_header("건수", ["지역", "주문 건수", "출고 건수"]) is None
+        assert _match_header("주문 건수", ["지역", "주문 건수", "출고 건수"]) == 1
