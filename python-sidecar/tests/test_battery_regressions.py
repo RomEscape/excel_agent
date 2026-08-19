@@ -1190,3 +1190,128 @@ class TestArithmeticNeverBecomesText:
         step = parse_command_rule_based(normalize_common_typos(text))
         assert step and step["action"] == "excel_live.write_range", (text, step)
         assert step["params"]["values_2d"] == [[value]], (text, step)
+
+
+class TestPasteValuePhrasings:
+    """게이트 `paste_values` 12문장 중 8이 되묻기·4가 오실행이었다.
+
+    사람은 "입력해바" · "적어 주세요" · "paste 해 주세요" · "input 부탁드려요"라고도 쓰고,
+    자리를 "붙여넣은 셀들에" · "방금 잡은 칸에" · "방금 선택한 두 줄에"라고 부르며,
+    앞에 상황 설명을 붙인다("… 추가해야 해서요, 지금 붙여넣은 자리에 …").
+    좁게 잡으면 값이 한 칸에 박히거나("셀들에 서울") 통째로 되묻기로 샌다.
+    """
+
+    EXPECTED = [["서울", 100], ["부산", 200]]
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "여기다 서울,100; 부산,200 입력해바 그대루",
+            "방금 선택한 칸에 서울,100; 부산,200 이렇게 입력해 주실 수 있을까요?",
+            "지역별 데이터 두 줄을 추가해야 해서요, 지금 붙여넣은 자리에 서울,100; 부산,200 순서대로 넣어 주세요",
+            "선택 범위에 서울,100; 부산,200 값 paste 해 주세요.",
+            "이 자리에 서울,100; 부산,200 input 부탁드려요.",
+            "선택한 범위에 서울,100; 부산,200 값 입력해 주세요",
+            "붙여넣은 셀들에 서울,100; 부산,200 순서대로 채워줘",
+            "방금 잡은 칸에 서울,100; 부산,200 이렇게 넣어줘",
+            "여기다가 서울,100; 부산,200 적어 주세요",
+            "서울,100; 부산,200 입력해주새요",
+            "여기에 서울,100; 부산,200 넣어도 될까요?",
+            "팀장님이 서울이랑 부산 데이터를 추가하라고 하셔서요, 방금 선택한 두 줄에 서울,100; 부산,200 넣어 주세요",
+        ],
+    )
+    def test_the_grid_lands_intact(self, text):
+        from office_claw_sidecar.services.excel_live_agent import (
+            normalize_common_typos,
+            parse_rangeless_row_write,
+        )
+
+        step = parse_rangeless_row_write(normalize_common_typos(text), "A8:B9")
+        assert step is not None, text
+        assert step["params"]["values_2d"] == self.EXPECTED, (text, step["params"])
+
+    @pytest.mark.parametrize("text", ["A1에 완료 넣어줘", "합계 줄 넣어줘", "여기에 넣어줘", "넣어줘 합계 줄, 이 표 아래에"])
+    def test_non_grid_sentences_are_not_grabbed(self, text):
+        from office_claw_sidecar.services.excel_live_agent import (
+            normalize_common_typos,
+            parse_rangeless_row_write,
+        )
+
+        assert parse_rangeless_row_write(normalize_common_typos(text), "A8:B9") is None, text
+
+
+class TestCreateSheetName:
+    """2026-08-20 블라인드 게이트 `new_sheet` 24문장. 규칙이 이름을 통째로 집어야 한다.
+
+    이전에는 24문장 중 8이 되묻기·3이 오실행이었고, 그중 하나는
+    `'요약' 이름으로 시트 하나` 에서 **'요약 이름으로'라는 시트를 만들었다.**
+    """
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "요약 시트 하나 만들어줘",
+            "요약 탭 추가해줘",
+            "요약이라는 이름의 새 시트를 만들어 주세요",
+            "'요약' 이름으로 시트 하나 파 주세요",
+            "새 시트 하나 추가해서 요약이라고 불러줘",
+            "시트 새로 하나 만들고 이름은 요약으로",
+            "여기다 요약 탭 하나 추가해봐",
+            "ㅇㅇ 요약 시트부터 하나 파줘",
+            "요약 워크시트 생성",
+            "요약 시트",
+        ],
+    )
+    def test_extracts_the_whole_name(self, text: str) -> None:
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        plan = _build_quick_action_plan(normalize_common_typos(text), None)
+        assert plan, text
+        assert plan[0]["action"] == "excel_live.create_sheet", text
+        assert plan[0]["params"]["sheet_name"] == "요약", text
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("재고 관리 시트도 하나 만들어줄래?", "재고 관리"),
+            ("월간 보고 시트 하나 파줘", "월간 보고"),
+            ("시트 새로 하나 파 주세요, 이름은 Requisition으로", "Requisition"),
+        ],
+    )
+    def test_keeps_multi_word_names(self, text: str, expected: str) -> None:
+        """`extend_sheet_name_leftward`가 앞 낱말까지 붙여야 하는 경우."""
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        plan = _build_quick_action_plan(normalize_common_typos(text), None)
+        assert plan and plan[0]["params"]["sheet_name"] == expected, text
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "A1에 시트 이름 써줘",
+            "B2에 시트명 입력해줘",
+            "시트 이름 요약으로 바꿔줘",
+            "요약 시트 지워줘",
+        ],
+    )
+    def test_does_not_fire_on_other_intents(self, text: str) -> None:
+        """쓰기·이름변경·삭제를 생성으로 오인하면 엉뚱한 시트가 늘어난다."""
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        plan = _build_quick_action_plan(normalize_common_typos(text), None) or [{}]
+        assert plan[0].get("action") != "excel_live.create_sheet", text
+
+    def test_sheet_creation_plus_more_work_still_reaches_the_planner(self) -> None:
+        """복합문은 규칙이 시트만 만들고 끝내면 안 된다 — underfit 판정으로 LLM에 넘긴다."""
+        from office_claw_sidecar.routers.excel_live import (
+            _build_quick_action_plan,
+            _quick_plan_underfits_message,
+        )
+
+        message = "Summary 시트 만들어서 A1에 총매출이라고 쓰고 B1에 매출 합계 수식 넣어줘"
+        plan = _build_quick_action_plan(message, None)
+        assert plan and plan[0]["params"]["sheet_name"] == "Summary"
+        assert _quick_plan_underfits_message(plan[0]["action"], message) is True

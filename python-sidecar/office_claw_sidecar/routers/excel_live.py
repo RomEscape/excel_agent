@@ -2687,56 +2687,9 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
                 }
             ]
 
-    # "요약이라는 이름으로 시트 추가좀", "이름은 백업으로 해서 시트 하나" —
-    # 이름을 따로 부르는 문형이 먼저다. 아니면 '이름으로'가 시트 이름이 된다
-    # (2026-08-18 사람 말투 배터리 실측: '이름으로' 시트가 생겼다).
-    named_sheet_match = re.search(
-        r"(?:([^\s,]+?)\s*(?:이?라는|이?란|이?라고)\s*(?:이름(?:의|으로|은)?)?|이름은\s*([^\s,]+?)(?:으로|로)?(?=[\s,]|$))"
-        r"[^\n]{0,12}(?:시트|sheet|탭)[^\n]{0,10}(?:만들|생성|추가|파\s*줘|파줘)",
-        text,
-        re.IGNORECASE,
-    ) or re.search(
-        # "시트 새로 하나 파 주세요, 이름은 Requisition으로"(2026-08-19 ex15 v2 실측) — 사이말·쉼표·높임을 허용.
-        r"(?:시트|sheet|탭)[^\n]{0,14}(?:만들|생성|추가|파\s*주|파\s*줘|파줘|파\s*줄)[^\n]{0,12}이름은\s*([^\s,]+?)(?:으로|로)?(?=[\s,.!]|$)",
-        text,
-        re.IGNORECASE,
-    )
-    if named_sheet_match:
-        named = next((g for g in named_sheet_match.groups() if g), "").strip().strip("\"'")
-        if named:
-            return [
-                {
-                    "action": "excel_live.create_sheet",
-                    "params": {"sheet_name": named, "make_active": True},
-                    "reason": "빠른 규칙 기반 시트 생성",
-                }
-            ]
-
-    create_sheet_match = re.search(
-        # 조사(를/을/도)와 "하나/새로" 같은 사이말을 허용한다. "시트를 만들어줘"의
-        # 를 하나 때문에 퀵이 미스나 플래너로 갔고, 플래너가 이름 끝 글자(과)를
-        # 잘라 '지역성' 시트를 만들었다(2026-08-18 GUI 실측).
-        # "시트도 하나 더 만들어", "시트 새로 하나", "시트 좀 추가" — 사이말은 몇 개든 온다(2026-08-19 ex10 v2 실측).
-        r"([^\s,]+)\s*(?:시트|sheet)\s*(?:을|를|도|좀|부터|는|은|먼저)?(?:\s*(?:하나|새로|새로이|한\s*개|더|추가로|새|좀|먼저))*\s*(?:만들|생성|추가|create|add|파\s*줘|파줄|파주)",
-        text,
-        re.IGNORECASE,
-    )
-    if create_sheet_match:
-        sheet_name = str(create_sheet_match.group(1)).strip().strip("\"'")
-        if sheet_name in {"새", "새로운", "빈", "임시", "다른", "하나", "이", "그"}:
-            # "새 시트 만들어줘"의 '새'는 이름이 아니다.
-            sheet_name = ""
-        if sheet_name:
-            # "재고 관리 시트도 하나 만들어줄래" — 이름은 한 낱말이 아닐 수 있다. 앞 낱말이 조사·접속어로
-            # 끝나지 않으면 이름의 일부다(2026-08-19 ex12 실측: '관리' 시트가 생기고 뒤 턴이 전부 어긋났다).
-            sheet_name = extend_sheet_name_leftward(text, create_sheet_match.start(1), sheet_name)
-            return [
-                {
-                    "action": "excel_live.create_sheet",
-                    "params": {"sheet_name": sheet_name, "make_active": True},
-                    "reason": "빠른 규칙 기반 시트 생성",
-                }
-            ]
+    create_step = _quick_create_sheet_step(text)
+    if create_step is not None:
+        return [create_step]
 
     rename_step = _quick_rename_sheet_step(text)
     if rename_step is not None:
@@ -3513,6 +3466,113 @@ def _quick_find_replace_step(text: str, context_range: str | None) -> dict[str, 
                 "whole_cell": False,
             },
             "reason": "빠른 규칙 기반 찾아 바꾸기",
+        }
+    return None
+
+
+# "요약 시트 하나 만들어줘" — 시트 생성은 결정적이다.
+# 2026-08-20 블라인드 게이트 `new_sheet`: 24문장 중 8이 되묻기·3이 오실행이었고,
+# 그중 하나는 `'요약' 이름으로 시트 하나` 에서 **'요약 이름으로'라는 시트를 만들었다.**
+_CS_LABEL = r"(?:시트|sheet|탭|tab|워크시트|싯트|씨트)"
+_CS_MAKE = r"(?:만들|맏드|만드|생성|추가|파\s*줘|파\s*주|파줄|create|add|새로\s*파)"
+# 이름이 될 수 없는 말 — 지시어·수량·라벨.
+_CS_NOT_NAME = frozenset(
+    {
+        "새", "새로", "새로운", "빈", "임시", "다른", "이", "그", "저", "요", "하나", "한", "두", "세",
+        "시트", "sheet", "탭", "tab", "워크시트", "이름", "명", "이름으로", "여기", "여기다", "거기",
+        "ㅇㅇ", "ㅇㅋ", "아", "음", "어", "네", "또", "그리고", "새로이", "더", "추가로", "좀", "먼저",
+    }
+)
+_CS_QUOTES = "\"'“”‘’"
+
+_CREATE_SHEET_PATTERNS = (
+    # "'요약' 이름으로 시트 하나 새로 만들어" — 이름이 '이름으로' **앞**에 온다.
+    # 이걸 놓쳐 **'요약 이름으로'라는 시트가 만들어졌다**(2026-08-20 게이트).
+    re.compile(
+        r"[\"'“‘]?(?P<name>[^\s,\"'”’]+?)[\"'”’]?\s*(?:이름|명)\s*(?:으로|로)"
+        r"[^\n]{0,14}" + _CS_LABEL + r"[^\n]{0,14}" + _CS_MAKE,
+        re.IGNORECASE,
+    ),
+    # "요약이라는 이름의 새 시트를 만들어" · "요약이라고 부를 탭 추가" · "이름은 요약으로 해서 시트 하나"
+    re.compile(
+        r"(?:(?P<name>[^\s,]+?)\s*(?:이?라는|이?란|이?라고)\s*(?:이름(?:의|으로|은)?|부를|부르는)?"
+        r"|이름(?:은|을|이)?\s*(?P<name2>[^\s,]+?)(?:으로|로)?)"
+        r"[^\n]{0,14}" + _CS_LABEL + r"[^\n]{0,12}" + _CS_MAKE,
+        re.IGNORECASE,
+    ),
+    # "새 시트 하나 추가해서 요약이라고 불러줘" — 이름이 동사 뒤
+    re.compile(
+        _CS_LABEL + r"[^\n]{0,12}" + _CS_MAKE + r"[^\n]{0,10}?"
+        r"(?:이름(?:은|을|이)?\s*)?(?P<name>[^\s,]+?)\s*(?:이?라고|으로|로)\s*(?:불러|부르|해)",
+        re.IGNORECASE,
+    ),
+    # "새 탭 추가, 이름 요약으로" · "시트 만들어 이름은 요약"
+    re.compile(
+        _CS_LABEL + r"[^\n]{0,12}" + _CS_MAKE + r"[^\n]{0,8}[,·]?\s*이름\s*(?:은|을|이)?\s*"
+        r"(?P<name>[^\s,]+?)\s*(?:으로|로)?(?=[\s,.!?~…]|$)",
+        re.IGNORECASE,
+    ),
+    # "요약 시트 하나 만들어줘" · "요약 탭 추가" · "요약 시트 새로 하나 부탁"
+    re.compile(
+        r"(?P<name>[^\s,]+?)\s*" + _CS_LABEL + r"\s*(?:을|를|도|좀|하나|한\s*개|새로|새로이|더|추가로|새|먼저)*"
+        r"[^\n]{0,10}?" + _CS_MAKE,
+        re.IGNORECASE,
+    ),
+    # 동사 없이: "요약 시트" · "요약 탭 하나" · "요약 시트 새로 하나 부탁드려요"
+    re.compile(
+        r"^\s*(?P<name>[^\s,]+?)\s*" + _CS_LABEL
+        + r"(?:\s*(?:하나|한\s*개|새로|새로이|더|좀|또))*"
+        r"(?:\s*(?:부탁\s*드려요|부탁해요|부탁해|부탁드립니다|부탁|주세요|줘))?\s*[~.!?…]*$",
+        re.IGNORECASE,
+    ),
+)
+
+
+def _quick_create_sheet_step(text: str) -> dict[str, Any] | None:
+    """"요약 시트 하나 만들어줘" — 시트 생성. 이름을 못 고르면 물러난다(추측 금지)."""
+    src = str(text or "").strip()
+    if not src:
+        return None
+    # 이름 변경·삭제와 섞이지 않게.
+    if re.search(r"(바꿔|바꾸|변경|고쳐|rename|삭제|지워|없애)", src):
+        return None
+    # "A1에 시트 이름 써줘"는 쓰기다 — 단, 셀 지목이 **시트 낱말보다 앞**일 때만.
+    # 뒤에 있으면 "Summary 시트 만들어서 A1에 …"처럼 시트 생성이 먼저인 복합문이다.
+    cell_write = re.search(r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}\s*(?:셀|칸)?\s*에", src)
+    label_at = re.search(_CS_LABEL, src, re.IGNORECASE)
+    if (
+        cell_write
+        and label_at
+        and cell_write.start() < label_at.start()
+        and re.search(r"(입력|기록|써|적어|넣어|채워)", src)
+    ):
+        return None
+    for pattern in _CREATE_SHEET_PATTERNS:
+        m = pattern.search(src)
+        if not m:
+            continue
+        groups = m.groupdict()
+        name = ""
+        for key in ("name", "name2"):
+            raw = str(groups.get(key) or "").strip().strip(_CS_QUOTES)
+            # 앞뒤 따옴표를 뗀 뒤에도 조사가 남을 수 있다("'요약' 이름으로" → 요약).
+            raw = re.sub(r"(?:이?라는|이?라고|이?란)$", "", raw).strip()
+            if raw and raw.lower() not in _CS_NOT_NAME:
+                name = raw
+                break
+        if not name:
+            continue
+        # "재고 관리 시트도 하나" — 이름은 여러 낱말일 수 있다(2026-08-19 실측: '관리' 시트가 생겼다).
+        span = m.span(m.lastindex or 1)
+        try:
+            idx = src.index(name)
+        except ValueError:
+            idx = span[0]
+        name = extend_sheet_name_leftward(src, idx, name)
+        return {
+            "action": "excel_live.create_sheet",
+            "params": {"sheet_name": name, "make_active": True},
+            "reason": "빠른 규칙 기반 시트 생성",
         }
     return None
 
