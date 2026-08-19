@@ -230,6 +230,14 @@ def resolve_sheet_from_message(
             if candidate:
                 return candidate
         return _sheet_named_verbatim(lead, lead_names) or _sheet_called_by_its_korean_name(lead, lead_names) or default
+    # "B10에다 성적부 시트 결석 다 더한 값 가져와줘" — **대상 셀이 시트 언급보다 앞**이면 그 시트는 원본이고
+    # 결과는 지금 보고 있는 시트에 써야 한다. 여기서 원본으로 작업 시트를 옮기면 수식이 원본 시트에 써지고,
+    # 실측에서는 성적부!B10의 학생 이름을 덮었다(2026-08-19 결과 워크북 감사).
+    dest_first = re.search(r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}\s*(?:셀|칸)?\s*에(?:다가?|는)?(?![A-Za-z0-9])", text)
+    if dest_first:
+        first_mention = _SHEET_MENTION_PATTERN.search(text)
+        if first_mention and first_mention.start() > dest_first.start():
+            return default
     for match in _SHEET_MENTION_PATTERN.finditer(text):
         # 원문형("추이")이 실제 시트면 그걸 쓴다. 조사를 뗀 형태("추")를 먼저 보면
         # 멀쩡한 이름이 잘려 나간다.

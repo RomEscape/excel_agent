@@ -747,3 +747,72 @@ class TestNewScenarioRound4:
 
         m = _CROSS_SHEET.search("B21에 간트관리 시트에 있는 예산 총합 가져와줄래")
         assert m and m.group(2) == "간트관리"
+
+
+class TestWorkbookAuditFindings:
+    """2026-08-19 **결과 워크북 감사**로만 드러난 조용한 오실행 — 러너는 전부 성공으로 셌다."""
+
+    @pytest.mark.parametrize(
+        "text, formula",
+        [
+            ("B35 빼기 B36 한 값을 E35에 넣어줘", "=B35-B36"),
+            ("B35에서 B36 뺀 값을 E35에 넣어줘", "=B35-B36"),
+            ("B9 나누기 C9 한 값을 F9에 넣어줘", "=B9/C9"),
+            ("B7을 B6으로 나눈 값을 C7에 넣어줘", "=B7/B6"),
+        ],
+    )
+    def test_value_first_arithmetic_becomes_a_formula_not_text(self, text, formula):
+        # 셀 지목이 뒤에 오면 사칙연산 파서가 못 받아 **문장이 셀에 글자로** 박혔다.
+        from office_claw_sidecar.services.excel_live_agent import (
+            normalize_common_typos,
+            parse_command_rule_based,
+        )
+
+        step = parse_command_rule_based(normalize_common_typos(text))
+        assert step and step["action"] == "excel_live.set_formula", (text, step)
+        assert step["params"]["formula_a1"] == formula
+
+    def test_bare_particle_never_becomes_a_cell_value(self):
+        from office_claw_sidecar.services.excel_live_agent import parse_command_rule_based
+
+        assert parse_command_rule_based("제목을 A1에 넣어줘") is None
+        step = parse_command_rule_based("매출 실적을 B2에 입력해줘")
+        assert step["params"]["values_2d"] == [["매출 실적"]]
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "B10에다 성적부 시트 결석 다 더한 값 가져와줘",
+            "B10에 성적부 시트 결석 전부 더한 값 넣어줘",
+            "B10에 성적부 시트의 결석 총합 가져와",
+            "성적부 시트 결석 합계를 B10에 넣어줘",
+        ],
+    )
+    def test_cross_sheet_aggregate_targets_the_named_cell_with_a_sheet_prefixed_formula(self, text):
+        # 규칙이 못 잡으면 플래너가 **원본 시트에** 지역 SUM을 써서 학생 이름 칸을 덮었다.
+        from office_claw_sidecar.services.excel_aggregate_below import build_cross_sheet_aggregate_plan
+
+        def reader(sheet):
+            return {
+                "성적부": ("A1:F11", [["번호", "이름", "출석률(%)", "출석", "지각", "결석"], [1, "김", 90, 20, 1, 2]]),
+                "대시보드": ("A1:A1", [["제목"]]),
+            }.get(sheet)
+
+        plan = build_cross_sheet_aggregate_plan(text, reader, sheet_names=["Sheet", "성적부", "대시보드"])
+        assert plan, text
+        assert plan[0]["params"]["range_ref"] == "B10"
+        assert plan[0]["params"]["formula_a1"] == "=SUM('성적부'!F2:F11)"
+
+    def test_a_source_sheet_named_after_the_destination_cell_does_not_retarget(self):
+        from office_claw_sidecar.services.excel_param_binder import resolve_sheet_from_message
+
+        digest = {"sheets": [{"name": "Sheet"}, {"name": "성적부"}, {"name": "대시보드"}]}
+        assert resolve_sheet_from_message("B10에다 성적부 시트 결석 다 더한 값 가져와줘", digest, default="대시보드") == "대시보드"
+        # 시트를 작업 대상으로 부른 문장은 그대로 옮긴다.
+        assert resolve_sheet_from_message("성적부 시트 A1 굵게", digest, default="대시보드") == "성적부"
+
+    def test_sheet_plus_aggregate_is_a_formula_request_not_a_literal_value(self):
+        from office_claw_sidecar.services.excel_live_agent import parse_command_rule_based
+
+        step = parse_command_rule_based("성적부 시트 결석 합계를 B10에 넣어줘")
+        assert step is None or step["action"] != "excel_live.write_range", step

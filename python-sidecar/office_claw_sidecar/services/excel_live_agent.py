@@ -944,6 +944,15 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
         # "Sales_Data 시트 H1에 넣어줘"의 앞부분은 값이 아니라 시트 지목이다 — 시트·탭으로 끝나거나
         # 조사로 끝나는 조각은 값으로 보지 않는다.
         looks_like_target = re.search(r"(시트|탭|sheet|에서|의|에)\s*$", raw_value, re.IGNORECASE) is not None
+        # "성적부 시트 결석 합계를 B10에 넣어줘" — 값 안에 '시트'와 집계어가 같이 있으면 값이 아니라 수식 요청이다.
+        if re.search(r"(?:시트|탭|sheet)", raw_value, re.IGNORECASE) and re.search(
+            r"(합계|총합계|총합|총계|평균|개수|건수|합|더한|더해)", raw_value
+        ):
+            looks_like_target = True
+        # "제목을 A1에 넣어줘" — 앞머리 '제목'만 접두로 먹히고 조사 '을'이 값으로 남았다(셀에 '을' 한 글자가
+        # 들어갔다, 2026-08-19 결과 워크북 감사). 조사·군말만 남은 값은 값이 아니다.
+        if re.fullmatch(r"(?:을|를|은|는|이|가|의|로|으로|도|만|랑|과|와|에|에다|다|요|좀)", raw_value.strip()):
+            raw_value = ""
         if (
             raw_value
             and not looks_like_target
@@ -2077,6 +2086,13 @@ _ARITH_TARGET = re.compile(
     r"(?:줘요|줘|주세요|주라|줄래|놔|둬|봐)?\s*[~.!?…]*$",
     re.IGNORECASE,
 )
+# 대상 셀이 **뒤**에 오는 어순: "<식> 한 값(을) <셀>에 넣어줘".
+_ARITH_TARGET_LAST = re.compile(
+    rf"^\s*(.+?(?:값|결과|것|거)?)\s*(?:을|를)?\s*(?<![A-Za-z0-9:]){_ARITH_CELL}\s*(?:셀|칸)?\s*에(?:다가?|는)?\s*"
+    r"(?:넣어|입력|써|적어|채워|기록|계산해서\s*넣어|계산해\s*넣어)\s*(?:해)?\s*"
+    r"(?:줘요|줘|주세요|주라|줄래|놔|둬|봐)?\s*[~.!?…]*$",
+    re.IGNORECASE,
+)
 # 연산 표현 — 순서가 중요하다(뺄셈의 "에서"가 덧셈의 "에"에 먹히지 않게 뺄셈 먼저).
 _ARITH_FORMS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(rf"{_ARITH_CELL}\s*(?:에서|빼기|-|−|마이너스)\s*{_ARITH_CELL}\s*(?:을|를)?\s*(?:뺀|빼준|차감한|마이너스한|차이|차)?\s*(?:값)?", re.I), "-"),
@@ -2135,9 +2151,16 @@ def parse_cell_arithmetic_write(text: str) -> dict | None:
     if not source or "=" in source:
         return None
     target = _ARITH_TARGET.search(source)
-    if target is None:
-        return None
-    expr = target.group(2).strip()
+    if target is not None:
+        cell_ref, expr = target.group(1), target.group(2).strip()
+    else:
+        # 값이 앞에 오는 어순: "B35 빼기 B36 한 값을 E35에 넣어줘" / "B20 빼기 D20 한 값 F20에 입력".
+        # 이 꼴을 못 받으면 단일 셀 쓰기 규칙이 **문장을 그대로 텍스트로** 셀에 박는다
+        # (2026-08-19 ex15 v2 결과 워크북 실측: E35에 'B35 빼기 B36 한 값'이 글자로 들어갔고 러너는 성공으로 셌다).
+        head = _ARITH_TARGET_LAST.search(source)
+        if head is None:
+            return None
+        cell_ref, expr = head.group(2), head.group(1).strip()
     # 값 나열이면 산술이 아니다("E1에 a,b,c 입력").
     if "," in expr or ";" in expr:
         return None
@@ -2150,9 +2173,12 @@ def parse_cell_arithmetic_write(text: str) -> dict | None:
         if len(cells) != 2:
             return None
         left, right = found.group(1).upper(), found.group(2).upper()
+        if cell_ref.upper() in {left, right}:
+            # "B35 빼기 B36 한 값을 B35에" — 자기 참조는 순환이다.
+            return None
         return {
             "action": "excel_live.set_formula",
-            "params": {"range_ref": target.group(1).upper(), "formula_a1": f"={left}{op}{right}"},
+            "params": {"range_ref": cell_ref.upper(), "formula_a1": f"={left}{op}{right}"},
             "reason": f"두 셀의 {op} 연산 수식",
         }
     return None

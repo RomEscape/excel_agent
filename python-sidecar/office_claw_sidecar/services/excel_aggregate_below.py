@@ -94,6 +94,8 @@ _CROSS_SHEET_CELL_LAST = re.compile(
     + r"\s*(?:을|를|값을|값)?\s*(?:여기\s*)?([A-Z]+\d+)\s*(?:셀|칸)?\s*(?:에|로|으로|에다가?|다)?",
     re.IGNORECASE,
 )
+# 머리글이 될 수 없는 수량·정도 부사. 이게 머리글 자리에 오면 진짜 머리글은 앞 토큰이다.
+_QUANTIFIER_ONLY = re.compile(r"(?:다|전부|모두|싹|전|모|총|일괄|죄다|몽땅|통째로?)")
 _CROSS_SHEET_VERB = re.compile(r"가져|끌어|연결|수식|넣어|채워|기록|불러|참조|더해|계산|놔|놓아|써|입력")
 _TOTAL_ROW_LABELS = frozenset({"합계", "총계", "계", "총합", "평균", "최대", "최소", "개수", "total", "sum", "avg", "average"})
 
@@ -131,6 +133,11 @@ def build_cross_sheet_aggregate_plan(
             else:
                 # 시트가 아닌 낱말이면 머리글의 앞부분이다("평균 운행시간" 같은 두 낱말 머리글).
                 header_tok = f"{bare} {header_tok}".strip()
+        elif bare and _QUANTIFIER_ONLY.fullmatch(header_tok):
+            # "성적부 시트 결석 다 더한 값" — 게으른 머리글 그룹이 수량 부사('다','전부','총')를 집고
+            # 진짜 머리글('결석')은 앞 그룹으로 밀렸다. 그러면 계획이 비고, 플래너가 **원본 시트에**
+            # 지역 SUM을 써서 학생 이름 칸을 덮었다(2026-08-19 결과 워크북 감사, 러너는 성공으로 셈).
+            header_tok = bare
         matches.append((m.group(1).upper(), sheet_tok, header_tok, m.group(5)))
     if not matches:
         for m in _CROSS_SHEET_CELL_LAST.finditer(text):

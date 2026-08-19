@@ -7975,7 +7975,14 @@ async def _run_command(
                     rule_hook = "chart_kind"
         # 크로스시트 사람 말투: "A4에 지역성과 시트 주문건수 합계를 가져와줘".
         # 원본 시트를 실제로 읽어 열을 찾고 =SUM('시트'!구간) 수식을 만든다.
-        if not quick_action_plan and re.search(r"(합계|총합|평균|개수|건수|더한|더해|합)", req.message or ""):
+        # 크로스시트는 **다른 시트를 원본으로 지목한** 문장이다. 이 문형은 집계 줄 훅("표 아래 합계")이나
+        # 단일 셀 쓰기 훅보다 뒤에 있어서, 그 둘이 먼저 계획을 잡으면 아예 실행되지 않았다 — 그 결과
+        # 시트 접두 없는 =SUM(F2:F11)이 대시보드에 써지거나(값 0), 문장이 원본 시트의 이름 칸을 덮었다
+        # (2026-08-19 결과 워크북 감사: 성적부!B10의 '학생9'가 사라졌다). 그 두 훅은 크로스시트에 양보한다.
+        _cross_yieldable = rule_hook in {"aggregate_below", "aggregate_columns", "single_cell_write", "cell_arithmetic"}
+        if (not quick_action_plan or _cross_yieldable) and re.search(
+            r"(합계|총합|평균|개수|건수|더한|더해|합)", req.message or ""
+        ):
 
             def _cross_sheet_reader(sheet: str) -> tuple[str, list]:
                 svc = get_excel_live_service()
@@ -8009,6 +8016,9 @@ async def _run_command(
                         cross_step["params"]["sheet_name"] = cross_active
                 quick_action_plan = cross_steps
                 rule_hook = "cross_sheet_aggregate"
+                # 앞 훅이 세워 둔 "값 격자 확정" 표시를 지운다 — 이 계획은 수식이다.
+                row_write_confirmed = False
+                fallback_rule_step = None
     quick_plan_for_parse = _normalize_plan_or_empty(quick_action_plan) if quick_action_plan else []
     quick_first_action = quick_plan_for_parse[0].action if quick_plan_for_parse else ""
     # `understand` 단계는 훅보다 앞이라 훅이 갈아끼운 계획을 못 담는다 — 여기서 최종형을 남긴다.
