@@ -1669,6 +1669,9 @@ def _extract_quoted_headers(text: str) -> list[str]:
 # 실사용에서 자주 나오는 오타·흘려쓰기 → 규칙이 아는 표준형. 좁고 확실한
 # 짝만 둔다 — 과하게 넓히면 사용자가 쓰려던 값까지 고쳐 버린다.
 _COMMON_TYPO_PAIRS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # 된소리 오타 — 자판에서 Shift가 붙어 나온다(2026-08-19 블라인드 게이트: '씨트'가 규칙을 통째로 빗나가게 했다).
+    (re.compile(r"씨트"), "시트"),
+    (re.compile(r"씰"), "셀"),
     (re.compile(r"만들어\s*조(?=\s|$)"), "만들어줘"),
     (re.compile(r"만드러\s*줘"), "만들어줘"),
     (re.compile(r"넣어\s*조(?=\s|$)"), "넣어줘"),
@@ -1745,7 +1748,7 @@ _ENGLISH_TERMS_COMMAND: tuple[tuple[re.Pattern[str], str], ...] = _en_terms((
     ("comma", "콤마"), ("merge", "병합"), ("sort", "정렬"), ("line chart", "선 그래프"), ("bar chart", "막대 그래프"),
     ("pie chart", "원 그래프"), ("chart", "차트"), ("graph", "그래프"), ("highlight", "강조"), ("data bar", "데이터 막대"),
     ("delete", "삭제"), ("remove", "삭제"), ("save", "저장"), ("percent", "퍼센트"), ("format", "형식"),
-    ("border", "테두리"), ("borders", "테두리"), ("autofit", "자동 맞춤"), ("rename", "이름 변경"),
+    ("border", "테두리"), ("borders", "테두리"), ("autofit", "자동 맞춤"), ("rename", "이름 바꿔"),
     ("paste", "붙여넣기"),
 ))
 # 값일 수도 있는 낱말("A1에 Total 넣어줘"의 Total은 데이터다) — 쓰기 문장에서는 바꾸지 않는다.

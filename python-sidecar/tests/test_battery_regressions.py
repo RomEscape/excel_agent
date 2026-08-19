@@ -912,3 +912,53 @@ class TestNegationIsOneGate:
 
         plan = _build_quick_action_plan(normalize_common_typos(text), None)
         assert plan and plan[0]["action"] == "excel_live.save_workbook", (text, plan)
+
+
+class TestRenameSheetRule:
+    """2026-08-19 블라인드 게이트에서 `rename_sheet`는 **규칙 0건 · 오류 5 · 오실행 3**으로 가장 나빴다.
+
+    기존 규칙을 실측하니 셋이 동시에 깨져 있었다:
+      ① 새 이름이 조사를 먹는다 — "지역별실적으로" → '지역별실적으'라는 시트가 생긴다
+      ② 지시어를 시트 이름으로 잡는다 — "이 시트 이름 …" → sheet_name='이' → 없는 시트 → ERROR
+      ③ "시트명 X로" · "탭 이름 X로" · "시트 이름 X!" 는 아예 매칭되지 않는다
+    """
+
+    @pytest.mark.parametrize(
+        "text, expected_old",
+        [
+            ("지역성과 시트 이름을 지역별실적으로 바꿔 주세요", "지역성과"),
+            ("이 시트 이름 지역별실적으로 바꿔", None),
+            ("시트명 지역별실적으로 변경해줴 빨ㄹ리", None),
+            ("ㅇㅇ 탭 이름 지역별실적으로", None),
+            ("시트 이름 지역별실적!", None),
+            ("지역성과 씨트 이름 지역별실적으로 바꺼", "지역성과"),
+            ("아 그리고 지역성과 시트는 지역별실적이라고 이름 바꿔놔", "지역성과"),
+            ("지역성과 sheet 이름 지역별실적으로 rename 부탁드려요.", "지역성과"),
+            ("지역성과라고 된 탭 이름을 지역별실적으로 고쳐 주세요", "지역성과"),
+            ("이 시트 이름을 지역성과에서 지역별실적으로 바꿔 주세요", "지역성과"),
+            ("지역별실적으로 바꿔줘 지역성과 시트 이름", "지역성과"),
+            ("현재 시트 탭 이름 지역별실적으로 바꿔줘", None),
+            ("이 시트 이름 지역별실적으로 다시 지어줘", None),
+        ],
+    )
+    def test_the_new_name_never_swallows_a_particle(self, text, expected_old):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        plan = _build_quick_action_plan(normalize_common_typos(text), None)
+        assert plan and plan[0]["action"] == "excel_live.rename_sheet", (text, plan)
+        params = plan[0]["params"]
+        assert params["new_name"] == "지역별실적", (text, params)
+        assert params.get("sheet_name") == expected_old, (text, params)
+
+    @pytest.mark.parametrize(
+        "text",
+        ["A1에 시트 이름 써줘", "B2에 시트명 입력해줘", "요약 시트 만들어줘", "지역성과 시트 삭제해줘"],
+    )
+    def test_it_does_not_grab_writes_or_other_sheet_actions(self, text):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        plan = _build_quick_action_plan(normalize_common_typos(text), None)
+        actions = [str(s.get("action")) for s in (plan or [])]
+        assert "excel_live.rename_sheet" not in actions, (text, plan)

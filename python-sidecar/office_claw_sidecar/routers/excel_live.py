@@ -2732,23 +2732,9 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
                 }
             ]
 
-    rename_sheet_match = re.search(
-        r"([A-Za-z0-9_가-힣]+)\s*(?:시트|sheet|탭)\s*(?:이름(?:을|를)?)?\s*(?:을|를)?\s*"
-        r"([A-Za-z0-9_가-힣]+)\s*(?:으로|로)\s*(?:바꿔|변경|고쳐|rename)",
-        text,
-        re.IGNORECASE,
-    )
-    if rename_sheet_match:
-        old_name = str(rename_sheet_match.group(1)).strip().strip("\"'")
-        new_name = str(rename_sheet_match.group(2)).strip().strip("\"'")
-        if old_name and new_name:
-            return [
-                {
-                    "action": "excel_live.rename_sheet",
-                    "params": {"sheet_name": old_name, "new_name": new_name},
-                    "reason": "빠른 규칙 기반 시트 이름 변경",
-                }
-            ]
+    rename_step = _quick_rename_sheet_step(text)
+    if rename_step is not None:
+        return [rename_step]
 
     delete_sheet_match = re.search(
         r"([A-Za-z0-9_가-힣]+)\s*(?:시트|sheet|탭)\s*(?:을|를)?\s*(?:삭제|제거|없애)",
@@ -3453,6 +3439,119 @@ def _quick_find_replace_step(text: str, context_range: str | None) -> dict[str, 
             "reason": "빠른 규칙 기반 찾아 바꾸기",
         }
     return None
+
+
+# "이 시트" · "현재 시트" · "여기 탭" — 이름이 아니라 활성 시트를 가리킨다.
+# 이걸 이름으로 잡으면 없는 시트를 고치려다 실패한다(2026-08-19 게이트 ERROR 5건의 원인).
+_RENAME_DEICTIC = frozenset(
+    {
+        "이", "그", "저", "요", "현재", "지금", "여기", "해당", "이번", "새", "시트", "탭", "워크시트", "sheet", "tab",
+        # "지역성과라고 된 시트" 의 '된'을 이름으로 잡으면 없는 시트를 고치려 든다(2026-08-19 게이트).
+        "된", "라고", "이라고", "하는", "있는", "그런", "저런", "이런",
+        # 라벨 낱말이 옛 이름 자리로 새는 것도 막는다("탭 이름을 …" → old='이름").
+        "이름", "명", "이름을", "워크",
+    }
+)
+# 새 이름 뒤에 오는 조사. 이름 정규식이 이걸 삼키면 '지역별실적으'라는 시트가 생긴다.
+_RENAME_TAIL = r"(?:으로|로|이라고|라고|으루|루)"
+# 조사와 동사 사이에 "이름"이 한 번 더 끼는 꼴: "…지역별실적으로 이름 바꿔 부탁드려요"
+_RENAME_MID = r"(?:\s*(?:이름|명)\s*(?:을|를|은|는)?)?"
+_RENAME_VERB = r"(?:바꿔|바꾸|바꺼|바꺼줘|변경|고쳐|고치|rename|다시\s*지어|지어|바꿔놔|바꿔둬|해\s*줘|해주|부탁)"
+_RENAME_LABEL = r"(?:시트|sheet|탭|tab|워크시트|시트명|탭명)"
+
+_RENAME_PATTERNS = (
+    # "지역성과 시트 이름을 지역별실적으로 바꿔" / "이 시트 이름 지역별실적으로 바꿔"
+    re.compile(
+        r"(?:(?P<old>[A-Za-z0-9_가-힣]+)\s*)?" + _RENAME_LABEL + r"\s*(?:탭\s*)?(?:이름|명)?\s*(?:을|를|은|는)?\s*"
+        r"(?P<new>[A-Za-z0-9_가-힣]+?)\s*" + _RENAME_TAIL + _RENAME_MID + r"\s*" + _RENAME_VERB,
+        re.IGNORECASE,
+    ),
+    # "시트 이름을 지역성과에서 지역별실적으로" — 옛 이름이 '에서'로 붙는 꼴
+    re.compile(
+        _RENAME_LABEL + r"\s*(?:이름|명)?\s*(?:을|를)?\s*(?P<old>[A-Za-z0-9_가-힣]+?)\s*(?:에서|를|을)\s*"
+        r"(?P<new>[A-Za-z0-9_가-힣]+?)\s*" + _RENAME_TAIL,
+        re.IGNORECASE,
+    ),
+    # 동사 없이 끝나는 꼴: "탭 이름 지역별실적으로" · "시트명 지역별실적으로"
+    re.compile(
+        r"(?:(?P<old>[A-Za-z0-9_가-힣]+)\s*)?" + _RENAME_LABEL + r"\s*(?:탭\s*)?(?:이름|명)?\s*(?:을|를|은|는)?\s*"
+        r"(?P<new>[A-Za-z0-9_가-힣]+?)\s*" + _RENAME_TAIL + r"\s*[~.!?…]*$",
+        re.IGNORECASE,
+    ),
+    # 조사도 없는 꼴: "시트 이름 지역별실적!" — 이름 자리에 하나만 남는다
+    re.compile(
+        r"^(?:(?P<old>[A-Za-z0-9_가-힣]+)\s*)?" + _RENAME_LABEL + r"\s*(?:탭\s*)?(?:이름|명)\s*(?:을|를|은|는)?\s*"
+        r"(?P<new>[A-Za-z0-9_가-힣]+)\s*[~.!?…]*$",
+        re.IGNORECASE,
+    ),
+    # "지역성과라고 된 시트 이름을 지역별실적으로" — 옛 이름이 '라고 된'으로 붙는 꼴
+    re.compile(
+        r"(?P<old>[A-Za-z0-9_가-힣]+?)\s*(?:이?라고)\s*(?:된|되어\s*있는|불리는)\s*" + _RENAME_LABEL
+        + r"\s*(?:이름|명)?\s*(?:을|를|은|는)?\s*(?P<new>[A-Za-z0-9_가-힣]+?)\s*" + _RENAME_TAIL,
+        re.IGNORECASE,
+    ),
+    # "지역성과 시트는 지역별실적이라고 이름 바꿔놔" — 새 이름이 '(이)라고'로 붙고 '이름'이 뒤에 온다
+    re.compile(
+        r"(?:(?P<old>[A-Za-z0-9_가-힣]+)\s*)?" + _RENAME_LABEL + r"\s*(?:은|는|을|를)?\s*"
+        r"(?P<new>[A-Za-z0-9_가-힣]+?)\s*(?:이?라고)\s*(?:이름|명)\s*" + _RENAME_VERB,
+        re.IGNORECASE,
+    ),
+    # 새 이름이 앞: "지역별실적으로 바꿔줘 지역성과 시트 이름"
+    re.compile(
+        r"^(?P<new>[A-Za-z0-9_가-힣]+?)\s*" + _RENAME_TAIL + _RENAME_MID + r"\s*" + _RENAME_VERB
+        + r"[^\n]{0,12}?(?:(?P<old>[A-Za-z0-9_가-힣]+)\s*)?" + _RENAME_LABEL + r"\s*(?:이름|명)",
+        re.IGNORECASE,
+    ),
+)
+
+
+def _quick_rename_sheet_step(text: str) -> dict[str, Any] | None:
+    """"지역성과 시트 이름을 지역별실적으로 바꿔" — 시트 이름 변경은 결정적이다.
+
+    2026-08-19 블라인드 게이트에서 이 과제는 규칙 0건 · 오류 5 · 오실행 3으로 가장 나빴다.
+    기존 규칙은 새 이름이 조사를 먹고('지역별실적으'), 지시어를 시트 이름으로 잡았다('이').
+    """
+    src = str(text or "").strip()
+    if not src or (not re.search(r"(?:이름|명)", src) and not re.search(r"rename", src, re.IGNORECASE)):
+        return None
+    # "시트 만들어/삭제" 같은 다른 시트 동작과 섞이지 않게.
+    if re.search(r"(만들|생성|추가|삭제|지워|없애|복사)", src):
+        return None
+    # "A1에 시트 이름 써줘"는 **쓰기**다 — 셀을 지목하고 쓰기 동사가 있으면 이름 변경이 아니다.
+    if re.search(r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}\s*(?:셀|칸)?\s*에", src) and re.search(
+        r"(입력|기록|써|적어|넣어|채워)", src
+    ):
+        return None
+    # 앞 패턴이 지시어("된")를 옛 이름으로 물면 뒤의 정확한 패턴("X라고 된 …")을 못 쓴다.
+    # **옛 이름을 제대로 집은 후보를 우선**하고, 없을 때만 활성 시트 대상으로 떨어진다.
+    fallback: dict[str, Any] | None = None
+    for pattern in _RENAME_PATTERNS:
+        m = pattern.search(src)
+        if not m:
+            continue
+        new_name = str(m.group("new") or "").strip().strip("\"'")
+        old_name = str(m.groupdict().get("old") or "").strip().strip("\"'")
+        if not new_name or new_name.lower() in _RENAME_DEICTIC:
+            continue
+        # 지시어("이 시트")면 대상은 활성 시트다 — 이름을 넘기지 않는다.
+        if old_name.lower() in _RENAME_DEICTIC:
+            old_name = ""
+        if old_name and old_name == new_name:
+            continue
+        params: dict[str, Any] = {"new_name": new_name}
+        if old_name:
+            params["sheet_name"] = old_name
+        step = {
+            "action": "excel_live.rename_sheet",
+            "params": params,
+            "reason": "빠른 규칙 기반 시트 이름 변경",
+        }
+        if old_name:
+            return step
+        if fallback is None:
+            fallback = step
+    return fallback
+
 
 
 def _looks_like_excel_request(message: str) -> bool:
