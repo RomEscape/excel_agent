@@ -142,3 +142,72 @@ class TestInterpretationCard:
         pending = body.get("pending_approval") or {}
         assert pending.get("interpretation") in (False, None), pending
         assert not str(pending.get("summary", "")).startswith("이렇게 이해했어요")
+
+
+class TestPlanSanityGate:
+    """계획 위생 검사 배선 — 지시문을 값으로 쓰려는 계획은 실행 대신 되묻는다.
+
+    2026-08-19 결과 워크북 감사: 모델이 "E35에 'B35 빼기 B36 한 값'이라는 **글자**를 써라"는
+    계획을 냈고, 사후조건은 그 글자가 들어간 것을 확인하고 **통과**시켰다.
+    사후조건은 "말한 대로 됐는가"만 보므로 말이 틀린 경우를 원리적으로 못 잡는다.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _service(self, monkeypatch):
+        fake = _FakeExcelService()
+        monkeypatch.setattr(router, "get_excel_live_service", lambda: fake)
+        router._pending_operation_slots.clear()
+        router._pending_approvals.clear()
+        router._pending_clarifications.clear()
+
+        async def _no_llm(_message, llm_service, context):
+            raise ValueError("skip")
+
+        monkeypatch.setattr(router, "parse_excel_live_command", _no_llm)
+
+    def _post(self, message, session):
+        payload = {"message": message, "session_id": session, "approve": False}
+        return client.post("/excel-live/command", json=payload, headers=HEADERS).json()
+
+    def test_a_directive_fragment_written_as_text_is_blocked(self, monkeypatch):
+        async def _llm_plan(_message, llm_service, context):
+            return {
+                "action_plan": [
+                    {
+                        "action": "excel_live.write_range",
+                        "params": {"start_cell": "A10", "values_2d": [["이 표 아래에"]]},
+                    }
+                ],
+                "action": "excel_live.write_range",
+                "params": {},
+                "reason": "플래너 해석",
+                "intent": "edit",
+            }
+
+        monkeypatch.setattr(router, "parse_excel_live_command", _llm_plan)
+        body = self._post("이 표 아래에 정리해줘", "sess-sanity-1")
+        assert body.get("action") == "excel_live.clarify", body
+        assert body.get("approval_required") is not True
+        result = body.get("result") or {}
+        assert result.get("sanity_code") == "value_is_a_directive", result
+        assert result.get("ask_follow_up") is True
+
+    def test_an_ordinary_value_still_executes(self, monkeypatch):
+        async def _llm_plan(_message, llm_service, context):
+            return {
+                "action_plan": [
+                    {
+                        "action": "excel_live.write_range",
+                        "params": {"start_cell": "E35", "values_2d": [["분기 매출"]]},
+                    }
+                ],
+                "action": "excel_live.write_range",
+                "params": {},
+                "reason": "플래너 해석",
+                "intent": "edit",
+            }
+
+        monkeypatch.setattr(router, "parse_excel_live_command", _llm_plan)
+        body = self._post("E35에 분기 매출이라고 써줘", "sess-sanity-2")
+        assert body.get("action") != "excel_live.clarify", body
+        assert body.get("approval_required") is True

@@ -1315,3 +1315,84 @@ class TestCreateSheetName:
         plan = _build_quick_action_plan(message, None)
         assert plan and plan[0]["params"]["sheet_name"] == "Summary"
         assert _quick_plan_underfits_message(plan[0]["action"], message) is True
+
+
+class TestTitleCellWrite:
+    """2026-08-20 블라인드 게이트 `title_cell`. 한 칸에 제목 한 줄 — 어순·조사가 제각각이다.
+
+    이전 실패:
+      - `H1 물류 관제 대시보드`(조사·동사 없음) → 규칙이 못 잡아 모델로 갔다
+      - `H1 셀 값에 … 넣어줘` → 값이 **'에 물류 관제 대시보드'** (조사가 값에 붙음)
+      - `물류 관제 대시보드, 이걸 H1에 써주세요` → 값이 **'물류 관제 대시보드, 이걸'**
+      - `H1 칸에 … 적어주세요` → 한글엔 낱말 경계가 없어 `적어(?:줘)?\\b`가 실패
+    """
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "H1에 물류 관제 대시보드라고 써줘",
+            "H1 셀에 물류 관제 대시보드 입력",
+            "H1 칸에 물류 관제 대시보드 적어주세요",
+            "H1 셀에 물류 관제 대시보드 기입해주세요",
+            "H1 셀 값에 물류 관제 대시보드 라고 텍스트 넣어줘",
+            "물류 관제 대시보드, 이걸 H1에 써주세요",
+            "제목은 물류 관제 대시보드, H1에 넣어줘",
+            "H1 물류 관제 대시보드",
+            "H1 셀 물류 관제 대시보드",
+        ],
+    )
+    def test_writes_the_whole_title_into_the_named_cell(self, text: str) -> None:
+        from office_claw_sidecar.services.excel_live_agent import (
+            normalize_common_typos,
+            parse_command_rule_based,
+        )
+
+        step = parse_command_rule_based(normalize_common_typos(text))
+        assert step and step["action"] == "excel_live.write_range", text
+        assert step["params"]["start_cell"] == "H1", text
+        assert step["params"]["values_2d"] == [["물류 관제 대시보드"]], text
+
+    def test_bare_cell_text_accepts_a_colon(self) -> None:
+        from office_claw_sidecar.services.excel_live_agent import parse_command_rule_based
+
+        step = parse_command_rule_based("A1: 분기 보고")
+        assert step and step["params"] == {"start_cell": "A1", "values_2d": [["분기 보고"]]}
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "B2 정렬해줘",
+            "A1 굵게",
+            "A1:C3 합계",
+            "C3 확인 좀",
+            "H1에 넣어줘",
+            "A1에 이거 넣어줘",
+        ],
+    )
+    def test_does_not_invent_a_title(self, text: str) -> None:
+        """동사·명령이 붙은 문장을 제목 쓰기로 오인하면 엉뚱한 글자가 칸에 박힌다."""
+        from office_claw_sidecar.services.excel_live_agent import (
+            normalize_common_typos,
+            parse_command_rule_based,
+        )
+
+        step = parse_command_rule_based(normalize_common_typos(text)) or {}
+        assert step.get("reason", "") != "단일 셀 값 입력 요청(조사 없는 최소 문장)", text
+
+    def test_comma_list_still_goes_to_the_selected_cell(self) -> None:
+        """`CO2 농도,512 입력` — CO2는 셀이 아니라 값이다(2026-08-19 ex4 실측).
+
+        조사 없는 최소 문장 규칙이 이걸 가로채면 CO2 셀에 써 버린다.
+        """
+        from office_claw_sidecar.services.excel_live_agent import parse_command_rule_based
+
+        step = parse_command_rule_based("CO2 농도,512 입력")
+        assert step and step["params"]["start_cell"] == "__ACTIVE_CELL__"
+        assert step["params"]["values_2d"] == [["CO2 농도,512"]]
+
+    def test_cell_clear_is_not_a_title_write(self) -> None:
+        from office_claw_sidecar.services.excel_live_agent import parse_command_rule_based
+
+        step = parse_command_rule_based("A1 지워줘")
+        assert step and step["reason"] == "셀 값 삭제 요청"
+        assert step["params"]["values_2d"] == [[None]]

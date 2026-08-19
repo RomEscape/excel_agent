@@ -104,3 +104,30 @@ class TestWritingToTheSourceSheet:
             {"action": "excel_live.write_range", "params": {"start_cell": "A1", "values_2d": [["제목"]], "sheet_name": "성적부"}}
         ]
         assert check_plan_sanity(steps, message="성적부 시트 A1에 제목 써줘", active_sheet="대시보드") == []
+
+
+class TestParticleValueOnlyWhenSingleCell:
+    """`A2:C2에 가,나,다 입력` — 나열된 한 글자는 조사가 아니라 값이다.
+
+    2026-08-20 배선 직후 실측: 이 문장이 위생 검사에 걸려 되묻기로 떨어졌다
+    (`test_a_rule_plan_keeps_the_plain_approval` 실패).
+    """
+
+    def test_a_list_of_single_letters_passes(self) -> None:
+        issues = check_plan_sanity(
+            [
+                {
+                    "action": "excel_live.write_range",
+                    "params": {"start_cell": "A2", "values_2d": [["가", "나", "다"]]},
+                }
+            ],
+            message="A2:C2에 가,나,다 입력",
+        )
+        assert issues == []
+
+    def test_a_lone_particle_in_one_cell_is_still_caught(self) -> None:
+        issues = check_plan_sanity(
+            [{"action": "excel_live.write_range", "params": {"start_cell": "A1", "values_2d": [["을"]]}}],
+            message="제목을 A1에 넣어줘",
+        )
+        assert [i.code for i in issues] == ["value_is_a_directive"]

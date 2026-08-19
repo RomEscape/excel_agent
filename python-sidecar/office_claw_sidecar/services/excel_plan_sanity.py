@@ -70,12 +70,16 @@ def _cells_of(values: Any) -> list[str]:
     return out
 
 
-def _looks_like_command_value(value: str) -> str:
-    """이 값이 데이터가 아니라 지시문으로 보이면 이유를 돌려준다."""
+def _looks_like_command_value(value: str, *, single_cell: bool = True) -> str:
+    """이 값이 데이터가 아니라 지시문으로 보이면 이유를 돌려준다.
+
+    `single_cell`이 거짓이면 조사-한-글자 검사를 건너뛴다 — 여러 칸에 나열해 쓰는 계획에서는
+    '가'·'다' 같은 한 글자가 조사가 아니라 값이다(2026-08-20 `A2:C2에 가,나,다 입력` 오탐).
+    """
     text = re.sub(r"\s+", " ", str(value or "")).strip()
     if not text or text.startswith("="):
         return ""
-    if _PARTICLE_ONLY.fullmatch(text):
+    if single_cell and _PARTICLE_ONLY.fullmatch(text):
         return "조사·군말 한 조각이 값으로 들어갔습니다"
     if _CELL_REF.search(text) and _OPERATION_WORD.search(text):
         return "셀 주소와 계산 낱말이 함께 든 문장은 값이 아니라 수식 요청입니다"
@@ -116,8 +120,9 @@ def check_plan_sanity(
 
         # S1~S4 — 쓰려는 값이 실은 지시문인가.
         if action in _WRITE_ACTIONS:
-            for value in _cells_of(params.get("values_2d")):
-                why = _looks_like_command_value(value)
+            written = _cells_of(params.get("values_2d"))
+            for value in written:
+                why = _looks_like_command_value(value, single_cell=len(written) == 1)
                 if not why:
                     continue
                 # 원문에 그대로 있는 조각일 때만 — 사용자가 진짜로 그 글자를 넣으려는 경우와 가른다.

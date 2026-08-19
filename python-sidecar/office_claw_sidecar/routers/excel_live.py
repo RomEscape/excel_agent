@@ -138,6 +138,7 @@ from office_claw_sidecar.services.excel_param_binder import (
     sheet_entry,
     sheet_mention_matches_known,
 )
+from office_claw_sidecar.services.excel_plan_sanity import check_plan_sanity, worst_severity
 from office_claw_sidecar.services.excel_planner_escalation import (
     EscalationResult,
     plan_with_escalation,
@@ -9593,6 +9594,39 @@ def _plan_approval_gate(ctx: PlanExecution, plan: list[PlanStep]) -> ExcelLiveAc
     # 크로스시트 집계가 원본 시트에 써져 학생 이름을 지웠고, 어느 층도 못 막았다).
     scope_verdict = _assess_blast_radius(ctx, plan)
 
+    # 계획 위생 — 워크북이 아니라 **계획과 원문의 관계**를 본다. 사후조건은 "계획이 말한 대로
+    # 됐는가"만 보므로 계획 자체가 틀린 경우(지시문을 값으로 쓰기, 원본 시트에 쓰기)를
+    # 원리적으로 못 잡는다(2026-08-19 결과 워크북 감사에서 확인).
+    sanity_issues = _assess_plan_sanity(ctx, plan)
+    if worst_severity(sanity_issues) == "block":
+        question = _sanity_question(sanity_issues)
+        trace_note(
+            "plan_sanity",
+            code=sanity_issues[0].code,
+            detail=sanity_issues[0].detail[:120],
+            action=sanity_issues[0].action,
+        )
+        previous = _pending_clarifications.get(ctx.session_key)
+        _pending_clarifications[ctx.session_key] = PendingClarification(
+            session_id=ctx.session_key,
+            original_message=previous.original_message if previous else req.message,
+            question=question,
+            ask_count=(previous.ask_count + 1) if previous else 1,
+            created_at_ts=time.time(),
+        )
+        return ExcelLiveActionResponse(
+            ok=True,
+            action="excel_live.clarify",
+            reason=question,
+            result={
+                "ask_follow_up": True,
+                "follow_up_question": question,
+                "operation_intent": "clarify",
+                "blocked_action": sanity_issues[0].action,
+                "sanity_code": sanity_issues[0].code,
+            },
+        )
+
     confirm_steps = [
         step
         for step in plan
@@ -9688,7 +9722,10 @@ def _plan_approval_gate(ctx: PlanExecution, plan: list[PlanStep]) -> ExcelLiveAc
             detail=scope_verdict.summary(limit=8),
             action=head.action,
         )
-    if plan_from_model or scope_verdict.is_risky:
+    if sanity_issues:
+        pending.interpretation = True
+        pending.summary = f"{pending.summary}\n\n⚠ {_sanity_question(sanity_issues)}"
+    if plan_from_model or scope_verdict.is_risky or sanity_issues:
         pending.interpretation = True
         pending.summary = (
             "이렇게 이해했어요:\n"
@@ -9717,6 +9754,31 @@ def _plan_approval_gate(ctx: PlanExecution, plan: list[PlanStep]) -> ExcelLiveAc
         pending_approval=pending,
         reason=head.reason or "승인이 필요한 작업입니다.",
     )
+
+
+def _sanity_question(issues: list) -> str:
+    """위생 문제를 사람에게 물을 한 문장으로."""
+    head = issues[0]
+    if head.code == "value_is_a_directive":
+        return f"{head.detail} 그 문장을 글자 그대로 넣을까요, 아니면 계산 결과를 넣을까요?"
+    if head.code == "writes_to_the_source_sheet":
+        return f"{head.detail} 어느 시트에 쓸까요?"
+    return f"{head.detail} 이대로 진행할까요?"
+
+
+def _assess_plan_sanity(ctx: PlanExecution, plan: list[PlanStep]) -> list:
+    """계획이 원문과 앞뒤가 맞는지. 판정에 실패하면 통과시킨다(멀쩡한 작업을 막지 않는다)."""
+    try:
+        service = get_excel_live_service()
+        workbook_id = _resolve_workbook_id(service, ctx.req.workbook_id)
+        active_sheet = _resolve_sheet_name(service, workbook_id, ctx.req.sheet_name)
+        return check_plan_sanity(
+            [{"action": step.action, "params": dict(step.params or {})} for step in plan],
+            message=str(ctx.req.message or ""),
+            active_sheet=str(active_sheet or ""),
+        )
+    except Exception:
+        return []
 
 
 def _assess_blast_radius(ctx: PlanExecution, plan: list[PlanStep]):

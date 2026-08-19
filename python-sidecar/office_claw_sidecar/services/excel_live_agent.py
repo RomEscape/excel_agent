@@ -142,6 +142,32 @@ _DEICTIC_PRONOUN_ONLY = re.compile(
     r"이\s*표|그\s*표|복사한\s*거|복사한\s*것|복사본|붙여넣기|클립보드|거|것)\s*(?:을|를|도|은|는)?"
 )
 
+# 한 칸 쓰기 동사 — 어미를 넓게 받는다. "적어주세요"가 `\b`에 걸려 안 잡히던 것을 고치며 정리했다
+# (2026-08-20 블라인드 게이트 `title_cell`: 한글은 낱말 경계가 없어 `적어(?:줘)?\b`가 '적어주세요'에서 실패).
+_SW_VERB = (
+    r"(?:입력|기입|기록|작성|써|쓰|적어|적|넣어|넣|채워|채우|write|set|input)"
+    r"(?:해)?(?:\s*(?:주세요|주시겠어요|주실래요|줄래요|줄래|주라|주세|줘요|줘|봐|라))?"
+)
+
+# 값 끝에 붙은 지시어와 쉼표 — "물류 관제 대시보드, 이걸 H1에" 의 ', 이걸'은 값이 아니다.
+_VALUE_TRAILING_DEICTIC = re.compile(
+    r"[,·]?\s*(?:이걸|이거|이것|요걸|요거|그걸|그거|그것|얘)\s*(?:을|를|은|는)?\s*$"
+)
+
+# 조사도 동사도 없는 최소 문장 — "H1 물류 관제 대시보드", "A1: 분기 보고".
+# 2026-08-20 블라인드 게이트 `title_cell`: 이 어순이 규칙에 안 걸려 모델로 갔고,
+# 모델은 제목 대신 문장 조각을 썼다. 아주 좁게(셀 하나 + 명령어 없는 짧은 값) 받는다.
+_BARE_CELL_TEXT = re.compile(
+    r"^\s*([a-z]{1,3}\d{1,7})\s*(?:셀|칸)?\s*[:：]?\s*(.+?)\s*[.!~…]*\s*$",
+    re.IGNORECASE,
+)
+# 명령으로 읽히는 꼬리·동사가 있으면 제목이 아니다.
+_BARE_NOT_TITLE = re.compile(
+    r"(?:줘|주세요|주라|줄래|해라|하자|봐|할래|해줘|보자|시켜|해)\s*$"
+    r"|(?:지워|삭제|정렬|만들|바꿔|바꾸|변경|칠해|굵게|합쳐|병합|복사|붙여|계산|더해|빼|나눠|곱해"
+    r"|추가|생성|열어|저장|확인|보여|찾아|채워|자동|맞춰|서식|차트|그래프|수식|함수)"
+)
+
 _VALUE_FILLER_LEAD = re.compile(
     r"^(?:(?:칸|셀)\s*에(?:다가?)?\s*|(?:제목|타이틀|title|값|내용|텍스트|글자|문구)(?:으로|로|은|는|을|를|이라고|라고)?\s+)+",
     re.IGNORECASE,
@@ -941,9 +967,15 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
     # 셀 토큰 앞의 부정 후읽기: "A1:F6에"의 F6은 범위의 일부지 셀이 아니다 —
     # 이걸 셀로 오인하면 문장 전체가 그 칸의 값이 된다(2026-08-18 실측).
     single_write_patterns = [
-        r"(?<![:A-Za-z0-9])([a-z]+\d+)\s*(?:셀)?\s*에(?:다가?)?\s*(?:값\s*)?['\"]?([^'\"]+?)['\"]?\s*(?:을|를)?\s*(?:로)?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|채워(?:줘)?|write|set|input)",
-        r"(?<![:A-Za-z0-9])([a-z]+\d+)\s*(?:셀)?\s*값(?:을|를)?\s*['\"]?([^'\"]+?)['\"]?\s*(?:로)?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|채워(?:줘)?|write|set|input)",
-        r"(?<![:A-Za-z0-9])\b([a-z]+\d+)\s+['\"]?([^'\"]+?)['\"]?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|채워(?:줘)?|write|set|input)\b",
+        r"(?<![:A-Za-z0-9])([a-z]+\d+)\s*(?:셀|칸)?\s*에(?:다가?)?\s*(?:값\s*(?:으로|에)?\s*)?['\"]?([^'\"]+?)['\"]?\s*(?:을|를)?\s*(?:로)?\s*("
+        + _SW_VERB
+        + r")",
+        r"(?<![:A-Za-z0-9])([a-z]+\d+)\s*(?:셀|칸)?\s*값(?:을|를|에(?:다가?)?|은|이)?\s*['\"]?([^'\"]+?)['\"]?\s*(?:로|으로)?\s*("
+        + _SW_VERB
+        + r")",
+        r"(?<![:A-Za-z0-9])([a-z]+\d+)\s+['\"]?([^'\"]+?)['\"]?\s*("
+        + _SW_VERB
+        + r")(?=[\s,.!?~…]|$)",
     ]
     # 값이 먼저 오는 어순: "물류 관제 대시보드 H1에 입력해줘" / "제목 '분기 보고' A1에 써줘"
     # (2026-08-19 블라인드 게이트: 이 어순이 모델로 가 'H1'에 '입력'이라는 글자가 써졌다).
@@ -956,6 +988,10 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
     )
     if value_first and not re.search(r"[a-z]+\d+:[a-z]+\d+", text, re.IGNORECASE):
         raw_value = _strip_value_fillers(value_first.group(1))
+        # "물류 관제 대시보드, 이걸 H1에 써주세요" — 값 뒤 지시어와 쉼표는 값이 아니다
+        # (2026-08-20 게이트: 셀에 '물류 관제 대시보드, 이걸'이 그대로 써졌다).
+        raw_value = _VALUE_TRAILING_DEICTIC.sub("", raw_value)
+        raw_value = re.sub(r"[\s,;·]+$", "", raw_value)
         # "Sales_Data 시트 H1에 넣어줘"의 앞부분은 값이 아니라 시트 지목이다 — 시트·탭으로 끝나거나
         # 조사로 끝나는 조각은 값으로 보지 않는다.
         looks_like_target = re.search(r"(시트|탭|sheet|에서|의|에)\s*$", raw_value, re.IGNORECASE) is not None
@@ -1002,6 +1038,8 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
         # "H1 칸에 물류 관제 대시보드 적어" / "H1에 제목으로 … 입력" / "… 라고 title 적어" —
         # 칸·제목·title 같은 말은 값이 아니다(2026-08-19 블라인드 게이트 title_cell 11건 오염).
         raw_value = _strip_value_fillers(raw_value)
+        raw_value = _VALUE_TRAILING_DEICTIC.sub("", raw_value)
+        raw_value = re.sub(r"[\s,;·]+$", "", raw_value)
         if "수식" in raw_value or "formula" in raw_value.lower() or "=" in raw_value:
             continue
         # "A1에 이거 넣어줘" — 대명사는 값이 아니라 복사한 것을 가리킨다(2026-08-19).
@@ -1016,6 +1054,39 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
             "params": {"start_cell": cell, "values_2d": [[value]]},
             "reason": "단일 셀 값 입력 요청",
         }
+
+    # "H1 물류 관제 대시보드" — 조사도 동사도 없이 셀과 값만 있는 문장.
+    # 값이 없어 되묻어야 하는 문장("H1에 넣어줘")과 섞이지 않게 루프 뒤에서 본다.
+    # 동사가 있으면 위 패턴들·선택셀 규칙 몫이다. 이 규칙은 **동사 없는** 문장만 받는다
+    # (2026-08-20: "CO2 농도,512 입력"을 가로채 CO2 셀에 써 버렸다 — 원래는 선택 셀 쓰기다).
+    has_write_verb = re.search(_SW_VERB + r"\s*[.!?~…]*$", text, re.IGNORECASE) is not None
+    if not valueless_cell_write and not has_write_verb and not re.search(
+        r"[a-z]+\d+\s*:\s*[a-z]+\d+", text, re.IGNORECASE
+    ):
+        cell_tokens = re.findall(r"(?<![:A-Za-z0-9])[a-z]{1,3}\d{1,7}", text, re.IGNORECASE)
+        bare = _BARE_CELL_TEXT.match(text) if len(cell_tokens) == 1 else None
+        if bare:
+            bare_value = _strip_value_fillers(bare.group(2)).strip()
+            bare_value = _VALUE_TRAILING_DEICTIC.sub("", bare_value)
+            bare_value = re.sub(r"[\s,;·]+$", "", bare_value)
+            if (
+                bare_value
+                and len(bare_value) <= 60
+                and len(bare_value.split()) <= 8
+                and "=" not in bare_value
+                and not re.search(r"[,;]", bare_value)
+                and not _BARE_NOT_TITLE.search(bare_value)
+                and not _COMMANDISH_TOKEN.fullmatch(bare_value)
+                and not _DEICTIC_PRONOUN_ONLY.fullmatch(bare_value)
+            ):
+                return {
+                    "action": "excel_live.write_range",
+                    "params": {
+                        "start_cell": bare.group(1).upper(),
+                        "values_2d": [[_parse_literal_value(bare_value)]],
+                    },
+                    "reason": "단일 셀 값 입력 요청(조사 없는 최소 문장)",
+                }
 
     if valueless_cell_write:
         # "H1에 넣어줘" — 셀은 있는데 넣을 값이 없다. 계획을 만들면 values_2d=[[""]]가 되어
