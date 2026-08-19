@@ -110,22 +110,25 @@ class RiskyCell:
 
 @dataclass
 class ScopeVerdict:
-    """지목 밖에서 값을 덮는가."""
+    """지목 밖에서 값을 덮는가 / 정렬이 행을 어긋나게 하는가."""
 
     risky: list[RiskyCell] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
     checked: bool = True
     why: str = ""
 
     @property
     def is_risky(self) -> bool:
-        return bool(self.risky)
+        return bool(self.risky) or bool(self.warnings)
 
     def summary(self, limit: int = 4) -> str:
-        if not self.risky:
-            return ""
-        head = ", ".join(c.describe() for c in self.risky[:limit])
-        more = f" 외 {len(self.risky) - limit}칸" if len(self.risky) > limit else ""
-        return f"지목하지 않은 자리의 값 {len(self.risky)}칸을 덮습니다: {head}{more}"
+        parts: list[str] = []
+        if self.risky:
+            head = ", ".join(c.describe() for c in self.risky[:limit])
+            more = f" 외 {len(self.risky) - limit}칸" if len(self.risky) > limit else ""
+            parts.append(f"지목하지 않은 자리의 값 {len(self.risky)}칸을 덮습니다: {head}{more}")
+        parts.extend(self.warnings)
+        return " / ".join(parts)
 
 
 def _same_sheet(a: str | None, b: str | None) -> bool:
@@ -261,6 +264,63 @@ def write_footprint(
 
 def _is_blank(value: Any) -> bool:
     return value is None or (isinstance(value, str) and not value.strip())
+
+
+SORT_ACTIONS: frozenset[str] = frozenset({"excel_live.sort_range", "excel_live.sort_rows"})
+
+
+def assess_sort_integrity(
+    steps: list[dict[str, Any]],
+    *,
+    active_sheet: str,
+    read_rect,
+    used_ref_of,
+    resolve_placeholder=None,
+) -> list[str]:
+    """정렬 범위가 **표의 일부 열만** 덮는지 본다. 덮으면 나머지 열이 제자리에 남아 모든 행이 어긋난다.
+
+    2026-08-19 실측(파일 엔진): `지역|건수|비고` 표에서 `B1:B4`만 정렬했더니 건수만 재배열되고
+    지역·비고는 그대로라 **세 행이 전부 다른 값과 짝지어졌다.** 되돌릴 방법이 없고 실행기는 성공으로 보고한다.
+    사후조건으로는 늦다 — 이미 섞인 뒤다.
+    """
+    from office_claw_sidecar.services.excel_table_region import expand_to_table_region
+
+    out: list[str] = []
+    for step in steps or []:
+        if not isinstance(step, dict) or str(step.get("action") or "") not in SORT_ACTIONS:
+            continue
+        params = dict(step.get("params") or {})
+        sheet = _norm_sheet(params.get("sheet_name"), active_sheet)
+        raw = str(params.get("target_range") or params.get("range_ref") or "").strip()
+        if raw in PLACEHOLDERS and resolve_placeholder is not None:
+            try:
+                raw = str(resolve_placeholder(sheet, raw) or "")
+            except Exception:
+                continue
+        rect = parse_ref(raw, sheet)
+        if rect is None or (rect.c1 == rect.c2 and rect.r1 == rect.r2):
+            continue
+        try:
+            used_raw = str(used_ref_of(sheet) or "")
+            used = parse_ref(used_raw, sheet)
+            if used is None:
+                continue
+            values = read_rect(sheet, used.ref())
+        except Exception:
+            continue
+        if not isinstance(values, list) or not values:
+            continue
+        grown = expand_to_table_region(
+            (rect.r1, rect.c1, rect.r2, rect.c2), (used.r1, used.c1, used.r2, used.c2), values
+        )
+        g_c1, g_c2 = grown[1], grown[3]
+        if g_c1 < rect.c1 or g_c2 > rect.c2:
+            missing = [idx_to_col(c) for c in range(g_c1, g_c2 + 1) if not (rect.c1 <= c <= rect.c2)]
+            out.append(
+                f"정렬 범위 {rect.ref()}가 표({idx_to_col(g_c1)}~{idx_to_col(g_c2)}열)의 일부만 덮습니다 — "
+                f"{', '.join(missing[:6])}열이 제자리에 남아 행이 어긋납니다"
+            )
+    return out
 
 
 def assess(

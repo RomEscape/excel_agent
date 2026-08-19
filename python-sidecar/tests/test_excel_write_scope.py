@@ -251,3 +251,76 @@ class TestBlastRadius:
             steps=steps, message="A1:D4에 넣어줘", context_range=None, active_sheet="데이터", read_rect=spy
         )
         assert (seen and seen[0] == "A1:E5") or seen[0] == "A5:E5", seen
+
+
+class TestSortIntegrity:
+    """표의 일부 열만 정렬하면 나머지 열이 제자리에 남아 **모든 행이 어긋난다**.
+
+    2026-08-19 파일 엔진 실측: `지역|건수|비고` 표에서 B1:B4만 정렬했더니 건수만 재배열되고
+    지역·비고는 그대로라 세 행이 전부 다른 값과 짝지어졌다. 되돌릴 수 없고 실행기는 성공으로 보고한다.
+    """
+
+    def _table(self):
+        return {"S": [["지역", "건수", "비고"], ["수도권", 10, "a"], ["충청권", 30, "b"], ["영남권", 20, "c"]]}
+
+    def _args(self, data):
+        return {
+            "active_sheet": "S",
+            "read_rect": reader_factory(data),
+            "used_ref_of": lambda sheet: "A1:C4",
+        }
+
+    def test_single_column_sort_inside_a_wider_table_is_flagged(self):
+        from office_claw_sidecar.services.excel_write_scope import assess_sort_integrity
+
+        data = self._table()
+        warns = assess_sort_integrity(
+            [{"action": "excel_live.sort_range", "params": {"target_range": "B1:B4", "key_column": "건수"}}],
+            **self._args(data),
+        )
+        assert warns and "행이 어긋납니다" in warns[0], warns
+        assert "A" in warns[0] and "C" in warns[0]
+
+    def test_sorting_the_whole_table_is_not_flagged(self):
+        from office_claw_sidecar.services.excel_write_scope import assess_sort_integrity
+
+        data = self._table()
+        warns = assess_sort_integrity(
+            [{"action": "excel_live.sort_range", "params": {"target_range": "A1:C4", "key_column": "건수"}}],
+            **self._args(data),
+        )
+        assert warns == []
+
+    def test_a_placeholder_range_is_resolved_first(self):
+        from office_claw_sidecar.services.excel_write_scope import assess_sort_integrity
+
+        data = self._table()
+        warns = assess_sort_integrity(
+            [{"action": "excel_live.sort_range", "params": {"target_range": "__ACTIVE_SELECTION__"}}],
+            resolve_placeholder=lambda sheet, token: "B1:B4",
+            **self._args(data),
+        )
+        assert warns and "B1:B4" in warns[0]
+
+    def test_an_unreadable_sheet_is_skipped_not_blocked(self):
+        from office_claw_sidecar.services.excel_write_scope import assess_sort_integrity
+
+        def boom(sheet, ref):
+            raise RuntimeError("못 읽음")
+
+        warns = assess_sort_integrity(
+            [{"action": "excel_live.sort_range", "params": {"target_range": "B1:B4"}}],
+            active_sheet="S",
+            read_rect=boom,
+            used_ref_of=lambda sheet: "A1:C4",
+        )
+        assert warns == []
+
+    def test_non_sort_steps_are_ignored(self):
+        from office_claw_sidecar.services.excel_write_scope import assess_sort_integrity
+
+        data = self._table()
+        warns = assess_sort_integrity(
+            [{"action": "excel_live.fill_range", "params": {"target_range": "B1:B4"}}], **self._args(data)
+        )
+        assert warns == []

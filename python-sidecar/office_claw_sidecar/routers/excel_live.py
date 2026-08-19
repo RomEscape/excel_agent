@@ -169,6 +169,7 @@ from office_claw_sidecar.services.excel_workbook_digest import (
     render_workbook_digest,
 )
 from office_claw_sidecar.services.excel_write_scope import assess as assess_write_scope
+from office_claw_sidecar.services.excel_write_scope import assess_sort_integrity
 from office_claw_sidecar.services.korean_number import (
     parse_condition as parse_korean_condition,
 )
@@ -9429,14 +9430,26 @@ def _assess_blast_radius(ctx: PlanExecution, plan: list[PlanStep]):
             data = service.read_range(workbook_id, sheet, ref)
             return data.get("values") if isinstance(data, dict) else None
 
-        return assess_write_scope(
-            steps=[{"action": step.action, "params": dict(step.params)} for step in plan],
+        plan_dicts = [{"action": step.action, "params": dict(step.params)} for step in plan]
+        verdict = assess_write_scope(
+            steps=plan_dicts,
             message=req.message,
             context_range=req.context_range,
             active_sheet=active_sheet,
             read_rect=_read_rect,
             resolve_placeholder=_resolve_placeholder,
         )
+        # 정렬은 값을 "덮지" 않지만 행을 어긋나게 한다 — 되돌릴 수 없어 같은 카드에 함께 알린다.
+        verdict.warnings.extend(
+            assess_sort_integrity(
+                plan_dicts,
+                active_sheet=active_sheet,
+                read_rect=_read_rect,
+                used_ref_of=lambda sheet: service.get_used_range_ref(workbook_id, sheet or active_sheet),
+                resolve_placeholder=_resolve_placeholder,
+            )
+        )
+        return verdict
     except Exception as exc:
         trace_note("blast_radius", checked=False, detail=f"판정 생략: {type(exc).__name__}")
 
