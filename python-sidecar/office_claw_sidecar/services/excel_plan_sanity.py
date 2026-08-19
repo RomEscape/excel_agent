@@ -26,7 +26,11 @@ _OPERATION_WORD = re.compile(
 )
 _CELL_REF = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}(?![A-Za-z0-9])")
 _SHEET_WORD = re.compile(r"(?:시트|탭|sheet)", re.IGNORECASE)
-_AGGREGATE_WORD = re.compile(r"(합계|총합계|총합|총계|평균|개수|건수|소계|합|더한|더해)")
+_AGGREGATE_WORD = re.compile(
+    r"(합계|총합계|총합|총계|평균|개수|건수|소계|합|더한|더해"
+    r"|total|sum|average|avg|count)",
+    re.IGNORECASE,
+)
 # 조사·군말만 남은 값.
 _PARTICLE_ONLY = re.compile(r"(?:을|를|은|는|이|가|의|로|으로|도|만|랑|과|와|에|에다|다|요|좀|것|거)")
 # 자리·동작을 가리키는 조각. 값으로 들어가면 지시문이 데이터로 박힌 것이다.

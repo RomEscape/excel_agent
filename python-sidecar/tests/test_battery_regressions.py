@@ -1396,3 +1396,166 @@ class TestTitleCellWrite:
         step = parse_command_rule_based("A1 지워줘")
         assert step and step["reason"] == "셀 값 삭제 요청"
         assert step["params"]["values_2d"] == [[None]]
+
+
+class TestConditionalHighlightKeepsItsCondition:
+    """2026-08-20 게이트3: 조건을 못 읽으면 **A:Z를 통짜로 칠했다.**
+
+    실측 피해: `클레임 10 넘어가는 데만 빨간색 강조` → F2(12)뿐 아니라 F3(5)도 빨강.
+    사용자는 "~만"이라고 말했는데 규칙은 전부 칠하고 성공으로 보고했다.
+    """
+
+    @pytest.mark.parametrize(
+        ("text", "operator", "threshold"),
+        [
+            ("클레임 10 넘어가는 데만 빨간색 강조", ">", 10.0),
+            ("클레임10↑빨강", ">", 10.0),
+            ("클레임 10 넘는 셀 빨갛게", ">", 10.0),
+            ("지연건수 5 웃도는 값 노랗게 칠해줘", ">", 5.0),
+            ("재고 3 밑도는 칸 빨간색", "<", 3.0),
+            ("점수 60 못 미치는 셀 회색으로 강조", "<", 60.0),
+            ("매출 100 이상인 셀 초록색 강조", ">=", 100.0),
+            ("반품 2 이하인 셀 파란색 강조", "<=", 2.0),
+            ("클레임 10↓ 파랑", "<", 10.0),
+        ],
+    )
+    def test_the_threshold_survives(self, text: str, operator: str, threshold: float) -> None:
+        # 라우터가 실제로 쓰는 순서 그대로 본다 — 빠른 계획이 먼저고, 없으면 에이전트 규칙이다.
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+        from office_claw_sidecar.services.excel_live_agent import (
+            normalize_common_typos,
+            parse_command_rule_based,
+        )
+
+        clean = normalize_common_typos(text)
+        plan = _build_quick_action_plan(clean, None)
+        step = plan[0] if plan else parse_command_rule_based(clean)
+        assert step, text
+        assert step["action"] == "excel_live.highlight_by_condition", (text, step["action"])
+        assert step["params"]["operator"] == operator, text
+        assert float(step["params"]["threshold"]) == threshold, text
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "상태 대기 분홍 강조!",
+            "지연된 것만 빨갛게",
+            "이상한 값만 노랗게 칠해줘",
+        ],
+    )
+    def test_an_unparseable_condition_does_not_paint_everything(self, text: str) -> None:
+        """조건을 못 만들면 **칠하지 않는다** — 물러나면 해석 카드/되묻기가 받는다."""
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+        from office_claw_sidecar.services.excel_live_agent import (
+            normalize_common_typos,
+            parse_command_rule_based,
+        )
+
+        clean = normalize_common_typos(text)
+        plan = _build_quick_action_plan(clean, None)
+        step = (plan[0] if plan else parse_command_rule_based(clean)) or {}
+        if step.get("action") == "excel_live.fill_range":
+            target = str(step["params"].get("target_range", ""))
+            raise AssertionError(f"조건을 잃고 통짜로 칠한다: {text} → {target}")
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("A1:C3 노란색으로 칠해줘", "A1:C3"),
+            ("표 전체를 노랗게 칠해줘", None),
+        ],
+    )
+    def test_an_explicit_or_broad_fill_still_works(self, text: str, expected) -> None:
+        """명시 범위·명시적 전체 표현이 있으면 통짜 칠은 정상 동작이다."""
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+        from office_claw_sidecar.services.excel_live_agent import (
+            normalize_common_typos,
+            parse_command_rule_based,
+        )
+
+        clean = normalize_common_typos(text)
+        plan = _build_quick_action_plan(clean, None)
+        step = plan[0] if plan else parse_command_rule_based(clean)
+        assert step and step["action"] == "excel_live.fill_range", text
+        if expected:
+            assert step["params"]["target_range"] == expected, text
+
+
+class TestGate4Regressions:
+    """게이트4가 잡은 것들. 전부 조용한 오실행이었다(카드도 되묻기도 없었다)."""
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "H1에 물류 관제 대시보드",
+            "H1에는 물류 관제 대시보드",
+            "H1에다 물류 관제 대시보드",
+            "아 그리고 H1에는 물류 관제 대시보드 라고 제목 박아",
+        ],
+    )
+    def test_a_locative_particle_never_lands_in_the_value(self, text: str) -> None:
+        """`H1에 물류 관제 대시보드` → 셀에 **'에 물류 관제 대시보드'**가 써졌다."""
+        from office_claw_sidecar.services.excel_live_agent import (
+            normalize_common_typos,
+            parse_command_rule_based,
+        )
+
+        step = parse_command_rule_based(normalize_common_typos(text))
+        assert step and step["params"]["start_cell"] == "H1", text
+        assert step["params"]["values_2d"] == [["물류 관제 대시보드"]], text
+
+    def test_charts_only_when_the_data_must_stay(self) -> None:
+        """`차트 전부 지워 주세요, 데이터는 그데로 두시고요.` → 표까지 지워졌다.
+
+        오타('그데로')로 보호가 꺼졌고, 고친 뒤에는 한정사 가드가 먼저 걸려
+        **아무것도 안 하게** 됐다. 정답은 차트 삭제 하나다.
+        """
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        text = normalize_common_typos("차트 전부 지워 주세요, 데이터는 그데로 두시고요.")
+        plan = _build_quick_action_plan(text, "A1:F6")
+        assert plan and [s["action"] for s in plan] == ["excel_live.delete_charts"], plan
+
+    def test_a_glued_range_is_split_only_when_merging(self) -> None:
+        """`H1M1병합` → 콜론이 없어 붙여넣기 범위(A1:F6)를 병합했다."""
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        plan = _build_quick_action_plan(normalize_common_typos("H1M1병합"), "A1:F6")
+        assert plan and plan[0]["params"]["target_range"] == "H1:M1", plan
+        # 병합 문맥이 아니면 값이 망가지면 안 된다.
+        assert normalize_common_typos("A1에 AB12CD34 입력") == "A1에 AB12CD34 입력"
+
+    def test_the_average_typo_is_not_read_as_a_sum(self) -> None:
+        """'평규도'가 '합계'로 읽혀 평균 대신 합계 줄을 또 썼다."""
+        from office_claw_sidecar.services.excel_aggregate_below import match_aggregate_below
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        assert match_aggregate_below(normalize_common_typos("합계 아래 줄에 평규도 넣어주세요")) == (
+            "AVERAGE",
+            "평균",
+        )
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "표 첫 줄을 남색 배경에 흰색 굵은 글시로 바꿔 주세요.",
+            "맨 위 제목 줄 눈에 띄게 남색 칸에 흰 글씨 진하게 해줘",
+            "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘",
+        ],
+    )
+    def test_the_header_gets_both_the_fill_and_the_bold(self, text: str) -> None:
+        """셋 중 둘만 적용되던 문장들 — 어미('굵은')와 색 어휘('흰')가 두 곳에서 갈라져 있었다."""
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        plan = _build_quick_action_plan(normalize_common_typos(text), None) or []
+        actions = [s["action"] for s in plan]
+        assert "excel_live.fill_range" in actions, (text, plan)
+        assert "excel_live.set_font" in actions, (text, plan)
+        fill = next(s for s in plan if s["action"] == "excel_live.fill_range")
+        font = next(s for s in plan if s["action"] == "excel_live.set_font")
+        assert fill["params"]["fill_color"] == "#002060", text
+        assert fill["params"]["target_range"] == "1:1", text
+        assert font["params"].get("bold") is True, text

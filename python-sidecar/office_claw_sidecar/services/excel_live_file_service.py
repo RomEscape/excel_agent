@@ -489,8 +489,18 @@ class FileExcelLiveService(ExcelLiveService):
             return 1, 1
         return last_row, last_col
 
+    #: 실행 시점에야 뜻이 정해지는 상징 범위. 여기서 못 풀면 아래 except가 'A1'로
+    #: 떨어뜨려 **범위를 받는 모든 연산이 한 칸짜리 no-op**이 된다(2026-08-20 실측:
+    #: highlight_by_condition이 scanned_cells=1로 0건 칠하고 성공을 보고했다).
+    _SYMBOLIC_WHOLE_SHEET = frozenset({"__USED_RANGE__", "__ACTIVE_SELECTION__", "__TABLE_REGION__"})
+
     def _range_bounds(self, ws: Any, range_ref: str) -> tuple[int, int, int, int]:
         text = str(range_ref or "A1").strip().upper()
+        if text in self._SYMBOLIC_WHOLE_SHEET:
+            used_row, used_col = self._used_bounds(ws)
+            return (1, 1, max(used_row, 1), max(used_col, 1))
+        if text == "__ACTIVE_CELL__":
+            return (1, 1, 1, 1)
         col_match = re.fullmatch(r"([A-Z]+):([A-Z]+)", text)
         if col_match:
             left, right = col_match.groups()

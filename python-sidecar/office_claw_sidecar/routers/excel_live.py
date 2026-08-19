@@ -1360,7 +1360,7 @@ def _background_fill_hex(lowered: str, font_color: str | None) -> str:
 # 코드를 못 읽으면 전부 기본값(노랑)으로 칠해진다(2026-08-16 실측: 남색 제목 바가 노랗게 나왔다).
 _QUICK_COLOR_PATTERN = re.compile(
     r"(#[0-9a-fA-F]{6}|노란색|노랑|노란|노랗|yellow|빨간색|빨강|빨간|빨갛|red|파란색|파랑|파랗|blue"
-    r"|초록색|초록|green|흰색|하얀색|하양|하얗|white|화이트|백색"
+    r"|초록색|초록|green|흰색|하얀색|하양|하얗|white|화이트|백색|흰(?=[\s글바배칸]|$)"
     r"|검은색|검정|검은|까맣|black|블랙|남색|네이비|navy|연회색|회색|그레이|gray|grey"
     r"|주황색|주황|오렌지|orange|보라색|보라|퍼플|purple|분홍색|분홍|핑크|pink"
     r"|하늘색|갈색|브라운|brown)",
@@ -3014,7 +3014,9 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
     # "글씨 흰색"처럼 굵게·글꼴이라는 말이 없는 문장이 배경색 규칙으로 새지 않게 한다.
     font_params = extract_font_params(text)
     if (
-        re.search(r"(굵게|볼드|bold|글꼴|폰트)", lowered)
+        # '굵은 글씨'·'진하게'도 굵게다 — 어미 하나 때문에 분기에 못 들어가면
+        # 배경만 칠해지고 굵게가 통째로 빠진다(2026-08-20 게이트3 header_navy).
+        re.search(r"(굵게|굵은|굵직|진하게|진한|두껍게|볼드|bold|글꼴|폰트)", lowered)
         or font_params.get("color")
         or font_params.get("size")
     ) and not re.search(r"(테두리|경계선|border|괘선)", lowered):
@@ -3122,6 +3124,14 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
             "칠해",
             "강조",
             "highlight",
+            # 형용사 어간형 — "빨갛게", "노랗게". 색 추출기는 이미 아는데 **분기 입구**에만
+            # 없어서 문장 전체가 규칙 밖으로 샜다(2026-08-20: "클레임 10 넘는 셀 빨갛게").
+            "빨갛",
+            "노랗",
+            "파랗",
+            "하얗",
+            "까맣",
+            "누렇",
             "노란색",
             "노랑",
             "yellow",
@@ -3198,6 +3208,11 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
                     "reason": "빠른 규칙 기반 값 동등 강조",
                 }
             ]
+        # 조건도 값 동등도 못 만들었다. 여기서 통짜로 칠하면 사용자가 "~만"이라고 한
+        # 문장이 **표 전체**를 덮는다(2026-08-20 게이트3: "상태 대기 분홍 강조!" →
+        # 대기가 아닌 줄까지 분홍). 지목이 없으면 물러난다 — 해석 카드/되묻기가 받는다.
+        if not normalized_ctx and not explicit_range and not whole_sheet_color:
+            return None
         return [
             {
                 "action": "excel_live.fill_range",
@@ -3214,6 +3229,21 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
             normalized_ctx=normalized_ctx,
             explicit_range=explicit_range,
         )
+        # "차트 다 지워, 데이터는 그대로" — 지목이 차트이고 값을 지키라고 했으면 답은 하나다.
+        # 아래 한정사 가드('는 그대로')가 먼저 걸리면 **아무것도 안 하고** 물러난다 —
+        # 데이터는 지켜지지만 사용자가 콕 집은 차트 삭제도 빠진다(2026-08-20 게이트4).
+        if re.search(r"(차트|그래프|chart)", lowered) and re.search(
+            r"(데이터|값|내용|표|숫자|기존)\s*(?:는|은|만|도)?\s*(?:[^\s,]{1,8}\s*){0,2}"
+            r"(?:놔두|놔둬|냅두|두고|두시|남기|남겨|유지|그대로|빼고|건드리지|손대지|지우지)",
+            lowered,
+        ):
+            return [
+                {
+                    "action": "excel_live.delete_charts",
+                    "params": {},
+                    "reason": "빠른 규칙 기반 차트 삭제(데이터 보존 지시)",
+                }
+            ]
         # 한정사가 있으면 통째 삭제 금지 — "서식만 지워줘(값은 그대로)",
         # "중복된 행은 지워줘", "합계 행만", "필터 초기화"가 범위 전체 clear로
         # 실행돼 데이터가 조용히 사라졌다(2026-08-18 5렌즈 사냥, 조용한 파괴
@@ -3236,8 +3266,15 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
         chart_mentioned = bool(re.search(r"(차트|그래프|chart)", lowered))
         # "데이터는 놔두고 / 값은 그대로 / 표는 두고" — 값을 지키라는 한정사. 차트만 지우라는 뜻이다
         # (2026-08-19 블라인드 게이트: "지워줘 차트 다, 데이터는 놔두고"가 데이터까지 비웠다).
+        # 조사와 동사 사이에 한두 낱말이 낀다("데이터는 **그대로** 두시고요").
+        # 예전에는 조사 바로 뒤만 봐서 보호가 꺼졌고, 뒤따르는 clear_range가 표를 지웠다
+        # (2026-08-20 게이트3: `차트 전부 지워 주세요, 데이터는 그데로 두시고요.` → B2=None).
         keep_data = bool(
-            re.search(r"(데이터|값|내용|표|숫자)\s*(?:는|은|만)?\s*(?:놔두|놔둬|두고|남기|그대로|빼고|건드리지)", lowered)
+            re.search(
+                r"(데이터|값|내용|표|숫자|기존)\s*(?:는|은|만|도)?\s*(?:[^\s,]{1,8}\s*){0,2}"
+                r"(?:놔두|놔둬|냅두|두고|두시|남기|남겨|유지|그대로|빼고|건드리지|손대지|지우지)",
+                lowered,
+            )
         )
         # "차트 전부/다 없애"의 전부·다는 차트의 수량이지 셀 범위가 아니다 — 차트가 언급된 문장에서는
         # 전체/전부/다를 범위 어휘로 세지 않는다(같은 날 실측: "시트에 있는 차트 전부 없애"가 표까지 지웠다).

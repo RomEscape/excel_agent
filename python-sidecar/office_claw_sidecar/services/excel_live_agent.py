@@ -34,6 +34,7 @@ from office_claw_sidecar.services.excel_live_table_presets import (
     preset_follow_up,
 )
 from office_claw_sidecar.services.excel_planner_prompt import build_planner_prompt
+from office_claw_sidecar.services.korean_number import parse_condition as parse_korean_condition
 from office_claw_sidecar.services.llm_json import extract_json_object
 from office_claw_sidecar.services.llm_service import (
     get_planner_model_name,
@@ -158,14 +159,20 @@ _VALUE_TRAILING_DEICTIC = re.compile(
 # 2026-08-20 블라인드 게이트 `title_cell`: 이 어순이 규칙에 안 걸려 모델로 갔고,
 # 모델은 제목 대신 문장 조각을 썼다. 아주 좁게(셀 하나 + 명령어 없는 짧은 값) 받는다.
 _BARE_CELL_TEXT = re.compile(
-    r"^\s*([a-z]{1,3}\d{1,7})\s*(?:셀|칸)?\s*[:：]?\s*(.+?)\s*[.!~…]*\s*$",
+    # 자리 조사(에/에는/에다가)를 먹어야 한다 — 안 먹으면 값 앞에 조사가 그대로 남아
+    # 셀에 '에 물류 관제 대시보드'가 써진다(2026-08-20 게이트4가 잡은 회귀).
+    r"^\s*([a-z]{1,3}\d{1,7})\s*(?:셀|칸)?\s*(?:에(?:다가?|는|도)?|[:：])?\s*(.+?)\s*[.!~…]*\s*$",
     re.IGNORECASE,
 )
+# "… 라고 제목 박아" — 인용 조사 뒤는 값이 아니라 지시문이다.
+_BARE_QUOTE_TAIL = re.compile(r"\s*이?라(?:고|는)\s+.*$")
 # 명령으로 읽히는 꼬리·동사가 있으면 제목이 아니다.
 _BARE_NOT_TITLE = re.compile(
     r"(?:줘|주세요|주라|줄래|해라|하자|봐|할래|해줘|보자|시켜|해)\s*$"
     r"|(?:지워|삭제|정렬|만들|바꿔|바꾸|변경|칠해|굵게|합쳐|병합|복사|붙여|계산|더해|빼|나눠|곱해"
-    r"|추가|생성|열어|저장|확인|보여|찾아|채워|자동|맞춰|서식|차트|그래프|수식|함수)"
+    r"|추가|생성|열어|저장|확인|보여|찾아|채워|자동|맞춰|서식|차트|그래프|수식|함수"
+    # 쓰기 동사가 값 안에 남아 있으면 그건 값이 아니라 지시문이다.
+    r"|박아|박어|박고|써넣|입력|기입|기록)"
 )
 
 _VALUE_FILLER_LEAD = re.compile(
@@ -480,6 +487,12 @@ def _parse_operator_threshold(text: str) -> tuple[str, float] | None:
     m = re.search(r"(>=|<=|>|<|==|!=)\s*(-?\d+(?:\.\d+)?)", text)
     if m:
         return m.group(1), float(m.group(2))
+    # 마지막으로 공용 조건어 사전을 본다 — 라우터(`_quick_parse_condition`)와 갈라지면
+    # 같은 문장이 경로에 따라 다르게 읽힌다(2026-08-20: '넘어가는'을 한쪽만 알았다).
+    shared = parse_korean_condition(text)
+    if shared is not None:
+        operator, amount, _percent = shared
+        return operator, float(amount)
     return None
 
 
@@ -868,9 +881,13 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
             broad_intent = bool(
                 re.search(r"(전반|전체|전체적|모든|표\s*색|배경색|통으로)", lowered)
             )
-            target_range = _extract_target_range_from_text(lowered) or (
-                context_range or "__ACTIVE_SELECTION__" if broad_intent else "A:Z"
-            )
+            explicit = _extract_target_range_from_text(lowered)
+            # **통짜 칠은 사람이 그렇게 말했을 때만.** 예전에는 조건을 못 읽으면 A:Z를 칠했다 —
+            # "클레임 10 넘어가는 데만 빨간색"에서 조건이 사라지고 전부 빨개졌다.
+            # 범위도 전체 표현도 맥락도 없으면 물러난다 → 해석 카드/되묻기가 받는다.
+            if not explicit and not broad_intent and not context_range:
+                return None
+            target_range = explicit or (context_range or "__ACTIVE_SELECTION__")
             return {
                 "action": "excel_live.fill_range",
                 "params": {
@@ -1067,6 +1084,8 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
         bare = _BARE_CELL_TEXT.match(text) if len(cell_tokens) == 1 else None
         if bare:
             bare_value = _strip_value_fillers(bare.group(2)).strip()
+            bare_value = _BARE_QUOTE_TAIL.sub("", bare_value).strip()
+            bare_value = re.sub(r"\s*이?라고\s*$", "", bare_value)
             bare_value = _VALUE_TRAILING_DEICTIC.sub("", bare_value)
             bare_value = re.sub(r"[\s,;·]+$", "", bare_value)
             if (
@@ -1762,6 +1781,8 @@ _COMMON_TYPO_PAIRS: tuple[tuple[re.Pattern[str], str], ...] = (
     # (2026-08-19 블라인드 게이트 header_navy 3건).
     (re.compile(r"배겅|배걍|배굥"), "배경"),
     (re.compile(r"굴게|국게"), "굵게"),
+    # '글시'가 글자색 추출을 막아 머리글 분기 자체에 못 들어갔다(2026-08-20 게이트3).
+    (re.compile(r"글시(?=[^가-힣]|$)|글씨체(?=로)|글자체(?=로)"), "글씨"),
     (re.compile(r"씰"), "셀"),
     (re.compile(r"만들어\s*조(?=\s|$)"), "만들어줘"),
     (re.compile(r"만드러\s*줘"), "만들어줘"),
@@ -1772,6 +1793,21 @@ _COMMON_TYPO_PAIRS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"그레\s*줘"), "그려줘"),
     (re.compile(r"정열"), "정렬"),
     (re.compile(r"함계"), "합계"),
+    # '평규'가 '합계'로 읽혀 평균 줄 대신 합계 줄을 또 썼다(2026-08-20 게이트3 avg_below).
+    # '평규도'처럼 조사가 붙으면 뒷보기가 실패했다 — 그대로 두면 '합계'로 읽혀
+    # 평균 줄 대신 합계 줄을 또 쓴다(2026-08-20 게이트3·4 avg_below).
+    (re.compile(r"평규|평윤|펴균"), "평균"),
+    (re.compile(r"그데로|그대루|그레로"), "그대로"),
+    # "H1M1병합" — 콜론을 빼먹은 두 셀 주소. 못 읽으면 붙여넣기 범위(A1:F6)를 병합해
+    # 표 전체가 한 칸이 된다(2026-08-20 게이트3 merge_title).
+    # **뒤에 병합 낱말이 붙어 있을 때만** 고친다 — 전역으로 두면 값 "AB12CD34"가 망가진다.
+    (
+        re.compile(
+            r"(?<![A-Za-z0-9:])([A-Za-z]{1,3}\d{1,4})([A-Za-z]{1,3}\d{1,4})"
+            r"(?=\s*(?:병합|merge|합쳐|합치|한\s*칸으로))"
+        ),
+        r"\1:\2",
+    ),
     (re.compile(r"합게"), "합계"),
     (re.compile(r"테두르(?=[^가-힣]|$)"), "테두리"),
     (re.compile(r"테둘이"), "테두리"),
