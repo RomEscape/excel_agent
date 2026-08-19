@@ -447,6 +447,158 @@ def _verify_output_sheet(
     return True, ""
 
 
+
+def _format_snapshot(service: Any, workbook_id: str | None, sheet_name: str | None, range_ref: str) -> dict[str, Any] | None:
+    """서식 스냅샷. 못 읽으면 None — 호출부는 통과시킨다."""
+    getter = getattr(service, "get_format_snapshot", None)
+    if not callable(getter) or not str(range_ref or "").strip():
+        return None
+    try:
+        snap = getter(workbook_id, sheet_name, range_ref)
+    except Exception:
+        return None
+    return snap if isinstance(snap, dict) else None
+
+
+def _flat(grid: Any) -> list[Any]:
+    out: list[Any] = []
+    if isinstance(grid, list):
+        for row in grid:
+            out.extend(row if isinstance(row, list) else [row])
+    return out
+
+
+def _same_color(a: Any, b: Any) -> bool:
+    """'#002060' · 'FF002060' · '002060' 을 같게 본다."""
+    def norm(v: Any) -> str:
+        t = re.sub(r"[^0-9A-Fa-f]", "", str(v or "")).upper()
+        return t[-6:] if len(t) >= 6 else t
+
+    return bool(norm(a)) and norm(a) == norm(b)
+
+
+def _same_format_code(a: Any, b: Any) -> bool:
+    def norm(v: Any) -> str:
+        return re.sub(r"[\s\\\"]", "", str(v or "")).casefold()
+
+    return norm(a) == norm(b)
+
+
+def _verify_format_effect(
+    action: str,
+    params: dict[str, Any],
+    result: dict[str, Any],
+    *,
+    service: Any,
+    workbook_id: str | None,
+    sheet_name: str | None,
+) -> tuple[bool, str] | None:
+    """서식 계열 사후조건. **실패만 돌려준다** — 통과든 해당 없음이든 None이다.
+
+    `(True, "")`를 돌려주면 기존 검사(changed_cells 0건 등)를 가로막는다. 실제로 그렇게 만들었다가
+    "칠해진 셀 0개"를 통과시켰다(2026-08-19). 새 층은 **실패를 더할 수만** 있어야 한다.
+    """
+    # `_requested_range`는 write_range 전용(start_cell + values_2d)이다. 서식 액션은 범위가
+    # target_range/range_ref에 있으므로 함께 본다 — 안 그러면 대상이 비어 검사가 통째로 건너뛰어진다.
+    target = (
+        _requested_range(params)
+        or str(params.get("target_range") or "").strip()
+        or str(params.get("range_ref") or "").strip()
+        or str(result.get("address") or "").strip()
+    )
+    if target in {"__ACTIVE_SELECTION__", "__ACTIVE_CELL__", "__USED_RANGE__"}:
+        target = str(result.get("address") or "").strip()
+    sheet = str(params.get("sheet_name") or "").strip() or sheet_name
+
+    if action == "excel_live.set_number_format":
+        snap = _format_snapshot(service, workbook_id, sheet, target)
+        if snap is None:
+            return None
+        want = str(params.get("format_code") or "").strip()
+        if want.lower() in {"general", "일반", "none", "없음"}:
+            return None  # 표시 형식 되돌리기는 "General이어야 정상"이라 별도 검사가 필요 없다
+        codes = [c for c in _flat(snap.get("number_formats")) if c is not None]
+        if want and codes and not any(_same_format_code(c, want) for c in codes):
+            return False, f"number_format_not_applied:표시 형식이 '{want}'로 바뀌지 않았습니다(현재 {codes[0]})"
+        return None
+
+    if action == "excel_live.fill_range":
+        want = str(params.get("fill_color") or "").strip()
+        if want.lower() in {"", "none", "없음"}:
+            return None
+        snap = _format_snapshot(service, workbook_id, sheet, target)
+        if snap is None:
+            return None
+        if not any(_same_color(f, want) for f in _flat(snap.get("fills"))):
+            return False, f"fill_not_applied:배경색 {want}이 적용된 칸이 없습니다"
+        return None
+
+    if action == "excel_live.set_font":
+        snap = _format_snapshot(service, workbook_id, sheet, target)
+        if snap is None:
+            return None
+        # "남색 배경에 흰 글씨 굵게"가 배경만 칠하고 굵게는 빠진 채 성공으로 보고됐다(2026-08-19).
+        # 굵게 **해제**(bold=False)는 없어야 정상이므로 검사하지 않는다 — 있는지 확인하면 초기화가 실패한다.
+        if params.get("bold") is True and not any(bool(b) for b in _flat(snap.get("bold"))):
+            return False, "font_bold_not_applied:굵게가 적용된 칸이 없습니다"
+        want_color = str(params.get("color") or "").strip()
+        if want_color and not any(_same_color(c, want_color) for c in _flat(snap.get("font_colors"))):
+            return False, f"font_color_not_applied:글자색 {want_color}이 적용된 칸이 없습니다"
+        return None
+
+    if action == "excel_live.apply_border":
+        # "테두리 지워줘"·"서식 초기화"는 같은 액션에 line_style='none'으로 온다. 없어야 정상인데
+        # 있는지 확인하면 **초기화를 실패로 판정해 되돌린다**(2026-08-19 회귀로 실측).
+        if str(params.get("line_style") or "").strip().lower() in {"none", "없음", ""}:
+            return None
+        snap = _format_snapshot(service, workbook_id, sheet, target)
+        if snap is None:
+            return None
+        if not any(bool(b) for b in _flat(snap.get("borders"))):
+            return False, "border_not_applied:테두리가 그려진 칸이 없습니다"
+        return None
+
+    if action == "excel_live.merge_cells":
+        snap = _format_snapshot(service, workbook_id, sheet, target)
+        if snap is None:
+            return None
+        merged = {str(m).replace("$", "").upper() for m in (snap.get("merged") or [])}
+        if target and target.upper() not in merged:
+            return False, f"merge_not_applied:{target} 병합이 확인되지 않습니다"
+        return None
+
+    if action == "excel_live.freeze_panes":
+        want = str(params.get("freeze_at") or "").strip()
+        snap = _format_snapshot(service, workbook_id, sheet, "A1:A1")
+        if snap is None:
+            return None
+        got = str(snap.get("freeze_panes") or "").strip()
+        released = want in {"해제", "none", ""}
+        if released:
+            return (True, "") if not got else (False, "freeze_not_released:틀 고정이 해제되지 않았습니다")
+        if not got:
+            return False, "freeze_not_applied:틀 고정이 걸리지 않았습니다"
+        return None
+
+    if action == "excel_live.find_replace":
+        # 찾을 글자가 그대로 남아 있으면 치환은 일어나지 않은 것이다(2026-08-19 게이트 5건).
+        find_text = str(params.get("find_text") or "").strip()
+        if not find_text or not target:
+            return None
+        try:
+            values = _read(service, workbook_id, sheet, target)
+        except Exception:
+            return None
+        if not values:
+            return None
+        still = any(find_text in str(v) for row in values for v in (row or []) if v is not None)
+        if still:
+            return False, f"replace_not_applied:'{find_text}'가 아직 남아 있습니다"
+        return None
+
+    return None
+
+
 def verify_effect(
     *,
     action: str,
@@ -465,6 +617,13 @@ def verify_effect(
     result = result or {}
 
     try:
+        # 서식 사후조건은 **실패만** 돌려준다. 통과를 돌려주면 기존 검사를 가로막는다.
+        format_failure = _verify_format_effect(
+            action, params, result, service=service, workbook_id=workbook_id, sheet_name=sheet_name
+        )
+        if format_failure is not None:
+            return format_failure
+
         if action == "excel_live.write_range":
             return _verify_write(
                 params, result, service=service, workbook_id=workbook_id, sheet_name=sheet_name
