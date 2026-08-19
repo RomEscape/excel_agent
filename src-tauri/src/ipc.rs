@@ -760,6 +760,33 @@ pub async fn excel_live_status(state: State<'_, Mutex<SidecarState>>) -> Result<
 }
 
 // 현재 Excel 선택 영역 주소만 빠르게 조회한다. 붙여넣기 프로브가 전체 명령
+/// 프론트에서 벌어진 사건(라우팅 결정·붙여넣기 프로브·화면 오류·타임아웃)을 사이드카의
+/// chat_log.jsonl에 같은 형식으로 남긴다. 실패해도 앱 동작에는 영향이 없어야 하므로
+/// 오류는 문자열로만 돌려준다(호출부는 무시한다).
+#[tauri::command]
+pub async fn trace_client_event(
+    state: State<'_, Mutex<SidecarState>>,
+    event: serde_json::Value,
+) -> Result<String, String> {
+    let (url, client, token) = {
+        let s = state.lock().map_err(|e| e.to_string())?;
+        (
+            sidecar_url(&s, "/trace/client-event"),
+            client_with_auth(&s).0,
+            s.auth_token.clone(),
+        )
+    };
+    let resp = client
+        .post(&url)
+        .bearer_auth(&token)
+        .json(&event)
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|e| format!("클라이언트 이벤트 기록 실패: {}", e))?;
+    read_response(resp).await
+}
+
 // 파이프라인(LLM 경유 가능)을 타다 느려지거나 죽던 문제의 전용 경로다.
 #[tauri::command]
 pub async fn excel_live_selection(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
@@ -782,6 +809,8 @@ pub async fn excel_live_selection(state: State<'_, Mutex<SidecarState>>) -> Resu
     read_response(resp).await
 }
 
+// 인자 8개: 프론트 문맥(client_context)이 로그 전용으로 하나 늘었다 — 구조체로 묶으면 JS 호출부까지 바뀌어 여기선 허용.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn excel_live_command(
     state: State<'_, Mutex<SidecarState>>,
@@ -791,6 +820,8 @@ pub async fn excel_live_command(
     session_id: Option<String>,
     approve: Option<bool>,
     context_range: Option<String>,
+    // 프론트 문맥(원문·조각 번호·붙여넣기 범위·라우팅 근거) — 사이드카는 로그에만 쓴다.
+    client_context: Option<serde_json::Value>,
 ) -> Result<String, String> {
     let (url, client, token) = {
         let s = state.lock().map_err(|e| e.to_string())?;
@@ -808,6 +839,7 @@ pub async fn excel_live_command(
         "session_id": session_id,
         "approve": approve.unwrap_or(false),
         "context_range": context_range,
+        "client": client_context,
     });
 
     let resp = client

@@ -29,6 +29,7 @@ from office_claw_sidecar.routers import (
     settings,
     slack,
     telegram,
+    trace,
     workspace,
 )
 from office_claw_sidecar.services.user_harness_service import record_user_harness_event
@@ -318,6 +319,8 @@ app.include_router(permissions.router, prefix="/permissions", dependencies=[Depe
 app.include_router(chat.router, prefix="/chat", dependencies=[Depends(verify_auth)])
 app.include_router(backup.router, prefix="/backup", dependencies=[Depends(verify_auth)])
 app.include_router(excel_live.router, prefix="/excel-live", dependencies=[Depends(verify_auth)])
+# 프론트 사건(라우팅·붙여넣기 프로브·화면 오류·타임아웃)을 같은 chat_log에 — 2026-08-19 로그 감사.
+app.include_router(trace.router, dependencies=[Depends(verify_auth)])
 
 def main() -> None:
     # Windows 콘솔에서 한글 경로/로그 깨짐 방지

@@ -11,8 +11,8 @@ from openpyxl import Workbook, load_workbook
 from office_claw_sidecar.routers.excel_live import (
     ApprovalResponse,
     ExcelLiveCommandRequest,
-    _run_command,
     post_approval,
+    post_command,
 )
 from office_claw_sidecar.services.excel_live_service import invalidate_excel_engine_cache
 from office_claw_sidecar.services.llm_service import get_llm_service
@@ -184,7 +184,7 @@ async def run_case(idx, family, text, ctx, check, llm, allow_ask=False):
         req = req.model_copy(update={"context_range": ctx})
     t0 = time.time()
     try:
-        resp = await _run_command(req, llm)
+        resp = await post_command(req, llm)
         if getattr(resp, "approval_required", False):
             resp = await post_approval(
                 ApprovalResponse(approval_id=resp.pending_approval.approval_id, approved=True), llm
@@ -258,4 +258,8 @@ async def main():
         WB.unlink()
 
 
+from office_claw_sidecar.services import decision_trace as _dt
+
+# 배터리 턴을 사람이 친 명령과 가를 출처 태그(2026-08-19 로그 감사: 실사용 로그의 source가 전부 비어 있었다).
+_dt.source(kind="script", name="human_robustness").__enter__()
 asyncio.run(main())

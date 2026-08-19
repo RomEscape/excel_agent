@@ -78,6 +78,7 @@ pub fn run() {
             ipc::excel_live_status,
             ipc::excel_live_selection,
             ipc::excel_live_command,
+            ipc::trace_client_event,
             ipc::excel_live_macro_step,
             ipc::excel_live_macro_abort,
             ipc::excel_live_submit_approval,

@@ -332,6 +332,7 @@ export async function excelLiveSelection() {
  * @param {string | null} sessionId
  * @param {boolean} approve
  * @param {string | null} contextRange
+ * @param {object | null} clientContext 프론트 문맥(원문·조각 번호·붙여넣기 범위·라우팅 근거) — 사이드카 로그 전용
  */
 export async function excelLiveCommand(
   message,
@@ -340,6 +341,7 @@ export async function excelLiveCommand(
   sessionId = null,
   approve = false,
   contextRange = null,
+  clientContext = null,
 ) {
   const raw = await call("excel_live_command", {
     message,
@@ -348,8 +350,23 @@ export async function excelLiveCommand(
     sessionId,
     approve,
     contextRange,
+    clientContext,
   });
   return parseResponse(raw);
+}
+
+/**
+ * 프론트에서 벌어진 사건을 사이드카 chat_log.jsonl에 남긴다 — 라우팅 결정, 붙여넣기 프로브,
+ * 사용자가 실제로 본 오류 문구, 타임아웃. 기록 실패는 조용히 무시한다(앱 동작과 무관).
+ *
+ * @param {{ kind: string, session_id?: string|null, message?: string|null, detail?: object }} event
+ */
+export async function traceClientEvent(event) {
+  try {
+    await call("trace_client_event", { event });
+  } catch {
+    // 기록은 best-effort다.
+  }
 }
 
 /**

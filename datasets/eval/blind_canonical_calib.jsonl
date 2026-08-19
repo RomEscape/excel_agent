@@ -1,0 +1,26 @@
+{"task": "sum_below", "text": "합계를 표 아래에 한 줄로 넣어줘", "persona": "canonical"}
+{"task": "avg_below", "text": "그 아래 칸에는 평균도 넣어줘", "persona": "canonical"}
+{"task": "header_navy", "text": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "persona": "canonical"}
+{"task": "border_table", "text": "표 전체에 테두리 그려줘", "persona": "canonical"}
+{"task": "comma_cols", "text": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "persona": "canonical"}
+{"task": "sort_desc", "text": "주문건수 많은 순으로 정렬해줘", "persona": "canonical"}
+{"task": "sort_keep_total", "text": "클레임 많은 순으로 정렬해줘", "persona": "canonical"}
+{"task": "new_sheet", "text": "요약 시트 만들어줘", "persona": "canonical"}
+{"task": "title_cell", "text": "H1에 물류 관제 대시보드 라고 써줘", "persona": "canonical"}
+{"task": "merge_title", "text": "H1부터 M1까지 병합해줘", "persona": "canonical"}
+{"task": "freeze_top", "text": "첫 줄은 스크롤해도 보이게 고정해줘", "persona": "canonical"}
+{"task": "highlight_status", "text": "상태가 대기인 셀만 분홍색으로 강조해줘", "persona": "canonical"}
+{"task": "highlight_threshold", "text": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "persona": "canonical"}
+{"task": "line_chart", "text": "정시배송률 추이를 선 그래프로 그려줘", "persona": "canonical"}
+{"task": "bar_chart", "text": "지연건수로 막대 그래프 그려줘", "persona": "canonical"}
+{"task": "delete_charts", "text": "차트 다 지워줘", "persona": "canonical"}
+{"task": "clear_table", "text": "A1:F6 내용 다 지워줘", "persona": "canonical"}
+{"task": "cross_sheet_sum", "text": "A2에 지역성과 시트 주문건수 합계 가져와줘", "persona": "canonical"}
+{"task": "paste_values", "text": "서울,100; 부산,200 입력해줘", "persona": "canonical"}
+{"task": "find_replace", "text": "수도권을 서울권으로 바꿔줘", "persona": "canonical"}
+{"task": "rename_sheet", "text": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "persona": "canonical"}
+{"task": "cell_subtract", "text": "D2에 B2에서 C2 뺀 값 넣어줘", "persona": "canonical"}
+{"task": "percent_format", "text": "정시배송률은 소수 첫째 자리까지 보여줘", "persona": "canonical"}
+{"task": "data_bar", "text": "주문건수 열에 데이터 막대 넣어줘", "persona": "canonical"}
+{"task": "autofit", "text": "열 너비 보기 좋게 맞춰줘", "persona": "canonical"}
+{"task": "negation_save", "text": "아직 저장하지 마", "persona": "canonical"}

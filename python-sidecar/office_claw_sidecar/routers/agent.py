@@ -29,6 +29,15 @@ from pydantic import BaseModel, Field
 from office_claw_sidecar.models.approval import ApprovalRequest, ApprovalResponse
 from office_claw_sidecar.services.audit_service import AuditService
 from office_claw_sidecar.services.chat_persona import build_persona_messages
+from office_claw_sidecar.services.decision_trace import (
+    Long,
+    compact,
+    current_turn,
+    turn_scope,
+)
+from office_claw_sidecar.services.decision_trace import (
+    route as trace_route,
+)
 from office_claw_sidecar.services.llm_service import get_llm_service
 from office_claw_sidecar.services.masking_service import get_masking_service
 from office_claw_sidecar.services.openclaw_client import (
@@ -79,6 +88,33 @@ class ChatResponse(BaseModel):
 
 @router.post("/chat", response_model=ChatResponse)
 async def agent_chat(req: ChatRequest) -> ChatResponse:
+    """일반 대화 한 턴. 엑셀 경로가 "업무 외"로 돌려보낸 문장이 여기로 온다 — 그 뒤를 로그에서
+    잃지 않게 chat_log.jsonl에 같은 형식으로 남긴다(2026-08-19 로그 감사)."""
+    with turn_scope(
+        endpoint="agent/chat",
+        message=req.message,
+        session_id=str(req.session_id or ""),
+        request={"session_id": req.session_id},
+    ):
+        response = await _agent_chat_inner(req)
+        turn = current_turn()
+        if turn is not None:
+            turn.outcome = compact(
+                {
+                    "ok": True,
+                    "action": "agent.chat",
+                    "reply": Long(str(getattr(response, "response", "") or "")),
+                    "session_id": getattr(response, "session_id", ""),
+                    "tool_calls": [str((c or {}).get("tool") or (c or {}).get("name") or c) for c in (getattr(response, "tool_calls", None) or [])],
+                    "masked_count": getattr(response, "masked_count", 0),
+                    "approval_required": bool(getattr(response, "approval_required", False)),
+                }
+            )
+            trace_route("final:ok", why="일반 대화 응답")
+        return response
+
+
+async def _agent_chat_inner(req: ChatRequest) -> ChatResponse:
     """
     OpenClaw 게이트웨이를 통해 AI 에이전트와 대화한다.
 

@@ -214,15 +214,56 @@ def plan_summary(steps: Any) -> list[dict[str, Any]]:
     return out
 
 
+# 한 파일이 이 크기를 넘으면 날짜를 붙여 옆으로 치우고 새로 시작한다(무한 증식 방지).
+_ROTATE_BYTES = 64 * 1024 * 1024
+# 기록 실패 횟수 — 조용히 사라진 턴이 있었는지 최소한 셀 수 있게.
+write_failures = 0
+
+
+def _lock_file(handle, lock: bool) -> None:
+    """프로세스 간 append 보호. GUI 사이드카와 배터리 스크립트가 같은 파일에 동시에
+    쓰면 8KB 넘는 줄이 섞일 수 있다(2026-08-19 로그 감사). 실패해도 기록은 계속한다."""
+    try:
+        import msvcrt
+
+        handle.seek(0, 2)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK if lock else msvcrt.LK_UNLCK, 1)
+    except Exception:
+        try:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX if lock else fcntl.LOCK_UN)
+        except Exception:
+            pass
+
+
+def _rotate_if_needed(path) -> None:
+    try:
+        if path.exists() and path.stat().st_size >= _ROTATE_BYTES:
+            stamp = datetime.now(KST).strftime("%Y%m%d-%H%M%S")
+            path.rename(path.with_name(f"{path.stem}.{stamp}{path.suffix}"))
+    except Exception as exc:
+        logger.warning("대화 추적 로그 회전 실패(무시): %s", exc)
+
+
 def _write(entry: dict[str, Any]) -> None:
+    global write_failures
     try:
         raw = json.dumps(entry, ensure_ascii=False, default=str)
         path = get_chat_log_path()
         path.parent.mkdir(parents=True, exist_ok=True)
-        with _LOCK, path.open("a", encoding="utf-8", newline="\n") as f:
-            f.write(raw + "\n")
+        with _LOCK:
+            _rotate_if_needed(path)
+            with path.open("a", encoding="utf-8", newline="\n") as f:
+                _lock_file(f, True)
+                try:
+                    f.write(raw + "\n")
+                    f.flush()
+                finally:
+                    _lock_file(f, False)
     except Exception as exc:
-        logger.warning("대화 추적 로그 기록 실패(무시): %s", exc)
+        write_failures += 1
+        logger.warning("대화 추적 로그 기록 실패(무시, 누적 %d): %s", write_failures, exc)
 
 
 @contextmanager
@@ -278,6 +319,40 @@ def turn_scope(
         )
 
 
+# result 안에서 진단에 필요한 키들 — 값 격자(values) 같은 큰 덩어리는 뺀다.
+_DIAG_RESULT_KEYS = (
+    "param_bindings",
+    "validation_error",
+    "reasoning_profile",
+    "xlwings_ops",
+    "recovery_backup",
+    "failed_steps",
+    "failed_step_index",
+    "planned_steps",
+    "missing_slot",
+    "unresolved_slots",
+    "slot_state",
+    "operation_intent",
+    "why",
+    "parse_timeout",
+    "no_change",
+    "no_matching_cells",
+    "queue_wait_ms",
+    "approved",
+    "interpretation",
+    "blocked_action",
+    "address",
+    "written_cells",
+    "changed_cells",
+    "applied_cells",
+    "replaced_cells",
+    "matched_cells",
+    "removed_rows",
+    "sorted_rows",
+    "formatted_cells",
+)
+
+
 def set_outcome_from_response(response: Any) -> None:
     """응답 객체에서 사용자에게 실제로 나간 내용을 뽑아 턴 결론으로 남긴다."""
     turn = _CURRENT.get()
@@ -300,11 +375,26 @@ def set_outcome_from_response(response: Any) -> None:
             # 사용자가 화면에서 실제로 읽는 두 문구 — 무엇을 어디에 얼마나
             # 했는지(실행 리포트)와 무엇을 승인해 달라 했는지(승인 카드).
             # 이게 없으면 로그만 봐서는 에이전트가 뭐라고 답했는지 모른다.
-            "execution_report": result.get("execution_report", ""),
-            "approval_summary": getattr(pending, "summary", "") if pending else "",
+            # 화면 문구는 400자에서 자르지 않는다 — 다단계 리포트·승인 카드가 잘리면
+            # "사용자가 뭘 봤나"를 복원할 수 없다(2026-08-19 로그 감사).
+            "execution_report": Long(str(result.get("execution_report", "") or "")),
+            "approval_summary": Long(str(getattr(pending, "summary", "") if pending else "")),
+            # 계획 반쪽(command)과 실행 반쪽(approval)을 잇는 열쇠 — 이게 없으면
+            # 두 줄을 세션·시각으로 짐작해 맞춰야 했다(2026-08-19 로그 점검).
+            "approval_id": str(getattr(pending, "approval_id", "") or "") if pending else "",
+            # 해석 카드("이렇게 이해했어요")였는지 — 규칙 실행과 모델 해석을 가른다.
+            "interpretation": bool(getattr(pending, "interpretation", False)) if pending else False,
             "executed_steps": result.get("executed_steps"),
-            "failure_detail": result.get("failure_detail", ""),
+            "failure_detail": Long(str(result.get("failure_detail", "") or "")),
             "auto_rollbacks": result.get("auto_rollbacks") or [],
+            # 진단 키 — 예전엔 화이트리스트에서 빠져 로그만으로는 "왜"를 못 봤다
+            # (2026-08-19 로그 감사): 바인더 노트, 검증 오류, 엔진 트레이스, 백업 경로,
+            # 실패 단계, 슬롯 상태, 업무 외 판정 사유, 플래너 타임아웃, 변화 없음 판정.
+            "diag": {
+                key: result.get(key)
+                for key in _DIAG_RESULT_KEYS
+                if key in result and result.get(key) not in (None, "", [], {})
+            },
         }
     )
     # 경로가 결론 없이 끝나면 로그만 봐서는 이 턴이 어떻게 됐는지 알 수 없다.

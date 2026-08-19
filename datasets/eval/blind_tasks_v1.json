@@ -1,0 +1,158 @@
+[
+ {
+  "task": "sum_below",
+  "desc": "표(A1:F6) 바로 아래 줄에 각 숫자 열의 합계 한 줄을 넣는다(A7에 '합계' 라벨, B7~F7 SUM 수식).",
+  "canonical": "합계를 표 아래에 한 줄로 넣어줘",
+  "paste_context": "A1:F6"
+ },
+ {
+  "task": "avg_below",
+  "desc": "이미 합계 줄(7행)이 있는 표에서 그 아래 줄(8행)에 각 숫자 열의 평균 한 줄을 넣는다.",
+  "canonical": "그 아래 칸에는 평균도 넣어줘",
+  "paste_context": "A1:F7"
+ },
+ {
+  "task": "header_navy",
+  "desc": "표의 첫 줄(머리글 A1:F1)을 남색 배경, 흰 글씨, 굵게 만든다.",
+  "canonical": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘",
+  "paste_context": null
+ },
+ {
+  "task": "border_table",
+  "desc": "표 전체(A1:F6)에 테두리(경계선)를 두른다.",
+  "canonical": "표 전체에 테두리 그려줘",
+  "paste_context": null
+ },
+ {
+  "task": "comma_cols",
+  "desc": "주문건수·출고건수 열(B·C)의 숫자에 천 단위 콤마 표시 형식을 적용한다.",
+  "canonical": "주문건수랑 출고건수는 천 단위 콤마로 보여줘",
+  "paste_context": null
+ },
+ {
+  "task": "sort_desc",
+  "desc": "표를 주문건수가 많은 순서(내림차순)로 정렬한다. 머리글은 그대로.",
+  "canonical": "주문건수 많은 순으로 정렬해줘",
+  "paste_context": null
+ },
+ {
+  "task": "sort_keep_total",
+  "desc": "합계 줄(7행)이 있는 표를 클레임 많은 순으로 정렬하되, 합계 줄은 맨 아래 그대로 둔다.",
+  "canonical": "클레임 많은 순으로 정렬해줘",
+  "paste_context": null
+ },
+ {
+  "task": "new_sheet",
+  "desc": "'요약'이라는 이름의 새 시트를 만든다.",
+  "canonical": "요약 시트 만들어줘",
+  "paste_context": null
+ },
+ {
+  "task": "title_cell",
+  "desc": "H1 셀에 '물류 관제 대시보드'라는 제목 글자를 넣는다.",
+  "canonical": "H1에 물류 관제 대시보드 라고 써줘",
+  "paste_context": null
+ },
+ {
+  "task": "merge_title",
+  "desc": "H1부터 M1까지를 하나로 병합한다.",
+  "canonical": "H1부터 M1까지 병합해줘",
+  "paste_context": null
+ },
+ {
+  "task": "freeze_top",
+  "desc": "첫 줄(머리글)이 스크롤해도 보이게 고정한다(틀 고정 A2).",
+  "canonical": "첫 줄은 스크롤해도 보이게 고정해줘",
+  "paste_context": null
+ },
+ {
+  "task": "highlight_status",
+  "desc": "지연경고 표(A1:D5, 머리글 운송장/구간/지연시간/상태)에서 상태가 '대기'인 셀만 분홍색으로 강조한다.",
+  "canonical": "상태가 대기인 셀만 분홍색으로 강조해줘",
+  "paste_context": null
+ },
+ {
+  "task": "highlight_threshold",
+  "desc": "클레임(F열)이 10보다 큰 셀만 빨간색으로 칠한다(수도권 12만 해당).",
+  "canonical": "클레임 10 넘는 셀만 빨간색으로 칠해줘",
+  "paste_context": null
+ },
+ {
+  "task": "line_chart",
+  "desc": "정시배송률 열로 선 그래프 하나를 만든다.",
+  "canonical": "정시배송률 추이를 선 그래프로 그려줘",
+  "paste_context": null
+ },
+ {
+  "task": "bar_chart",
+  "desc": "지연건수 열로 막대 그래프 하나를 만든다.",
+  "canonical": "지연건수로 막대 그래프 그려줘",
+  "paste_context": null
+ },
+ {
+  "task": "delete_charts",
+  "desc": "시트에 있는 차트를 전부 지운다(시트에 막대 차트 1개가 있음). 데이터는 그대로.",
+  "canonical": "차트 다 지워줘",
+  "paste_context": null
+ },
+ {
+  "task": "clear_table",
+  "desc": "표(A1:F6)의 값을 전부 지워 빈칸으로 만든다.",
+  "canonical": "A1:F6 내용 다 지워줘",
+  "paste_context": "A1:F6"
+ },
+ {
+  "task": "cross_sheet_sum",
+  "desc": "현재 시트는 '요약'(A1에 '전체주문건수'). A2에 지역성과 시트의 주문건수 합계를 수식으로 가져온다.",
+  "canonical": "A2에 지역성과 시트 주문건수 합계 가져와줘",
+  "paste_context": null
+ },
+ {
+  "task": "paste_values",
+  "desc": "사람이 Excel에서 A8:B9 두 줄 두 칸을 선택해 복사·붙여넣기 한 뒤 값 나열을 친다 — 서울,100; 부산,200 이 A8:B9에 들어가야 한다. (문장에는 값 '서울,100; 부산,200'이 반드시 포함된다.)",
+  "canonical": "서울,100; 부산,200 입력해줘",
+  "paste_context": "A8:B9"
+ },
+ {
+  "task": "find_replace",
+  "desc": "표에서 '수도권'이라는 글자를 '서울권'으로 바꾼다.",
+  "canonical": "수도권을 서울권으로 바꿔줘",
+  "paste_context": null
+ },
+ {
+  "task": "rename_sheet",
+  "desc": "현재 시트(지역성과)의 이름을 '지역별실적'으로 바꾼다.",
+  "canonical": "지역성과 시트 이름을 지역별실적으로 바꿔줘",
+  "paste_context": null
+ },
+ {
+  "task": "cell_subtract",
+  "desc": "계산 시트(A1:D2, 머리글 항목/이번주/지난주/증감, 2행 매출 120 100). D2에 이번주(B2)에서 지난주(C2)를 뺀 값을 수식으로 넣는다.",
+  "canonical": "D2에 B2에서 C2 뺀 값 넣어줘",
+  "paste_context": null
+ },
+ {
+  "task": "percent_format",
+  "desc": "정시배송률 열(D2:D6) 숫자에 소수 첫째 자리까지 보이는 표시 형식을 적용한다(예: 97.1).",
+  "canonical": "정시배송률은 소수 첫째 자리까지 보여줘",
+  "paste_context": null
+ },
+ {
+  "task": "data_bar",
+  "desc": "주문건수 열에 데이터 막대(셀 안에 길이 막대) 조건부 서식을 넣는다.",
+  "canonical": "주문건수 열에 데이터 막대 넣어줘",
+  "paste_context": null
+ },
+ {
+  "task": "autofit",
+  "desc": "열 너비를 내용에 맞게 자동으로 맞춘다.",
+  "canonical": "열 너비 보기 좋게 맞춰줘",
+  "paste_context": null
+ },
+ {
+  "task": "negation_save",
+  "desc": "'저장하지 마' 같은 부정문 — 아무것도 실행되면 안 된다(표는 그대로).",
+  "canonical": "아직 저장하지 마",
+  "paste_context": null
+ }
+]

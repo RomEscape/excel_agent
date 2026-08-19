@@ -153,6 +153,7 @@ from office_claw_sidecar.services.excel_readonly_bridge import (
 )
 from office_claw_sidecar.services.excel_result_verifier import verify_effect
 from office_claw_sidecar.services.excel_selection_context import (
+    decide_selection_source,
     mentions_selection,
     resolve_context_range,
 )
@@ -191,6 +192,9 @@ class ExcelLiveCommandRequest(BaseModel):
     session_id: str | None = Field(None, description="채팅 세션 ID (멀티턴 슬롯필링 상태 식별)")
     context_range: str | None = Field(None, description="직전 단계에서 확정된 범위 주소(A1:B2)")
     approve: bool = Field(False, description="CONFIRM 작업 승인 여부")
+    # 프론트 쪽 사정 — 사용자가 실제로 친 원문(마크업 포함), 복합문 조각 번호, 붙여넣기
+    # 범위, 라우팅 근거, 재시도 번호. 사이드카 판단에는 쓰지 않고 **로그에만** 남긴다.
+    client: dict[str, Any] | None = Field(None, description="프론트 문맥(로그 전용)")
 
 
 class ExcelLiveActionRequest(BaseModel):
@@ -275,6 +279,8 @@ class PendingExcelApproval:
     # 우회된다는 점이다. `resume`이 있으면 명령 경로와 같은 실행 루프로 이어 붙인다.
     # 단일 액션 승인(`/action` 경로)은 resume이 없고 예전처럼 한 단계만 실행한다.
     resume: PlanExecution | None = None
+    # 해석 카드("이렇게 이해했어요")였는지 — 거절 로그에서 규칙 실행 취소와 모델 오해를 가른다.
+    interpretation: bool = False
 
 
 @dataclass
@@ -460,6 +466,8 @@ _COMMAND_REFLECTION_TIMEOUT_SECONDS = _env_float(
 )
 _COMMAND_REFLECTION_MAX_ATTEMPTS = _env_int("EXCEL_LIVE_REFLECTION_MAX_ATTEMPTS", 1, 1)
 _EXCEL_QUEUE_TIMEOUT_SECONDS = _env_float("EXCEL_LIVE_QUEUE_TIMEOUT_SECONDS", 180.0, 10.0)
+# 프론트 210s·Rust 200s보다 짧게 — 이보다 오래 걸린 턴은 사용자가 이미 실패를 봤다(로그 표시용).
+_CLIENT_BUDGET_SECONDS = 195.0
 _ROLLBACK_MAX_CELLS = 50000
 _SKIP_BACKUP_ACTIONS = {
     "excel_live.filter_rows",  # 뷰 필터가 중심이라 파일 백업 비용 대비 이득이 작다.
@@ -1458,6 +1466,24 @@ def _message_states_condition(text: str) -> bool:
         or _looks_like_column_comparison(message)
         or parse_text_equals_condition(message) is not None
     )
+
+
+def _underfit_reason(quick_first_action: str, text: str) -> str:
+    """`_quick_plan_underfits_message`가 참일 때 **어느 조항**이었는지 — 로그 전용."""
+    message = str(text or "")
+    if quick_first_action in _CONDITION_SENSITIVE_QUICK_ACTIONS and _message_states_condition(message):
+        return "condition"
+    if quick_first_action in _FORMULA_SENSITIVE_QUICK_ACTIONS and _FORMULA_MENTION_PATTERN.search(message):
+        return "formula_mention"
+    if quick_first_action in _PREPARATION_ONLY_QUICK_ACTIONS and _message_asks_for_more_work(message):
+        return "preparation_only"
+    if quick_first_action in _RANK_LIMIT_SENSITIVE_QUICK_ACTIONS and rank_limit.detect(message):
+        return "rank_limit"
+    if quick_first_action in _DATA_STATE_SENSITIVE_QUICK_ACTIONS and _DATA_STATE_PATTERN.search(message):
+        return "data_state"
+    if quick_first_action in _AGGREGATE_SENSITIVE_QUICK_ACTIONS and _AGGREGATE_REQUEST_PATTERN.search(message):
+        return "aggregate_request"
+    return "unknown"
 
 
 def _quick_plan_underfits_message(quick_first_action: str, text: str) -> bool:
@@ -6832,6 +6858,18 @@ def get_backups(workbook_id: str | None = None, limit: int = 20):
 
 @router.post("/restore-last", response_model=ExcelLiveActionResponse)
 def post_restore_last(req: ExcelLiveRestoreLastRequest):
+    """되돌리기 한 턴 — 파일을 바꾸는 요청이므로 chat_log.jsonl에 남긴다(2026-08-19 로그 감사)."""
+    with turn_scope(
+        endpoint="excel-live/restore-last",
+        message="(되돌리기)",
+        request={"workbook_id": req.workbook_id, "backup_path": req.backup_path, "engine": _engine_name()},
+    ):
+        response = _post_restore_last_inner(req)
+        set_outcome_from_response(response)
+        return response
+
+
+def _post_restore_last_inner(req: ExcelLiveRestoreLastRequest):
     service = get_excel_live_service()
     try:
         def _run_restore():
@@ -6862,6 +6900,25 @@ def post_restore_last(req: ExcelLiveRestoreLastRequest):
 
 @router.post("/action", response_model=ExcelLiveActionResponse)
 def post_action(req: ExcelLiveActionRequest):
+    """직접 액션 실행 한 턴(저장 버튼·단일 액션) — chat_log.jsonl에 남긴다(2026-08-19 로그 감사)."""
+    with turn_scope(
+        endpoint="excel-live/action",
+        message=f"(액션) {req.action}",
+        request={
+            "action": req.action,
+            "params": req.params,
+            "workbook_id": req.workbook_id,
+            "sheet_name": req.sheet_name,
+            "approve": req.approve,
+            "engine": _engine_name(),
+        },
+    ):
+        response = _post_action_inner(req)
+        set_outcome_from_response(response)
+        return response
+
+
+def _post_action_inner(req: ExcelLiveActionRequest):
     try:
         validated_single = validate_plan(
             normalize_plan_steps([{"action": req.action, "params": req.params, "reason": ""}]),
@@ -7142,6 +7199,60 @@ def _drop_trailing_verification(steps: list[PlanStep]) -> list[PlanStep]:
     return steps[:-1]
 
 
+def _engine_name() -> str:
+    """이 턴을 실행하는 엔진 — Excel 앱(xlwings)인지 파일(openpyxl)인지. 로그 전용."""
+    try:
+        cls = type(get_excel_live_service()).__name__
+    except Exception:
+        return "unknown"
+    return "file" if cls.startswith("File") else "xlwings"
+
+
+_SNAPSHOT_ACTIONS = frozenset(
+    {
+        "excel_live.write_range",
+        "excel_live.set_formula",
+        "excel_live.find_replace",
+        "excel_live.sort_range",
+        "excel_live.sort_rows",
+        "excel_live.clear_range",
+        "excel_live.merge_cells",
+    }
+)
+_SNAPSHOT_MAX_CELLS = 60
+
+
+def _after_snapshot(step: Any, workbook_id: str | None, sheet_hint: str | None) -> Any:
+    """쓰기류 단계 직후 대상 범위의 값을 작게 읽어 온다(로그 전용, 실패해도 무시).
+
+    2026-08-19 로그 감사: 실행 전/후 값이 없어 "엉뚱한 시트에 써 놓고 성공 보고"를 로그로
+    재현할 수 없었다(같은 날 ex4 실측). 값 격자가 크면 읽지 않는다.
+    """
+    try:
+        action = str(getattr(step, "action", "") or "")
+        if action not in _SNAPSHOT_ACTIONS or getattr(step, "error", None):
+            return None
+        result = getattr(step, "result", None) or {}
+        params = getattr(step, "params", None) or {}
+        address = str(result.get("address") or params.get("range_ref") or params.get("target_range") or "")
+        if not address or address.startswith("__"):
+            return None
+        rect = parse_rect(address)
+        if not rect:
+            return None
+        r1, c1, r2, c2 = rect
+        if (r2 - r1 + 1) * (c2 - c1 + 1) > _SNAPSHOT_MAX_CELLS:
+            return {"address": address, "skipped": "too_large"}
+        service = get_excel_live_service()
+        wb_id = _resolve_workbook_id(service, workbook_id)
+        sheet = str(params.get("sheet_name") or "").strip() or _resolve_sheet_name(service, wb_id, sheet_hint)
+        read = service.read_range(wb_id, sheet, address)
+        values = read.get("values") if isinstance(read, dict) else None
+        return {"sheet": sheet, "address": address, "values": values}
+    except Exception as exc:
+        return {"error": f"{type(exc).__name__}: {exc}"[:120]}
+
+
 @router.post("/command", response_model=ExcelLiveActionResponse)
 async def post_command(
     req: ExcelLiveCommandRequest,
@@ -7157,10 +7268,22 @@ async def post_command(
             "sheet_name": req.sheet_name,
             "context_range": req.context_range,
             "approve": req.approve,
+            "engine": _engine_name(),
+            # 프론트가 함께 보내는 원문·조각 번호·붙여넣기 범위·라우팅 근거(2026-08-19).
+            "client": req.client or None,
         },
     ):
+        started = time.perf_counter()
         response = await _run_command(req, llm)
         set_outcome_from_response(response)
+        elapsed = time.perf_counter() - started
+        if elapsed > _CLIENT_BUDGET_SECONDS:
+            # 프론트(210s)·Rust(200s)는 이미 포기했다 — 화면은 실패인데 여기서 성공이면 로그가 거짓말이 된다.
+            trace_route(
+                "final:late",
+                why=f"{elapsed:.0f}s — 클라이언트 예산({_CLIENT_BUDGET_SECONDS:.0f}s) 초과, 사용자는 실패를 봤을 가능성",
+                elapsed_s=round(elapsed, 1),
+            )
         return response
 
 
@@ -7220,6 +7343,12 @@ async def _run_command(
             sheet_name=req.sheet_name,
         )
         if resolved != req.context_range:
+            trace_note(
+                "context_range",
+                frontend=req.context_range,
+                resolved=resolved,
+                source=decide_selection_source(message=req.message, context_range=req.context_range),
+            )
             req = req.model_copy(update={"context_range": resolved})
 
     _cleanup_expired_table_slots()
@@ -7407,6 +7536,7 @@ async def _run_command(
     # 켜면 라벨 행이 통째로 사라진다(2026-08-18 ex5 재현 실측). 완결 문형이
     # 이기게 퀵 계획을 쓰기로 갈아끼운다 — 서식 어휘가 값에 섞이면 선점하지 않는다.
     row_write_confirmed = False
+    rule_hook = ""  # 어느 사람 말투 훅/선점이 퀵 계획을 냈는지 — 로그 전용
     if pending_slot is None and pending_operation is None:
         paste_write = None
         preempt_write = parse_explicit_row_write(req.message, strong_verb_only=True)
@@ -7416,6 +7546,7 @@ async def _run_command(
             != "excel_live.write_range"
         ):
             quick_action_plan = [preempt_write]
+            rule_hook = "row_write_explicit"
         # 붙여넣기 뒤의 자연스러운 문형: 좌표 없이 값 나열 + "입력해줘".
         # 대상은 붙여넣기 문맥(context_range)이다. 2026-08-18 GUI 실측:
         # 이 문형이 값 낱말('건수') 오인으로 새서 붙여넣기 흐름이 막혔고,
@@ -7427,6 +7558,7 @@ async def _run_command(
             )
             if paste_write is not None:
                 quick_action_plan = [paste_write]
+                rule_hook = "row_write_paste"
             elif _BARE_WRITE_REQUEST.match(str(req.message or "").strip()):
                 # 붙여넣기 뒤 값을 빠뜨린 문장("여기에 입력해줘"). 무엇을 넣을지
                 # 모르는 채 실행하면 활성 셀이 덮인다 — 붙여넣은 범위를 밝히며
@@ -7475,6 +7607,7 @@ async def _run_command(
                     if ref_active:
                         arithmetic_step["params"]["sheet_name"] = ref_active
                 quick_action_plan = [arithmetic_step]
+                rule_hook = "cross_sheet_cell_ref" if "!" in str(arithmetic_step["params"].get("formula_a1", "")) else "cell_arithmetic"
         # 사람 말투 집계: "붙여넣은 것들 합을 밑에 기록해줘" — 좌표도 수식도 없다.
         # 대상은 문장 범위 → context_range(살아 있는 선택 포함) → 사용 범위 순서로
         # 찾고, 실제 값을 읽어 숫자 열마다 집계 수식을 아랫줄에 놓는다.
@@ -7586,6 +7719,15 @@ async def _run_command(
                     )
                     if agg_steps:
                         quick_action_plan = agg_steps
+                        rule_hook = "aggregate_columns" if agg_dest_row else "aggregate_below"
+                        trace_note(
+                            "aggregate_hook",
+                            func=agg_func,
+                            label=agg_label,
+                            target=agg_target,
+                            target_from_context=agg_target_from_context,
+                            steps=len(agg_steps),
+                        )
                         # "합계행 하나 만들어서 표 밑에 붙여줘"의 '표' 낱말이 표
                         # 생성 인터뷰를 열면 확정된 집계 계획이 질문에 가로채인다
                         # (2026-08-18 사람 말투 배터리 실측).
@@ -7602,6 +7744,7 @@ async def _run_command(
                 chart_quick = _chart_step_from_message(req.message, default_kind=chart_kind_hint)
                 if chart_quick is not None:
                     quick_action_plan = [chart_quick]
+                    rule_hook = "chart_kind"
         # 크로스시트 사람 말투: "A4에 지역성과 시트 주문건수 합계를 가져와줘".
         # 원본 시트를 실제로 읽어 열을 찾고 =SUM('시트'!구간) 수식을 만든다.
         if not quick_action_plan and "시트" in (req.message or ""):
@@ -7631,8 +7774,18 @@ async def _run_command(
                     for cross_step in cross_steps:
                         cross_step["params"]["sheet_name"] = cross_active
                 quick_action_plan = cross_steps
+                rule_hook = "cross_sheet_aggregate"
     quick_plan_for_parse = _normalize_plan_or_empty(quick_action_plan) if quick_action_plan else []
     quick_first_action = quick_plan_for_parse[0].action if quick_plan_for_parse else ""
+    # `understand` 단계는 훅보다 앞이라 훅이 갈아끼운 계획을 못 담는다 — 여기서 최종형을 남긴다.
+    trace_note(
+        "rules",
+        hook=rule_hook or ("quick_rule" if quick_plan_for_parse else ""),
+        row_write_confirmed=row_write_confirmed,
+        quick_plan=trace_plan(quick_action_plan) if quick_action_plan else None,
+        fallback_rule=fallback_rule_step.get("action") if isinstance(fallback_rule_step, dict) else None,
+    )
+    llm_decision_reason = ""
     # "전체 지우기" 같은 고신뢰 퀵 액션은 LLM 변환 오차보다 규칙 우선이 안정적이다.
     if quick_first_action in {
         "excel_live.clear_range",
@@ -7659,18 +7812,22 @@ async def _run_command(
         "excel_live.set_font",
     }:
         should_parse_with_llm = False
+        llm_decision_reason = "high_confidence_action"
     elif quick_first_action == "excel_live.fill_range":
         # 단순 색 채우기 요청은 fast path로 즉시 실행하는 편이 안정적이다.
         should_parse_with_llm = False
+        llm_decision_reason = "fill_range_fast_path"
     if row_write_confirmed and quick_first_action == "excel_live.write_range":
         # 붙여넣기·좌표 행 쓰기는 값 격자까지 규칙이 확정했다 — 모델 몫이 없다.
         should_parse_with_llm = False
+        llm_decision_reason = "row_write_confirmed"
     if quick_first_action == "excel_live.highlight_by_condition" and parse_text_equals_condition(
         req.message
     ):
         # 값 일치 조건("대기인 애들만 분홍")은 문장에서 값·색이 다 나온다 —
         # 플래너에 넘기면 조건이 뭉개져 0건 강조가 된다(2026-08-18 지저분판 실측).
         should_parse_with_llm = False
+        llm_decision_reason = "text_equals_condition"
     if (
         len(quick_plan_for_parse) <= 1
         and not (row_write_confirmed and quick_first_action == "excel_live.write_range")
@@ -7682,14 +7839,26 @@ async def _run_command(
         # 지저분판 ex1 실측: A7 라벨 자리에 =SUM(A2:A6), F4 미기록).
         # 규칙이 표현하지 못하는 요청은 플래너에게 넘긴다.
         should_parse_with_llm = True
+        llm_decision_reason = "underfit:" + _underfit_reason(quick_first_action, req.message)
+    if should_parse_with_llm and not llm_decision_reason:
+        if pending_slot is not None or pending_operation is not None:
+            llm_decision_reason = "pending_slot"
+        elif hints.get("table_intent"):
+            llm_decision_reason = "table_intent"
+        elif not quick_plan_for_parse:
+            llm_decision_reason = "no_quick_plan"
+        else:
+            llm_decision_reason = "quick_action_not_high_confidence"
     trace_route(
         "quick_rule:hit" if not should_parse_with_llm else "quick_rule:miss",
         why=(
-            f"규칙이 {quick_first_action}로 확정"
+            f"규칙이 {quick_first_action}로 확정 ({llm_decision_reason})"
             if not should_parse_with_llm
-            else "규칙으로 확정하지 못해 플래너로 넘김"
+            else f"규칙으로 확정하지 못해 플래너로 넘김 ({llm_decision_reason})"
         ),
         quick_first_action=quick_first_action or "(없음)",
+        reason=llm_decision_reason,
+        hook=rule_hook,
     )
     reasoning_complexity_score = _score_command_complexity(
         message=req.message,
@@ -8237,6 +8406,25 @@ async def _run_command(
             str(t_params.get("format_code", ""))
         ):
             contaminated = True
+        # ③ 둘 다 표시 형식인데 코드가 다르다 — 코드는 문장에서 규칙이 결정적으로 읽었고
+        #    ("첫째 자리"→0.0), 대상 열은 모델이 머리글을 보고 골랐다. 각자 잘하는 것을
+        #    합친다: 대상은 모델, 코드는 규칙(2026-08-19 블라인드 게이트 교정 실측:
+        #    "정시배송률은 소수 첫째 자리까지"가 모델 코드 '0.1'로 실행됐다).
+        q_code = str((quick_first_step.get("params") or {}).get("format_code", "") or "")
+        t_code = str(t_params.get("format_code", "") or "")
+        if (
+            not contaminated
+            and t_action == "excel_live.set_number_format"
+            and q_action == "excel_live.set_number_format"
+            and q_code
+            and t_code != q_code
+        ):
+            for plan_step in parsed.get("action_plan") or []:
+                if isinstance(plan_step, dict) and plan_step.get("action") == "excel_live.set_number_format":
+                    (plan_step.setdefault("params", {}))["format_code"] = q_code
+            if isinstance(parsed.get("params"), dict) and parsed.get("action") == "excel_live.set_number_format":
+                parsed["params"]["format_code"] = q_code
+            trace_note("format_code_from_rule", detail=f"{t_code!r} → {q_code!r}")
         if contaminated:
             rule_plan = _normalize_plan_or_empty(quick_action_plan)
             if rule_plan:
@@ -8586,15 +8774,30 @@ async def _run_command(
     bind_notes: list[dict[str, Any]] = []
     validation_error: Exception | None = None
     # 검증기는 value 누락 같은 빈 슬롯을 예외로 막으므로, 바인딩을 먼저 돌려 채운다.
-    for candidate in [action_plan, *_recovery_plans()]:
+    candidate_log: list[dict[str, Any]] = []
+    for cand_idx, candidate in enumerate([action_plan, *_recovery_plans()]):
         bound_candidate, candidate_notes = _bind_steps(candidate)
         try:
             current_plan = _validate_steps(bound_candidate)
             bind_notes = candidate_notes
             validation_error = None
+            candidate_log.append({"candidate": cand_idx, "ok": True})
             break
         except Exception as exc:
             validation_error = exc
+            candidate_log.append({"candidate": cand_idx, "ok": False, "error": str(exc)[:200]})
+    # 바인더가 무엇을 채우고 무엇을 못 채웠는지, 검증이 어느 후보를 통과시켰는지 —
+    # 예전엔 응답(param_bindings)에만 있고 로그엔 없었다(2026-08-19 로그 감사).
+    trace_note(
+        "binder",
+        plan_source=str((parsed or {}).get("plan_source") or ""),
+        notes=[
+            {k: v for k, v in note.items() if k in ("action", "slot", "status", "reason", "changes")}
+            for note in (bind_notes or [])
+        ],
+        candidates=candidate_log,
+        validation_error=str(validation_error) if validation_error else "",
+    )
 
     if current_plan is None:
         # 플랜까지 만들어졌다면 이미 Excel 명령으로 판정된 것이므로,
@@ -8776,7 +8979,7 @@ async def _run_command(
                 },
             )
 
-    trace_note("plan_final", approve=req.approve, steps=trace_plan(current_plan))
+    trace_note("plan_final", plan_source=str((parsed or {}).get("plan_source") or ""), approve=req.approve, steps=trace_plan(current_plan))
 
     return await _execute_plan_and_respond(
         PlanExecution(
@@ -8901,6 +9104,7 @@ def _plan_approval_gate(ctx: PlanExecution, plan: list[PlanStep]) -> ExcelLiveAc
         sheet_name=req.sheet_name,
         created_at=pending.created_at,
         resume=replace(ctx, plan=list(plan), approved=True),
+        interpretation=bool(getattr(pending, "interpretation", False)),
     )
     trace_route(
         "approval:required",
@@ -9167,20 +9371,29 @@ async def _execute_plan_and_respond(
     trace_note(
         "executed",
         replans=replan_count,
+        engine=_engine_name(),
         steps=[
             {
                 "index": s.index,
                 "action": s.action,
+                # 실제로 실행된 파라미터(보정됐으면 보정본)와 원본 — "무엇을 어디에"가
+                # 로그에 있어야 잘못 간 대상을 plan_final과 대조하지 않고도 본다.
+                "params": s.params,
+                "original_params": s.original_params,
                 "ok": not s.error,
                 "verified": s.verified,
                 "retried": s.retried,
                 "error": s.error or "",
                 "verify_detail": s.verify_detail or "",
+                # 결과는 값 격자만 빼고 전부 — 예전의 5키 화이트리스트는 changed_cells·
+                # replaced_cells·no_change 같은 규모 키를 버려 "변화 없음" 판정 근거가 없었다.
                 "result": {
-                    key: (s.result or {}).get(key)
-                    for key in ("address", "written_cells", "applied_cells", "rows", "matched_cells")
-                    if isinstance(s.result, dict) and key in s.result
+                    key: value
+                    for key, value in (s.result or {}).items()
+                    if isinstance(s.result, dict) and key not in ("values", "rows_data", "xlwings_ops", "data", "preview")
                 },
+                # 실행 직후 대상 범위의 값(≤60칸) — 조용한 오배치·빈 쓰기를 로그만으로 잡는다.
+                "after": _after_snapshot(s, req.workbook_id, req.sheet_name),
             }
             for s in (execution.steps if execution else [])
         ],
@@ -9466,51 +9679,75 @@ async def post_approval(
     req: ApprovalResponse,
     llm: LLMService = Depends(get_llm_service),
 ):
+    """승인 카드의 결정 한 턴 — 승인·거절·만료 전부 chat_log.jsonl에 한 줄로 남는다.
+
+    2026-08-19 로그 감사: 거절·단일 액션 승인·만료(404)는 turn_scope 밖이라 흔적이
+    audit에만 있었다. "해석 카드를 얼마나 취소하는가"가 플래너 품질의 핵심 신호인데
+    로그로 셀 수 없었다. 이제 모든 분기가 같은 턴 기록 안에서 끝난다.
+    """
     pending = _pending_approvals.pop(req.approval_id, None)
-    if pending is None:
-        raise HTTPException(status_code=404, detail="승인 대기 작업을 찾을 수 없습니다.")
+    resume = getattr(pending, "resume", None) if pending else None
+    origin_message = (
+        str(getattr(getattr(resume, "req", None), "message", "") or "")
+        if resume is not None
+        else (str(getattr(pending, "action", "") or "") if pending else "")
+    )
+    session_key = str(getattr(resume, "session_key", "") or "") if resume is not None else ""
+    with trace_origin(
+        user_input=origin_message,
+        kind="approval",
+        approved=bool(req.approved),
+        approval_id=req.approval_id,
+        approved_action=str(getattr(pending, "action", "") or "") if pending else "",
+        interpretation=bool(getattr(pending, "interpretation", False)) if pending else False,
+        rejection_reason=str(req.rejection_reason or ""),
+    ), turn_scope(
+        endpoint="excel-live/approval",
+        message=origin_message,
+        session_id=session_key,
+        request={
+            "approval_id": req.approval_id,
+            "approved": bool(req.approved),
+            "workbook_id": getattr(pending, "workbook_id", None) if pending else None,
+            "sheet_name": getattr(pending, "sheet_name", None) if pending else None,
+            "planned_steps": len(resume.plan) if resume is not None else (1 if pending else 0),
+            "engine": _engine_name(),
+        },
+    ):
+        if pending is None:
+            trace_route("approval:missing", why="승인 대기 작업 없음 — 만료·중복 클릭·재시작")
+            raise HTTPException(status_code=404, detail="승인 대기 작업을 찾을 수 없습니다.")
 
-    if not req.approved:
-        _audit.log(
-            action="excel.live.approval.rejected",
-            target=pending.action,
-            detail=f"approval_id={req.approval_id}",
-        )
-        return ExcelLiveActionResponse(
-            ok=True,
-            action=pending.action,
-            approval_required=False,
-            reason="사용자가 작업을 거부했습니다.",
-            result={"approved": False},
-        )
+        if not req.approved:
+            _audit.log(
+                action="excel.live.approval.rejected",
+                target=pending.action,
+                detail=f"approval_id={req.approval_id}",
+            )
+            trace_route(
+                "approval:rejected",
+                why="사용자가 거부" + (" (해석 카드)" if pending.interpretation else ""),
+                action=pending.action,
+                interpretation=pending.interpretation,
+            )
+            response = ExcelLiveActionResponse(
+                ok=True,
+                action=pending.action,
+                approval_required=False,
+                reason="사용자가 작업을 거부했습니다.",
+                result={"approved": False, "interpretation": pending.interpretation},
+            )
+            set_outcome_from_response(response)
+            return response
 
-    if pending.resume is not None:
-        # 명령 경로가 세운 계획을 그대로 이어서 실행한다. 재계획하지 않으므로
-        # 사용자가 승인한 계획과 실행되는 계획이 같다.
-        _audit.log(
-            action="excel.live.approval.executed",
-            target=pending.action,
-            detail=f"approval_id={req.approval_id} steps={len(pending.resume.plan)}",
-        )
-        # 이 턴을 만든 사용자 행동은 "승인 버튼"이다. 명령문만 남기면 로그에서
-        # 같은 문장이 두 번 찍힌 것처럼 보여 무엇이 실행을 촉발했는지 알 수 없다.
-        with trace_origin(
-            user_input=pending.resume.req.message,
-            kind="approval",
-            approved=True,
-            approval_id=req.approval_id,
-            approved_action=pending.action,
-        ), turn_scope(
-            endpoint="excel-live/approval",
-            message=pending.resume.req.message,
-            session_id=pending.resume.session_key,
-            request={
-                "approval_id": req.approval_id,
-                "workbook_id": pending.workbook_id,
-                "sheet_name": pending.sheet_name,
-                "planned_steps": len(pending.resume.plan),
-            },
-        ):
+        if pending.resume is not None:
+            # 명령 경로가 세운 계획을 그대로 이어서 실행한다. 재계획하지 않으므로
+            # 사용자가 승인한 계획과 실행되는 계획이 같다.
+            _audit.log(
+                action="excel.live.approval.executed",
+                target=pending.action,
+                detail=f"approval_id={req.approval_id} steps={len(pending.resume.plan)}",
+            )
             trace_route(
                 "approval:resumed",
                 why=f"승인된 계획 {len(pending.resume.plan)}단계를 이어서 실행",
@@ -9520,73 +9757,77 @@ async def post_approval(
             set_outcome_from_response(response)
             return response
 
-    # 단일 액션 승인(`/action` 경로). 계획이 없으므로 예전처럼 한 단계만 실행한다.
-    recovery_backup: dict[str, Any] | None = None
-    try:
-        def _run_approval_once():
-            nonlocal recovery_backup
-            recovery_backup = (
-                _create_recovery_backup_if_possible(workbook_id=pending.workbook_id, label="approval")
-                if _action_needs_recovery_backup(pending.action)
-                else None
-            )
-            raw_result = _execute_action(
-                action=pending.action,
-                params=pending.params,
-                workbook_id=pending.workbook_id,
-                sheet_name=pending.sheet_name,
-            )
-            return _append_xlwings_trace(
-                action=pending.action,
-                params=pending.params,
-                workbook_id=pending.workbook_id,
-                sheet_name=pending.sheet_name,
-                result=raw_result,
-            )
+        # 단일 액션 승인(`/action` 경로). 계획이 없으므로 예전처럼 한 단계만 실행한다.
+        recovery_backup: dict[str, Any] | None = None
+        try:
+            def _run_approval_once():
+                nonlocal recovery_backup
+                recovery_backup = (
+                    _create_recovery_backup_if_possible(workbook_id=pending.workbook_id, label="approval")
+                    if _action_needs_recovery_backup(pending.action)
+                    else None
+                )
+                raw_result = _execute_action(
+                    action=pending.action,
+                    params=pending.params,
+                    workbook_id=pending.workbook_id,
+                    sheet_name=pending.sheet_name,
+                )
+                return _append_xlwings_trace(
+                    action=pending.action,
+                    params=pending.params,
+                    workbook_id=pending.workbook_id,
+                    sheet_name=pending.sheet_name,
+                    result=raw_result,
+                )
 
-        result, queue_wait_ms = await _run_in_excel_queue_async("approval", _run_approval_once)
-        if isinstance(result, dict):
-            result["queue_wait_ms"] = queue_wait_ms
-            if recovery_backup:
-                result["recovery_backup"] = recovery_backup
-        _audit.log(
-            action="excel.live.approval.executed",
-            target=pending.action,
-            detail=f"approval_id={req.approval_id}",
-        )
-        return ExcelLiveActionResponse(
-            ok=True,
-            action=pending.action,
-            result=result,
-            reason="승인 후 작업이 실행되었습니다.",
-        )
-    except (WorkbookNotFoundError, WorksheetNotFoundError) as exc:
-        # 승인까지 누른 사용자에게 404를 던지면 "요청한 정보를 찾을 수 없습니다"만 남는다.
-        # 무엇이 없어서 못 했는지, 무엇을 알려주면 되는지 문장으로 돌려준다.
-        detail = f"{exc} 작업할 파일과 시트를 알려주시면 다시 진행하겠습니다."
-        _audit.log(
-            action="excel.live.approval.target_missing",
-            target=pending.action,
-            detail=f"approval_id={req.approval_id} {exc}",
-        )
-        return ExcelLiveActionResponse(
-            ok=False,
-            action=pending.action,
-            reason=detail,
-            result={
-                "ask_follow_up": True,
-                "follow_up_question": detail,
-                "operation_intent": "clarify",
-                "missing_slot": "sheet_name",
-                "attempted_sheet": pending.sheet_name or "",
-                "attempted_workbook": pending.workbook_id or "",
-            },
-        )
-    except Exception as exc:
-        mapped = _map_error(exc)
-        if recovery_backup and recovery_backup.get("backup_path"):
-            mapped.detail = f"{mapped.detail} (복구 백업: {recovery_backup.get('backup_path')})"
-        raise mapped
+            result, queue_wait_ms = await _run_in_excel_queue_async("approval", _run_approval_once)
+            if isinstance(result, dict):
+                result["queue_wait_ms"] = queue_wait_ms
+                if recovery_backup:
+                    result["recovery_backup"] = recovery_backup
+            _audit.log(
+                action="excel.live.approval.executed",
+                target=pending.action,
+                detail=f"approval_id={req.approval_id}",
+            )
+            response = ExcelLiveActionResponse(
+                ok=True,
+                action=pending.action,
+                result=result,
+                reason="승인 후 작업이 실행되었습니다.",
+            )
+            set_outcome_from_response(response)
+            return response
+        except (WorkbookNotFoundError, WorksheetNotFoundError) as exc:
+            # 승인까지 누른 사용자에게 404를 던지면 "요청한 정보를 찾을 수 없습니다"만 남는다.
+            # 무엇이 없어서 못 했는지, 무엇을 알려주면 되는지 문장으로 돌려준다.
+            detail = f"{exc} 작업할 파일과 시트를 알려주시면 다시 진행하겠습니다."
+            _audit.log(
+                action="excel.live.approval.target_missing",
+                target=pending.action,
+                detail=f"approval_id={req.approval_id} {exc}",
+            )
+            response = ExcelLiveActionResponse(
+                ok=False,
+                action=pending.action,
+                reason=detail,
+                result={
+                    "ask_follow_up": True,
+                    "follow_up_question": detail,
+                    "operation_intent": "clarify",
+                    "missing_slot": "sheet_name",
+                    "attempted_sheet": pending.sheet_name or "",
+                    "attempted_workbook": pending.workbook_id or "",
+                },
+            )
+            set_outcome_from_response(response)
+            return response
+        except Exception as exc:
+            mapped = _map_error(exc)
+            if recovery_backup and recovery_backup.get("backup_path"):
+                mapped.detail = f"{mapped.detail} (복구 백업: {recovery_backup.get('backup_path')})"
+            raise mapped
 
 
 def _apply_macro_skips(run: MacroRun, skip_indices: list[int]) -> None:
@@ -9642,6 +9883,30 @@ def _next_macro_step(run: MacroRun) -> MacroStepState | None:
 
 @router.post("/macro/step", response_model=ExcelLiveActionResponse)
 async def post_macro_step(
+    req: ExcelLiveMacroStepRequest,
+    llm: LLMService = Depends(get_llm_service),
+):
+    """매크로 제어 한 턴(승인·건너뛰기·답변·완료) — 하위 명령은 각자 줄을 남기지만
+    제어 자체는 audit에만 있었다(2026-08-19 로그 감사). 이제 이 줄이 그 제어를 적는다."""
+    run = _macro_runs.get(req.macro_id)
+    with turn_scope(
+        endpoint="excel-live/macro/step",
+        message=str(getattr(run, "message", "") or "(매크로 단계)"),
+        session_id=str(getattr(run, "session_id", "") or ""),
+        request={
+            "macro_id": req.macro_id,
+            "skip_indices": list(req.skip_indices or []),
+            "answer": req.answer,
+            "skip_current": bool(getattr(req, "skip_current", False)),
+            "engine": _engine_name(),
+        },
+    ):
+        response = await _post_macro_step_inner(req, llm)
+        set_outcome_from_response(response)
+        return response
+
+
+async def _post_macro_step_inner(
     req: ExcelLiveMacroStepRequest,
     llm: LLMService = Depends(get_llm_service),
 ):
@@ -9795,6 +10060,20 @@ async def post_macro_step(
 
 @router.post("/macro/abort", response_model=ExcelLiveActionResponse)
 def post_macro_abort(req: ExcelLiveMacroAbortRequest):
+    """매크로 중단/롤백 한 턴 — chat_log.jsonl에 남긴다(2026-08-19 로그 감사)."""
+    run = _macro_runs.get(req.macro_id)
+    with turn_scope(
+        endpoint="excel-live/macro/abort",
+        message=str(getattr(run, "message", "") or "(매크로 중단)"),
+        session_id=str(getattr(run, "session_id", "") or ""),
+        request={"macro_id": req.macro_id, "rollback": bool(req.rollback), "engine": _engine_name()},
+    ):
+        response = _post_macro_abort_inner(req)
+        set_outcome_from_response(response)
+        return response
+
+
+def _post_macro_abort_inner(req: ExcelLiveMacroAbortRequest):
     """매크로를 중단한다. rollback이면 시작 시점 백업으로 되돌린다."""
     _cleanup_expired_macro_runs()
     run = _macro_runs.get(req.macro_id)

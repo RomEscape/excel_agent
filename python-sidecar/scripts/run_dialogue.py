@@ -33,8 +33,8 @@ from openpyxl import Workbook, load_workbook
 from office_claw_sidecar.routers.excel_live import (
     ApprovalResponse,
     ExcelLiveCommandRequest,
-    _run_command,
     post_approval,
+    post_command,
 )
 from office_claw_sidecar.services.excel_live_service import (
     get_excel_live_service,
@@ -201,7 +201,7 @@ async def run_once(round_no: int) -> list[dict]:
         for cmd in parts:
             ctx = None if has_explicit_range(cmd) else last_ref
             try:
-                resp = await _run_command(
+                resp = await post_command(
                     ExcelLiveCommandRequest(
                         message=cmd, session_id=session, workbook_id=None,
                         approve=False, context_range=ctx,
@@ -297,4 +297,8 @@ async def main() -> None:
             print("   ", f)
 
 
+from office_claw_sidecar.services import decision_trace as _dt
+
+# 배터리 턴을 사람이 친 명령과 가를 출처 태그(2026-08-19 로그 감사: 실사용 로그의 source가 전부 비어 있었다).
+_dt.source(kind="script", name="run_dialogue", scenario=SCENARIO.stem).__enter__()
 asyncio.run(main())

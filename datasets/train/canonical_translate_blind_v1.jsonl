@@ -1,0 +1,624 @@
+{"input": "이거 밑에다 합계 한줄 넣어봐", "output": "합계를 표 아래에 한 줄로 넣어줘", "task": "sum_below", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "합계 줄 빨리 추가해 표 맨 아래에", "output": "합계를 표 아래에 한 줄로 넣어줘", "task": "sum_below", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "합계 넣어", "output": "합계를 표 아래에 한 줄로 넣어줘", "task": "sum_below", "persona": "A_팀장", "outcome": "ASK", "source": "blind_v1"}
+{"input": "아 그리고 여기 바로 밑줄에 숫자 열 합계 좀 넣어줘", "output": "합계를 표 아래에 한 줄로 넣어줘", "task": "sum_below", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "표 아레에 합게 한줄 좀 넣어라", "output": "합계를 표 아래에 한 줄로 넣어줘", "task": "sum_below", "persona": "A_팀장", "outcome": "ASK", "source": "blind_v1"}
+{"input": "합꼐 행 하나 붙여줘 맨 밑에 빨ㄹ리", "output": "합계를 표 아래에 한 줄로 넣어줘", "task": "sum_below", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "각 열 총합 한 줄 표 밑에 달아줘", "output": "합계를 표 아래에 한 줄로 넣어줘", "task": "sum_below", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "ㅇㅇ 이 표 밑에 열별로 합계 한 줄 붙여", "output": "합계를 표 아래에 한 줄로 넣어줘", "task": "sum_below", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "합계 밑에 평균도 한 줄 넣어봐", "output": "그 아래 칸에는 평균도 넣어줘", "task": "avg_below", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "평균도 넣어", "output": "그 아래 칸에는 평균도 넣어줘", "task": "avg_below", "persona": "A_팀장", "outcome": "ASK", "source": "blind_v1"}
+{"input": "여기 합계줄 바로 아래다가 평균 줄 추가해", "output": "그 아래 칸에는 평균도 넣어줘", "task": "avg_below", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "넣어줘 평균 한 줄, 합계 아랫줄에", "output": "그 아래 칸에는 평균도 넣어줘", "task": "avg_below", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "합게 밑에 평균 한줄도 너어줘", "output": "그 아래 칸에는 평균도 넣어줘", "task": "avg_below", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "평귬도 그 밑에 한 줄 넣어라 빨ㄹ리", "output": "그 아래 칸에는 평균도 넣어줘", "task": "avg_below", "persona": "A_팀장", "outcome": "ASK", "source": "blind_v1"}
+{"input": "아 그리고 합계 아래 줄에는 열마다 평균 깔아줘", "output": "그 아래 칸에는 평균도 넣어줘", "task": "avg_below", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "ㅇㅇ 그 다음 줄엔 평균값 한 줄 더", "output": "그 아래 칸에는 평균도 넣어줘", "task": "avg_below", "persona": "A_팀장", "outcome": "ERROR", "source": "blind_v1"}
+{"input": "첫줄 머리글 남색 바탕에 흰글씨 볼드로 해", "output": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "task": "header_navy", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "머리글 남색", "output": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "task": "header_navy", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "남색 배경으로 해줘 머리글은, 글씨는 흰색 굵게", "output": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "task": "header_navy", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "저거 첫 행 남색 채우고 글자는 흰색 굵게", "output": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "task": "header_navy", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "머리글 행 남섹 배경에 흰 글시 굵게 해봐", "output": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "task": "header_navy", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "헤더 남색바탕 흰글씨 굵께 빨ㄹ리", "output": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "task": "header_navy", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "아 그리고 제목줄은 남색 칠하고 글자 흰색 굵게", "output": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "task": "header_navy", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "ㅋㅋ 머리글 좀 있어보이게 남색 배경 흰 글씨 볼드로", "output": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "task": "header_navy", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "표 전체 테두리 쳐줘", "output": "표 전체에 테두리 그려줘", "task": "border_table", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "테두리 그어", "output": "표 전체에 테두리 그려줘", "task": "border_table", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "여기 표에 선 둘러줘 전체 다", "output": "표 전체에 테두리 그려줘", "task": "border_table", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "둘러줘 테두리 표 전체에", "output": "표 전체에 테두리 그려줘", "task": "border_table", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "표 전채에 태두리 좀 그려라", "output": "표 전체에 테두리 그려줘", "task": "border_table", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "테두ㄹ 빨리 쳐봐 표 전체 다, 경게선으로", "output": "표 전체에 테두리 그려줘", "task": "border_table", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "아 그리고 표 전부 경계선 둘러줘", "output": "표 전체에 테두리 그려줘", "task": "border_table", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "ㅇㅇ 이 표 칸마다 테두리 다 넣어", "output": "표 전체에 테두리 그려줘", "task": "border_table", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수 출고건수 천단위 콤마 찍어", "output": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "task": "comma_cols", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문출고콤마", "output": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "task": "comma_cols", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "천 단위 콤마로 바꿔, 주문건수랑 출고건수 열", "output": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "task": "comma_cols", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "여기 주문건수 출고건수는 1000단위로 쉼표 넣어줘", "output": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "task": "comma_cols", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "주문건슈 출고건수 천단의 컴마로 보이게 해", "output": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "task": "comma_cols", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "주문건수랑 출고겅수 천단위 콤마 표기로 바꺼", "output": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "task": "comma_cols", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "아 그리고 주문건수 출고건수 숫자에 콤마 좀 넣어봐 천 단위로", "output": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "task": "comma_cols", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "ㅇㅇ 주문건수 출고건수 둘 다 천단위 구분기호 적용", "output": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "task": "comma_cols", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수 큰 순서대로 정렬해", "output": "주문건수 많은 순으로 정렬해줘", "task": "sort_desc", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "정렬해줘 주문건수 많은 순으로", "output": "주문건수 많은 순으로 정렬해줘", "task": "sort_desc", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "주문 많은순", "output": "주문건수 많은 순으로 정렬해줘", "task": "sort_desc", "persona": "A_팀장", "outcome": "ASK", "source": "blind_v1"}
+{"input": "이거 주문건수 내림차순으로 줄세워", "output": "주문건수 많은 순으로 정렬해줘", "task": "sort_desc", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "주문건슈 많은 순으로 정렫해봐", "output": "주문건수 많은 순으로 정렬해줘", "task": "sort_desc", "persona": "A_팀장", "outcome": "ASK", "source": "blind_v1"}
+{"input": "주문건수 높은거부터 아래로 쭉 정렬 빨ㄹ리, 머맄글은 그대로", "output": "주문건수 많은 순으로 정렬해줘", "task": "sort_desc", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "아 그리고 주문건수 기준으로 많은 데부터 정렬", "output": "주문건수 많은 순으로 정렬해줘", "task": "sort_desc", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "ㅇㅇ 주문건수 많은 지역이 위로 오게 소팅", "output": "주문건수 많은 순으로 정렬해줘", "task": "sort_desc", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "클레임 많은 순서대로 정렬, 합계 줄은 맨 밑에 그대로", "output": "클레임 많은 순으로 정렬해줘", "task": "sort_keep_total", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "정렬해 클레임 큰 순으로, 합계행은 건들지 말고", "output": "클레임 많은 순으로 정렬해줘", "task": "sort_keep_total", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "클레임순", "output": "클레임 많은 순으로 정렬해줘", "task": "sort_keep_total", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "여기 클레임 많은 지역부터 위로, 합계는 맨 아래 두고", "output": "클레임 많은 순으로 정렬해줘", "task": "sort_keep_total", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "클래임 많은 순으로 정렬해라 합게 줄은 밑에 냅두고", "output": "클레임 많은 순으로 정렬해줘", "task": "sort_keep_total", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "클레임 높은순 정렬, 합계줄은 맨 아레 그대로 둬 빨ㄹ리", "output": "클레임 많은 순으로 정렬해줘", "task": "sort_keep_total", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "아 그리고 클레임 내림차순으로 해줘, 합계 줄은 안 움직이게", "output": "클레임 많은 순으로 정렬해줘", "task": "sort_keep_total", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "ㅇㅇ 클레임 많은 순으로 줄세우고 합계는 마지막에 남겨", "output": "클레임 많은 순으로 정렬해줘", "task": "sort_keep_total", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "요약이라는 시트 하나 새로 만들어", "output": "요약 시트 만들어줘", "task": "new_sheet", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "요약 시트", "output": "요약 시트 만들어줘", "task": "new_sheet", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "새 시트 파줘 이름은 요약", "output": "요약 시트 만들어줘", "task": "new_sheet", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "여기다 요약 탭 하나 추가해봐", "output": "요약 시트 만들어줘", "task": "new_sheet", "persona": "A_팀장", "outcome": "ASK", "source": "blind_v1"}
+{"input": "요약 시트 하나 맏드러 새루", "output": "요약 시트 만들어줘", "task": "new_sheet", "persona": "A_팀장", "outcome": "ASK", "source": "blind_v1"}
+{"input": "요약이란 이름으로 씨트 추가해 빨ㄹ리", "output": "요약 시트 만들어줘", "task": "new_sheet", "persona": "A_팀장", "outcome": "ASK", "source": "blind_v1"}
+{"input": "아 그리고 요약 시트도 하나 만들어놔", "output": "요약 시트 만들어줘", "task": "new_sheet", "persona": "A_팀장", "outcome": "ASK", "source": "blind_v1"}
+{"input": "ㅇㅇ 새 탭 추가, 이름 요약으로", "output": "요약 시트 만들어줘", "task": "new_sheet", "persona": "A_팀장", "outcome": "ASK", "source": "blind_v1"}
+{"input": "H1 칸에 물류 관제 대시보드 적어", "output": "H1에 물류 관제 대시보드 라고 써줘", "task": "title_cell", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "물류 관제 대시보드 라고 H1에 써봐", "output": "H1에 물류 관제 대시보드 라고 써줘", "task": "title_cell", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "H1 물류 관제 대시보드", "output": "H1에 물류 관제 대시보드 라고 써줘", "task": "title_cell", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "여기 H1에다 제목 물류 관제 대시보드 넣어", "output": "H1에 물류 관제 대시보드 라고 써줘", "task": "title_cell", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "H1에 물류 관제 대시보드 라고 써조 제목으루", "output": "H1에 물류 관제 대시보드 라고 써줘", "task": "title_cell", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "물류 관제 대시보드 H1에 입력햐 빨ㄹ리", "output": "H1에 물류 관제 대시보드 라고 써줘", "task": "title_cell", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "아 그리고 H1에는 물류 관제 대시보드 라고 제목 박아", "output": "H1에 물류 관제 대시보드 라고 써줘", "task": "title_cell", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "ㅇㅇ H1 셀 제목은 물류 관제 대시보드 로", "output": "H1에 물류 관제 대시보드 라고 써줘", "task": "title_cell", "persona": "A_팀장", "outcome": "ASK", "source": "blind_v1"}
+{"input": "H1부터 M1까지 셀 합쳐", "output": "H1부터 M1까지 병합해줘", "task": "merge_title", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "H1M1병합", "output": "H1부터 M1까지 병합해줘", "task": "merge_title", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "병합해 H1에서 M1까지", "output": "H1부터 M1까지 병합해줘", "task": "merge_title", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "여기 H1부터 M1까지 한 칸으로 붙여줘", "output": "H1부터 M1까지 병합해줘", "task": "merge_title", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "H1에서 M1까지 병햡해줘 빨ㄹ리", "output": "H1부터 M1까지 병합해줘", "task": "merge_title", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "H1 M1 셀 함쳐서 하나로 맏들어", "output": "H1부터 M1까지 병합해줘", "task": "merge_title", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "아 그리고 H1부터 M1까지 셀 병합 좀", "output": "H1부터 M1까지 병합해줘", "task": "merge_title", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "ㅇㅇ H1~M1 합쳐서 제목 칸으로", "output": "H1부터 M1까지 병합해줘", "task": "merge_title", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "첫 줄 틀고정 해줘 스크롤해도 보이게", "output": "첫 줄은 스크롤해도 보이게 고정해줘", "task": "freeze_top", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "첫줄 고정", "output": "첫 줄은 스크롤해도 보이게 고정해줘", "task": "freeze_top", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "고정해 머리글 줄, 내려도 안 사라지게", "output": "첫 줄은 스크롤해도 보이게 고정해줘", "task": "freeze_top", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "여기 맨 윗줄 스크롤해도 안 없어지게 고정해", "output": "첫 줄은 스크롤해도 보이게 고정해줘", "task": "freeze_top", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "첫줄 틀고졍 해라 스크롤해도 보이계", "output": "첫 줄은 스크롤해도 보이게 고정해줘", "task": "freeze_top", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "머리글 줄 고정해줘 빨ㄹ리, 내려도 걔속 보이게", "output": "첫 줄은 스크롤해도 보이게 고정해줘", "task": "freeze_top", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "아 그리고 첫 행은 틀 고정 걸어놔", "output": "첫 줄은 스크롤해도 보이게 고정해줘", "task": "freeze_top", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "ㅇㅇ 헤더 줄 틀고정", "output": "첫 줄은 스크롤해도 보이게 고정해줘", "task": "freeze_top", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "상태 대기인 것만 분홍으로 칠해", "output": "상태가 대기인 셀만 분홍색으로 강조해줘", "task": "highlight_status", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "대기만 분홍", "output": "상태가 대기인 셀만 분홍색으로 강조해줘", "task": "highlight_status", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "분홍색으로 강조해 상태가 대기인 셀만", "output": "상태가 대기인 셀만 분홍색으로 강조해줘", "task": "highlight_status", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "여기 상태 열에서 대기인 애들만 분홍색 칠해줘", "output": "상태가 대기인 셀만 분홍색으로 강조해줘", "task": "highlight_status", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "상태가 대기인 쎌만 분홍섹으로 해라", "output": "상태가 대기인 셀만 분홍색으로 강조해줘", "task": "highlight_status", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "상태 대기인거만 핑크로 강죠해 빨ㄹ리", "output": "상태가 대기인 셀만 분홍색으로 강조해줘", "task": "highlight_status", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "아 그리고 대기 상태인 칸만 분홍색으로 표시해줘", "output": "상태가 대기인 셀만 분홍색으로 강조해줘", "task": "highlight_status", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "ㅇㅇ 상태=대기 셀만 분홍 강조", "output": "상태가 대기인 셀만 분홍색으로 강조해줘", "task": "highlight_status", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "클레임 10 초과인 셀만 빨갛게 칠해", "output": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "task": "highlight_threshold", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "클레임10↑빨강", "output": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "task": "highlight_threshold", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "빨간색으로 칠해 클레임 10 넘는 셀만", "output": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "task": "highlight_threshold", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "여기 클레임 열에서 10보다 큰 칸만 빨강으로", "output": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "task": "highlight_threshold", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "클래임 10 넘는 쎌만 빨간색으로 해", "output": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "task": "highlight_threshold", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "클레임 10 초과 빨갛게 칠햬라 빨ㄹ리", "output": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "task": "highlight_threshold", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "아 그리고 클레임 10 넘어가는 데만 빨간색 강조", "output": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "task": "highlight_threshold", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "ㅇㅇ 클레임 10보다 크면 빨간색", "output": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "task": "highlight_threshold", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "정시배송률로 선 그래프 하나 그려", "output": "정시배송률 추이를 선 그래프로 그려줘", "task": "line_chart", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "배송률꺾은선", "output": "정시배송률 추이를 선 그래프로 그려줘", "task": "line_chart", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "선 그래프 그려줘 정시배송률 열로", "output": "정시배송률 추이를 선 그래프로 그려줘", "task": "line_chart", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "여기 정시배송률 가지고 꺾은선 차트 만들어봐", "output": "정시배송률 추이를 선 그래프로 그려줘", "task": "line_chart", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "정시배송률 라인 차투로 그러줘", "output": "정시배송률 추이를 선 그래프로 그려줘", "task": "line_chart", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "정시배송률 추이 선그래프로 뽑아바 빨ㄹ리", "output": "정시배송률 추이를 선 그래프로 그려줘", "task": "line_chart", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "아 그리고 정시배송률은 선 그래프로 하나 뽑아줘", "output": "정시배송률 추이를 선 그래프로 그려줘", "task": "line_chart", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "ㅇㅇ 정시배송률 선 차트 하나", "output": "정시배송률 추이를 선 그래프로 그려줘", "task": "line_chart", "persona": "A_팀장", "outcome": "ERROR", "source": "blind_v1"}
+{"input": "지연건수로 막대 그래프 하나 만들어", "output": "지연건수로 막대 그래프 그려줘", "task": "bar_chart", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "지연건수막대", "output": "지연건수로 막대 그래프 그려줘", "task": "bar_chart", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "막대 그래프 그려 지연건수 열로", "output": "지연건수로 막대 그래프 그려줘", "task": "bar_chart", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "여기 지연건수 가지고 막대 차트 뽑아봐", "output": "지연건수로 막대 그래프 그려줘", "task": "bar_chart", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "지연건수 막데 그래푸로 그려줘", "output": "지연건수로 막대 그래프 그려줘", "task": "bar_chart", "persona": "A_팀장", "outcome": "ASK", "source": "blind_v1"}
+{"input": "지연건수 바 차트로 하나 맏들어 빨ㄹ리", "output": "지연건수로 막대 그래프 그려줘", "task": "bar_chart", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "아 그리고 지연건수는 막대 그래프로 보여줘", "output": "지연건수로 막대 그래프 그려줘", "task": "bar_chart", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "ㅇㅇ 지연건수 막대 차트 하나", "output": "지연건수로 막대 그래프 그려줘", "task": "bar_chart", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "시트에 있는 차트 전부 없애", "output": "차트 다 지워줘", "task": "delete_charts", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "차트 삭제", "output": "차트 다 지워줘", "task": "delete_charts", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "지워줘 차트 다, 데이터는 놔두고", "output": "차트 다 지워줘", "task": "delete_charts", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "여기 있는 그래프 저거 다 지워", "output": "차트 다 지워줘", "task": "delete_charts", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "차투 전부 삭재해 표는 그대로 두고", "output": "차트 다 지워줘", "task": "delete_charts", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "그래프 싹 다 업애줘 빨ㄹ리", "output": "차트 다 지워줘", "task": "delete_charts", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "아 그리고 차트는 다 치워줘 숫자는 건들지 말고", "output": "차트 다 지워줘", "task": "delete_charts", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "ㅇㅇ 차트 전부 제거", "output": "차트 다 지워줘", "task": "delete_charts", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "이거 내용 싹 지워서 빈칸으로 만들어", "output": "A1:F6 내용 다 지워줘", "task": "clear_table", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "여기 비워", "output": "A1:F6 내용 다 지워줘", "task": "clear_table", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "지워줘 이 표 값 전부", "output": "A1:F6 내용 다 지워줘", "task": "clear_table", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "선택한 범위 값 전부 비워", "output": "A1:F6 내용 다 지워줘", "task": "clear_table", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "이 표 내용 다 지어줘 빈칸으루", "output": "A1:F6 내용 다 지워줘", "task": "clear_table", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "여기 값들 싹 삭재해 빨ㄹ리", "output": "A1:F6 내용 다 지워줘", "task": "clear_table", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "아 그리고 이 표 안에 있는 거 전부 비워줘", "output": "A1:F6 내용 다 지워줘", "task": "clear_table", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "ㅇㅇ 붙여넣은 범위 내용 전부 클리어", "output": "A1:F6 내용 다 지워줘", "task": "clear_table", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "A2에 지역성과 시트의 주문건수 다 더한 값 넣어", "output": "A2에 지역성과 시트 주문건수 합계 가져와줘", "task": "cross_sheet_sum", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "A2 지역성과 주문건수 합", "output": "A2에 지역성과 시트 주문건수 합계 가져와줘", "task": "cross_sheet_sum", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "지역성과 시트 주문건수 합계를 A2로 끌어와", "output": "A2에 지역성과 시트 주문건수 합계 가져와줘", "task": "cross_sheet_sum", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "여기 A2에 지역성과 탭 주문건수 총합 가져다 놔", "output": "A2에 지역성과 시트 주문건수 합계 가져와줘", "task": "cross_sheet_sum", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "A2에 지역성과 시트 주문건수 합게 너어줘", "output": "A2에 지역성과 시트 주문건수 합계 가져와줘", "task": "cross_sheet_sum", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "지역성과 주문건수 전부 더해서 A2에 넣어라 빨ㄹ리 수식으루", "output": "A2에 지역성과 시트 주문건수 합계 가져와줘", "task": "cross_sheet_sum", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "아 그리고 A2에는 지역성과 시트 주문건수 총합 수식으로 넣어", "output": "A2에 지역성과 시트 주문건수 합계 가져와줘", "task": "cross_sheet_sum", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "ㅇㅇ A2에 지역성과 주문건수 합계 연결", "output": "A2에 지역성과 시트 주문건수 합계 가져와줘", "task": "cross_sheet_sum", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "여기에 서울,100; 부산,200 넣어", "output": "서울,100; 부산,200 입력해줘", "task": "paste_values", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "서울,100; 부산,200 넣어", "output": "서울,100; 부산,200 입력해줘", "task": "paste_values", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "입력해줘 서울,100; 부산,200 이렇게", "output": "서울,100; 부산,200 입력해줘", "task": "paste_values", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "이 칸에 서울,100; 부산,200 채워줘", "output": "서울,100; 부산,200 입력해줘", "task": "paste_values", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "서울,100; 부산,200 너어줘 빨ㄹ리", "output": "서울,100; 부산,200 입력해줘", "task": "paste_values", "persona": "A_팀장", "outcome": "ASK", "source": "blind_v1"}
+{"input": "여기다 서울,100; 부산,200 입력해바 그대루", "output": "서울,100; 부산,200 입력해줘", "task": "paste_values", "persona": "A_팀장", "outcome": "ASK", "source": "blind_v1"}
+{"input": "아 그리고 서울,100; 부산,200 이거 여기 붙여 넣어", "output": "서울,100; 부산,200 입력해줘", "task": "paste_values", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "ㅇㅇ 서울,100; 부산,200 으로 채워", "output": "서울,100; 부산,200 입력해줘", "task": "paste_values", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "수도권이라고 된 거 전부 서울권으로 바꿔", "output": "수도권을 서울권으로 바꿔줘", "task": "find_replace", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "수도권→서울권", "output": "수도권을 서울권으로 바꿔줘", "task": "find_replace", "persona": "A_팀장", "outcome": "ASK", "source": "blind_v1"}
+{"input": "서울권으로 바꿔줘 수도권 들어간 건 다", "output": "수도권을 서울권으로 바꿔줘", "task": "find_replace", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "여기 표에서 수도권을 서울권으로 고쳐", "output": "수도권을 서울권으로 바꿔줘", "task": "find_replace", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "수도권 → 서울권 으로 바꺼라 전부 차자서", "output": "수도권을 서울권으로 바꿔줘", "task": "find_replace", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "수도권 글자 서울권으로 치환햐 빨ㄹ리", "output": "수도권을 서울권으로 바꿔줘", "task": "find_replace", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "아 그리고 수도권은 서울권으로 이름 바꿔놔", "output": "수도권을 서울권으로 바꿔줘", "task": "find_replace", "persona": "A_팀장", "outcome": "ASK", "source": "blind_v1"}
+{"input": "ㅇㅇ 수도권 전부 서울권으로 교체", "output": "수도권을 서울권으로 바꿔줘", "task": "find_replace", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "이 시트 이름 지역별실적으로 바꿔", "output": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "task": "rename_sheet", "persona": "A_팀장", "outcome": "ERROR", "source": "blind_v1"}
+{"input": "지역별실적으로", "output": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "task": "rename_sheet", "persona": "A_팀장", "outcome": "ERROR", "source": "blind_v1"}
+{"input": "지역별실적으로 바꿔줘 지역성과 시트 이름", "output": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "task": "rename_sheet", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "여기 시트 탭 이름 지역별실적으로 고쳐", "output": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "task": "rename_sheet", "persona": "A_팀장", "outcome": "ASK", "source": "blind_v1"}
+{"input": "지역성과 씨트 이름 지역별실적으로 바꺼", "output": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "task": "rename_sheet", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "시트명 지역별실적으로 변경해줴 빨ㄹ리", "output": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "task": "rename_sheet", "persona": "A_팀장", "outcome": "ERROR", "source": "blind_v1"}
+{"input": "아 그리고 지역성과 시트는 지역별실적이라고 이름 바꿔놔", "output": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "task": "rename_sheet", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "ㅇㅇ 탭 이름 지역별실적으로", "output": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "task": "rename_sheet", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "D2에 B2에서 C2 뺀 거 넣어", "output": "D2에 B2에서 C2 뺀 값 넣어줘", "task": "cell_subtract", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "D2 B2빼기C2", "output": "D2에 B2에서 C2 뺀 값 넣어줘", "task": "cell_subtract", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "B2에서 C2 빼서 D2에 넣어줘", "output": "D2에 B2에서 C2 뺀 값 넣어줘", "task": "cell_subtract", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "여기 D2에 이번주 B2 빼기 지난주 C2 값 수식으로", "output": "D2에 B2에서 C2 뺀 값 넣어줘", "task": "cell_subtract", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "D2에 B2 빼기 C2 계산해서 너어줘 수식으루", "output": "D2에 B2에서 C2 뺀 값 넣어줘", "task": "cell_subtract", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "B2에서 C2 뺀 증감 D2에 넣어롸 빨ㄹ리", "output": "D2에 B2에서 C2 뺀 값 넣어줘", "task": "cell_subtract", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "아 그리고 D2에는 B2 빼기 C2 수식 넣어", "output": "D2에 B2에서 C2 뺀 값 넣어줘", "task": "cell_subtract", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "ㅇㅇ D2에 B2에서 C2 뺀 값 수식으로", "output": "D2에 B2에서 C2 뺀 값 넣어줘", "task": "cell_subtract", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "정시배송률 소수점 한 자리까지 보이게 해", "output": "정시배송률은 소수 첫째 자리까지 보여줘", "task": "percent_format", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "배송률소수1자리", "output": "정시배송률은 소수 첫째 자리까지 보여줘", "task": "percent_format", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "소수 첫째 자리까지만 보여줘 정시배송률은", "output": "정시배송률은 소수 첫째 자리까지 보여줘", "task": "percent_format", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "여기 정시배송률 숫자 소숫점 한 자리로 맞춰", "output": "정시배송률은 소수 첫째 자리까지 보여줘", "task": "percent_format", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "정시배송률 소수 첫재 자리까지 표시해줴", "output": "정시배송률은 소수 첫째 자리까지 보여줘", "task": "percent_format", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "정시배송률 소숫점 1자리로 바꺼 빨ㄹ리", "output": "정시배송률은 소수 첫째 자리까지 보여줘", "task": "percent_format", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "아 그리고 정시배송률은 소수 한 자리까지만 표시", "output": "정시배송률은 소수 첫째 자리까지 보여줘", "task": "percent_format", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "ㅇㅇ 정시배송률 표시 형식 소수 첫째자리", "output": "정시배송률은 소수 첫째 자리까지 보여줘", "task": "percent_format", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수 열에 데이터 막대 깔아", "output": "주문건수 열에 데이터 막대 넣어줘", "task": "data_bar", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문데이터바", "output": "주문건수 열에 데이터 막대 넣어줘", "task": "data_bar", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "데이터 막대 넣어줘 주문건수 열에", "output": "주문건수 열에 데이터 막대 넣어줘", "task": "data_bar", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "여기 주문건수 칸 안에 막대 길이로 보이게 해봐", "output": "주문건수 열에 데이터 막대 넣어줘", "task": "data_bar", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "주문건수 열 데이타 막데 조건부서식 넣어", "output": "주문건수 열에 데이터 막대 넣어줘", "task": "data_bar", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "주문건수에 데이터 막대 너어라 빨ㄹ리", "output": "주문건수 열에 데이터 막대 넣어줘", "task": "data_bar", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "아 그리고 주문건수는 셀 안에 데이터 막대로 표시해줘", "output": "주문건수 열에 데이터 막대 넣어줘", "task": "data_bar", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "ㅇㅇ 주문건수 열 데이터 막대 서식", "output": "주문건수 열에 데이터 막대 넣어줘", "task": "data_bar", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "열 너비 내용에 맞게 자동으로 맞춰", "output": "열 너비 보기 좋게 맞춰줘", "task": "autofit", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "열너비 맞춰", "output": "열 너비 보기 좋게 맞춰줘", "task": "autofit", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "자동 맞춤 해줘 열 너비", "output": "열 너비 보기 좋게 맞춰줘", "task": "autofit", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "여기 열 폭 글자 길이에 맞게 맞춰봐", "output": "열 너비 보기 좋게 맞춰줘", "task": "autofit", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "열 너비 내용에 맏게 자동 조졍", "output": "열 너비 보기 좋게 맞춰줘", "task": "autofit", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "컬럼 폭 자동으로 마춰줘 빨ㄹ리", "output": "열 너비 보기 좋게 맞춰줘", "task": "autofit", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "아 그리고 열 너비 안 잘리게 자동 맞춤", "output": "열 너비 보기 좋게 맞춰줘", "task": "autofit", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "ㅇㅇ 열 폭 자동 맞춤", "output": "열 너비 보기 좋게 맞춰줘", "task": "autofit", "persona": "A_팀장", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "아직 저장은 하지 마", "output": "아직 저장하지 마", "task": "negation_save", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "저장하지마", "output": "아직 저장하지 마", "task": "negation_save", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "하지 마 저장은 아직", "output": "아직 저장하지 마", "task": "negation_save", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "이거 아직 저장하지 말고 그냥 둬", "output": "아직 저장하지 마", "task": "negation_save", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "저장 하지마라 아즉 절대루", "output": "아직 저장하지 마", "task": "negation_save", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "아즉 저장 하지맠", "output": "아직 저장하지 마", "task": "negation_save", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "아 그리고 저장은 아직 하지 마", "output": "아직 저장하지 마", "task": "negation_save", "persona": "A_팀장", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "ㅇㅇ 저장 금지 아직은", "output": "아직 저장하지 마", "task": "negation_save", "persona": "A_팀장", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "방금 붙여넣은 표 아래에 합계 한 줄 추가해 주실 수 있을까요?", "output": "합계를 표 아래에 한 줄로 넣어줘", "task": "sum_below", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "팀장님께 드릴 주간 보고서에 넣어야 해서요, 이 표 맨 아랫줄에 숫자 열들 합계 좀 넣어 주시면 감사하겠습니다.", "output": "합계를 표 아래에 한 줄로 넣어줘", "task": "sum_below", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "이 표 바로 밑에 SUM 행 하나 부탁드려요.", "output": "합계를 표 아래에 한 줄로 넣어줘", "task": "sum_below", "persona": "B_신입", "outcome": "ASK", "source": "blind_v1"}
+{"input": "표 아래쪽에 total 줄 하나 넣어주세요, 각 숫자 열마다 합계요.", "output": "합계를 표 아래에 한 줄로 넣어줘", "task": "sum_below", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "표 밑에 합계 줄 부탁드려요.", "output": "합계를 표 아래에 한 줄로 넣어줘", "task": "sum_below", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "제가 엑셀을 아직 잘 몰라서요, 이 표 아래에 각 열 합꼐를 한 줄로 정리해 주실 수 있나요?", "output": "합계를 표 아래에 한 줄로 넣어줘", "task": "sum_below", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "지금 붙여넣은 표 맨 아래에 합계 라벨 달고 열별로 합계 한 줄 넣어 주세요.", "output": "합계를 표 아래에 한 줄로 넣어줘", "task": "sum_below", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "이 표 바로 아래 칸에 합계 한 줄 넣어 주시면 될 것 같은데, 가능할까요?", "output": "합계를 표 아래에 한 줄로 넣어줘", "task": "sum_below", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "합계 줄 바로 아래에 평균 한 줄도 추가해 주실 수 있을까요?", "output": "그 아래 칸에는 평균도 넣어줘", "task": "avg_below", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "아까 합계 넣어 주신 표인데요, 보고서에 평균도 같이 들어가야 한다고 해서 합계 밑에 평균 줄 하나 더 부탁드려요.", "output": "그 아래 칸에는 평균도 넣어줘", "task": "avg_below", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "합계 밑에 average 줄도 하나 넣어 주세요.", "output": "그 아래 칸에는 평균도 넣어줘", "task": "avg_below", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "합계 아래 칸에 평균도 넣어 주세요.", "output": "그 아래 칸에는 평균도 넣어줘", "task": "avg_below", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "이 표 합계 줄 아래에 각 숫자 열 평균을 한 줄로 넣어 주시면 좋을 것 같은데 부탁드려도 될까요?", "output": "그 아래 칸에는 평균도 넣어줘", "task": "avg_below", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "합계 바로 아랫줄에 평균 한 줄 부탁드려요, AVERAGE로 계산해서요.", "output": "그 아래 칸에는 평균도 넣어줘", "task": "avg_below", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "팀장님이 평균도 보고 싶다고 하셔서요, 붙여넣은 표의 합계 줄 밑에 평균 줄 하나 추가해 주세요.", "output": "그 아래 칸에는 평균도 넣어줘", "task": "avg_below", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "합계 아래에 펑균도 한 줄 넣어 주시겠어요?", "output": "그 아래 칸에는 평균도 넣어줘", "task": "avg_below", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "표 첫 줄 헤더를 남색 배경에 흰색 글씨, bold로 해 주실 수 있을까요?", "output": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "task": "header_navy", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "머리글 행 남색 배경, 흰 글씨, 굵게 부탁드려요.", "output": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "task": "header_navy", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "보고서 양식이 보통 헤더가 진한 남색에 흰 글씨더라고요, 저희 표 첫 줄도 그렇게 남색 배경 흰 글씨 굵게 맞춰 주세요.", "output": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "task": "header_navy", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "header 행을 navy 배경으로 하고 글자는 흰색 bold로 바꿔 주세요.", "output": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "task": "header_navy", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "표 맨 윗줄 제목 행을 남색으로 칠하고 글씨는 흰색 굵게 해 주시면 감사하겠습니다.", "output": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "task": "header_navy", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "다른 팀 자료 보니까 머리글이 남색에 흰 글씨라 깔끔해 보여서요, 저희 표 머리글도 남색 배경에 흰 글씨 굵은 글씨로 바꿔 주실 수 있나요?", "output": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "task": "header_navy", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "머리글 줄 남색 배경에 흰 글씨 굵게로 해도 될까요?", "output": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "task": "header_navy", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "표 첫 줄을 남색 배경에 흰색 굵은 글시로 바꿔 주세요.", "output": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "task": "header_navy", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "표 전체에 테두리 좀 둘러 주실 수 있을까요?", "output": "표 전체에 테두리 그려줘", "task": "border_table", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "표에 border 전부 넣어 주세요.", "output": "표 전체에 테두리 그려줘", "task": "border_table", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "인쇄해서 회의 자료로 쓸 거라서요, 표 전체에 선이 보이게 테두리를 쳐 주시면 좋겠습니다.", "output": "표 전체에 테두리 그려줘", "task": "border_table", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "표 전체 칸마다 테두리 그려 주세요.", "output": "표 전체에 테두리 그려줘", "task": "border_table", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "표가 선이 없으니까 어디까지가 표인지 잘 안 보여서요, 표 전체에 테두리 부탁드려요.", "output": "표 전체에 테두리 그려줘", "task": "border_table", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "이 표 전체에 all borders 적용해 주세요.", "output": "표 전체에 테두리 그려줘", "task": "border_table", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "표 전채에 테두리 쳐 주시면 감사하겠습니다.", "output": "표 전체에 테두리 그려줘", "task": "border_table", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "표 전체를 테두리로 감싸 주실 수 있나요? 안쪽 선도 같이요.", "output": "표 전체에 테두리 그려줘", "task": "border_table", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수랑 출고건수 열은 천 단위 콤마 넣어서 보여 주실 수 있을까요?", "output": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "task": "comma_cols", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수, 출고건수 숫자에 천 단위 구분 기호 부탁드려요.", "output": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "task": "comma_cols", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "숫자가 커서 읽기가 어렵더라고요, 주문건수하고 출고건수 열에 천 단위마다 콤마 찍히게 서식 바꿔 주세요.", "output": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "task": "comma_cols", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수와 출고건수 컬럼은 1,000 단위 comma format으로 해 주세요.", "output": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "task": "comma_cols", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "보고서에 들어갈 숫자라 가독성이 중요해서요, 주문건수·출고건수 열을 천 단위 콤마 형식으로 바꿔 주시면 감사하겠습니다.", "output": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "task": "comma_cols", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수하고 출고건수는 number format을 천 단위 콤마로 해 주세요.", "output": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "task": "comma_cols", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수랑 출고건수 열에 천 단위 컴마 표시해 주세요.", "output": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "task": "comma_cols", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수, 출고건수 둘 다 천 단위 콤마 서식으로 바꿔도 될까요?", "output": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "task": "comma_cols", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수가 많은 순서대로 정렬해 주실 수 있을까요?", "output": "주문건수 많은 순으로 정렬해줘", "task": "sort_desc", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "주문건수 기준 내림차순으로 sort 부탁드려요.", "output": "주문건수 많은 순으로 정렬해줘", "task": "sort_desc", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "팀장님이 주문 많은 지역부터 보고 싶다고 하셔서요, 표를 주문건수 높은 순으로 정렬해 주세요, 머리글은 그대로 두시고요.", "output": "주문건수 많은 순으로 정렬해줘", "task": "sort_desc", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "주문건수 큰 순서로 정렬해 주세요.", "output": "주문건수 많은 순으로 정렬해줘", "task": "sort_desc", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "주문건수 descending으로 정렬해 주세요, 헤더 줄은 빼고요.", "output": "주문건수 많은 순으로 정렬해줘", "task": "sort_desc", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "표를 주문건수 많은 순으로 정렬해도 될까요?", "output": "주문건수 많은 순으로 정렬해줘", "task": "sort_desc", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "보고서에 순위 느낌으로 넣고 싶어서요, 주문건수가 제일 많은 지역이 맨 위로 오게 정렬 부탁드립니다.", "output": "주문건수 많은 순으로 정렬해줘", "task": "sort_desc", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "주문건수 많은 순서대로 정렬헤 주세요, 머리글 줄은 그대로 두시고요.", "output": "주문건수 많은 순으로 정렬해줘", "task": "sort_desc", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "클레임 많은 순으로 정렬해 주실 수 있을까요? 합계 줄은 맨 아래에 그대로 두시고요.", "output": "클레임 많은 순으로 정렬해줘", "task": "sort_keep_total", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "클레임 기준 내림차순 sort 부탁드려요, 마지막 합계 행은 빼고요.", "output": "클레임 많은 순으로 정렬해줘", "task": "sort_keep_total", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "클레임이 많은 지역부터 보려고 하는데요, 표 맨 밑에 합계 줄이 있어서 그건 그대로 두고 데이터 부분만 클레임 많은 순으로 정렬해 주세요.", "output": "클레임 많은 순으로 정렬해줘", "task": "sort_keep_total", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "클레임 많은 순 정렬 부탁드려요, 합계 줄은 고정이요.", "output": "클레임 많은 순으로 정렬해줘", "task": "sort_keep_total", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "클레임 descending으로 정렬해 주세요, total 행은 맨 아래 그대로 있어야 해요.", "output": "클레임 많은 순으로 정렬해줘", "task": "sort_keep_total", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "클레임 건수 높은 순으로 정렬해도 될까요? 합계 행은 건드리지 말아 주세요.", "output": "클레임 많은 순으로 정렬해줘", "task": "sort_keep_total", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "회의 때 클레임 많은 지역 순서로 설명해야 해서요, 합계 줄은 맨 아래 그대로 두고 나머지를 클레임 많은 순으로 정렬해 주시면 감사하겠습니다.", "output": "클레임 많은 순으로 정렬해줘", "task": "sort_keep_total", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "클레임 많은 순으로 정렬해 주세요, 합계 줄은 그대로 맨 아레요.", "output": "클레임 많은 순으로 정렬해줘", "task": "sort_keep_total", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "'요약'이라는 이름으로 새 시트 하나 만들어 주실 수 있을까요?", "output": "요약 시트 만들어줘", "task": "new_sheet", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "요약 sheet 하나 새로 추가해 주세요.", "output": "요약 시트 만들어줘", "task": "new_sheet", "persona": "B_신입", "outcome": "ASK", "source": "blind_v1"}
+{"input": "보고서 앞쪽에 요약 페이지가 필요하다고 해서요, 요약이라는 이름의 새 시트를 만들어 주세요.", "output": "요약 시트 만들어줘", "task": "new_sheet", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "요약 시트 새로 하나 부탁드려요.", "output": "요약 시트 만들어줘", "task": "new_sheet", "persona": "B_신입", "outcome": "ASK", "source": "blind_v1"}
+{"input": "new sheet 추가하고 이름은 요약으로 해 주세요.", "output": "요약 시트 만들어줘", "task": "new_sheet", "persona": "B_신입", "outcome": "ASK", "source": "blind_v1"}
+{"input": "제가 정리한 내용을 따로 모아 두려고 하는데, '요약' 이름으로 시트 하나 새로 만들어 주시면 감사하겠습니다.", "output": "요약 시트 만들어줘", "task": "new_sheet", "persona": "B_신입", "outcome": "ASK", "source": "blind_v1"}
+{"input": "요약이라는 시트 새로 만들어도 될까요?", "output": "요약 시트 만들어줘", "task": "new_sheet", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "요약이라는 이름의 새 싯트 하나 만들어 주세요.", "output": "요약 시트 만들어줘", "task": "new_sheet", "persona": "B_신입", "outcome": "ASK", "source": "blind_v1"}
+{"input": "H1 셀에 '물류 관제 대시보드'라고 제목 넣어 주실 수 있을까요?", "output": "H1에 물류 관제 대시보드 라고 써줘", "task": "title_cell", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "H1에 제목으로 물류 관제 대시보드 입력 부탁드려요.", "output": "H1에 물류 관제 대시보드 라고 써줘", "task": "title_cell", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "대시보드 맨 위에 제목이 있어야 보기 좋다고 하셔서요, H1 칸에 물류 관제 대시보드 라고 적어 주세요.", "output": "H1에 물류 관제 대시보드 라고 써줘", "task": "title_cell", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "H1 cell에 title로 '물류 관제 대시보드' 써 주세요.", "output": "H1에 물류 관제 대시보드 라고 써줘", "task": "title_cell", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "H1에 '물류 관제 대시보드' 텍스트 넣어 주세요.", "output": "H1에 물류 관제 대시보드 라고 써줘", "task": "title_cell", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "보고용으로 시트 상단에 이름표가 필요해서요, H1 셀에 물류 관제 대시보드라는 제목을 넣어 주시면 감사하겠습니다.", "output": "H1에 물류 관제 대시보드 라고 써줘", "task": "title_cell", "persona": "B_신입", "outcome": "ASK", "source": "blind_v1"}
+{"input": "H1에 물류 관제 대시보드 라고 title 적어 주세요.", "output": "H1에 물류 관제 대시보드 라고 써줘", "task": "title_cell", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "H1 셀에다 물류 관제 대시보드 라고 제목 써 주시겠어요? 거기가 맞는 것 갔은데요.", "output": "H1에 물류 관제 대시보드 라고 써줘", "task": "title_cell", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "H1부터 M1까지 셀 병합해 주실 수 있을까요?", "output": "H1부터 M1까지 병합해줘", "task": "merge_title", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "H1에서 M1까지 merge 부탁드려요.", "output": "H1부터 M1까지 병합해줘", "task": "merge_title", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "제목이 한 칸에 안 들어가서요, H1부터 M1까지 하나로 합쳐 주세요.", "output": "H1부터 M1까지 병합해줘", "task": "merge_title", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "H1~M1 셀 합쳐 주세요.", "output": "H1부터 M1까지 병합해줘", "task": "merge_title", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "H1부터 M1까지 merge cells 해 주세요, 제목 칸으로 쓰려고요.", "output": "H1부터 M1까지 병합해줘", "task": "merge_title", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "대시보드 제목이 길어서 한 셀에 다 안 보이더라고요, H1부터 M1까지를 하나의 셀로 병합해 주시면 감사하겠습니다.", "output": "H1부터 M1까지 병합해줘", "task": "merge_title", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "H1에서 M1까지 병합해도 괜찮을까요?", "output": "H1부터 M1까지 병합해줘", "task": "merge_title", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "H1부터 M1까지 하나로 병합헤 주세요.", "output": "H1부터 M1까지 병합해줘", "task": "merge_title", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "첫 줄 머리글이 스크롤해도 계속 보이게 고정해 주실 수 있을까요?", "output": "첫 줄은 스크롤해도 보이게 고정해줘", "task": "freeze_top", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "맨 윗줄 틀 고정 부탁드려요.", "output": "첫 줄은 스크롤해도 보이게 고정해줘", "task": "freeze_top", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "데이터가 길어서 아래로 내리면 머리글이 안 보이더라고요, 첫 줄은 스크롤해도 항상 보이게 고정해 주세요.", "output": "첫 줄은 스크롤해도 보이게 고정해줘", "task": "freeze_top", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "첫 번째 행 freeze 해 주세요, 스크롤 내려도 헤더 보이게요.", "output": "첫 줄은 스크롤해도 보이게 고정해줘", "task": "freeze_top", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "top row 고정 부탁드려요, freeze panes로요.", "output": "첫 줄은 스크롤해도 보이게 고정해줘", "task": "freeze_top", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "행이 많아서 내리다 보면 어느 열이 뭔지 헷갈려서요, 머리글 줄을 고정해서 스크롤해도 보이게 해 주시면 감사하겠습니다.", "output": "첫 줄은 스크롤해도 보이게 고정해줘", "task": "freeze_top", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "첫 줄 틀 고정 해도 될까요?", "output": "첫 줄은 스크롤해도 보이게 고정해줘", "task": "freeze_top", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "맨 윗줄은 스크롤해도 안 사라지게 고졍해 주세요.", "output": "첫 줄은 스크롤해도 보이게 고정해줘", "task": "freeze_top", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "상태가 대기인 셀만 분홍색으로 표시해 주실 수 있을까요?", "output": "상태가 대기인 셀만 분홍색으로 강조해줘", "task": "highlight_status", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "상태 열에서 대기라고 된 칸만 pink로 강조 부탁드려요.", "output": "상태가 대기인 셀만 분홍색으로 강조해줘", "task": "highlight_status", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "지연경고 표에서 대기 건을 빨리 찾아야 해서요, 상태가 '대기'인 셀만 분홍색으로 칠해 주세요.", "output": "상태가 대기인 셀만 분홍색으로 강조해줘", "task": "highlight_status", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "상태가 대기인 셀 분홍색으로 해 주세요.", "output": "상태가 대기인 셀만 분홍색으로 강조해줘", "task": "highlight_status", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "상태 값이 대기인 cell만 분홍 배경으로 highlight 해 주세요.", "output": "상태가 대기인 셀만 분홍색으로 강조해줘", "task": "highlight_status", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "회의 때 대기 중인 운송장이 몇 개인지 한눈에 보여 줘야 해서요, 상태 열에서 대기인 셀만 분홍색으로 강조해 주시면 감사하겠습니다.", "output": "상태가 대기인 셀만 분홍색으로 강조해줘", "task": "highlight_status", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "상태가 대기인 셀만 분홍색으로 칠해도 될까요?", "output": "상태가 대기인 셀만 분홍색으로 강조해줘", "task": "highlight_status", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "상태가 대기인 셀만 분홍색으로 강조해 주세오.", "output": "상태가 대기인 셀만 분홍색으로 강조해줘", "task": "highlight_status", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "클레임이 10 넘는 셀만 빨간색으로 칠해 주실 수 있을까요?", "output": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "task": "highlight_threshold", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "클레임 10 초과인 셀만 red로 표시 부탁드려요.", "output": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "task": "highlight_threshold", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "클레임이 많은 지역을 눈에 띄게 표시하라고 하셔서요, 클레임 값이 10보다 큰 셀만 빨간색으로 칠해 주세요.", "output": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "task": "highlight_threshold", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "클레임 10 초과 셀 빨간색 부탁드려요.", "output": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "task": "highlight_threshold", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "클레임 열에서 10보다 큰 값만 빨간 배경으로 highlight 해 주세요.", "output": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "task": "highlight_threshold", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "보고서에서 문제 지역이 바로 보여야 해서요, 클레임이 10을 넘는 셀만 빨간색으로 강조해 주시면 감사하겠습니다.", "output": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "task": "highlight_threshold", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "클레임 10 넘는 칸만 빨간색으로 해도 될까요?", "output": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "task": "highlight_threshold", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "클레임이 10보다 큰 셀만 빨간색으로 칠혀 주세요.", "output": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "task": "highlight_threshold", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "정시배송률 추이를 선 그래프로 그려 주실 수 있을까요?", "output": "정시배송률 추이를 선 그래프로 그려줘", "task": "line_chart", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "정시배송률로 line chart 하나 만들어 주세요.", "output": "정시배송률 추이를 선 그래프로 그려줘", "task": "line_chart", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "팀장님이 정시배송률 흐름을 그래프로 보고 싶다고 하셔서요, 정시배송률 열로 선 그래프 하나 그려 주세요.", "output": "정시배송률 추이를 선 그래프로 그려줘", "task": "line_chart", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "정시배송률 선 그래프 부탁드려요.", "output": "정시배송률 추이를 선 그래프로 그려줘", "task": "line_chart", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "정시배송률 데이터로 line graph 하나 추가해 주세요.", "output": "정시배송률 추이를 선 그래프로 그려줘", "task": "line_chart", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "보고서에 시각 자료가 있으면 좋겠다고 해서요, 정시배송률 열을 가지고 꺾은선 그래프를 하나 만들어 주시면 감사하겠습니다.", "output": "정시배송률 추이를 선 그래프로 그려줘", "task": "line_chart", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "정시배송률 선 그래프 하나 넣어도 될까요?", "output": "정시배송률 추이를 선 그래프로 그려줘", "task": "line_chart", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "정시배송률로 선 그레프 하나 그려 주세요.", "output": "정시배송률 추이를 선 그래프로 그려줘", "task": "line_chart", "persona": "B_신입", "outcome": "ASK", "source": "blind_v1"}
+{"input": "지연건수로 막대 그래프 하나 만들어 주실 수 있을까요?", "output": "지연건수로 막대 그래프 그려줘", "task": "bar_chart", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "지연건수 bar chart 하나 부탁드려요.", "output": "지연건수로 막대 그래프 그려줘", "task": "bar_chart", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "지연이 어느 지역에서 많은지 한눈에 보여야 해서요, 지연건수 열로 막대 그래프 하나 그려 주세요.", "output": "지연건수로 막대 그래프 그려줘", "task": "bar_chart", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "지연건수 막대 그래프 그려 주세요.", "output": "지연건수로 막대 그래프 그려줘", "task": "bar_chart", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "지연건수 데이터로 bar graph 하나 추가해 주세요.", "output": "지연건수로 막대 그래프 그려줘", "task": "bar_chart", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "보고서에 그래프를 하나 넣으라고 하셔서요, 지연건수 열을 가지고 막대 그래프를 만들어 주시면 감사하겠습니다.", "output": "지연건수로 막대 그래프 그려줘", "task": "bar_chart", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "지연건수로 막대 그래프 하나 넣어도 괜찮을까요?", "output": "지연건수로 막대 그래프 그려줘", "task": "bar_chart", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "지연건수로 막데 그래프 하나 그려 주세요.", "output": "지연건수로 막대 그래프 그려줘", "task": "bar_chart", "persona": "B_신입", "outcome": "ASK", "source": "blind_v1"}
+{"input": "시트에 있는 차트 전부 지워 주실 수 있을까요? 데이터는 그대로 두시고요.", "output": "차트 다 지워줘", "task": "delete_charts", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "chart 다 삭제 부탁드려요.", "output": "차트 다 지워줘", "task": "delete_charts", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "제가 실수로 그래프를 잘못 만든 것 같아서요, 시트에 있는 차트는 전부 지워 주세요, 표 데이터는 건드리지 마시고요.", "output": "차트 다 지워줘", "task": "delete_charts", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "차트 전부 삭제해 주세요.", "output": "차트 다 지워줘", "task": "delete_charts", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "시트에 있는 graph 모두 제거해 주세요, 데이터는 남겨 두고요.", "output": "차트 다 지워줘", "task": "delete_charts", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "보고서 양식이 바뀌어서 그래프는 안 넣기로 했거든요, 시트에 있는 차트를 모두 지워 주시면 감사하겠습니다.", "output": "차트 다 지워줘", "task": "delete_charts", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "차트 다 지워도 될까요? 표는 그대로요.", "output": "차트 다 지워줘", "task": "delete_charts", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "차트 전부 지워 주세요, 데이터는 그데로 두시고요.", "output": "차트 다 지워줘", "task": "delete_charts", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "방금 붙여넣은 표 내용 전부 지워 주실 수 있을까요?", "output": "A1:F6 내용 다 지워줘", "task": "clear_table", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "이 범위 값 다 clear 해 주세요.", "output": "A1:F6 내용 다 지워줘", "task": "clear_table", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "새로 데이터를 받아서 다시 넣어야 해서요, 지금 붙여넣은 표 안의 값을 전부 지워서 빈칸으로 만들어 주세요.", "output": "A1:F6 내용 다 지워줘", "task": "clear_table", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "이 표 내용 다 지워 주세요.", "output": "A1:F6 내용 다 지워줘", "task": "clear_table", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "선택한 표 내용 전부 delete 해서 빈 칸으로 만들어 주세요.", "output": "A1:F6 내용 다 지워줘", "task": "clear_table", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "이 표는 이전 버전이라서 더 안 쓰거든요, 붙여넣은 범위 값을 싹 지워 주시면 감사하겠습니다.", "output": "A1:F6 내용 다 지워줘", "task": "clear_table", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "이 표 값 다 지워도 될까요?", "output": "A1:F6 내용 다 지워줘", "task": "clear_table", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "붙여너은 표 내용 전부 지워 주세요, 빈 칸으로요.", "output": "A1:F6 내용 다 지워줘", "task": "clear_table", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "A2에 지역성과 시트의 주문건수 합계를 가져와 주실 수 있을까요?", "output": "A2에 지역성과 시트 주문건수 합계 가져와줘", "task": "cross_sheet_sum", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "A2 셀에 지역성과 sheet 주문건수 total 넣어 주세요.", "output": "A2에 지역성과 시트 주문건수 합계 가져와줘", "task": "cross_sheet_sum", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "요약 시트에 전체 주문건수를 보여 줘야 해서요, A2에 지역성과 시트에 있는 주문건수 합계를 수식으로 넣어 주세요.", "output": "A2에 지역성과 시트 주문건수 합계 가져와줘", "task": "cross_sheet_sum", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "A2에 지역성과 시트 주문건수 합계 부탁드려요.", "output": "A2에 지역성과 시트 주문건수 합계 가져와줘", "task": "cross_sheet_sum", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "A2에 지역성과 시트 주문건수 열 SUM 값 들어가게 해 주세요.", "output": "A2에 지역성과 시트 주문건수 합계 가져와줘", "task": "cross_sheet_sum", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "지금 요약 시트에 있는데요, 전체주문건수 아래 A2 칸에 지역성과 시트 주문건수를 다 더한 값이 들어가야 해서요, 수식으로 연결해 주시면 감사하겠습니다.", "output": "A2에 지역성과 시트 주문건수 합계 가져와줘", "task": "cross_sheet_sum", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "A2에 지역성과 시트 주문건수 합계 넣어도 될까요? 수식으로요.", "output": "A2에 지역성과 시트 주문건수 합계 가져와줘", "task": "cross_sheet_sum", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "A2에 지역성과 시트의 주문건수 합게 가져와 주세요.", "output": "A2에 지역성과 시트 주문건수 합계 가져와줘", "task": "cross_sheet_sum", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "방금 선택한 칸에 서울,100; 부산,200 이렇게 입력해 주실 수 있을까요?", "output": "서울,100; 부산,200 입력해줘", "task": "paste_values", "persona": "B_신입", "outcome": "ASK", "source": "blind_v1"}
+{"input": "여기에 서울,100; 부산,200 넣어 주세요.", "output": "서울,100; 부산,200 입력해줘", "task": "paste_values", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "지역별 데이터 두 줄을 추가해야 해서요, 지금 붙여넣은 자리에 서울,100; 부산,200 순서대로 입력해 주세요.", "output": "서울,100; 부산,200 입력해줘", "task": "paste_values", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "선택 범위에 서울,100; 부산,200 값 paste 해 주세요.", "output": "서울,100; 부산,200 입력해줘", "task": "paste_values", "persona": "B_신입", "outcome": "ASK", "source": "blind_v1"}
+{"input": "이 자리에 서울,100; 부산,200 input 부탁드려요.", "output": "서울,100; 부산,200 입력해줘", "task": "paste_values", "persona": "B_신입", "outcome": "ASK", "source": "blind_v1"}
+{"input": "팀장님이 서울이랑 부산 데이터를 추가하라고 하셔서요, 방금 선택한 두 줄에 서울,100; 부산,200 으로 채워 주시면 감사하겠습니다.", "output": "서울,100; 부산,200 입력해줘", "task": "paste_values", "persona": "B_신입", "outcome": "ASK", "source": "blind_v1"}
+{"input": "여기에 서울,100; 부산,200 넣어도 될까요?", "output": "서울,100; 부산,200 입력해줘", "task": "paste_values", "persona": "B_신입", "outcome": "ASK", "source": "blind_v1"}
+{"input": "선택한 곳에 서울,100; 부산,200 입럭해 주세요.", "output": "서울,100; 부산,200 입력해줘", "task": "paste_values", "persona": "B_신입", "outcome": "ASK", "source": "blind_v1"}
+{"input": "표에서 수도권이라는 글자를 전부 서울권으로 바꿔 주실 수 있을까요?", "output": "수도권을 서울권으로 바꿔줘", "task": "find_replace", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "수도권을 서울권으로 replace 부탁드려요.", "output": "수도권을 서울권으로 바꿔줘", "task": "find_replace", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "지역 명칭이 바뀌었다고 해서요, 표에 있는 수도권은 모두 서울권으로 바꿔 주세요.", "output": "수도권을 서울권으로 바꿔줘", "task": "find_replace", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "수도권 → 서울권으로 변경 부탁드려요.", "output": "수도권을 서울권으로 바꿔줘", "task": "find_replace", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "수도권이라는 단어 find & replace로 서울권으로 바꿔 주세요.", "output": "수도권을 서울권으로 바꿔줘", "task": "find_replace", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "위에서 용어를 통일하라고 하셔서요, 표에서 수도권이라고 적힌 건 전부 서울권으로 고쳐 주시면 감사하겠습니다.", "output": "수도권을 서울권으로 바꿔줘", "task": "find_replace", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "수도권을 서울권으로 바꿔도 될까요?", "output": "수도권을 서울권으로 바꿔줘", "task": "find_replace", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "수도권을 서울권으로 바꺼 주세요.", "output": "수도권을 서울권으로 바꿔줘", "task": "find_replace", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "지역성과 시트 이름을 지역별실적으로 바꿔 주실 수 있을까요?", "output": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "task": "rename_sheet", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "지역성과 sheet 이름 지역별실적으로 rename 부탁드려요.", "output": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "task": "rename_sheet", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "보고서에 들어가는 시트 이름을 맞추라고 하셔서요, 지금 지역성과라고 된 시트 이름을 지역별실적으로 변경해 주세요.", "output": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "task": "rename_sheet", "persona": "B_신입", "outcome": "ASK", "source": "blind_v1"}
+{"input": "시트명 지역성과를 지역별실적으로 바꿔 주세요.", "output": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "task": "rename_sheet", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "현재 sheet 이름 지역성과를 지역별실적으로 바꿔 주세요.", "output": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "task": "rename_sheet", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "다른 파일이랑 이름이 헷갈려서요, 이 시트 이름을 지역성과에서 지역별실적으로 바꿔 주시면 감사하겠습니다.", "output": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "task": "rename_sheet", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "지역성과 시트 이름 지역별실적으로 바꿔도 될까요?", "output": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "task": "rename_sheet", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "지역성과 시트 이름을 지역별실적으로 바꾸 주세요.", "output": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "task": "rename_sheet", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "D2에 B2에서 C2를 뺀 값 수식으로 넣어 주실 수 있을까요?", "output": "D2에 B2에서 C2 뺀 값 넣어줘", "task": "cell_subtract", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "D2에 B2 minus C2 값 넣어 주세요.", "output": "D2에 B2에서 C2 뺀 값 넣어줘", "task": "cell_subtract", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "증감 열을 채워야 해서요, D2에 이번주 값인 B2에서 지난주 값인 C2를 뺀 결과를 수식으로 넣어 주세요.", "output": "D2에 B2에서 C2 뺀 값 넣어줘", "task": "cell_subtract", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "D2에 B2에서 C2 뺀 값 부탁드려요.", "output": "D2에 B2에서 C2 뺀 값 넣어줘", "task": "cell_subtract", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "D2에 B2 빼기 C2 계산식 넣어 주세요, formula로요.", "output": "D2에 B2에서 C2 뺀 값 넣어줘", "task": "cell_subtract", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "이번주랑 지난주 차이를 보고해야 해서요, 증감 칸인 D2에 B2에서 C2를 뺀 값이 수식으로 들어가게 해 주시면 감사하겠습니다.", "output": "D2에 B2에서 C2 뺀 값 넣어줘", "task": "cell_subtract", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "D2에 B2에서 C2 뺀 값 수식으로 넣어도 될까요?", "output": "D2에 B2에서 C2 뺀 값 넣어줘", "task": "cell_subtract", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "D2에 B2에서 C2 뺀 값 수식으로 너어 주세요.", "output": "D2에 B2에서 C2 뺀 값 넣어줘", "task": "cell_subtract", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "정시배송률 숫자를 소수 첫째 자리까지만 보이게 해 주실 수 있을까요?", "output": "정시배송률은 소수 첫째 자리까지 보여줘", "task": "percent_format", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "정시배송률 열 소수점 한 자리 format으로 부탁드려요.", "output": "정시배송률은 소수 첫째 자리까지 보여줘", "task": "percent_format", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "소수점이 너무 길게 나와서 보고서에 넣기 지저분해서요, 정시배송률 열은 소수 첫째 자리까지만 표시되게 서식을 바꿔 주세요.", "output": "정시배송률은 소수 첫째 자리까지 보여줘", "task": "percent_format", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "정시배송률 소수 첫째 자리까지 표시 부탁드려요.", "output": "정시배송률은 소수 첫째 자리까지 보여줘", "task": "percent_format", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "정시배송률 컬럼 number format을 소수점 1자리로 맞춰 주세요.", "output": "정시배송률은 소수 첫째 자리까지 보여줘", "task": "percent_format", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "팀장님이 숫자는 소수 한 자리면 충분하다고 하셔서요, 정시배송률 열을 소수 첫째 자리까지만 보이게 해 주시면 감사하겠습니다.", "output": "정시배송률은 소수 첫째 자리까지 보여줘", "task": "percent_format", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "정시배송률은 소수 첫째 자리까지만 보이게 해도 될까요?", "output": "정시배송률은 소수 첫째 자리까지 보여줘", "task": "percent_format", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "정시배송률 소수 첫쩨 자리까지 보이게 해 주세요.", "output": "정시배송률은 소수 첫째 자리까지 보여줘", "task": "percent_format", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "주문건수 열에 데이터 막대 넣어 주실 수 있을까요?", "output": "주문건수 열에 데이터 막대 넣어줘", "task": "data_bar", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수 column에 data bar 조건부 서식 부탁드려요.", "output": "주문건수 열에 데이터 막대 넣어줘", "task": "data_bar", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "숫자만 있으니까 비교가 잘 안 돼서요, 주문건수 열에 셀 안에 막대가 길이로 표시되는 데이터 막대를 넣어 주세요.", "output": "주문건수 열에 데이터 막대 넣어줘", "task": "data_bar", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수에 데이터 막대 부탁드려요.", "output": "주문건수 열에 데이터 막대 넣어줘", "task": "data_bar", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수 열에 data bar 넣어 주세요, 셀 안에 막대 나오는 거요.", "output": "주문건수 열에 데이터 막대 넣어줘", "task": "data_bar", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "보고서에서 어느 지역이 주문이 많은지 한눈에 보이면 좋겠다고 해서요, 주문건수 열에 데이터 막대 조건부 서식을 적용해 주시면 감사하겠습니다.", "output": "주문건수 열에 데이터 막대 넣어줘", "task": "data_bar", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수 열에 데이터 막대 넣어도 될까요?", "output": "주문건수 열에 데이터 막대 넣어줘", "task": "data_bar", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수 열에 데이타 막대 넣어 주세요.", "output": "주문건수 열에 데이터 막대 넣어줘", "task": "data_bar", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "열 너비를 내용에 맞게 자동으로 맞춰 주실 수 있을까요?", "output": "열 너비 보기 좋게 맞춰줘", "task": "autofit", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "열 너비 autofit 부탁드려요.", "output": "열 너비 보기 좋게 맞춰줘", "task": "autofit", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "글자가 잘려서 ###으로 보이는 칸이 있어서요, 열 너비를 내용에 맞게 자동으로 조정해 주세요.", "output": "열 너비 보기 좋게 맞춰줘", "task": "autofit", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "열 너비 자동 맞춤 해 주세요.", "output": "열 너비 보기 좋게 맞춰줘", "task": "autofit", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "column width 내용에 맞게 auto fit 해 주세요.", "output": "열 너비 보기 좋게 맞춰줘", "task": "autofit", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "인쇄했을 때 내용이 다 보여야 해서요, 모든 열 너비를 내용 길이에 맞게 맞춰 주시면 감사하겠습니다.", "output": "열 너비 보기 좋게 맞춰줘", "task": "autofit", "persona": "B_신입", "outcome": "ASK", "source": "blind_v1"}
+{"input": "열 너비 내용에 맞게 맞춰도 될까요?", "output": "열 너비 보기 좋게 맞춰줘", "task": "autofit", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "열 너비 내용에 맞게 자동으로 마춰 주세요.", "output": "열 너비 보기 좋게 맞춰줘", "task": "autofit", "persona": "B_신입", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "아직 저장은 하지 말아 주실 수 있을까요?", "output": "아직 저장하지 마", "task": "negation_save", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "지금은 save 하지 마세요.", "output": "아직 저장하지 마", "task": "negation_save", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "팀장님 확인을 먼저 받아야 해서요, 아직 파일 저장은 하지 말아 주세요.", "output": "아직 저장하지 마", "task": "negation_save", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "저장은 아직 하지 말아 주세요.", "output": "아직 저장하지 마", "task": "negation_save", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "아직 save는 하지 말고 그대로 두세요.", "output": "아직 저장하지 마", "task": "negation_save", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "제가 확인할 게 남아서요, 지금 상태로 저장하지 말고 잠깐 기다려 주시면 감사하겠습니다.", "output": "아직 저장하지 마", "task": "negation_save", "persona": "B_신입", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "아직 저장 안 해도 괜찮을까요? 저장하지 말아 주세요.", "output": "아직 저장하지 마", "task": "negation_save", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "지금은 저장하지 마시고 그냥 두새요.", "output": "아직 저장하지 마", "task": "negation_save", "persona": "B_신입", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "표 바로 아래 행에 각 숫자 열의 합계 행을 수식으로 추가해 주세요", "output": "합계를 표 아래에 한 줄로 넣어줘", "task": "sum_below", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "이 범위 맨 아래에 합계 행 하나 삽입해서 열별 총합 넣어줘", "output": "합계를 표 아래에 한 줄로 넣어줘", "task": "sum_below", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "표 밑에다가 열마다 다 더한 값 한 줄로 붙여줘", "output": "합계를 표 아래에 한 줄로 넣어줘", "task": "sum_below", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "이 표 끝에 전부 더한 거 한 줄 달아 주세요", "output": "합계를 표 아래에 한 줄로 넣어줘", "task": "sum_below", "persona": "C_실무", "outcome": "ASK", "source": "blind_v1"}
+{"input": "여기 아래에 합계 한 줄", "output": "합계를 표 아래에 한 줄로 넣어줘", "task": "sum_below", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "한 줄로 합계, 표 바로 아래에 넣어줘", "output": "합계를 표 아래에 한 줄로 넣어줘", "task": "sum_below", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "표 아래에 합게 한 줄 넣어주세요", "output": "합계를 표 아래에 한 줄로 넣어줘", "task": "sum_below", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "합계!", "output": "합계를 표 아래에 한 줄로 넣어줘", "task": "sum_below", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "합계 행 바로 아래 행에 각 열의 평균 행도 추가해 주세요", "output": "그 아래 칸에는 평균도 넣어줘", "task": "avg_below", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "이 표 합계 밑에 평균 수식 행 하나 더 삽입해줘", "output": "그 아래 칸에는 평균도 넣어줘", "task": "avg_below", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "합계 아래 칸에 평균값도 한 줄 깔아줘", "output": "그 아래 칸에는 평균도 넣어줘", "task": "avg_below", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "합계 다음 줄에는 평균도 같이 넣어 주세요", "output": "그 아래 칸에는 평균도 넣어줘", "task": "avg_below", "persona": "C_실무", "outcome": "ERROR", "source": "blind_v1"}
+{"input": "그 밑에 평균도", "output": "그 아래 칸에는 평균도 넣어줘", "task": "avg_below", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "평균도 넣어줘, 합계 줄 바로 아래에", "output": "그 아래 칸에는 평균도 넣어줘", "task": "avg_below", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "합계 아래 줄에 평규도 넣어주세요", "output": "그 아래 칸에는 평균도 넣어줘", "task": "avg_below", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "평균도!", "output": "그 아래 칸에는 평균도 넣어줘", "task": "avg_below", "persona": "C_실무", "outcome": "ASK", "source": "blind_v1"}
+{"input": "머리글 행 채우기 색은 남색, 글꼴은 흰색 굵게로 서식 잡아 주세요", "output": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "task": "header_navy", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "첫 행 헤더에 남색 배경색 적용하고 글꼴 색 흰색, 굵게 처리해줘", "output": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "task": "header_navy", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "표 제일 윗줄 바탕을 남색으로 하고 글자는 하얗고 두껍게 해주세요", "output": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "task": "header_navy", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "맨 위 제목 줄 눈에 띄게 남색 칸에 흰 글씨 진하게 해줘", "output": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "task": "header_navy", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "여기 첫 줄 남색 배경에 흰색 볼드로", "output": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "task": "header_navy", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "흰 글씨 굵게, 배경은 남색으로 머리글 행 꾸며줘", "output": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "task": "header_navy", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "머리글 행 남색 배겅에 흰글씨 굵게 해주세요", "output": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "task": "header_navy", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "머리글 남색배경 흰글씨 굵게!", "output": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "task": "header_navy", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "표 전체 범위에 모든 테두리 적용해 주세요", "output": "표 전체에 테두리 그려줘", "task": "border_table", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "표 셀 전부에 테두리 선 넣어줘, 안쪽 바깥쪽 다", "output": "표 전체에 테두리 그려줘", "task": "border_table", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "표 둘레랑 칸마다 줄 그어서 깔끔하게 해주세요", "output": "표 전체에 테두리 그려줘", "task": "border_table", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "표에 선 다 둘러줘 한눈에 구분되게", "output": "표 전체에 테두리 그려줘", "task": "border_table", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "이거 테두리 쳐줘", "output": "표 전체에 테두리 그려줘", "task": "border_table", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "테두리 좀 그려줘 표 전체에", "output": "표 전체에 테두리 그려줘", "task": "border_table", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "표 전체에 태두리 넣어주세요", "output": "표 전체에 테두리 그려줘", "task": "border_table", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "테두리!", "output": "표 전체에 테두리 그려줘", "task": "border_table", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수, 출고건수 열에 천 단위 구분 기호 표시 형식 적용해 주세요", "output": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "task": "comma_cols", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수랑 출고건수 숫자 서식을 천 단위 쉼표로 바꿔줘", "output": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "task": "comma_cols", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수하고 출고건수 숫자에 세 자리마다 쉼표 찍어 주세요", "output": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "task": "comma_cols", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수·출고건수 숫자 읽기 쉽게 천 단위로 콤마 넣어줘", "output": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "task": "comma_cols", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수, 출고건수 이 두 열 천 단위 콤마로", "output": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "task": "comma_cols", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "천 단위 콤마로 보이게 해줘, 주문건수하고 출고건수 열", "output": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "task": "comma_cols", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수랑 출고건수 천단위 콤머로 표시해주세요", "output": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "task": "comma_cols", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수·출고건수 천단위 콤마!", "output": "주문건수랑 출고건수는 천 단위 콤마로 보여줘", "task": "comma_cols", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수 기준으로 내림차순 정렬해 주세요, 머리글은 유지하고", "output": "주문건수 많은 순으로 정렬해줘", "task": "sort_desc", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "주문건수 열 내림차순으로 표 정렬해줘", "output": "주문건수 많은 순으로 정렬해줘", "task": "sort_desc", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "주문건수 큰 데부터 위로 오게 줄 세워 주세요", "output": "주문건수 많은 순으로 정렬해줘", "task": "sort_desc", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "주문 많이 들어온 지역이 맨 위로 가게 순서 바꿔줘 ㄱㄱ", "output": "주문건수 많은 순으로 정렬해줘", "task": "sort_desc", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "이거 주문건수 높은 순으로 정렬", "output": "주문건수 많은 순으로 정렬해줘", "task": "sort_desc", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "내림차순 정렬 부탁해요, 주문건수로", "output": "주문건수 많은 순으로 정렬해줘", "task": "sort_desc", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "주문건수 만은 순으로 정렬해주세요", "output": "주문건수 많은 순으로 정렬해줘", "task": "sort_desc", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "주문건수 내림차순 정렬!", "output": "주문건수 많은 순으로 정렬해줘", "task": "sort_desc", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "합계 행은 맨 아래 고정하고 클레임 열 내림차순으로 정렬해 주세요", "output": "클레임 많은 순으로 정렬해줘", "task": "sort_keep_total", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "클레임 기준 내림차순 정렬하되 합계 행은 정렬 범위에서 빼줘", "output": "클레임 많은 순으로 정렬해줘", "task": "sort_keep_total", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "클레임 많은 지역부터 위로 올려 주세요, 맨 밑 합계 줄은 그대로 두고", "output": "클레임 많은 순으로 정렬해줘", "task": "sort_keep_total", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "합계 줄은 건드리지 말고 클레임 큰 순서대로 줄 세워줘", "output": "클레임 많은 순으로 정렬해줘", "task": "sort_keep_total", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "여기 클레임 높은 순으로, 합계는 그대로", "output": "클레임 많은 순으로 정렬해줘", "task": "sort_keep_total", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "합계 줄 빼고, 클레임 내림차순으로 정렬해줘", "output": "클레임 많은 순으로 정렬해줘", "task": "sort_keep_total", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "클래임 많은 순으로 정렬해주세요 합계는 맨 아래 그대로요", "output": "클레임 많은 순으로 정렬해줘", "task": "sort_keep_total", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "클레임 내림차순 정렬!", "output": "클레임 많은 순으로 정렬해줘", "task": "sort_keep_total", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "'요약'이라는 이름으로 새 워크시트 추가해 주세요", "output": "요약 시트 만들어줘", "task": "new_sheet", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "시트 탭 하나 새로 만들고 이름은 요약으로 해줘", "output": "요약 시트 만들어줘", "task": "new_sheet", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "요약이라는 탭 하나 새로 파 주세요", "output": "요약 시트 만들어줘", "task": "new_sheet", "persona": "C_실무", "outcome": "ASK", "source": "blind_v1"}
+{"input": "새 시트 하나 추가해서 요약이라고 불러줘", "output": "요약 시트 만들어줘", "task": "new_sheet", "persona": "C_실무", "outcome": "ASK", "source": "blind_v1"}
+{"input": "요약 시트 하나 추가", "output": "요약 시트 만들어줘", "task": "new_sheet", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "새로 시트 만들어줘, 이름은 요약", "output": "요약 시트 만들어줘", "task": "new_sheet", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "요약 시트 새로 만들어주새요", "output": "요약 시트 만들어줘", "task": "new_sheet", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "요약 시트 추가!", "output": "요약 시트 만들어줘", "task": "new_sheet", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "H1 셀에 제목으로 '물류 관제 대시보드' 입력해 주세요", "output": "H1에 물류 관제 대시보드 라고 써줘", "task": "title_cell", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "H1 셀 값에 물류 관제 대시보드 라고 텍스트 넣어줘", "output": "H1에 물류 관제 대시보드 라고 써줘", "task": "title_cell", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "H1 칸에 물류 관제 대시보드 적어 주세요", "output": "H1에 물류 관제 대시보드 라고 써줘", "task": "title_cell", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "제목을 물류 관제 대시보드로 H1에 박아줘", "output": "H1에 물류 관제 대시보드 라고 써줘", "task": "title_cell", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "H1에 물류 관제 대시보드", "output": "H1에 물류 관제 대시보드 라고 써줘", "task": "title_cell", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "물류 관제 대시보드, 이걸 H1에 써주세요", "output": "H1에 물류 관제 대시보드 라고 써줘", "task": "title_cell", "persona": "C_실무", "outcome": "ASK", "source": "blind_v1"}
+{"input": "H1에 물류 관제 대시보드 라고 입녁해줘", "output": "H1에 물류 관제 대시보드 라고 써줘", "task": "title_cell", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "H1 제목 물류 관제 대시보드!", "output": "H1에 물류 관제 대시보드 라고 써줘", "task": "title_cell", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "H1부터 M1까지 셀 병합해 주세요", "output": "H1부터 M1까지 병합해줘", "task": "merge_title", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "H1:M1 범위 셀 병합해줘", "output": "H1부터 M1까지 병합해줘", "task": "merge_title", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "H1에서 M1까지 칸 하나로 합쳐 주세요", "output": "H1부터 M1까지 병합해줘", "task": "merge_title", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "H1~M1 칸들 다 이어서 한 칸으로 만들어줘", "output": "H1부터 M1까지 병합해줘", "task": "merge_title", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "H1~M1 합치기", "output": "H1부터 M1까지 병합해줘", "task": "merge_title", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "병합해줘, H1부터 M1까지", "output": "H1부터 M1까지 병합해줘", "task": "merge_title", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "H1부터 M1까지 병합헤주세요", "output": "H1부터 M1까지 병합해줘", "task": "merge_title", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "H1~M1 병합!", "output": "H1부터 M1까지 병합해줘", "task": "merge_title", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "첫 행 틀 고정 걸어 주세요", "output": "첫 줄은 스크롤해도 보이게 고정해줘", "task": "freeze_top", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "머리글 행이 스크롤 내려도 보이게 틀 고정 설정해줘", "output": "첫 줄은 스크롤해도 보이게 고정해줘", "task": "freeze_top", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "맨 윗줄 안 움직이게 박아 주세요, 내려도 계속 보이게", "output": "첫 줄은 스크롤해도 보이게 고정해줘", "task": "freeze_top", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "위에 제목 줄 스크롤 따라 안 사라지게 고정해줘", "output": "첫 줄은 스크롤해도 보이게 고정해줘", "task": "freeze_top", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "여기 첫 줄 고정", "output": "첫 줄은 스크롤해도 보이게 고정해줘", "task": "freeze_top", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "스크롤해도 보이게, 첫 행 고정 부탁해요", "output": "첫 줄은 스크롤해도 보이게 고정해줘", "task": "freeze_top", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "첫 행 틀고졍 해주세요", "output": "첫 줄은 스크롤해도 보이게 고정해줘", "task": "freeze_top", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "첫 행 틀 고정!", "output": "첫 줄은 스크롤해도 보이게 고정해줘", "task": "freeze_top", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "상태 열에서 값이 '대기'인 셀만 조건부 서식으로 분홍색 채우기 해 주세요", "output": "상태가 대기인 셀만 분홍색으로 강조해줘", "task": "highlight_status", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "상태가 대기인 셀에만 분홍 배경색 적용해줘", "output": "상태가 대기인 셀만 분홍색으로 강조해줘", "task": "highlight_status", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "상태 칸에 대기라고 적힌 것만 핑크색으로 눈에 띄게 해 주세요", "output": "상태가 대기인 셀만 분홍색으로 강조해줘", "task": "highlight_status", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "대기 상태인 칸들만 분홍으로 칠해서 한눈에 보이게 해줘", "output": "상태가 대기인 셀만 분홍색으로 강조해줘", "task": "highlight_status", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "여기 상태 대기인 것만 분홍으로", "output": "상태가 대기인 셀만 분홍색으로 강조해줘", "task": "highlight_status", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "분홍색으로 강조, 상태가 대기인 셀만요", "output": "상태가 대기인 셀만 분홍색으로 강조해줘", "task": "highlight_status", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "상태가 대기인 셀만 분홍샥으로 칠해주세요", "output": "상태가 대기인 셀만 분홍색으로 강조해줘", "task": "highlight_status", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "상태 대기 분홍 강조!", "output": "상태가 대기인 셀만 분홍색으로 강조해줘", "task": "highlight_status", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "클레임 열에서 10 초과인 셀만 조건부 서식으로 빨간색 채우기 해 주세요", "output": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "task": "highlight_threshold", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "클레임 값이 10보다 큰 셀에 빨간 배경색 적용해줘", "output": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "task": "highlight_threshold", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "클레임 10 넘어가는 칸만 빨갛게 표시해 주세요", "output": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "task": "highlight_threshold", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "클레임이 10 넘는 곳만 빨간색으로 눈에 띄게 해줘", "output": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "task": "highlight_threshold", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "클레임 10 초과만 빨강으로", "output": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "task": "highlight_threshold", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "빨간색으로 칠해줘, 클레임이 10보다 큰 셀만", "output": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "task": "highlight_threshold", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "클레임 10 넘는 셀만 빨간샛으로 칠해주세요", "output": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "task": "highlight_threshold", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "클레임 10 초과 빨강!", "output": "클레임 10 넘는 셀만 빨간색으로 칠해줘", "task": "highlight_threshold", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "정시배송률 열을 데이터로 꺾은선형 차트 하나 삽입해 주세요", "output": "정시배송률 추이를 선 그래프로 그려줘", "task": "line_chart", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "정시배송률로 꺾은선 차트 만들어줘", "output": "정시배송률 추이를 선 그래프로 그려줘", "task": "line_chart", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "정시배송률 흐름이 보이게 선으로 된 그래프 하나 그려 주세요", "output": "정시배송률 추이를 선 그래프로 그려줘", "task": "line_chart", "persona": "C_실무", "outcome": "ASK", "source": "blind_v1"}
+{"input": "정시배송률 추세 한눈에 보게 라인 그래프 뽑아줘", "output": "정시배송률 추이를 선 그래프로 그려줘", "task": "line_chart", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "정시배송률 선 그래프로", "output": "정시배송률 추이를 선 그래프로 그려줘", "task": "line_chart", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "선 그래프 하나 그려 주세요, 정시배송률로", "output": "정시배송률 추이를 선 그래프로 그려줘", "task": "line_chart", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "정시배송률 선그레프로 그려줘", "output": "정시배송률 추이를 선 그래프로 그려줘", "task": "line_chart", "persona": "C_실무", "outcome": "ASK", "source": "blind_v1"}
+{"input": "정시배송률 선 차트!", "output": "정시배송률 추이를 선 그래프로 그려줘", "task": "line_chart", "persona": "C_실무", "outcome": "ASK", "source": "blind_v1"}
+{"input": "지연건수 열로 세로 막대형 차트 삽입해 주세요", "output": "지연건수로 막대 그래프 그려줘", "task": "bar_chart", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "지연건수 데이터로 막대 차트 하나 만들어줘", "output": "지연건수로 막대 그래프 그려줘", "task": "bar_chart", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "지연건수 지역별로 비교되게 막대 그래프 하나 그려 주세요", "output": "지연건수로 막대 그래프 그려줘", "task": "bar_chart", "persona": "C_실무", "outcome": "ERROR", "source": "blind_v1"}
+{"input": "지연건수 막대로 보여줘, 어디가 제일 많은지 보이게", "output": "지연건수로 막대 그래프 그려줘", "task": "bar_chart", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "지연건수 막대그래프", "output": "지연건수로 막대 그래프 그려줘", "task": "bar_chart", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "막대 그래프 하나 부탁해요, 지연건수로", "output": "지연건수로 막대 그래프 그려줘", "task": "bar_chart", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "지연건수로 막대 그래푸 그려줘", "output": "지연건수로 막대 그래프 그려줘", "task": "bar_chart", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "지연건수 막대 차트!", "output": "지연건수로 막대 그래프 그려줘", "task": "bar_chart", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "시트에 있는 차트 개체 전부 삭제해 주세요, 데이터는 그대로 두고", "output": "차트 다 지워줘", "task": "delete_charts", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "워크시트 안 차트 모두 제거해줘", "output": "차트 다 지워줘", "task": "delete_charts", "persona": "C_실무", "outcome": "ASK", "source": "blind_v1"}
+{"input": "시트에 들어 있는 그래프 싹 다 없애 주세요", "output": "차트 다 지워줘", "task": "delete_charts", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "그래프들 다 빼줘, 표는 건드리지 말고", "output": "차트 다 지워줘", "task": "delete_charts", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "이거 차트 다 삭제", "output": "차트 다 지워줘", "task": "delete_charts", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "전부 지워 주세요, 시트에 있는 차트는", "output": "차트 다 지워줘", "task": "delete_charts", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "차트 전부 삭재해주세요", "output": "차트 다 지워줘", "task": "delete_charts", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "차트 삭제!", "output": "차트 다 지워줘", "task": "delete_charts", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "선택한 표 범위 내용 전부 삭제해서 빈 셀로 만들어 주세요", "output": "A1:F6 내용 다 지워줘", "task": "clear_table", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "이 범위 셀 값 모두 지우기 해줘", "output": "A1:F6 내용 다 지워줘", "task": "clear_table", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "방금 붙여넣은 표 안에 있는 거 싹 다 비워 주세요", "output": "A1:F6 내용 다 지워줘", "task": "clear_table", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "표 칸들 전부 깨끗하게 지워서 빈칸으로 해줘", "output": "A1:F6 내용 다 지워줘", "task": "clear_table", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "여기 내용 다 지워줘", "output": "A1:F6 내용 다 지워줘", "task": "clear_table", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "다 지워 주세요, 이 표 값들", "output": "A1:F6 내용 다 지워줘", "task": "clear_table", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "이 표 내용 다 지어주세요", "output": "A1:F6 내용 다 지워줘", "task": "clear_table", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "전부 삭제!", "output": "A1:F6 내용 다 지워줘", "task": "clear_table", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "A2에 지역성과 시트의 주문건수 열 합계를 참조 수식으로 넣어 주세요", "output": "A2에 지역성과 시트 주문건수 합계 가져와줘", "task": "cross_sheet_sum", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "요약 시트 A2 셀에 지역성과 시트 주문건수 총합 수식 걸어줘", "output": "A2에 지역성과 시트 주문건수 합계 가져와줘", "task": "cross_sheet_sum", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "지역성과 탭에 있는 주문건수 다 더한 값을 A2에 끌어와 주세요", "output": "A2에 지역성과 시트 주문건수 합계 가져와줘", "task": "cross_sheet_sum", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "A2 칸에 지역성과 시트 주문건수 전부 합친 숫자 보여줘, 나중에도 연동되게", "output": "A2에 지역성과 시트 주문건수 합계 가져와줘", "task": "cross_sheet_sum", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "A2에 지역성과 주문건수 합계", "output": "A2에 지역성과 시트 주문건수 합계 가져와줘", "task": "cross_sheet_sum", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "지역성과 시트 주문건수 합계, 그걸 A2에 넣어 주세요", "output": "A2에 지역성과 시트 주문건수 합계 가져와줘", "task": "cross_sheet_sum", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "A2에 지역성과 시트 주문건수 합게 가져와줘", "output": "A2에 지역성과 시트 주문건수 합계 가져와줘", "task": "cross_sheet_sum", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "A2에 지역성과 주문건수 합계!", "output": "A2에 지역성과 시트 주문건수 합계 가져와줘", "task": "cross_sheet_sum", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "선택한 범위에 서울,100; 부산,200 값 입력해 주세요", "output": "서울,100; 부산,200 입력해줘", "task": "paste_values", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "붙여넣은 셀들에 서울,100; 부산,200 순서대로 채워줘", "output": "서울,100; 부산,200 입력해줘", "task": "paste_values", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "여기다가 서울,100; 부산,200 적어 주세요", "output": "서울,100; 부산,200 입력해줘", "task": "paste_values", "persona": "C_실무", "outcome": "ASK", "source": "blind_v1"}
+{"input": "방금 잡은 칸에 서울,100; 부산,200 이렇게 넣어줘", "output": "서울,100; 부산,200 입력해줘", "task": "paste_values", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "서울,100; 부산,200 넣어줘", "output": "서울,100; 부산,200 입력해줘", "task": "paste_values", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "입력해 주세요, 서울,100; 부산,200", "output": "서울,100; 부산,200 입력해줘", "task": "paste_values", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "서울,100; 부산,200 입력해주새요", "output": "서울,100; 부산,200 입력해줘", "task": "paste_values", "persona": "C_실무", "outcome": "ASK", "source": "blind_v1"}
+{"input": "서울,100; 부산,200 입력!", "output": "서울,100; 부산,200 입력해줘", "task": "paste_values", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "표에서 수도권 텍스트를 서울권으로 찾아 바꾸기 해 주세요", "output": "수도권을 서울권으로 바꿔줘", "task": "find_replace", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "수도권이라는 문자열 전부 서울권으로 치환해줘", "output": "수도권을 서울권으로 바꿔줘", "task": "find_replace", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "수도권이라고 적힌 건 다 서울권으로 고쳐 주세요", "output": "수도권을 서울권으로 바꿔줘", "task": "find_replace", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "수도권 → 서울권으로 이름 바꿔줘, 표 전체에서", "output": "수도권을 서울권으로 바꿔줘", "task": "find_replace", "persona": "C_실무", "outcome": "ASK", "source": "blind_v1"}
+{"input": "수도권은 서울권으로", "output": "수도권을 서울권으로 바꿔줘", "task": "find_replace", "persona": "C_실무", "outcome": "ASK", "source": "blind_v1"}
+{"input": "서울권으로 바꿔 주세요, 수도권이라고 된 거", "output": "수도권을 서울권으로 바꿔줘", "task": "find_replace", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "수도권을 서울권으로 바꺼줘", "output": "수도권을 서울권으로 바꿔줘", "task": "find_replace", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "수도권→서울권 변경!", "output": "수도권을 서울권으로 바꿔줘", "task": "find_replace", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "지역성과 워크시트 이름을 지역별실적으로 변경해 주세요", "output": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "task": "rename_sheet", "persona": "C_실무", "outcome": "ASK", "source": "blind_v1"}
+{"input": "현재 시트 탭 이름 지역별실적으로 바꿔줘", "output": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "task": "rename_sheet", "persona": "C_실무", "outcome": "ERROR", "source": "blind_v1"}
+{"input": "지역성과라고 된 탭 이름을 지역별실적으로 고쳐 주세요", "output": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "task": "rename_sheet", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "이 시트 이름 지역별실적으로 다시 지어줘", "output": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "task": "rename_sheet", "persona": "C_실무", "outcome": "ERROR", "source": "blind_v1"}
+{"input": "시트명 지역별실적으로", "output": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "task": "rename_sheet", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "지역별실적으로 바꿔 주세요, 지역성과 시트 이름", "output": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "task": "rename_sheet", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "지역성과 시트 이름을 지역별실적으로 바꿔주세오", "output": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "task": "rename_sheet", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "시트 이름 지역별실적!", "output": "지역성과 시트 이름을 지역별실적으로 바꿔줘", "task": "rename_sheet", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "D2에 B2에서 C2를 뺀 차이를 수식으로 넣어 주세요", "output": "D2에 B2에서 C2 뺀 값 넣어줘", "task": "cell_subtract", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "D2 셀에 B2 빼기 C2 수식 걸어줘", "output": "D2에 B2에서 C2 뺀 값 넣어줘", "task": "cell_subtract", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "D2 칸에 B2에서 C2 뺀 만큼 증감 보이게 해 주세요", "output": "D2에 B2에서 C2 뺀 값 넣어줘", "task": "cell_subtract", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "이번주 B2에서 지난주 C2 빼서 D2에 넣어줘", "output": "D2에 B2에서 C2 뺀 값 넣어줘", "task": "cell_subtract", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "D2에 B2 빼기 C2", "output": "D2에 B2에서 C2 뺀 값 넣어줘", "task": "cell_subtract", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "B2에서 C2 뺀 값, 이걸 D2에 넣어 주세요", "output": "D2에 B2에서 C2 뺀 값 넣어줘", "task": "cell_subtract", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "D2에 B2에서 C2 뺀 갑 넣어줘", "output": "D2에 B2에서 C2 뺀 값 넣어줘", "task": "cell_subtract", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "D2에 B2 빼기 C2 입력!", "output": "D2에 B2에서 C2 뺀 값 넣어줘", "task": "cell_subtract", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "정시배송률 열 표시 형식을 소수점 첫째 자리까지로 설정해 주세요", "output": "정시배송률은 소수 첫째 자리까지 보여줘", "task": "percent_format", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "정시배송률 숫자 서식 소수 한 자리로 맞춰줘", "output": "정시배송률은 소수 첫째 자리까지 보여줘", "task": "percent_format", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "정시배송률 숫자 소수점 아래 한 자리만 보이게 해 주세요", "output": "정시배송률은 소수 첫째 자리까지 보여줘", "task": "percent_format", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "정시배송률 97.1처럼 점 뒤에 한 자리만 남게 해줘", "output": "정시배송률은 소수 첫째 자리까지 보여줘", "task": "percent_format", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "정시배송률 소수 첫째 자리까지", "output": "정시배송률은 소수 첫째 자리까지 보여줘", "task": "percent_format", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "소수 첫째 자리까지만 보여줘, 정시배송률 열", "output": "정시배송률은 소수 첫째 자리까지 보여줘", "task": "percent_format", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "정시배송률 소수 첫재 자리까지 표시해주세요", "output": "정시배송률은 소수 첫째 자리까지 보여줘", "task": "percent_format", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "정시배송률 소수 한 자리!", "output": "정시배송률은 소수 첫째 자리까지 보여줘", "task": "percent_format", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "주문건수 열에 조건부 서식 데이터 막대 적용해 주세요", "output": "주문건수 열에 데이터 막대 넣어줘", "task": "data_bar", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수 범위에 데이터 막대 서식 넣어줘", "output": "주문건수 열에 데이터 막대 넣어줘", "task": "data_bar", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수 칸 안에 숫자 크기만큼 막대 차게 해 주세요", "output": "주문건수 열에 데이터 막대 넣어줘", "task": "data_bar", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "주문건수 셀마다 길이 막대 깔아서 크기 한눈에 비교되게 해줘", "output": "주문건수 열에 데이터 막대 넣어줘", "task": "data_bar", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "주문건수에 데이터 막대", "output": "주문건수 열에 데이터 막대 넣어줘", "task": "data_bar", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "데이터 막대 넣어 주세요, 주문건수 열에", "output": "주문건수 열에 데이터 막대 넣어줘", "task": "data_bar", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "주문건수 열에 데이타 막대 넣어줘", "output": "주문건수 열에 데이터 막대 넣어줘", "task": "data_bar", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "주문건수 데이터 막대!", "output": "주문건수 열에 데이터 막대 넣어줘", "task": "data_bar", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "열 너비 자동 맞춤 해 주세요", "output": "열 너비 보기 좋게 맞춰줘", "task": "autofit", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "모든 열 너비를 내용 길이에 맞게 자동 조정해줘", "output": "열 너비 보기 좋게 맞춰줘", "task": "autofit", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "칸 폭 글자 안 잘리게 알아서 맞춰 주세요", "output": "열 너비 보기 좋게 맞춰줘", "task": "autofit", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "열 간격 내용에 딱 맞게 넓혀줘, 보기 좋게 🙏", "output": "열 너비 보기 좋게 맞춰줘", "task": "autofit", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "여기 열 너비 자동", "output": "열 너비 보기 좋게 맞춰줘", "task": "autofit", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "내용에 맞게 자동으로, 열 너비 조정 부탁해요", "output": "열 너비 보기 좋게 맞춰줘", "task": "autofit", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "열 너비 자동 마춤 해주세요", "output": "열 너비 보기 좋게 맞춰줘", "task": "autofit", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "열 너비 자동맞춤!", "output": "열 너비 보기 좋게 맞춰줘", "task": "autofit", "persona": "C_실무", "outcome": "PASS_CARD", "source": "blind_v1"}
+{"input": "저장은 아직 하지 마세요", "output": "아직 저장하지 마", "task": "negation_save", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "파일 저장하지 말고 잠깐 그대로 둬줘", "output": "아직 저장하지 마", "task": "negation_save", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "아직 저장 안 해도 돼요, 기다려 주세요", "output": "아직 저장하지 마", "task": "negation_save", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "지금 저장하지 마, 좀 더 볼게", "output": "아직 저장하지 마", "task": "negation_save", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "이거 아직 저장 말고", "output": "아직 저장하지 마", "task": "negation_save", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "하지 마세요 저장은, 아직이요", "output": "아직 저장하지 마", "task": "negation_save", "persona": "C_실무", "outcome": "WRONG", "source": "blind_v1"}
+{"input": "아직 저장하지 마새요", "output": "아직 저장하지 마", "task": "negation_save", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
+{"input": "저장하지마!", "output": "아직 저장하지 마", "task": "negation_save", "persona": "C_실무", "outcome": "PASS_RULE", "source": "blind_v1"}
