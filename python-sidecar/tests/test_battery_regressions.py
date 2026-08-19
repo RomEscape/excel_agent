@@ -873,3 +873,42 @@ class TestCrossSheetHeaderMatching:
 
         assert _match_header("건수", ["지역", "주문 건수", "출고 건수"]) is None
         assert _match_header("주문 건수", ["지역", "주문 건수", "출고 건수"]) == 1
+
+
+class TestNegationIsOneGate:
+    """부정 판정을 규칙마다 따로 적으면 구멍이 반드시 생긴다.
+
+    2026-08-19 블라인드 게이트: 저장 규칙이 자체 정규식("저장하지 마")만 들고 있어
+    "저장 안 해도 돼요" · "저장 말고"가 그대로 실행돼 **파일이 저장됐다**.
+    """
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "아직 저장 안 해도 돼요, 기다려 주세요",
+            "이거 아직 저장 말고",
+            "아직 저장하지 마",
+            "저장 금지 아직은",
+            "하지 마 저장은 아직",
+            "저장은 나중에",
+            "저장 보류",
+            "지금은 save 하지 마세요.",
+            "아즉 저장 하지맠",
+            "저장은 아직 하지 말아 주세요.",
+        ],
+    )
+    def test_a_negated_save_never_saves(self, text):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        plan = _build_quick_action_plan(normalize_common_typos(text), None)
+        actions = [str(s.get("action")) for s in (plan or [])]
+        assert "excel_live.save_workbook" not in actions, (text, plan)
+
+    @pytest.mark.parametrize("text", ["저장해줘", "저장", "파일 저장 부탁해", "save 해줘", "다 됐으면 저장해줘"])
+    def test_a_plain_save_still_saves(self, text):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        plan = _build_quick_action_plan(normalize_common_typos(text), None)
+        assert plan and plan[0]["action"] == "excel_live.save_workbook", (text, plan)

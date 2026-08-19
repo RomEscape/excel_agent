@@ -3358,11 +3358,10 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
         })
         return steps
 
-    if any(token in lowered for token in ["저장", "save"]) and not re.search(
-        # "아직 저장하지 마"가 저장을 **실행**했다(2026-08-18 사냥). 부정이
-        # 붙은 저장은 저장이 아니다.
-        r"저장\s*(?:은|는)?\s*하지\s*(?:마|말)|저장하지\s*(?:마|말)", lowered
-    ):
+    # 부정 판정은 **공용 게이트 한 곳**만 쓴다. 예전엔 저장 규칙이 자체 정규식을 들고 있어
+    # "저장 안 해도 돼요" · "저장 말고" · "저장 금지"를 놓치고 그대로 저장했다(2026-08-19 게이트 실측).
+    # 규칙마다 부정을 따로 적으면 이런 구멍이 반드시 생긴다.
+    if any(token in lowered for token in ["저장", "save"]) and not _negated_command(text):
         if "pdf" in lowered:
             # "PDF로 저장" 은 통합문서 저장이 아니라 내보내기다.
             return [
@@ -7355,7 +7354,15 @@ def _drop_trailing_verification(steps: list[PlanStep]) -> list[PlanStep]:
 
 
 _NEGATION_VERBS = r"(저장|삭제|지우|정렬|병합|실행|바꾸|넣|칠하|만들|고정|복사|이동|옮기|보내|삽입|추가|변경|수정|적용|그리|그려)"
-_NEGATION_TAIL = r"(?:하지|지)\s*(?:마|말|맠|않|마라|말아|마세요|마요|말고)|금지|하지마|하지\s*말"
+# "저장 안 해도 돼요" · "저장 말고" 처럼 **하지**가 없는 부정도 같은 뜻이다
+# (2026-08-19 블라인드 게이트: 이 두 꼴이 그대로 실행돼 파일이 저장됐다).
+_NEGATION_TAIL = (
+    r"(?:하지|지)\s*(?:마|말|맠|않|마라|말아|마세요|마요|말고)"
+    r"|금지|하지마|하지\s*말"
+    r"|안\s*(?:해도|하셔도)\s*(?:돼|되|됩니|괜찮)"
+    r"|(?:안|않)\s*(?:해|합니다|할래|할\s*래)"
+    r"|말고|말아|말아라|말아\s*주|나중에|이따가|보류"
+)
 
 
 def _negated_command(text: str) -> str | None:
