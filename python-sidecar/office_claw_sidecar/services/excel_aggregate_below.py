@@ -37,7 +37,9 @@ _FUNC_VOCAB: list[tuple[re.Pattern[str], str, str]] = [
         "합계",
     ),
 ]
-_BELOW = re.compile(r"밑|아래|하단|아랫")
+# "그 다음 줄엔 평균값 한 줄 더" — 사람은 '아래'만큼이나 '다음 줄'이라고 말한다
+# (2026-08-20 게이트5 avg_below 2건이 이 어휘 하나로 규칙 밖에 있었다).
+_BELOW = re.compile(r"밑|아래|하단|아랫|다음\s*(?:줄|행|칸|라인)|담\s*줄")
 _RANGE = re.compile(r"^([A-Z]+)(\d+):([A-Z]+)(\d+)$")
 
 

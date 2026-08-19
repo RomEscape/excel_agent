@@ -1702,3 +1702,108 @@ class TestPlanSanityCatchesPreamblesAndCircularFormulas:
             message="합계 넣어줘",
         )
         assert issues == []
+
+
+class TestValueEqualsHighlightAndFormulaHead:
+    """게이트6이 드러낸 세 결함 — 셋 다 표를 통째로 망친다."""
+
+    STATUS_DIGEST = {
+        "active_sheet": "지연경고",
+        "sheets": [
+            {
+                "name": "지연경고",
+                "used_range": "A1:D5",
+                "columns": [
+                    {"letter": "A", "header": "운송장"},
+                    {"letter": "B", "header": "구간"},
+                    {"letter": "C", "header": "지연시간"},
+                    {"letter": "D", "header": "상태"},
+                ],
+                "sample_rows": [
+                    ["T1", "서울", "2", "대기"],
+                    ["T2", "부산", "1", "완료"],
+                    ["T3", "대구", "3", "대기"],
+                ],
+            }
+        ],
+    }
+
+    @pytest.mark.parametrize(
+        "formula",
+        ["=SUM(B2:B6)", "=B2-C3", "=100", "=(A1+B1)/2", "=지역성과!B2", '=IF(B2>=70,"통과","미달")', "=-5"],
+    )
+    def test_real_formulas_are_recognized(self, formula: str) -> None:
+        from office_claw_sidecar.routers.excel_live import _looks_like_a_formula
+
+        assert _looks_like_a_formula(formula) is True, formula
+
+    @pytest.mark.parametrize("text", ["=대기", "=완료", "=진행중"])
+    def test_a_korean_word_after_equals_is_not_a_formula(self, text: str) -> None:
+        """`상태=대기`의 '='는 같다는 말이다.
+
+        2026-08-20 게이트6: `ㅇㅇ 상태=대기 셀만 분홍 강조`가
+        set_formula(A1:D5, '=대기')가 되어 **표 전체를 수식으로 덮었다.**
+        """
+        from office_claw_sidecar.routers.excel_live import _looks_like_a_formula
+
+        assert _looks_like_a_formula(text) is False, text
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "대기만 분홍",
+            "상태 대기 분홍 강조!",
+            "회의 때 대기 중인 운송장이 몇 개인지 봐야 해서요, 상태 열에서 대기인 셀만 분홍색으로 강조해 주세요",
+        ],
+    )
+    def test_a_value_that_exists_in_one_column_decides_the_range(self, message: str) -> None:
+        """값('대기')이 통합문서에 실제로 있고 그 열이 하나뿐이면 추측이 아니라 확인이다."""
+        from office_claw_sidecar.routers.excel_live import _value_equals_highlight
+
+        plan = _value_equals_highlight(message, self.STATUS_DIGEST)
+        assert plan, message
+        params = plan[0]["params"]
+        assert params["target_range"] == "D2:D5", message
+        assert params["value"] == "대기", message
+
+    @pytest.mark.parametrize("message", ["표 전체를 노랗게 칠해줘", "머리글 남색으로", "A1:C3 노란색"])
+    def test_it_does_not_fire_without_a_matching_value(self, message: str) -> None:
+        from office_claw_sidecar.routers.excel_live import _value_equals_highlight
+
+        assert _value_equals_highlight(message, self.STATUS_DIGEST) == []
+
+    def test_the_named_column_wins_over_a_longer_header(self) -> None:
+        """"…**운송장**이 몇 개인지 …, **상태 열에서** 대기인 셀만" — 길이로 고르면 운송장이 이긴다."""
+        from office_claw_sidecar.routers.excel_live import _scope_highlight_to_header_column
+
+        plan = [
+            {
+                "action": "excel_live.highlight_by_condition",
+                "params": {"target_range": "__ACTIVE_SELECTION__", "operator": "==", "threshold": 0, "value": "대기"},
+            }
+        ]
+        message = "회의 때 대기 중인 운송장이 몇 개인지 보여 줘야 해서요, 상태 열에서 대기인 셀만 분홍색으로 강조해 주세요"
+        assert _scope_highlight_to_header_column(plan, message, self.STATUS_DIGEST) == "D2:D5"
+
+    def test_an_aggregate_request_is_not_a_value_list(self) -> None:
+        """`한 줄로 합계, 표 바로 아래에 넣어줘` → A1·B1에 **명령문이 써졌다**(게이트5)."""
+        from office_claw_sidecar.services.excel_live_agent import parse_rangeless_row_write
+
+        assert parse_rangeless_row_write("한 줄로 합계, 표 바로 아래에 넣어줘", "A1:F6") is None
+
+    def test_a_plain_value_list_still_writes(self) -> None:
+        from office_claw_sidecar.services.excel_live_agent import parse_rangeless_row_write
+
+        step = parse_rangeless_row_write("지역,주문건수,출고건수 입력해줘", "A1:C1")
+        assert step and step["params"]["values_2d"] == [["지역", "주문건수", "출고건수"]]
+
+    @pytest.mark.parametrize(
+        "text",
+        ["ㅇㅇ 그 다음 줄엔 평균값 한 줄 더", "합계 다음 줄에는 평균도 같이 넣어 주세요"],
+    )
+    def test_the_next_row_counts_as_below(self, text: str) -> None:
+        """사람은 '아래'만큼이나 '다음 줄'이라고 말한다."""
+        from office_claw_sidecar.services.excel_aggregate_below import match_aggregate_below
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        assert match_aggregate_below(normalize_common_typos(text)) == ("AVERAGE", "평균")

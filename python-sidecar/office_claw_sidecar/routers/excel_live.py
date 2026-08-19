@@ -1415,10 +1415,23 @@ def _header_column_from_message(message: str, columns: list[dict[str, Any]]) -> 
         return None
     if len(hits) == 1:
         return hits[0]
-    # 여러 머리글이 걸리면 가장 긴 것 하나만 — "주문건수"와 "건수"가 함께 있을 때.
-    longest = max(len(_norm_header(str(c.get("header") or ""))) for c in hits)
-    finalists = [c for c in hits if len(_norm_header(str(c.get("header") or ""))) == longest]
-    return finalists[0] if len(finalists) == 1 else None
+    # 여러 머리글이 걸린다. 사람이 "그 열"이라고 콕 집은 쪽이 있으면 그것이다 —
+    # "대기 중인 **운송장**이 몇 개인지 …, **상태 열에서** 대기인 셀만" 에서
+    # 길이로 고르면 운송장이 이겨 엉뚱한 열이 칠해진다(2026-08-20 실측).
+    for column in hits:
+        head = re.escape(str(column.get("header") or "").strip())
+        if head and re.search(rf"{head}\s*(?:열|칸|컬럼|column)", str(message or ""), re.IGNORECASE):
+            return column
+    # 그다음은 **문장에서 나중에 불린** 머리글 — 한국어는 뒤쪽이 본론이다.
+    positions = []
+    for column in hits:
+        head = str(column.get("header") or "").strip()
+        idx = str(message or "").rfind(head)
+        positions.append((idx, column))
+    positions.sort(key=lambda pair: pair[0])
+    if positions and positions[-1][0] >= 0:
+        return positions[-1][1]
+    return None
 
 
 def _scope_highlight_to_header_column(
@@ -1431,8 +1444,16 @@ def _scope_highlight_to_header_column(
     if str(step.get("action") or "") != "excel_live.highlight_by_condition":
         return ""
     params = dict(step.get("params") or {})
-    if str(params.get("target_range") or "").strip().upper() not in _UNSCOPED_HIGHLIGHT_TARGETS:
-        return ""
+    target = str(params.get("target_range") or "").strip().upper()
+    if target not in _UNSCOPED_HIGHLIGHT_TARGETS:
+        # 상징 범위가 이미 표 전체(`A1:F3`)로 풀려 있는 경우도 "열을 모른다"는 뜻이다
+        # (2026-08-20 게이트6: 이 판정을 안 해서 열 좁히기가 한 번도 발동하지 않았다).
+        # 다만 원문이 범위를 직접 적었으면 사람 뜻이므로 건드리지 않는다.
+        rect = re.fullmatch(r"([A-Z]{1,3})\d{1,7}:([A-Z]{1,3})\d{1,7}", target)
+        if rect is None or rect.group(1) == rect.group(2):
+            return ""
+        if re.search(r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}\s*:\s*[A-Za-z]{1,3}\d{1,7}", str(message or "")):
+            return ""
     entry = _digest_active_entry(digest)
     columns = [c for c in (entry.get("columns") or []) if isinstance(c, dict)]
     column = _header_column_from_message(message, columns)
@@ -1447,6 +1468,80 @@ def _scope_highlight_to_header_column(
     params["target_range"] = scoped
     step["params"] = params
     return scoped
+
+
+#: 값 후보에서 떼어낼 조사·군말.
+_VALUE_TOKEN_TAIL = re.compile(r"(?:만|은|는|이|가|을|를|인|짜리|건|것|거)+$")
+
+
+def _digest_value_column(value: str, entry: dict[str, Any]) -> dict[str, Any] | None:
+    """그 값이 든 열이 **하나뿐**이면 그 열을 돌려준다. 여럿이면 추측이므로 None."""
+    target = _norm_header(value)
+    if not target:
+        return None
+    columns = [c for c in (entry.get("columns") or []) if isinstance(c, dict)]
+    rows = entry.get("sample_rows") or []
+    hits: list[int] = []
+    for idx in range(len(columns)):
+        for row in rows:
+            if idx < len(row) and _norm_header(str(row[idx])) == target:
+                hits.append(idx)
+                break
+    return columns[hits[0]] if len(hits) == 1 else None
+
+
+def _spans_multiple_columns(target: str) -> bool:
+    """`A1:D5`처럼 열이 둘 이상이거나 상징 범위면 참."""
+    text = str(target or "").strip().upper()
+    if text in _UNSCOPED_HIGHLIGHT_TARGETS:
+        return True
+    rect = re.fullmatch(r"([A-Z]{1,3})\d{1,7}:([A-Z]{1,3})\d{1,7}", text)
+    return bool(rect and rect.group(1) != rect.group(2))
+
+
+def _value_equals_highlight(message: str, digest: dict[str, Any]) -> list[dict[str, Any]]:
+    """"상태 대기 분홍 강조!" / "대기만 분홍" — 값과 색만 있는 강조 문장.
+
+    값이 통합문서 안에 실제로 있고 그 열이 하나뿐일 때만 계획을 만든다.
+    """
+    text = str(message or "").strip()
+    if not text or _quick_parse_condition(text) is not None:
+        return []
+    if not re.search(r"(강조|칠해|칠하|표시|색|하이라이트|highlight|빨갛|노랗|파랗|분홍|핑크)", text):
+        return []
+    colors = _quick_extract_colors(text.lower())
+    if not colors:
+        return []
+    entry = _digest_active_entry(digest)
+    if not (entry.get("columns") or []):
+        return []
+    headers = {_norm_header(str(c.get("header") or "")) for c in entry.get("columns") or []}
+    for raw in re.findall(r"[가-힣A-Za-z0-9_]+", text):
+        token = _VALUE_TOKEN_TAIL.sub("", raw).strip()
+        if len(token) < 2 or _norm_header(token) in headers:
+            continue
+        column = _digest_value_column(token, entry)
+        if column is None:
+            continue
+        letter = str(column.get("letter") or "").strip().upper()
+        used = str(entry.get("used_range") or "")
+        last_row = int(m.group(1)) if (m := re.search(r"(\d+)$", used)) else 0
+        if not letter or last_row < 2:
+            continue
+        return [
+            {
+                "action": "excel_live.highlight_by_condition",
+                "params": {
+                    "target_range": f"{letter}2:{letter}{last_row}",
+                    "operator": "==",
+                    "threshold": 0,
+                    "value": token,
+                    "fill_color": colors[0],
+                },
+                "reason": "빠른 규칙 기반 값 동등 강조(통합문서에서 열 확인)",
+            }
+        ]
+    return []
 
 
 def _quick_parse_condition(text: str) -> tuple[str, float] | None:
@@ -2444,6 +2539,24 @@ def _quote_sheet_for_formula(sheet_name: str) -> str:
     return escaped
 
 
+#: `=` 다음에 올 수 있는 것 — 함수·셀 주소·숫자·괄호·따옴표·시트참조.
+#: 한글 낱말이 오면 수식이 아니라 "같다"는 말이다(2026-08-20 게이트6: `상태=대기`가
+#: `=대기` 수식이 되어 표 전체를 덮었다).
+_FORMULA_HEAD = re.compile(
+    r"^=\s*(?:"
+    r"[A-Za-z_][A-Za-z0-9_.]*\s*\("
+    r"|\$?[A-Za-z]{1,3}\$?\d{1,7}(?![A-Za-z0-9])"
+    r"|[-+]?\d"
+    r"|[(\"']"
+    r"|[^\s=!<>]{1,31}!\$?[A-Za-z]{1,3}\$?\d"
+    r")"
+)
+
+
+def _looks_like_a_formula(candidate: str) -> bool:
+    return _FORMULA_HEAD.match(str(candidate or "").strip()) is not None
+
+
 def _extract_formula_from_text(text: str) -> str | None:
     """문장에 직접 적힌 Excel 수식을 통째로 뽑는다.
 
@@ -2958,6 +3071,9 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
             ]
 
     formula_a1 = _extract_formula_from_text(text)
+    if formula_a1 and not _looks_like_a_formula(formula_a1):
+        # "상태=대기"의 '='는 같다는 말이다 — 수식으로 쓰면 표가 덮인다.
+        formula_a1 = None
     if formula_a1 and (explicit_range or normalized_ctx):
         return [
             {
@@ -8547,8 +8663,27 @@ async def _run_command(
     # 그 상태로 플래너에 넘기면 엉뚱한 칸이 칠해진다(2026-08-20 게이트5 실측:
     # F2 대신 F3이 빨갛고, 대기가 아닌 줄이 분홍이 됐다). 머리글로 열을 확정할 수 있으면
     # 규칙이 계획을 확정한다 — 못 하면 예전처럼 플래너 몫이다.
+    # 값과 색만 있는 강조("대기만 분홍") — 규칙이 계획을 못 냈을 때만, 그리고 그 값이
+    # 통합문서에 실제로 있고 열이 하나뿐일 때만 만든다(2026-08-20 게이트5).
+    # 계획이 없거나 **표 전체를 칠하는 계획**일 때만 본다. "대기만 분홍"에서 통짜 칠이
+    # 이기면 대기가 아닌 줄까지 분홍이 된다(2026-08-20 게이트6: A1:D5 전체가 칠해졌다).
+    _blanket_fill = bool(
+        quick_action_plan
+        and len(quick_action_plan) == 1
+        and str((quick_action_plan[0] or {}).get("action") or "") == "excel_live.fill_range"
+        and _spans_multiple_columns(
+            str(((quick_action_plan[0] or {}).get("params") or {}).get("target_range") or "")
+        )
+    )
+    if (not quick_action_plan or _blanket_fill) and pending_slot is None and pending_operation is None:
+        _value_plan = _value_equals_highlight(req.message, workbook_digest)
+        if _value_plan:
+            quick_action_plan = _value_plan
+            rule_hook = rule_hook or "value_equals_highlight"
     if quick_action_plan and pending_slot is None and pending_operation is None:
         _scoped = _scope_highlight_to_header_column(quick_action_plan, req.message, workbook_digest)
+        if not _scoped and rule_hook == "value_equals_highlight":
+            _scoped = str((quick_action_plan[0].get("params") or {}).get("target_range") or "")
         if _scoped:
             should_parse_with_llm = False
             llm_decision_reason = "highlight_scoped_to_header"

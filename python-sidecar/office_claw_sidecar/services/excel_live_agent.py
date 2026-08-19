@@ -22,6 +22,7 @@ from office_claw_sidecar.services.decision_trace import (
 from office_claw_sidecar.services.decision_trace import (
     route as trace_route,
 )
+from office_claw_sidecar.services.excel_aggregate_below import match_aggregate_below
 from office_claw_sidecar.services.excel_intent_normalizer import (
     intent_to_plan,
     normalize_intent,
@@ -2065,10 +2066,13 @@ def parse_explicit_row_write(text: str, *, strong_verb_only: bool = False) -> di
 
 # 값 자리에 오면 값이 아니라 명령인 조각 — 자리말("이 표 아래에"), 집계말("합계 줄", "평균 한 줄"), 군말.
 _COMMANDISH_TOKEN = re.compile(
-    r"(?:(?:이|그|저|요|바로|그\s*다음|다음)?\s*(?:표|범위|영역|칸|셀|줄|행)?\s*"
+    # 수식어는 명사 **앞뒤 어디에나** 온다 — "바로 표 아래", "표 바로 아래에"
+    # (2026-08-20 게이트5: 뒤에 오는 꼴을 못 봐서 '표 바로 아래에'가 값으로 써졌다).
+    r"(?:(?:이|그|저|요|바로|그\s*다음|다음)?\s*(?:표|범위|영역|칸|셀|줄|행)?\s*(?:바로|딱|그냥|좀)?\s*"
     r"(?:아래쪽|밑쪽|위쪽|옆쪽|오른쪽|왼쪽|아래|밑|옆|위|뒤|끝|맨\s*밑|맨\s*아래|맨\s*위)\s*(?:에다가|에다|에|로|으로|쪽에)?"
     r"|(?:합계|총합계|총합|총계|평균|소계|개수|합)\s*(?:줄|행|라인|한\s*줄|하나)\s*(?:을|를|도|은|는)?"
-    r"|(?:한|하나|두|세)\s*(?:줄|행|칸|개)(?:로|으로)?"
+    # "한 줄로 합계" — 수량 뒤에 집계어가 붙은 꼴.
+    r"|(?:한|하나|두|세)\s*(?:줄|행|칸|개)(?:로|으로)?\s*(?:합계|총합계|총합|총계|평균|소계|개수|합)?"
     r"|(?:이거|이걸|이것|그거|저거|여기|여기에|요기|거기|전부|모두|다|전체|쭉|이렇게|그대로|부탁|부탁해|부탁해요|해줘|해주세요|줘|주세요|요)"
     r")"
 )
@@ -2189,6 +2193,12 @@ def parse_rangeless_row_write(text: str, target_range: str) -> dict | None:
         # 격자 안의 "필터 차압 상승" 같은 낱말은 데이터다(2026-08-19 ex4 실측).
         return None
     if not row_groups:
+        return None
+    # 집계 요청은 값 나열이 아니다. 이걸 값으로 읽으면 **머리글 자리에 명령문이 써지고**,
+    # 집계 훅에도 못 간다(훅은 쓰기 계획이 사소할 때만 돈다).
+    # 2026-08-20 게이트5 실측: "한 줄로 합계, 표 바로 아래에 넣어줘"
+    #   → write_range(A1, [['한 줄로 합계', '표 바로 아래에']])
+    if match_aggregate_below(text) is not None:
         return None
     # "넣어줘 합계 줄, 이 표 아래에" — 쉼표로 갈린 조각이 자리말·집계말뿐이면 값 나열이 아니라 명령이다.
     # 이걸 값으로 쓰면 **머리글 줄이 '합계 줄 | 이 표 아래에'로 덮인다**(2026-08-19 ex11 v2 실측: 조용한 오실행 뒤
