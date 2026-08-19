@@ -1099,3 +1099,53 @@ class TestFindReplaceMustNotGuess:
         assert plan and plan[0]["action"] == "excel_live.find_replace", (text, plan)
         assert plan[0]["params"]["find_text"] == find, (text, plan[0]["params"])
         assert plan[0]["params"]["replace_text"] == repl, (text, plan[0]["params"])
+
+
+class TestConditionMustNotVanish:
+    """조건이 사라지면 **선택 전체가 칠해진다** — 조용한 오실행 중 가장 흔한 부류였다.
+
+    2026-08-20 게이트: `highlight_status` 6건이 `fill_range(__ACTIVE_SELECTION__)`로 떨어져
+    조건 없이 전부 칠했다. 조건 파서가 "상태=대기" · "대기라고 된 칸" · "대기 상태인 칸들"을 몰랐다.
+    """
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "ㅇㅇ 상태=대기 셀만 분홍 강조",
+            "상태 열에서 대기라고 된 칸만 pink로 강조 부탁드려요.",
+            "대기 상태인 칸들만 분홍으로 칠해서 한눈에 보이게 해줘",
+            "상태 대기인거만 핑크로 강죠해 빨ㄹ리",
+            "상태가 대기인 셀만 분홍색으로 표시해 주세요",
+            "상태가 '대기'인 셀만 분홍색으로 칠해줘",
+        ],
+    )
+    def test_the_equality_condition_is_parsed(self, text):
+        from office_claw_sidecar.services.excel_live_agent import (
+            normalize_common_typos,
+            parse_text_equals_condition,
+        )
+
+        assert parse_text_equals_condition(normalize_common_typos(text)) == "대기", text
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "ㅇㅇ 상태=대기 셀만 분홍 강조",
+            "상태 열에서 대기라고 된 칸만 pink로 강조 부탁드려요.",
+            "대기 상태인 칸들만 분홍으로 칠해서 한눈에 보이게 해줘",
+        ],
+    )
+    def test_a_conditional_request_never_paints_everything(self, text):
+        # fill_range(__ACTIVE_SELECTION__)로 떨어지면 조건이 사라져 전부 칠해진다.
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        plan = _build_quick_action_plan(normalize_common_typos(text), None)
+        assert plan, text
+        assert plan[0]["action"] == "excel_live.highlight_by_condition", (text, plan)
+
+    def test_a_plain_fill_is_still_a_plain_fill(self):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+
+        plan = _build_quick_action_plan("A1:C3 노란색으로 칠해줘", None)
+        assert plan and plan[0]["action"] == "excel_live.fill_range", plan

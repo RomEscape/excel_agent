@@ -356,7 +356,14 @@ _TEXT_EQUALS_PATTERN = re.compile(
     # '인 애들'이 패턴 밖이라 상태 배지 강조가 통째로 빠졌다).
     # "매우 부족인 셀만" — 값이 두 낱말일 수 있다(2026-08-18 ex2 사람 말투 각본
     # 정찰: '부족'만 잡혀 반대 셀이 칠해졌다). 한 칸 띄어쓴 두 낱말까지 받는다.
-    r"((?:(?:매우|아주|약간|다소|조금|완전|거의)\s)?[가-힣A-Za-z0-9_]{2,20})(?:이면|면|인\s*행|인\s*셀|인\s*애들|인\s*것들|인\s*것만|인\s*건|인\s*거|인\s*데|인\s*곳|일\s*때)"
+    # 2026-08-20 블라인드 게이트 highlight_status 6건: 아래 꼴을 몰라 조건이 통째로 사라지고
+    # **선택 전체가 칠해졌다**("상태=대기", "대기라고 된 칸만", "대기 상태인 칸들만").
+    r"['\"“”‘’]?((?:(?:매우|아주|약간|다소|조금|완전|거의)\s)?[가-힣A-Za-z0-9_]{2,20})['\"“”‘’]?"
+    r"(?:이면|면|인\s*행|인\s*셀|인\s*셀들|인\s*칸|인\s*칸들|인\s*줄|인\s*애들|인\s*것들|인\s*것만"
+    r"|인\s*건|인\s*거|인\s*데|인\s*곳|일\s*때"
+    r"|\s*이?라고\s*(?:된|적힌|표시된|나온|쓰인)"
+    r"|\s*상태(?:인|의|가|는)?\s*(?:칸|셀|행|줄|것|거|애들)"
+    r")"
 )
 _CONVERT_EXISTING_TABLE_PATTERN = re.compile(
     r"(엑셀\s*표|테이블로\s*(?:만들|변환|바꿔)|표로\s*(?:변환|바꿔)|listobject)",
@@ -364,8 +371,16 @@ _CONVERT_EXISTING_TABLE_PATTERN = re.compile(
 )
 
 
+_TEXT_EQUALS_SIGN = re.compile(r"[가-힣A-Za-z0-9_]{1,20}\s*[=＝]\s*([가-힣A-Za-z0-9_]{1,20})")
+
+
 def parse_text_equals_condition(message: str) -> str | None:
-    """'발주필요인 행' / '미납이면'처럼 값 동등 조건을 뽑는다."""
+    """'발주필요인 행' / '미납이면' / '상태=대기'처럼 값 동등 조건을 뽑는다."""
+    sign = _TEXT_EQUALS_SIGN.search(str(message or ""))
+    if sign:
+        token = str(sign.group(1) or "").strip()
+        if token and token.casefold() not in _TEXT_EQUALS_SKIP and not re.fullmatch(r"-?\d+(?:\.\d+)?", token):
+            return token
     for match in _TEXT_EQUALS_PATTERN.finditer(str(message or "")):
         token = str(match.group(1) or "").strip()
         # "매우 부족이면"의 서술격 '이'가 값 꼬리에 붙는다 — 어미와 붙은 뒤에서
