@@ -962,3 +962,41 @@ class TestRenameSheetRule:
         plan = _build_quick_action_plan(normalize_common_typos(text), None)
         actions = [str(s.get("action")) for s in (plan or [])]
         assert "excel_live.rename_sheet" not in actions, (text, plan)
+
+
+class TestAutofitRule:
+    """2026-08-19 게이트: `autofit` 24문장 전부 규칙 0건 → 모델(해석 카드)로 갔다.
+    결정적으로 풀리는 동작인데 모델을 부르면 느리고 흔들린다."""
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "열 너비 내용에 맞게 자동으로 맞춰",
+            "열너비 맞춰",
+            "자동 맞춤 해줘 열 너비",
+            "여기 열 폭 글자 길이에 맞게 맞춰봐",
+            "열 너비 내용에 맏게 자동 조졍",
+            "컬럼 폭 자동으로 마춰줘 빨ㄹ리",
+            "ㅇㅇ 열 폭 자동 맞춤",
+            "열 너비 autofit 부탁드려요.",
+            "글자가 잘려서 ###으로 보이는 칸이 있어서요, 열 너비를 내용에 맞게 자동으로 조정해 주세요.",
+            "column width 내용에 맞게 auto fit 해 주세요.",
+            "칸 폭 글자 안 잘리게 알아서 맞춰 주세요",
+            "열 간격 내용에 딱 맞게 넓혀줘, 보기 좋게",
+        ],
+    )
+    def test_autofit_phrasings_resolve_to_a_rule(self, text):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        plan = _build_quick_action_plan(normalize_common_typos(text), None)
+        assert plan and plan[0]["action"] == "excel_live.autofit_columns", (text, plan)
+
+    @pytest.mark.parametrize("text", ["열 너비 15로 해줘", "행 높이 키워줘", "B열 굵게", "B열 지워줘"])
+    def test_it_does_not_grab_other_column_actions(self, text):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        plan = _build_quick_action_plan(normalize_common_typos(text), None)
+        actions = [str(s.get("action")) for s in (plan or [])]
+        assert "excel_live.autofit_columns" not in actions, (text, plan)

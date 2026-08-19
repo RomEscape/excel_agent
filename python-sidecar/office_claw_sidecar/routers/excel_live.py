@@ -2736,6 +2736,10 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
     if rename_step is not None:
         return [rename_step]
 
+    autofit_step = _quick_autofit_step(text, explicit_range or normalized_ctx)
+    if autofit_step is not None:
+        return [autofit_step]
+
     delete_sheet_match = re.search(
         r"([A-Za-z0-9_가-힣]+)\s*(?:시트|sheet|탭)\s*(?:을|를)?\s*(?:삭제|제거|없애)",
         text,
@@ -3503,6 +3507,43 @@ _RENAME_PATTERNS = (
         re.IGNORECASE,
     ),
 )
+
+
+# "열 너비 자동 맞춤" — 게이트에서 규칙 0건이라 24문장 전부 모델(해석 카드)로 갔다(2026-08-19).
+# 결정적으로 풀리는 동작인데 모델을 부르면 느리고 흔들린다.
+_AUTOFIT_WIDTH = re.compile(
+    r"(?:열|칸|칼럼|컬럼|column)\s*(?:너비|폭|width|길이|간격)"
+    r"|(?:너비|폭)\s*(?:자동|auto)"
+    r"|(?:열|칼럼|컬럼)\s*(?:을|를)?\s*(?:넓혀|늘려|줄여)"
+)
+_AUTOFIT_HOW = re.compile(
+    r"자동|auto\s*fit|autofit|맞춤|맞춰|맞추|마춰|마추|맏게|맞게|조정|조졍|안\s*잘리게|"
+    r"글자\s*길이|내용에\s*(?:맞|딱)|딱\s*맞|잘리|잘려|넓혀|알아서|###"
+)
+# 폭을 **숫자로** 지정한 요청은 자동 맞춤이 아니다("열 너비 15로").
+_AUTOFIT_EXPLICIT_WIDTH = re.compile(r"(?:너비|폭|width)\s*(?:를|을)?\s*\d+")
+
+
+def _quick_autofit_step(text: str, preferred_range: str) -> dict[str, Any] | None:
+    """"열 너비 내용에 맞게 자동으로 맞춰" — 열 너비 자동 맞춤은 결정적이다."""
+    src = str(text or "")
+    if not _AUTOFIT_WIDTH.search(src) or not _AUTOFIT_HOW.search(src):
+        return None
+    if _AUTOFIT_EXPLICIT_WIDTH.search(src):
+        return None
+    # "행 높이"는 다른 동작이다.
+    if re.search(r"(?:행|줄)\s*(?:높이|height)", src) and not re.search(r"(?:열|칼럼|컬럼|column)", src):
+        return None
+    params: dict[str, Any] = {}
+    target = str(preferred_range or "").strip()
+    if target and ":" in target:
+        params["target_range"] = target.upper()
+    return {
+        "action": "excel_live.autofit_columns",
+        "params": params,
+        "reason": "빠른 규칙 기반 열 너비 자동 맞춤",
+    }
+
 
 
 def _quick_rename_sheet_step(text: str) -> dict[str, Any] | None:
@@ -8164,6 +8205,7 @@ async def _run_command(
         "excel_live.set_font",
         "excel_live.freeze_panes",
         "excel_live.find_replace",
+        "excel_live.autofit_columns",
     }:
         should_parse_with_llm = False
         llm_decision_reason = "high_confidence_action"
