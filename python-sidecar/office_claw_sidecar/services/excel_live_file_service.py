@@ -121,6 +121,16 @@ def _sorted_group_keys(keys: list[tuple]) -> list[tuple]:
     return numeric + others
 
 
+# 서식 스냅샷 상한 — 검증용이라 표 하나를 덮을 정도면 충분하다.
+def _hex_or_none(value: Any) -> str | None:
+    """openpyxl의 rgb는 테마 색일 때 오류 문자열이 온다 — 16진 코드만 통과시킨다."""
+    text = str(value or "").strip()
+    return text.upper() if re.fullmatch(r"[0-9A-Fa-f]{6,8}", text) else None
+
+
+_FORMAT_SNAPSHOT_MAX_ROWS = 200
+_FORMAT_SNAPSHOT_MAX_COLS = 60
+
 class FileExcelLiveService(ExcelLiveService):
     """파일 기반(openpyxl) Excel 편집 서비스. Excel 앱이 없어도 동작한다."""
 
@@ -756,6 +766,69 @@ class FileExcelLiveService(ExcelLiveService):
                 "row_count": int(data.get("row_count", 0) or 0),
                 "col_count": int(data.get("col_count", 0) or 0),
                 "filled_cells": filled,
+            }
+        finally:
+            wb.close()
+
+    def get_format_snapshot(
+        self, workbook_id: str | None, sheet_name: str | None, range_ref: str
+    ) -> dict[str, Any]:
+        """범위의 **서식** 스냅샷(검증용). 값이 아니라 "요청한 효과가 남았는가"를 보려고 쓴다.
+
+        2026-08-19: 조용한 오실행의 큰 덩어리가 서식이었는데(표시 형식 그대로 · 배경만 칠하고 굵게는 안 됨 ·
+        병합 안 됨 · 틀 고정 안 됨) 읽을 방법이 없어 사후조건을 못 걸었다.
+        """
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            target = sheet_name or self._selected_sheet_by_workbook.get(str(path)) or wb.active.title
+            ws = self._sheet_or_raise(wb, target)
+            min_row, min_col, max_row, max_col = self._range_bounds(ws, range_ref)
+            max_row = min(max_row, min_row + _FORMAT_SNAPSHOT_MAX_ROWS - 1)
+            max_col = min(max_col, min_col + _FORMAT_SNAPSHOT_MAX_COLS - 1)
+            number_formats: list[list[str]] = []
+            fills: list[list[str | None]] = []
+            bold: list[list[bool]] = []
+            font_colors: list[list[str | None]] = []
+            borders: list[list[bool]] = []
+            for r in range(min_row, max_row + 1):
+                nf_row, fill_row, bold_row, color_row, border_row = [], [], [], [], []
+                for c in range(min_col, max_col + 1):
+                    cell = ws.cell(row=r, column=c)
+                    nf_row.append(str(cell.number_format or "General"))
+                    fill = getattr(cell, "fill", None)
+                    rgb = _hex_or_none(getattr(getattr(fill, "fgColor", None), "rgb", None))
+                    patt = str(getattr(fill, "patternType", "") or "")
+                    fill_row.append(rgb if (patt and rgb and rgb != "00000000") else None)
+                    font = getattr(cell, "font", None)
+                    bold_row.append(bool(getattr(font, "bold", False)))
+                    # openpyxl은 테마 색일 때 rgb 자리에 **오류 문자열**을 돌려준다. 16진 코드만 받는다.
+                    frgb = getattr(getattr(font, "color", None), "rgb", None)
+                    color_row.append(_hex_or_none(frgb))
+                    border = getattr(cell, "border", None)
+                    border_row.append(
+                        any(
+                            getattr(getattr(border, side, None), "style", None)
+                            for side in ("left", "right", "top", "bottom")
+                        )
+                    )
+                number_formats.append(nf_row)
+                fills.append(fill_row)
+                bold.append(bold_row)
+                font_colors.append(color_row)
+                borders.append(border_row)
+            merged = [str(rng) for rng in getattr(ws, "merged_cells", []).ranges] if hasattr(ws, "merged_cells") else []
+            return {
+                "address": range_ref,
+                "sheet_name": str(ws.title),
+                "number_formats": number_formats,
+                "fills": fills,
+                "bold": bold,
+                "font_colors": font_colors,
+                "borders": borders,
+                "merged": merged,
+                "freeze_panes": str(ws.freeze_panes) if ws.freeze_panes else "",
+                "chart_count": len(getattr(ws, "_charts", []) or []),
             }
         finally:
             wb.close()

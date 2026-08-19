@@ -100,6 +100,10 @@ def _validate_macro_name(macro_name: str | None) -> str:
     return macro
 
 
+# 서식 스냅샷 상한 — 검증용이라 표 하나를 덮을 정도면 충분하다.
+_FORMAT_SNAPSHOT_MAX_ROWS = 200
+_FORMAT_SNAPSHOT_MAX_COLS = 60
+
 class ExcelLiveService:
     """실행 중인 Excel 제어 서비스(xlwings 기반)."""
 
@@ -345,6 +349,89 @@ class ExcelLiveService:
             "address": str(range_ref),
             "row_count": row_count,
             "col_count": col_count,
+        }
+
+    def get_format_snapshot(
+        self, workbook_id: str | None, sheet_name: str | None, range_ref: str
+    ) -> dict[str, Any]:
+        """범위의 서식 스냅샷(검증용). 파일 엔진과 같은 모양을 돌려준다 — 사후조건이 엔진을 가리지 않게."""
+        target_id = workbook_id or self._selected_workbook_id
+        if not target_id:
+            raise WorkbookNotFoundError("workbook_id가 필요합니다.")
+        wb = self._find_workbook(target_id)
+        sheet = self._find_sheet(wb, sheet_name) if sheet_name else wb.sheets.active
+        rng = sheet.range(range_ref)
+        rows = min(int(rng.rows.count), _FORMAT_SNAPSHOT_MAX_ROWS)
+        cols = min(int(rng.columns.count), _FORMAT_SNAPSHOT_MAX_COLS)
+        number_formats: list[list[str]] = []
+        fills: list[list[str | None]] = []
+        bold: list[list[bool]] = []
+        font_colors: list[list[str | None]] = []
+        borders: list[list[bool]] = []
+
+        def _hex(color: Any) -> str | None:
+            if color is None:
+                return None
+            if isinstance(color, (tuple, list)) and len(color) >= 3:
+                return "FF" + "".join(f"{int(v):02X}" for v in color[:3])
+            return str(color)
+
+        for r in range(1, rows + 1):
+            nf_row, fill_row, bold_row, color_row, border_row = [], [], [], [], []
+            for c in range(1, cols + 1):
+                cell = rng[r - 1, c - 1]
+                try:
+                    nf_row.append(str(cell.number_format or "General"))
+                except Exception:
+                    nf_row.append("General")
+                try:
+                    fill_row.append(_hex(cell.color))
+                except Exception:
+                    fill_row.append(None)
+                try:
+                    bold_row.append(bool(cell.api.Font.Bold))
+                except Exception:
+                    bold_row.append(False)
+                try:
+                    color_row.append(_hex(cell.font.color))
+                except Exception:
+                    color_row.append(None)
+                try:
+                    # xlEdgeLeft=7 … xlEdgeRight=10, LineStyle -4142 == none
+                    border_row.append(
+                        any(cell.api.Borders(idx).LineStyle != -4142 for idx in (7, 8, 9, 10))
+                    )
+                except Exception:
+                    border_row.append(False)
+            number_formats.append(nf_row)
+            fills.append(fill_row)
+            bold.append(bold_row)
+            font_colors.append(color_row)
+            borders.append(border_row)
+        try:
+            merged = [str(a.address).replace("$", "") for a in rng.api.MergeArea] if rng.api.MergeCells else []
+        except Exception:
+            merged = []
+        try:
+            freeze = str(sheet.api.Application.ActiveWindow.SplitRow or 0)
+            freeze = f"A{int(freeze) + 1}" if freeze and int(freeze) > 0 else ""
+        except Exception:
+            freeze = ""
+        try:
+            chart_count = len(sheet.charts)
+        except Exception:
+            chart_count = 0
+        return {
+            "address": str(rng.address).replace("$", ""),
+            "sheet_name": str(getattr(sheet, "name", "") or ""),
+            "number_formats": number_formats,
+            "fills": fills,
+            "bold": bold,
+            "font_colors": font_colors,
+            "borders": borders,
+            "merged": merged,
+            "freeze_panes": freeze,
+            "chart_count": chart_count,
         }
 
     def get_range_snapshot(
