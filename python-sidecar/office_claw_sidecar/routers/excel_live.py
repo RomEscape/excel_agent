@@ -168,6 +168,7 @@ from office_claw_sidecar.services.excel_workbook_digest import (
     invalidate_workbook_digest,
     render_workbook_digest,
 )
+from office_claw_sidecar.services.excel_write_scope import assess as assess_write_scope
 from office_claw_sidecar.services.korean_number import (
     parse_condition as parse_korean_condition,
 )
@@ -9277,6 +9278,12 @@ def _plan_approval_gate(ctx: PlanExecution, plan: list[PlanStep]) -> ExcelLiveAc
     if ctx.approved:
         return None
 
+    # 블라스트 반경 — 사람이 가리키지 않은 자리의 **값**을 덮는가.
+    # 계획이 옳은지는 판단하지 않는다. "지목한 자리"와 "건드릴 자리"만 비교하므로
+    # 말투·어순·파서 커버리지와 무관하게 같은 보호가 남는다(2026-08-19 결과 워크북 감사:
+    # 크로스시트 집계가 원본 시트에 써져 학생 이름을 지웠고, 어느 층도 못 막았다).
+    scope_verdict = _assess_blast_radius(ctx, plan)
+
     confirm_steps = [
         step
         for step in plan
@@ -9293,6 +9300,13 @@ def _plan_approval_gate(ctx: PlanExecution, plan: list[PlanStep]) -> ExcelLiveAc
             if not model_edit_steps:
                 return None
             confirm_steps = model_edit_steps
+        elif scope_verdict.is_risky:
+            # 지금은 쓰기 계열이 전부 CONFIRM이라 여기까지 오지 않는다. 나중에 SAFE로 분류된
+            # 쓰기 경로가 생겨도 지목 밖의 값을 조용히 덮지 않도록 남겨 둔다.
+            risky_steps = [step for step in plan if step.action in EDIT_ACTIONS]
+            if not risky_steps:
+                return None
+            confirm_steps = risky_steps
         else:
             return None
 
@@ -9353,7 +9367,19 @@ def _plan_approval_gate(ctx: PlanExecution, plan: list[PlanStep]) -> ExcelLiveAc
         pending.summary = f"다음 {len(plan)}단계를 실행합니다.\n{steps_text}"
         if any(step.action in _DESTRUCTIVE_ACTIONS for step in plan):
             pending.summary += "\n\n⚠ 표시 단계는 데이터가 지워지거나 재배치됩니다. 실행 후 '되돌리기'로 복구할 수 있습니다."
-    if plan_from_model:
+    if scope_verdict.is_risky:
+        # "엑셀 셀 값을 수정합니다 — B10"만 보고는 성적부!B10의 학생 이름이 사라지는 걸 알 수 없다.
+        # 무엇을 덮는지 적고 **해석 카드로 올린다** — 규칙이 낸 계획이라도 지목 밖을 건드리면
+        # 그것은 확신이 아니라 해석이다(2026-08-19 결과 워크북 감사).
+        pending.interpretation = True
+        pending.summary = f"{pending.summary}\n\n⚠ {scope_verdict.summary()}"
+        trace_note(
+            "blast_radius",
+            cells=len(scope_verdict.risky),
+            detail=scope_verdict.summary(limit=8),
+            action=head.action,
+        )
+    if plan_from_model or scope_verdict.is_risky:
         pending.interpretation = True
         pending.summary = (
             "이렇게 이해했어요:\n"
@@ -9382,6 +9408,47 @@ def _plan_approval_gate(ctx: PlanExecution, plan: list[PlanStep]) -> ExcelLiveAc
         pending_approval=pending,
         reason=head.reason or "승인이 필요한 작업입니다.",
     )
+
+
+def _assess_blast_radius(ctx: PlanExecution, plan: list[PlanStep]):
+    """계획이 지목 밖의 값을 덮는지 본다. 못 보면 통과시킨다 — 판정 실패로 멀쩡한 작업을 막지 않는다."""
+    req = ctx.req
+    try:
+        service = get_excel_live_service()
+        workbook_id = _resolve_workbook_id(service, req.workbook_id)
+        active_sheet = _resolve_sheet_name(service, workbook_id, req.sheet_name)
+
+        def _resolve_placeholder(sheet: str, token: str) -> str:
+            # 실행기(_resolve_range)와 같은 값을 봐야 한다. 안 풀면 자리표시자를 쓰는
+            # clear_range 대부분을 놓친다(2026-08-19 적대적 검증).
+            if token == "__USED_RANGE__":
+                return str(service.get_used_range_ref(workbook_id, sheet or active_sheet) or "")
+            return str(service.get_active_selection_ref(workbook_id, sheet or active_sheet) or "")
+
+        def _read_rect(sheet: str, ref: str):
+            data = service.read_range(workbook_id, sheet, ref)
+            return data.get("values") if isinstance(data, dict) else None
+
+        return assess_write_scope(
+            steps=[{"action": step.action, "params": dict(step.params)} for step in plan],
+            message=req.message,
+            context_range=req.context_range,
+            active_sheet=active_sheet,
+            read_rect=_read_rect,
+            resolve_placeholder=_resolve_placeholder,
+        )
+    except Exception as exc:
+        trace_note("blast_radius", checked=False, detail=f"판정 생략: {type(exc).__name__}")
+
+        class _Skip:
+            is_risky = False
+            risky: list = []
+
+            @staticmethod
+            def summary(limit: int = 4) -> str:
+                return ""
+
+        return _Skip()
 
 
 async def _execute_plan_and_respond(
