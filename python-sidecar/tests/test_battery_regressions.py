@@ -664,15 +664,6 @@ class TestNewScenarioRound2And3:
         assert plan and plan[0]["action"] == "excel_live.find_replace", (text, plan)
         assert plan[0]["params"]["find_text"] == find and plan[0]["params"]["replace_text"] == repl
 
-    @pytest.mark.parametrize(
-        "text", ["시트 이름을 요약으로 바꿔줘", "차트를 막대로 바꿔줘", "아니 부산으로 바꿔줘", "A열을 B열로 바꿔줘"]
-    )
-    def test_find_replace_rule_does_not_grab_structure_commands(self, text):
-        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
-
-        plan = _build_quick_action_plan(text, None)
-        assert not plan or plan[0]["action"] != "excel_live.find_replace", (text, plan)
-
     def test_sort_without_column_is_unresolved_even_without_headers(self):
         from office_claw_sidecar.services.excel_live_executor import PlanStep
         from office_claw_sidecar.services.excel_param_binder import bind_plan_steps
@@ -1054,3 +1045,57 @@ class TestPlanWasWrongNotExecution:
         plan = _build_quick_action_plan(normalize_common_typos(text), None)
         actions = [str(s.get("action")) for s in (plan or [])]
         assert "excel_live.fill_range" in actions and "excel_live.set_font" in actions, (text, plan)
+
+
+class TestFindReplaceMustNotGuess:
+    """2026-08-20: 어제 넣은 느슨한 찾아 바꾸기 규칙이 게이트의 조용한 오실행을 **5→6건으로 늘렸다.**
+
+    잡은 값이 엉망이었다(find='여기 표', repl='수도권을 서울권' / repl='서울권으' / repl='건 다 서울권').
+    더 나쁜 건 오탐이었다 — `"매출 높은 순으로 보여줘"`(정렬)가 find='매출 높' → repl='순' **치환**이 됐다.
+    잘못된 치환은 데이터를 망친다. **넓게 잡는 것보다 확실할 때만 잡는 편이 낫다.**
+    """
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "매출 높은 순으로 보여줘",
+            "클레임 많은 순으로 정렬해줘",
+            "재적생 수 많은 순으로",
+            "시트 이름을 요약으로 바꿔줘",
+            "배경을 파란색으로 바꿔줘",
+            "B열 숫자를 퍼센트로 바꿔줘",
+            "차트를 막대로 바꿔줘",
+            "글꼴을 굴림으로 바꿔줘",
+        ],
+    )
+    def test_it_never_turns_another_intent_into_a_replacement(self, text):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        plan = _build_quick_action_plan(normalize_common_typos(text), "D1:D9")
+        actions = [str(s.get("action")) for s in (plan or [])]
+        assert "excel_live.find_replace" not in actions, (text, plan)
+
+    @pytest.mark.parametrize(
+        "text, find, repl",
+        [
+            ("수도권이라고 된 거 전부 서울권으로 바꿔", "수도권", "서울권"),
+            ("수도권→서울권", "수도권", "서울권"),
+            ("수도권 → 서울권으로 변경 부탁드려요.", "수도권", "서울권"),
+            ("표에서 수도권이라는 글자를 전부 서울권으로 바꿔 주실 수 있을까요?", "수도권", "서울권"),
+            ("수도권을 서울권으로 replace 부탁드려요.", "수도권", "서울권"),
+            ("서울권으로 바꿔 주세요, 수도권이라고 된 거", "수도권", "서울권"),
+            ("ML Ops를 MLOps로 찾아 바꿔줘", "ML Ops", "MLOps"),
+            ("상태 열에서 대기 중을 보류로 바꿔줘", "대기 중", "보류"),
+            ("표에서 N/A는 빈칸으로 바꿔줘", "N/A", ""),
+        ],
+    )
+    def test_a_real_replacement_keeps_both_words_whole(self, text, find, repl):
+        # 조사를 먹으면('서울권으') 시트에 없는 글자를 찾게 되고, 수량어를 먹으면 엉뚱한 값이 들어간다.
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        plan = _build_quick_action_plan(normalize_common_typos(text), "D1:D9")
+        assert plan and plan[0]["action"] == "excel_live.find_replace", (text, plan)
+        assert plan[0]["params"]["find_text"] == find, (text, plan[0]["params"])
+        assert plan[0]["params"]["replace_text"] == repl, (text, plan[0]["params"])

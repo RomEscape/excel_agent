@@ -3377,62 +3377,123 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
 
 # "처리중을 진행중으로 바꿔줘", "ML Ops를 MLOps로 찾아 바꿔", "'김선생' → '김선생님'" — 찾아 바꾸기는 결정적이다.
 # 2026-08-19 ex16 실측: 규칙이 없어 전부 모델로 갔고 플래너가 JSON을 못 내 되물었다.
-_FIND_REPLACE_VERB = r"(?:전부|모두|다|싹|일괄|한\s*번에)?\s*(?:찾아서?\s*)?(?:바꿔|바꾸|변경|교체|치환|replace|고쳐)"
-_Q = r"[\"'“”‘’]?"
-# 낱말 1~3개(띄어쓰기 허용), 쉼표·세미콜론·따옴표 없음. 비탐욕이라 바로 뒤 조사에서 멈춘다.
-_FIND_REPLACE_TOKEN = r"([^\s,;\"'“”‘’]{1,30}?(?:\s+[^\s,;\"'“”‘’]{1,30}?){0,2})"
-_FIND_REPLACE_SCOPE = (
-    r"(?:(?:[A-Za-z]{1,3}\d{1,7}(?::[A-Za-z]{1,3}\d{1,7})?|[A-Za-z]\s*열|[^\s,;]+\s*열|[^\s,;]+\s*시트|전체|시트\s*전체|표\s*전체|표)"
-    r"\s*(?:에서|의|에|안에서|은|는)?\s+)?"
+_FIND_REPLACE_VERB = (
+    r"(?:전부|모두|다|싹|일괄|한\s*번에)?\s*(?:찾아서?\s*|find\s*&?\s*replace\s*로?\s*)?"
+    r"(?:바꿔|바꾸|바꺼|변경|교체|치환|치환햐|replace|고쳐|고치|이름\s*바꿔)"
 )
+# 찾을/바꿀 말은 **한 덩어리**다. 공백을 허용하면 "전부 서울권" · "건 다 서울권"을 통째로 문다
+# (2026-08-20 게이트2에서 이 규칙 때문에 조용한 오실행이 5→6으로 **늘었다**).
+# 넓게 잡는 것보다 확실할 때만 잡는 편이 낫다 — 잘못된 치환은 데이터를 망친다.
+# **비탐욕**이어야 한다 — 탐욕적이면 "서울권으로"에서 조사까지 먹어 '서울권으'가 된다(2026-08-20 실측).
+# **비탐욕**이어야 한다 — 탐욕적이면 "서울권으로"에서 조사까지 먹어 '서울권으'가 된다(2026-08-20 실측).
+# 두 낱말까지만 허용한다("ML Ops"·"대기 중"). 더 열면 "전부 서울권"을 통째로 문다.
+_FR_ATOM = r"[^\s,;→\"'“”‘’]{1,24}?"
+_FR_WORD = _FR_ATOM + r"(?:\s" + _FR_ATOM + r")??"
+_FR_Q = r"[\"'“”‘’]?"
+# 값에 붙는 군더더기 — 잡은 뒤 떼어낸다.
+_FR_STRIP_LEAD = re.compile(r"^(?:전부|모두|다|싹|일괄|여기|표|이|그|저)\s+")
+_FR_STRIP_TAIL = re.compile(
+    r"(?:\s*(?:이?라는|이?라고|들어간|적힌|된|하는))?"
+    r"(?:\s*(?:글자|텍스트|문자열|단어|말|이름|명칭|값|건|거|것|셀|칸|부분|애들))?"
+    r"(?:\s*(?:을|를|은|는|이|가|도|만))?\s*$"
+)
+_FR_SCOPE = (
+    r"(?:(?:[A-Za-z]{1,3}\d{1,7}(?::[A-Za-z]{1,3}\d{1,7})?|[A-Za-z]\s*열|[^\s,;]+\s*열|[^\s,;]+\s*시트"
+    r"|여기\s*표|이\s*표|표\s*전체|시트\s*전체|표에\s*있는|전체|표|여기)\s*(?:에서|의|에|안에서|은|는)?\s+)?"
+)
+
 _FIND_REPLACE_PATTERNS = (
+    # "수도권 → 서울권" · "수도권→서울권 변경!"
     re.compile(
-        # "처리중이라고 된 거 전부 진행중으로 바꿔줘" / "대기라고 적힌 셀은 보류로"
-        r"^\s*" + _FIND_REPLACE_SCOPE + _Q + _FIND_REPLACE_TOKEN + _Q
-        + r"\s*(?:이?라고|이?라|으?로)\s*(?:된|적힌|쓰인|써진|입력된|표시된|돼\s*있는|되어\s*있는|써\s*있는)\s*(?:거|것|셀|칸|값|글자|애들|부분)?\s*(?:은|는|을|를|도)?\s*(?:전부|모두|다|싹|일괄)?\s*"
-        + _Q + _FIND_REPLACE_TOKEN + _Q
-        + r"\s*(?:으로|로|이라고|라고)\s*" + _FIND_REPLACE_VERB,
+        r"^\s*" + _FR_SCOPE + _FR_Q + r"(?P<find>" + _FR_WORD + r")" + _FR_Q
+        + r"\s*(?:→|->|=>|⇒)\s*" + _FR_Q + r"(?P<repl>" + _FR_WORD + r")" + _FR_Q
+        # 비탐욕이라 경계를 안 주면 '서' 한 글자에서 멈춘다(2026-08-20 실측).
+        + r"(?:\s*(?:으로|로))?(?=[\s,.!?~…]|$)",
         re.IGNORECASE,
     ),
+    # "수도권을 서울권으로 바꿔" · "수도권이라고 된 거 전부 서울권으로 고쳐" · "수도권은 서울권으로"
     re.compile(
-        r"^\s*" + _FIND_REPLACE_SCOPE + _Q + _FIND_REPLACE_TOKEN + _Q
-        + r"\s*(?:을|를|이라는|라는|이란|란|은|는|에서)\s*(?:글자|텍스트|값|단어|문자|문구|표기)?\s*(?:을|를|은|는)?\s*"
-        + _Q + _FIND_REPLACE_TOKEN + _Q
-        + r"\s*(?:으로|로|이라고|라고)\s*" + _FIND_REPLACE_VERB,
+        r"^\s*" + _FR_SCOPE + _FR_Q + r"(?P<find>" + _FR_WORD + r")" + _FR_Q
+        + r"\s*(?:이?라는|이?라고|을|를|은|는)\s*"
+        r"(?:(?:된|적힌|쓰인|써진|입력된|표시된|들어간|돼\s*있는|되어\s*있는)\s*)?"
+        r"(?:(?:글자|텍스트|문자열|단어|말|값|건|거|것|셀|칸|부분|애들)\s*(?:을|를|은|는|도)?\s*)?"
+        r"(?:(?:전부|모두|다|싹|일괄)\s*)?"
+        + _FR_Q + r"(?P<repl>" + _FR_WORD + r")" + _FR_Q + r"\s*(?:으로|로)",
         re.IGNORECASE,
     ),
+    # 바꿀 말이 앞: "서울권으로 바꿔줘 수도권 들어간 건 다"
     re.compile(
-        r"^\s*" + _FIND_REPLACE_SCOPE + _Q + _FIND_REPLACE_TOKEN + _Q + r"\s*(?:→|->|=>|⇒)\s*" + _Q + _FIND_REPLACE_TOKEN + _Q
-        + r"\s*(?:으로|로)?\s*" + _FIND_REPLACE_VERB,
+        r"^\s*" + _FR_Q + r"(?P<repl>" + _FR_WORD + r")" + _FR_Q + r"\s*(?:으로|로)\s*" + _FIND_REPLACE_VERB
+        # 동사 뒤에 **공백을 강제**하고 높임 꼬리를 건너뛴다 — 안 그러면 '줘'·'주세요'가 찾을 말이 된다
+        # (2026-08-20 실측).
+        + r"(?:\s*(?:줘요|줘|주세요|주라|주시|해줘|놔|둬))*[^\n]{0,4}?\s+"
+        + _FR_Q + r"(?P<find>" + _FR_WORD + r")" + _FR_Q
+        + r"(?=[\s,.!?~…]|$|이?라|들어|적힌|된)",
         re.IGNORECASE,
     ),
 )
-# 이런 낱말이 찾을/바꿀 값에 들어 있으면 텍스트 치환이 아니라 서식·구조 명령이다.
+# 이런 낱말이 찾을/바꿀 값이면 텍스트 치환이 아니라 서식·구조 명령이거나 수량어다.
 _FIND_REPLACE_NOT_TEXT = re.compile(
-    r"(열|행|시트|탭|차트|그래프|글꼴|폰트|색|배경|서식|형식|크기|너비|높이|이름|제목|굵게|기울임|테두리|병합|정렬|"
-    r"수식|함수|숫자|날짜|퍼센트|콤마|소수|자리|순서|위치|방향|모양|스타일|타입|종류|단위|통화|원화|달러)$"
+    r"^(?:열|행|시트|탭|차트|그래프|글꼴|폰트|색|배경|서식|형식|크기|너비|높이|이름|제목|굵게|기울임|테두리|병합|정렬|"
+    r"수식|함수|숫자|날짜|퍼센트|콤마|소수|자리|순서|위치|방향|모양|스타일|타입|종류|단위|통화|원화|달러|"
+    r"여기|표|전부|모두|다|싹)$"
 )
+
+
+# 치환이라는 **증거** — 동사나 화살표가 있어야 한다.
+_FIND_REPLACE_EVIDENCE = re.compile(
+    r"(?:바꿔|바꾸|바꺼|변경|교체|치환|치환햐|replace|고쳐|고치|→|->|=>|⇒|찾아\s*바꾸)"
+)
+# 조사 모양이 비슷하지만 치환이 아닌 문장.
+_FIND_REPLACE_OTHER_INTENT = re.compile(
+    r"(?:순으로|순서대로|오름차순|내림차순|정렬|높은\s*순|낮은\s*순|많은\s*순|적은\s*순"
+    r"|시트\s*이름|탭\s*이름|시트명|이름\s*(?:을|를)?\s*(?:바꿔|변경)"
+    r"|배경|글꼴|폰트|테두리|병합|차트|그래프|서식|형식|퍼센트|콤마|소수)"
+)
+
+
+def _fr_clean(value: str) -> str:
+    """잡은 말에서 수량·분류어·조사를 떼어낸다. 남는 게 없으면 빈 문자열."""
+    out = _FR_STRIP_LEAD.sub("", str(value or "").strip())
+    out = _FR_STRIP_TAIL.sub("", out).strip().strip("\"'“”‘’")
+    return out
 
 
 def _quick_find_replace_step(text: str, context_range: str | None) -> dict[str, Any] | None:
+    """"수도권을 서울권으로 바꿔줘" — 찾아 바꾸기는 결정적이다.
+
+    **넓게 잡는 것보다 확실할 때만 잡는 것이 낫다.** 잘못된 치환은 데이터를 망치고 되돌리기 어렵다
+    (2026-08-20 게이트2: 어제 넣은 느슨한 규칙이 'find=여기 표, replace=수도권을 서울권' 같은 값을 만들어
+    조용한 오실행을 5→6건으로 늘렸다). 확신이 없으면 물러나 모델·되묻기에 맡긴다.
+    """
     src = str(text or "").strip()
     if not src or "=" in src:
+        return None
+    # **치환 문장이라는 증거가 없으면 잡지 않는다.** 조사만 보고 잡았더니
+    # "매출 높은 순으로 보여줘"(정렬)가 find='매출 높' → replace='순' 치환이 됐다
+    # (2026-08-20, 기존 라우터 테스트가 잡아냄). 잘못된 치환은 데이터를 망친다.
+    if not _FIND_REPLACE_EVIDENCE.search(src):
+        return None
+    # 정렬·서식·차트 문장은 조사 모양이 비슷해도 치환이 아니다.
+    if _FIND_REPLACE_OTHER_INTENT.search(src):
         return None
     for pattern in _FIND_REPLACE_PATTERNS:
         m = pattern.search(src)
         if not m:
             continue
-        find_text = m.group(1).strip()
-        replace_text = m.group(2).strip()
-        # "N/A는 빈칸으로" — 빈 값으로 바꾸라는 말이다.
-        if re.fullmatch(r"(?:빈\s*칸|공백|빈\s*값|빈\s*문자열|아무것도\s*없음|없음|삭제)", replace_text):
-            replace_text = ""
+        find_text = _fr_clean(m.group("find"))
+        raw_repl = str(m.group("repl") or "").strip().strip("\"'“”‘’")
+        # "빈칸으로"의 '칸'은 분류어가 아니라 낱말의 일부다 — 자르기 **전에** 판정한다.
+        blank_target = re.fullmatch(r"(?:빈\s*칸|공백|빈\s*값|빈\s*문자열|없음|삭제)", raw_repl) is not None
+        replace_text = "" if blank_target else _fr_clean(raw_repl)
         if not find_text or find_text == replace_text:
-            return None
-        if _FIND_REPLACE_NOT_TEXT.search(find_text) or _FIND_REPLACE_NOT_TEXT.search(replace_text):
-            return None
+            continue
+        if _FIND_REPLACE_NOT_TEXT.match(find_text) or _FIND_REPLACE_NOT_TEXT.match(replace_text):
+            continue
         if re.fullmatch(r"[A-Za-z]{1,3}\d{1,7}(?::[A-Za-z]{1,3}\d{1,7})?", find_text, re.IGNORECASE):
-            return None
+            continue
+        if not blank_target and not replace_text:
+            continue
         explicit = re.search(r"(?<![A-Za-z0-9])([A-Za-z]{1,3}\d{1,7}:[A-Za-z]{1,3}\d{1,7})(?![A-Za-z0-9])", src)
         col = re.search(r"(?<![A-Za-z0-9])([A-Za-z])\s*열", src)
         if explicit:
@@ -3445,7 +3506,12 @@ def _quick_find_replace_step(text: str, context_range: str | None) -> dict[str, 
             target = "__USED_RANGE__"
         return {
             "action": "excel_live.find_replace",
-            "params": {"target_range": target, "find_text": find_text, "replace_text": replace_text, "whole_cell": False},
+            "params": {
+                "target_range": target,
+                "find_text": find_text,
+                "replace_text": replace_text,
+                "whole_cell": False,
+            },
             "reason": "빠른 규칙 기반 찾아 바꾸기",
         }
     return None
