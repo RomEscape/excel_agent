@@ -1686,6 +1686,7 @@ def _extract_quoted_headers(text: str) -> list[str]:
 _COMMON_TYPO_PAIRS: tuple[tuple[re.Pattern[str], str], ...] = (
     # 된소리 오타 — 자판에서 Shift가 붙어 나온다(2026-08-19 블라인드 게이트: '씨트'가 규칙을 통째로 빗나가게 했다).
     (re.compile(r"씨트"), "시트"),
+    (re.compile(r"넣어\s*롸"), "넣어줘"),
     # 이 한 글자가 배경 단계를 통째로 날렸다 — "남색 배겅에 흰글씨"에서 fill_range가 계획에서 빠졌다
     # (2026-08-19 블라인드 게이트 header_navy 3건).
     (re.compile(r"배겅|배걍|배굥"), "배경"),
@@ -2110,20 +2111,27 @@ _ARITH_TARGET = re.compile(
 )
 # 대상 셀이 **뒤**에 오는 어순: "<식> 한 값(을) <셀>에 넣어줘".
 _ARITH_TARGET_LAST = re.compile(
-    rf"^\s*(.+?(?:값|결과|것|거)?)\s*(?:을|를)?\s*(?<![A-Za-z0-9:]){_ARITH_CELL}\s*(?:셀|칸)?\s*에(?:다가?|는)?\s*"
+    r"^\s*(.+?(?:값|결과|것|거)?)\s*(?:을|를)?\s*"
+    # 식과 대상 셀 사이에 결과를 부르는 말이 낀다("… 뺀 **증감** D2에", "… 뺀 값**, 이걸** D2에").
+    r"(?:[,·]\s*)?(?:이거|이걸|이것|그거|그걸|요거)?\s*"
+    r"(?P<mid>증감|차이|차액|증가분|감소분|결과|값|수치|금액|비율|합계)?\s*(?:을|를|은|는)?\s*"
+    r"(?<![A-Za-z0-9:])(?P<cell>[A-Za-z]{1,3}\d{1,7})\s*(?:셀|칸)?\s*에(?:다가?|는)?\s*"
     r"(?:넣어|입력|써|적어|채워|기록|계산해서\s*넣어|계산해\s*넣어)\s*(?:해)?\s*"
     r"(?:줘요|줘|주세요|주라|줄래|놔|둬|봐)?\s*[~.!?…]*$",
     re.IGNORECASE,
 )
 # 연산 표현 — 순서가 중요하다(뺄셈의 "에서"가 덧셈의 "에"에 먹히지 않게 뺄셈 먼저).
+# 두 셀 사이에 수식어가 낀다("B2에서 **지난주** C2 빼서"). 한 낱말까지 허용한다 —
+# 더 열면 다른 절을 물어 엉뚱한 수식이 된다(2026-08-20 게이트 cell_subtract).
+_ARITH_MOD = r"(?:[가-힣]{1,6}\s+)?"
 _ARITH_FORMS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(rf"{_ARITH_CELL}\s*(?:에서|빼기|-|−|마이너스)\s*{_ARITH_CELL}\s*(?:을|를)?\s*(?:뺀|빼준|차감한|마이너스한|차이|차)?\s*(?:값)?", re.I), "-"),
+    (re.compile(rf"{_ARITH_CELL}\s*(?:에서|빼기|-|−|마이너스|minus)\s*" + _ARITH_MOD + rf"{_ARITH_CELL}\s*(?:을|를)?\s*(?:뺀|빼준|빼서|차감한|차감해서|마이너스한|차이|차)?\s*(?:값)?", re.I), "-"),
     (re.compile(rf"{_ARITH_CELL}\s*(?:와|과|랑|하고|이랑)\s*{_ARITH_CELL}\s*(?:의)?\s*(?:차이|차)\s*(?:값)?", re.I), "-"),
-    (re.compile(rf"{_ARITH_CELL}\s*(?:나누기|/|÷)\s*{_ARITH_CELL}\s*(?:한|의)?\s*(?:값|몫)?", re.I), "/"),
+    (re.compile(rf"{_ARITH_CELL}\s*(?:나누기|/|÷|divided\s*by)\s*{_ARITH_CELL}\s*(?:한|의)?\s*(?:값|몫)?", re.I), "/"),
     (re.compile(rf"{_ARITH_CELL}\s*(?:을|를)?\s*{_ARITH_CELL}\s*(?:로|으로)\s*나눈\s*(?:값)?", re.I), "/"),
-    (re.compile(rf"{_ARITH_CELL}\s*(?:곱하기|\*|×|x)\s*{_ARITH_CELL}\s*(?:한|의)?\s*(?:값)?", re.I), "*"),
+    (re.compile(rf"{_ARITH_CELL}\s*(?:곱하기|\*|×|x|times)\s*{_ARITH_CELL}\s*(?:한|의)?\s*(?:값)?", re.I), "*"),
     (re.compile(rf"{_ARITH_CELL}\s*(?:와|과|랑|에|하고|이랑)\s*{_ARITH_CELL}\s*(?:을|를)?\s*(?:곱한|곱해서|곱해준|곱)\s*(?:값)?", re.I), "*"),
-    (re.compile(rf"{_ARITH_CELL}\s*(?:더하기|\+|플러스)\s*{_ARITH_CELL}\s*(?:한|의)?\s*(?:값)?", re.I), "+"),
+    (re.compile(rf"{_ARITH_CELL}\s*(?:더하기|\+|플러스|plus)\s*{_ARITH_CELL}\s*(?:한|의)?\s*(?:값)?", re.I), "+"),
     (re.compile(rf"{_ARITH_CELL}\s*(?:와|과|랑|에|하고|이랑)\s*{_ARITH_CELL}\s*(?:을|를)?\s*(?:더한|더해서|더해준|합한|합친|합|합계|합산한)\s*(?:값)?", re.I), "+"),
 ]
 
@@ -2161,6 +2169,31 @@ def parse_cross_sheet_cell_ref(text: str) -> dict | None:
     }
 
 
+def _arith_step_from(expr: str, cell_ref: str) -> dict | None:
+    """식 한 조각을 두 셀 사칙연산 수식으로 바꾼다. 못 바꾸면 None."""
+    # 값 나열이면 산술이 아니다("E1에 a,b,c 입력").
+    if "," in expr or ";" in expr:
+        return None
+    for pattern, op in _ARITH_FORMS:
+        found = pattern.search(expr)
+        if found is None:
+            continue
+        # 표현식 밖에 다른 셀이 더 있으면 세 항 연산이다 — 추측하지 않는다.
+        cells = re.findall(_ARITH_CELL, expr)
+        if len(cells) != 2:
+            return None
+        left, right = found.group(1).upper(), found.group(2).upper()
+        if str(cell_ref).upper() in {left, right}:
+            # "B35 빼기 B36 한 값을 B35에" — 자기 참조는 순환이다.
+            return None
+        return {
+            "action": "excel_live.set_formula",
+            "params": {"range_ref": str(cell_ref).upper(), "formula_a1": f"={left}{op}{right}"},
+            "reason": f"두 셀의 {op} 연산 수식",
+        }
+    return None
+
+
 def parse_cell_arithmetic_write(text: str) -> dict | None:
     """"E15에 A15에서 C15 뺀 값 넣어줘" → set_formula(E15, "=A15-C15").
 
@@ -2182,27 +2215,20 @@ def parse_cell_arithmetic_write(text: str) -> dict | None:
         head = _ARITH_TARGET_LAST.search(source)
         if head is None:
             return None
-        cell_ref, expr = head.group(2), head.group(1).strip()
-    # 값 나열이면 산술이 아니다("E1에 a,b,c 입력").
-    if "," in expr or ";" in expr:
+        cell_ref, expr = head.group("cell"), head.group(1).strip()
+        # 결과를 부르는 말이 **식의 일부**일 수도 있다("B13과 B11의 **차이**를 D15에").
+        # 떼고 실패하면 붙여서 다시 본다 — 추측하지 않고 둘 다 시도한다.
+        mid = head.group("mid")
+        if mid:
+            expr_candidates = [f"{expr} {mid}".strip(), expr]
+        else:
+            expr_candidates = [expr]
+        for candidate in expr_candidates:
+            step = _arith_step_from(candidate, cell_ref)
+            if step is not None:
+                return step
         return None
-    for pattern, op in _ARITH_FORMS:
-        found = pattern.search(expr)
-        if found is None:
-            continue
-        # 표현식 밖에 다른 셀이 더 있으면 세 항 연산이다 — 추측하지 않는다.
-        cells = re.findall(_ARITH_CELL, expr)
-        if len(cells) != 2:
-            return None
-        left, right = found.group(1).upper(), found.group(2).upper()
-        if cell_ref.upper() in {left, right}:
-            # "B35 빼기 B36 한 값을 B35에" — 자기 참조는 순환이다.
-            return None
-        return {
-            "action": "excel_live.set_formula",
-            "params": {"range_ref": cell_ref.upper(), "formula_a1": f"={left}{op}{right}"},
-            "reason": f"두 셀의 {op} 연산 수식",
-        }
+    return _arith_step_from(expr, cell_ref)
     return None
 
 

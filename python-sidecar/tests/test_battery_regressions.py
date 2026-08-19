@@ -1149,3 +1149,44 @@ class TestConditionMustNotVanish:
 
         plan = _build_quick_action_plan("A1:C3 노란색으로 칠해줘", None)
         assert plan and plan[0]["action"] == "excel_live.fill_range", plan
+
+
+class TestArithmeticNeverBecomesText:
+    """게이트 `cell_subtract`: 사칙연산 문장이 셀에 **글자로** 박혔다(계산!D2='B2에서 C2 뺀 값, 이걸')."""
+
+    @pytest.mark.parametrize(
+        "text, formula",
+        [
+            ("B2에서 C2 뺀 증감 D2에 넣어롸 빨ㄹ리", "=B2-C2"),          # 결과 명사가 중간
+            ("D2에 B2 minus C2 값 넣어 주세요.", "=B2-C2"),            # 영어 연산어
+            ("이번주 B2에서 지난주 C2 빼서 D2에 넣어줘", "=B2-C2"),        # 셀 사이 수식어
+            ("B2에서 C2 뺀 값, 이걸 D2에 넣어 주세요", "=B2-C2"),         # 쉼표 + 지시대명사
+            ("B13과 B11의 차이를 D15에 기록해줘", "=B13-B11"),           # '차이'가 식의 일부
+            ("E15에 A15에서 C15 뺀 값 넣어줘", "=A15-C15"),
+            ("B35 빼기 B36 한 값을 E35에 넣어줘", "=B35-B36"),
+            ("B7을 B6으로 나눈 값을 C7에 넣어줘", "=B7/B6"),
+        ],
+    )
+    def test_arithmetic_phrasings_become_formulas(self, text, formula):
+        from office_claw_sidecar.services.excel_live_agent import (
+            normalize_common_typos,
+            parse_command_rule_based,
+        )
+
+        step = parse_command_rule_based(normalize_common_typos(text))
+        assert step and step["action"] == "excel_live.set_formula", (text, step)
+        assert step["params"]["formula_a1"] == formula, (text, step)
+
+    @pytest.mark.parametrize(
+        "text, value",
+        [("A1에 완료 라고 써줘", "완료"), ("매출 실적을 B2에 입력해줘", "매출 실적"), ("A1에 수도권에서 온 주문 넣어줘", "수도권에서 온 주문")],
+    )
+    def test_plain_writes_are_still_writes(self, text, value):
+        from office_claw_sidecar.services.excel_live_agent import (
+            normalize_common_typos,
+            parse_command_rule_based,
+        )
+
+        step = parse_command_rule_based(normalize_common_typos(text))
+        assert step and step["action"] == "excel_live.write_range", (text, step)
+        assert step["params"]["values_2d"] == [[value]], (text, step)
