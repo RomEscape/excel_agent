@@ -731,7 +731,12 @@ class ExcelLiveService:
         order: str = "asc",
         has_header: bool = True,
     ) -> dict[str, Any]:
-        """범위를 지정 열 기준으로 정렬한다."""
+        """범위를 지정 열 기준으로 정렬한다.
+
+        2026-08-19 파일 엔진과 계약을 맞춤: 꼬리의 집계 줄(합계·평균 이름표거나 수식이 든
+        마지막 줄들)은 데이터가 아니라 **고정**하고, 정렬은 Excel의 Range.Sort로 한다 —
+        예전처럼 값을 읽어 되쓰면 수식이 값으로 굳고 합계 줄이 데이터 사이로 섞였다.
+        """
         target_id = workbook_id or self._selected_workbook_id
         if not target_id:
             raise WorkbookNotFoundError("workbook_id가 필요합니다.")
@@ -744,22 +749,75 @@ class ExcelLiveService:
             return {"sorted_rows": 0, "address": str(rng.address)}
         col_count = max(len(row) for row in values)
         normalized = [row + [None] * (col_count - len(row)) for row in values]
+        formulas_raw = getattr(rng, "formula", None)
+        has_formula_grid = (
+            isinstance(formulas_raw, (list, tuple)) and bool(formulas_raw) and isinstance(formulas_raw[0], (list, tuple))
+        )
+        if has_formula_grid:
+            formulas = [list(r) + [None] * (col_count - len(r)) for r in formulas_raw]
+        else:
+            formulas = [list(r) for r in normalized]
         header_row = normalized[0] if has_header else None
         body_rows = normalized[1:] if has_header else normalized
+        body_formulas = formulas[1:] if has_header else formulas
         if not body_rows:
             return {"sorted_rows": 0, "address": str(rng.address)}
 
+        agg_labels = {"합계", "총계", "계", "총합", "평균", "최대", "최소", "개수", "total", "sum", "avg", "average"}
+        pinned = 0
+        while len(body_rows) - pinned > 1:
+            tail_vals = body_rows[-1 - pinned]
+            tail_f = body_formulas[-1 - pinned] if len(body_formulas) == len(body_rows) else tail_vals
+            label = tail_vals[0] if tail_vals else None
+            has_formula = any(isinstance(v, str) and v.startswith("=") for v in tail_f)
+            is_agg = isinstance(label, str) and label.strip().lower() in agg_labels
+            if not (has_formula or is_agg):
+                break
+            pinned += 1
+        data_count = len(body_rows) - pinned
+        if data_count <= 0:
+            return {"sorted_rows": 0, "address": str(rng.address)}
+
+        start_row = int(getattr(rng, "row", 1) or 1)
         start_col = int(getattr(rng, "column", 1) or 1)
         key_idx = self._resolve_column_selector(key_column, start_col, col_count, header_row)
         reverse = str(order or "asc").strip().lower() in {"desc", "descending", "내림차순"}
-        sorted_rows = sorted(body_rows, key=lambda row: self._sortable_value(row[key_idx]), reverse=reverse)
-        final_values = [header_row, *sorted_rows] if has_header and header_row is not None else sorted_rows
-        rng.value = final_values
+        first_data_row = start_row + (1 if has_header else 0)
+        last_data_row = first_data_row + data_count - 1
+        left = self._col_letter(start_col)
+        right = self._col_letter(start_col + col_count - 1)
+        block_top = start_row if has_header else first_data_row
+        block = sheet.range(f"{left}{block_top}:{right}{last_data_row}")
+        key_letter = self._col_letter(start_col + key_idx)
+        key_rng = sheet.range(f"{key_letter}{first_data_row}:{key_letter}{last_data_row}")
+        try:
+            block.api.Sort(
+                Key1=key_rng.api,
+                Order1=2 if reverse else 1,  # xlDescending / xlAscending
+                Header=1 if has_header else 2,  # xlYes / xlNo
+                Orientation=1,  # xlSortColumns
+            )
+        except (AttributeError, TypeError):
+            # COM Sort가 없는 환경(테스트 가짜 등): 데이터 줄만 파이썬으로 세워 수식째 되쓴다.
+            data_f = body_formulas[:data_count] if len(body_formulas) == len(body_rows) else body_rows[:data_count]
+            data_v = body_rows[:data_count]
+            order_idx = sorted(
+                range(data_count),
+                key=lambda i: self._sortable_value(data_v[i][key_idx] if key_idx < len(data_v[i]) else None),
+                reverse=reverse,
+            )
+            reordered = [data_f[i] for i in order_idx]
+            data_block = sheet.range(f"{left}{first_data_row}:{right}{last_data_row}")
+            if has_formula_grid:
+                data_block.formula = reordered
+            else:
+                data_block.value = reordered
         return {
-            "sorted_rows": len(sorted_rows),
+            "sorted_rows": data_count,
             "address": str(rng.address),
             "key_column_index": key_idx + 1,
             "order": "desc" if reverse else "asc",
+            "pinned_tail_rows": pinned,
         }
 
     def filter_rows(
@@ -1129,6 +1187,477 @@ class ExcelLiveService:
         else:
             changed = int(rng.api.Rows.Count) * int(rng.api.Columns.Count)
         return {"changed_cells": changed, "address": str(rng.address), "bold": bold}
+
+    # ---- 파일 엔진에만 있던 작업들 — Excel 앱(xlwings) 경로에도 같은 계약으로 (2026-08-19) ----
+    #
+    # 2026-08-19 GUI 실측: "주문건수랑 출고건수는 콤마 찍어주라"가 Excel을 띄운 채(xlwings)에서
+    # `'ExcelLiveService' object has no attribute 'set_number_format'`로 실패했다. 배터리는
+    # 파일 엔진(openpyxl)으로 돌아 이 구멍을 못 봤다. 두 엔진의 공개 메서드는 같아야 한다 —
+    # 파일 엔진에만 있던 16개를 여기서 COM으로 구현한다(반환 키는 파일 엔진과 동일).
+
+    def _open_target(self, workbook_id: str | None, sheet_name: str):
+        target_id = workbook_id or self._selected_workbook_id
+        if not target_id:
+            raise WorkbookNotFoundError("workbook_id가 필요합니다.")
+        wb = self._find_workbook(target_id)
+        return wb, self._find_sheet(wb, sheet_name)
+
+    @staticmethod
+    def _range_cell_count(rng) -> int:
+        shape = getattr(rng, "shape", None)
+        if isinstance(shape, tuple) and len(shape) >= 2:
+            return max(1, int(shape[0] or 1)) * max(1, int(shape[1] or 1))
+        try:
+            return int(rng.api.Rows.Count) * int(rng.api.Columns.Count)
+        except Exception:
+            return int(getattr(rng.rows, "count", 1) or 1) * int(getattr(rng.columns, "count", 1) or 1)
+
+    def set_number_format(
+        self, workbook_id: str | None, sheet_name: str, target_range: str, format_code: str
+    ) -> dict[str, Any]:
+        code = str(format_code or "").strip()
+        if not code:
+            raise ExcelLiveError("set_number_format.format_code가 비어 있습니다.")
+        _wb, sheet = self._open_target(workbook_id, sheet_name)
+        rng = self._resolve_target_range(sheet, target_range)
+        rng.number_format = code
+        return {"formatted_cells": self._range_cell_count(rng), "address": str(rng.address), "format_code": code}
+
+    def merge_cells(self, workbook_id: str | None, sheet_name: str, target_range: str) -> dict[str, Any]:
+        _wb, sheet = self._open_target(workbook_id, sheet_name)
+        rng = self._resolve_target_range(sheet, target_range)
+        # 병합은 왼쪽 위 값만 남긴다 — Excel이 경고창을 띄우지 않게 DisplayAlerts를 잠깐 끈다.
+        app_api = getattr(getattr(sheet, "book", None), "app", None)
+        api = getattr(app_api, "api", None)
+        prev = None
+        try:
+            if api is not None:
+                prev = api.DisplayAlerts
+                api.DisplayAlerts = False
+            rng.merge()
+        finally:
+            if api is not None and prev is not None:
+                api.DisplayAlerts = prev
+        return {"merged": True, "address": str(rng.address)}
+
+    def unmerge_cells(self, workbook_id: str | None, sheet_name: str, target_range: str) -> dict[str, Any]:
+        _wb, sheet = self._open_target(workbook_id, sheet_name)
+        rng = self._resolve_target_range(sheet, target_range)
+        merged_before = 0
+        try:
+            merged_before = 1 if bool(rng.api.MergeCells) else 0
+        except Exception:
+            merged_before = 0
+        rng.unmerge()
+        return {"unmerged_ranges": merged_before, "address": str(rng.address)}
+
+    def freeze_panes(self, workbook_id: str | None, sheet_name: str, freeze_at: str | None = None) -> dict[str, Any]:
+        wb, sheet = self._open_target(workbook_id, sheet_name)
+        cell_ref = str(freeze_at or "A2").strip().upper() or "A2"
+        window = wb.app.api.ActiveWindow
+        sheet.activate()
+        if cell_ref in {"NONE", "해제", "OFF"}:
+            window.FreezePanes = False
+            window.SplitRow = 0
+            window.SplitColumn = 0
+            return {"frozen": False, "freeze_at": None}
+        cell = sheet.range(cell_ref)
+        row_no = int(getattr(cell, "row", 1) or 1)
+        col_no = int(getattr(cell, "column", 1) or 1)
+        window.FreezePanes = False
+        window.SplitRow = max(0, row_no - 1)
+        window.SplitColumn = max(0, col_no - 1)
+        window.FreezePanes = True
+        return {"frozen": True, "freeze_at": cell_ref}
+
+    def autofit_columns(self, workbook_id: str | None, sheet_name: str, target_range: str | None = None) -> dict[str, Any]:
+        _wb, sheet = self._open_target(workbook_id, sheet_name)
+        if target_range and target_range not in {"__USED_RANGE__", "__ACTIVE_SELECTION__"}:
+            rng = self._resolve_target_range(sheet, target_range)
+        else:
+            rng = sheet.used_range
+        rng.columns.autofit()
+        cols = int(getattr(rng.columns, "count", 0) or 0) or (
+            int(rng.shape[1]) if isinstance(getattr(rng, "shape", None), tuple) else 1
+        )
+        return {"adjusted_columns": cols, "address": str(rng.address)}
+
+    def find_replace(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        target_range: str,
+        find_text: str,
+        replace_text: str,
+        *,
+        match_case: bool = False,
+        whole_cell: bool = False,
+    ) -> dict[str, Any]:
+        if not find_text:
+            raise ExcelLiveError("find_replace.find_text가 비어 있습니다.")
+        _wb, sheet = self._open_target(workbook_id, sheet_name)
+        rng = self._resolve_target_range(sheet, target_range)
+        values = self._normalize_values(rng.options(ndim=2).value)
+        start_row = int(getattr(rng, "row", 1) or 1)
+        start_col = int(getattr(rng, "column", 1) or 1)
+        needle = find_text if match_case else find_text.lower()
+        replaced = 0
+        for r_off, row in enumerate(values or []):
+            for c_off, value in enumerate(row):
+                if not isinstance(value, str):
+                    continue
+                haystack = value if match_case else value.lower()
+                new_value: str | None = None
+                if whole_cell:
+                    if haystack == needle:
+                        new_value = replace_text
+                elif needle in haystack:
+                    if match_case:
+                        new_value = value.replace(find_text, replace_text)
+                    else:
+                        out: list[str] = []
+                        cursor = 0
+                        while True:
+                            idx = haystack.find(needle, cursor)
+                            if idx == -1:
+                                out.append(value[cursor:])
+                                break
+                            out.append(value[cursor:idx])
+                            out.append(replace_text)
+                            cursor = idx + len(needle)
+                        new_value = "".join(out)
+                if new_value is None:
+                    continue
+                # 바뀐 칸만 쓴다 — 격자를 통째로 되쓰면 수식이 값으로 굳는다.
+                sheet.range(f"{self._col_letter(start_col + c_off)}{start_row + r_off}").value = new_value
+                replaced += 1
+        return {"replaced_cells": replaced, "address": str(rng.address)}
+
+    def define_named_range(
+        self, workbook_id: str | None, sheet_name: str, name: str, target_range: str
+    ) -> dict[str, Any]:
+        clean_name = str(name or "").strip()
+        if not clean_name or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]*", clean_name):
+            raise ExcelLiveError("define_named_range.name은 문자/밑줄로 시작하는 영문 식별자여야 합니다.")
+        wb, sheet = self._open_target(workbook_id, sheet_name)
+        rng = self._resolve_target_range(sheet, target_range)
+        sheet_title = str(getattr(sheet, "name", sheet_name) or sheet_name).replace("'", "''")
+        refers_to = f"='{sheet_title}'!{str(rng.address).replace('$', '')}"
+        try:
+            existing = wb.names[clean_name]
+            existing.refers_to = refers_to
+        except Exception:
+            wb.names.add(clean_name, refers_to)
+        return {"name": clean_name, "refers_to": refers_to}
+
+    def set_print_area(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        *,
+        print_area: str | None = None,
+        orientation: str | None = None,
+        fit_to_page: bool | None = None,
+    ) -> dict[str, Any]:
+        _wb, sheet = self._open_target(workbook_id, sheet_name)
+        setup = sheet.api.PageSetup
+        if print_area:
+            rng = self._resolve_target_range(sheet, print_area)
+            resolved_area = str(rng.address).replace("$", "")
+            setup.PrintArea = resolved_area
+        else:
+            resolved_area = str(getattr(setup, "PrintArea", "") or "").replace("$", "") or None
+        orient_out = None
+        if orientation:
+            normalized = str(orientation).strip().lower()
+            if normalized in {"landscape", "가로"}:
+                setup.Orientation = 2  # xlLandscape
+                orient_out = "landscape"
+            elif normalized in {"portrait", "세로"}:
+                setup.Orientation = 1  # xlPortrait
+                orient_out = "portrait"
+        if orient_out is None:
+            try:
+                orient_out = "landscape" if int(setup.Orientation) == 2 else "portrait"
+            except Exception:
+                orient_out = None
+        if fit_to_page:
+            setup.Zoom = False
+            setup.FitToPagesWide = 1
+            setup.FitToPagesTall = 1
+        return {"print_area": resolved_area, "orientation": orient_out, "fit_to_page": bool(fit_to_page)}
+
+    def add_cell_comment(
+        self, workbook_id: str | None, sheet_name: str, target_range: str, text: str, author: str = "OfficeClaw AI"
+    ) -> dict[str, Any]:
+        if not str(text or "").strip():
+            raise ExcelLiveError("add_cell_comment.text가 비어 있습니다.")
+        _wb, sheet = self._open_target(workbook_id, sheet_name)
+        rng = self._resolve_target_range(sheet, target_range)
+        cell = sheet.range(f"{self._col_letter(int(rng.column))}{int(rng.row)}")
+        body = f"{author}:\n{text}" if author else str(text)
+        try:
+            if cell.api.Comment is not None:
+                cell.api.Comment.Delete()
+        except Exception:
+            pass
+        cell.api.AddComment(body)
+        return {"address": str(cell.address).replace("$", ""), "author": author, "text": str(text)}
+
+    def describe_sheet_layout(self, workbook_id: str | None, sheet_name: str) -> dict[str, Any]:
+        """서식·수식·병합까지 담은 시트 요약. Excel 앱 경로에서는 값·수식 격자만으로 요약한다."""
+        _wb, sheet = self._open_target(workbook_id, sheet_name)
+        ref = self.get_used_range_ref(workbook_id, sheet_name)
+        rng = sheet.range(ref) if ref else sheet.used_range
+        values = self._normalize_values(rng.options(ndim=2).value) or []
+        formulas = rng.formula
+        if not isinstance(formulas, (list, tuple)):
+            formulas = [[formulas]]
+        formula_cells: list[str] = []
+        start_row = int(getattr(rng, "row", 1) or 1)
+        start_col = int(getattr(rng, "column", 1) or 1)
+        for r_off, row in enumerate(formulas):
+            row_list = row if isinstance(row, (list, tuple)) else [row]
+            for c_off, f in enumerate(row_list):
+                if isinstance(f, str) and f.startswith("="):
+                    formula_cells.append(f"{self._col_letter(start_col + c_off)}{start_row + r_off}")
+        header = [str(v) if v is not None else "" for v in (values[0] if values else [])]
+        return {
+            "sheet_name": str(getattr(sheet, "name", sheet_name) or sheet_name),
+            "used_range": str(rng.address).replace("$", ""),
+            "row_count": len(values),
+            "col_count": max((len(r) for r in values), default=0),
+            "header": header,
+            "formula_cells": formula_cells[:200],
+            "formula_count": len(formula_cells),
+        }
+
+    @staticmethod
+    def _col_letter(index: int) -> str:
+        out = ""
+        n = max(1, int(index))
+        while n:
+            n, rem = divmod(n - 1, 26)
+            out = chr(65 + rem) + out
+        return out
+
+    # ---- 열 이름 기반 표 작업(파일 엔진과 같은 계약) ----
+
+    def _table_grid(self, workbook_id: str | None, sheet_name: str) -> tuple[list[Any], list[list[Any]], int]:
+        """사용 범위를 머리글 한 줄과 본문으로 나눠 준다. 열 이름 기반 작업의 공통 진입점."""
+        ref = self.get_used_range_ref(workbook_id, sheet_name)
+        payload = self.read_computed_range(workbook_id, sheet_name, ref)
+        rows = payload.get("values") or []
+        if not rows:
+            raise ExcelLiveError(f"'{sheet_name}' 시트에 읽을 데이터가 없습니다.")
+        width = max(len(row) for row in rows)
+        grid = [list(row) + [None] * (width - len(row)) for row in rows]
+        return grid[0], grid[1:], width
+
+    @staticmethod
+    def _pick_column(selector: str | int, header: list[Any], width: int) -> tuple[int, str | None]:
+        """머리글 이름·한국어 개념어·열 문자를 열 번호로 바꾼다. 못 찾으면 실패한다."""
+        if isinstance(selector, int):
+            index = selector - 1
+            if not 0 <= index < width:
+                raise ExcelLiveError(f"{selector}번째 열이 범위를 벗어났습니다. (열 개수 {width})")
+            return index, None
+        text = str(selector or "").strip()
+        if not text:
+            raise ExcelLiveError("대상 열을 지정해 주세요.")
+        names = [str(cell or "").strip() for cell in header]
+        for index, name in enumerate(names):
+            if name and name.lower() == text.lower():
+                return index, name
+        mapped = resolve_header(text, [name for name in names if name])
+        if mapped:
+            for index, name in enumerate(names):
+                if name == mapped:
+                    return index, name
+        if re.fullmatch(r"[A-Za-z]{1,3}", text):
+            index = 0
+            for ch in text.upper():
+                index = index * 26 + (ord(ch) - 64)
+            index -= 1
+            if 0 <= index < width:
+                return index, names[index] or None
+        available = ", ".join(n for n in names if n) or "(머리글 없음)"
+        raise ExcelLiveError(f"'{text}' 열을 찾지 못했습니다. 있는 열: {available}")
+
+    @staticmethod
+    def _grid_number(value: Any) -> float | None:
+        if value is None or isinstance(value, bool):
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, datetime):
+            return value.timestamp()
+        if isinstance(value, date):
+            return datetime(value.year, value.month, value.day).timestamp()
+        text = str(value).strip().replace(",", "")
+        if not text:
+            return None
+        percent = text.endswith("%")
+        if percent:
+            text = text[:-1].strip()
+        try:
+            number = float(text)
+        except ValueError:
+            return None
+        return number / 100.0 if percent else number
+
+    def sort_rows(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        column: str | int,
+        order: str = "asc",
+    ) -> dict[str, Any]:
+        header, _body, width = self._table_grid(workbook_id, sheet_name)
+        index, name = self._pick_column(column, header, width)
+        ref = self.get_used_range_ref(workbook_id, sheet_name)
+        result = self.sort_range(workbook_id, sheet_name, ref, key_column=index + 1, order=order, has_header=True)
+        return {
+            "sorted_rows": result.get("sorted_rows", 0),
+            "order": result.get("order", "asc"),
+            "column": name or self._col_letter(index + 1),
+            "address": result.get("address", ref),
+        }
+
+    def calculate_column_stat(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        column: str | int,
+        stat: str = "sum",
+    ) -> dict[str, Any]:
+        header, body, width = self._table_grid(workbook_id, sheet_name)
+        index, name = self._pick_column(column, header, width)
+        numbers = [n for n in (self._grid_number(row[index]) for row in body) if n is not None]
+        kind = str(stat or "sum").strip().lower()
+        kind = "average" if kind in {"average", "avg", "mean"} else kind
+        if kind not in {"sum", "average", "count", "max", "min"}:
+            raise ExcelLiveError(f"지원하지 않는 통계입니다: {stat}")
+        if kind == "count":
+            value = float(len(numbers))
+        elif not numbers:
+            raise ExcelLiveError(f"'{name or column}' 열에 숫자가 없어 {kind} 통계를 낼 수 없습니다.")
+        elif kind == "sum":
+            value = float(sum(numbers))
+        elif kind == "average":
+            value = float(sum(numbers)) / len(numbers)
+        else:
+            value = float(max(numbers) if kind == "max" else min(numbers))
+        return {
+            "value": value,
+            "column": self._col_letter(index + 1),
+            "header": name,
+            "stat": kind,
+            "numeric_count": len(numbers),
+        }
+
+    def drop_column(self, workbook_id: str | None, sheet_name: str, column: str | int) -> dict[str, Any]:
+        header, _body, width = self._table_grid(workbook_id, sheet_name)
+        index, name = self._pick_column(column, header, width)
+        _wb, sheet = self._open_target(workbook_id, sheet_name)
+        letter = self._col_letter(index + 1)
+        sheet.range(f"{letter}:{letter}").api.Delete()
+        return {"dropped_column": name or letter, "remaining_columns": max(0, width - 1)}
+
+    def rename_column(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        column: str | int,
+        new_name: str,
+    ) -> dict[str, Any]:
+        target = str(new_name or "").strip()
+        if not target:
+            raise ExcelLiveError("새 열 이름을 알려주세요.")
+        header, _body, width = self._table_grid(workbook_id, sheet_name)
+        index, name = self._pick_column(column, header, width)
+        _wb, sheet = self._open_target(workbook_id, sheet_name)
+        sheet.range(f"{self._col_letter(index + 1)}1").value = target
+        return {"old_name": name or self._col_letter(index + 1), "new_name": target, "column": self._col_letter(index + 1)}
+
+    def add_column(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        name: str,
+        formula_a1: str | None = None,
+    ) -> dict[str, Any]:
+        label = str(name or "").strip()
+        if not label:
+            raise ExcelLiveError("추가할 열 이름을 알려주세요.")
+        _header, body, width = self._table_grid(workbook_id, sheet_name)
+        target_col = width + 1
+        letter = self._col_letter(target_col)
+        _wb, sheet = self._open_target(workbook_id, sheet_name)
+        sheet.range(f"{letter}1").value = label
+        filled = 0
+        if formula_a1 and body:
+            # 첫 행 수식을 채우고 아래로 늘리면 Excel이 상대 참조를 행마다 옮겨 준다.
+            first = sheet.range(f"{letter}2")
+            first.formula = formula_a1
+            if len(body) > 1:
+                block = sheet.range(f"{letter}2:{letter}{1 + len(body)}")
+                first.api.AutoFill(block.api, 0)  # xlFillDefault
+            filled = len(body)
+        return {"column": letter, "name": label, "formula_filled_cells": filled}
+
+    def group_by_aggregate(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        group_column: str | int,
+        agg: str = "sum",
+        value_column: str | int | None = None,
+    ) -> dict[str, Any]:
+        """열 하나로 묶어 집계한 결과를 값으로 돌려준다. 시트에 쓰지는 않는다."""
+        header, body, width = self._table_grid(workbook_id, sheet_name)
+        group_index, group_name = self._pick_column(group_column, header, width)
+        kind = str(agg or "sum").strip().lower()
+        kind = "average" if kind in {"average", "avg", "mean"} else kind
+        if kind not in {"sum", "average", "count", "max", "min"}:
+            raise ExcelLiveError(f"지원하지 않는 집계입니다: {agg}")
+        value_index: int | None = None
+        value_name: str | None = None
+        if value_column is not None and str(value_column).strip():
+            value_index, value_name = self._pick_column(value_column, header, width)
+        elif kind != "count":
+            raise ExcelLiveError(f"{kind} 집계에는 대상 값 열이 필요합니다. 예: 매출")
+        buckets: dict[str, dict[str, Any]] = {}
+        for row in body:
+            raw = row[group_index] if group_index < len(row) else None
+            key = "" if raw is None else str(raw).strip().lower()
+            bucket = buckets.setdefault(key, {"label": raw, "numbers": [], "count": 0})
+            bucket["count"] += 1
+            if value_index is not None:
+                number = self._grid_number(row[value_index]) if value_index < len(row) else None
+                if number is not None:
+                    bucket["numbers"].append(number)
+        groups: list[dict[str, Any]] = []
+        for bucket in buckets.values():
+            numbers = bucket["numbers"]
+            if kind == "count":
+                value = float(bucket["count"])
+            elif not numbers:
+                value = 0.0
+            elif kind == "sum":
+                value = float(sum(numbers))
+            elif kind == "average":
+                value = float(sum(numbers)) / len(numbers)
+            else:
+                value = float(max(numbers) if kind == "max" else min(numbers))
+            groups.append({"key": bucket["label"], "value": value, "count": bucket["count"]})
+        groups.sort(key=lambda g: (-g["value"], str(g["key"])))
+        return {
+            "agg": kind,
+            "group_column": group_name or self._col_letter(group_index + 1),
+            "value_column": value_name,
+            "groups": groups,
+        }
 
     def convert_to_excel_table(
         self,
