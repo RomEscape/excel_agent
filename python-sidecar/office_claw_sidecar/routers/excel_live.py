@@ -8240,6 +8240,25 @@ async def _run_command(
                 # 앞 훅이 세워 둔 "값 격자 확정" 표시를 지운다 — 이 계획은 수식이다.
                 row_write_confirmed = False
                 fallback_rule_step = None
+    # "이 시트 이름 지역별실적으로 바꿔" — 지시어면 대상은 **활성 시트**다. 이름을 비워 두면
+    # 검증이 "어느 시트?"로 되묻는데, 사용자는 이미 눈앞의 시트를 가리켰다(2026-08-20 게이트3).
+    if quick_action_plan:
+        for _step in quick_action_plan:
+            if (
+                isinstance(_step, dict)
+                and str(_step.get("action") or "") == "excel_live.rename_sheet"
+                and not str((_step.get("params") or {}).get("sheet_name") or "").strip()
+            ):
+                try:
+                    _svc_rn = get_excel_live_service()
+                    _active_rn = _resolve_sheet_name(
+                        _svc_rn, _resolve_workbook_id(_svc_rn, req.workbook_id), req.sheet_name
+                    )
+                except Exception:
+                    _active_rn = ""
+                if _active_rn:
+                    _step.setdefault("params", {})["sheet_name"] = _active_rn
+
     quick_plan_for_parse = _normalize_plan_or_empty(quick_action_plan) if quick_action_plan else []
     quick_first_action = quick_plan_for_parse[0].action if quick_plan_for_parse else ""
     # `understand` 단계는 훅보다 앞이라 훅이 갈아끼운 계획을 못 담는다 — 여기서 최종형을 남긴다.
@@ -8752,6 +8771,11 @@ async def _run_command(
         # 삭제+초기화 계획 대신 "차트 종류를 선택해 주세요"가 나갔다).
         operation_hints = {}
         operation_intent = ""
+    # 힌트를 지워도 `_merge_operation_slots`는 **원문에서 다시** 피벗 기준을 유도한다
+    # (`_confident_group_key`). 그래서 "이 시트 이름 지역**별**실적으로 바꿔"의 새 시트 **이름** 안의
+    # '별'이 피벗으로 잡혀 확정된 rename 계획을 갈아치웠다(2026-08-20 게이트3: rename 규칙 0건의 진짜 원인).
+    # 고신뢰 규칙이 이미 계획을 확정했으면 키워드 슬롯이 그것을 대체하지 못하게 한다.
+    rule_confirmed_plan = bool(quick_action_plan) and not should_parse_with_llm and pending_operation is None
 
     # 범위와 값을 다 말한 쓰기는 계획이 이미 정해진 것이다. 그런데 값에 "총매출",
     # "평균주문금액" 같은 집계어가 섞이면 플래너가 통계 조회로 알아들어, 라벨은
@@ -9118,13 +9142,17 @@ async def _run_command(
                     _pending_operation_slots.pop(session_key, None)
                     pending_operation = None
 
-        op_slot = _merge_operation_slots(
-            pending_operation,
-            session_key=session_key,
-            req=req,
-            hints=operation_hints,
-            parsed=parsed,
-            digest=workbook_digest,
+        op_slot = (
+            None
+            if rule_confirmed_plan
+            else _merge_operation_slots(
+                pending_operation,
+                session_key=session_key,
+                req=req,
+                hints=operation_hints,
+                parsed=parsed,
+                digest=workbook_digest,
+            )
         )
         if op_slot is not None:
             follow_up = _operation_follow_up(op_slot)
