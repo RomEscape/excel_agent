@@ -28,3 +28,22 @@ test("탭(TSV 칸 구분)도 살린다", () => {
   const out = splitExcelCompositeCommand("지역\t주문건수\n수도권\t10452\n입력해줘");
   assert.deepEqual(out, ["지역\t주문건수\n수도권\t10452\n입력해줘"]);
 });
+
+test("추임새만 남은 조각은 버린다 — '아 그리고 …'는 '아'를 보내지 않는다", () => {
+  assert.deepEqual(splitExcelCompositeCommand("아 그리고 A25:H31 표 아래 합계 한 줄, 넣어줘"), [
+    "A25:H31 표 아래 합계 한 줄, 넣어줘",
+  ]);
+  assert.deepEqual(splitExcelCompositeCommand("음 이거 넣어줘"), ["음 이거 넣어줘"]);
+});
+
+test("'그 다음 줄에'의 다음은 자리이지 순서가 아니다", () => {
+  assert.deepEqual(splitExcelCompositeCommand("그 다음 줄에 구분, 금액; 식비, 3000 입력해줘"), [
+    "그 다음 줄에 구분, 금액; 식비, 3000 입력해줘",
+  ]);
+  assert.deepEqual(splitExcelCompositeCommand("A1 굵게 하고 그 다음 B열 정렬"), ["A1 굵게 하고", "B열 정렬"]);
+});
+
+test("값 격자는 값 속 '하고'·'그리고'로 쪼개지 않는다", () => {
+  const grid = "N1:V11 여기에 등급, 성취도, AI 코멘트; A, 우수, 성실하고 꾸준합니다.; B, 보통, 과제 그리고 출석 관리 필요 넣어줘";
+  assert.deepEqual(splitExcelCompositeCommand(grid), [grid]);
+});

@@ -386,6 +386,12 @@ npm run tauri:dev
 `python-sidecar/scenarios/dialogue/dialogue_ex1~8.json`, 러너는 `python-sidecar/scripts/run_dialogue.py`(HUMAN_REPEAT=5).
 옛 좌표판은 `docs/example*_재현_대화_*.md`·`docs/example1_사람말투판_45턴.md`.
 
+**새 자료 14종(example_9~22) × 원문/변형 28본**(2026-08-19): 코드를 못 본 작성자 14명이 이미지만 보고 쓴 각본 —
+`dialogue_ex9~22.json`(원문)과 `dialogue_ex9~22_v2.json`(같은 값·의도, 문장은 전부 다르게: 어순 도치·영어 혼용·군말·오타·존댓말).
+첫 대화 → 오류 분석 → 수정 → 재대화를 4라운드 돌려 **1,780턴 중 1,774 통과(99.7%)**, 처음 만난 자료에서 잡은 루트 원인 20종은
+`개발일지.md` 2026-08-19 항목과 `tests/test_battery_regressions.py::TestNewScenario*`에 핀으로 남겼다.
+실패 턴 삼각측량: `scripts/dialogue_failures.py <dialogue_exN_log.json>` (러너 로그 + chat_log의 규칙·바인더·플래너 노트).
+
 > 경계선 기본값은 **검정**이다. 더 얇게 원하면 `얇게 경계선 적용`처럼 지시하면 된다.
 
 ### 확신 3분기 — 모든 턴의 출구는 셋뿐이다 (2026-08-18)

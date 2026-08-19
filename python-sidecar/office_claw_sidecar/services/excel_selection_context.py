@@ -40,7 +40,7 @@ _DEICTIC = re.compile(
 )
 
 # 문장 안의 명시적 A1 범위. 이게 있으면 선택보다 우선한다.
-_EXPLICIT_RANGE = re.compile(r"\b[A-Za-z]{1,3}\d{1,7}(?::[A-Za-z]{1,3}\d{1,7})?\b")
+_EXPLICIT_RANGE = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}(?::[A-Za-z]{1,3}\d{1,7})?(?![A-Za-z0-9])")
 
 
 def mentions_explicit_range(message: str) -> bool:

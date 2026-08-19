@@ -56,9 +56,17 @@ TURNS = SC["turns"]
 # ---- 프론트 규칙 이식 (src/lib/excelCommandUtils.js · WorkspacePage.jsx) ----------
 _SPLIT_SEPS = [
     r"\s+그리고\s+", r"\s+그리고나서\s+", r"\s*하고나서\s*", r"\s*한\s*다음(?:에)?\s*",
-    r"\s*한\s*뒤(?:에)?\s*", r"\s*후에\s*", r"\s+그\s*다음(?:으로)?\s+", r"\s+다음(?:으로)?\s+",
+    r"\s*한\s*뒤(?:에)?\s*", r"\s*후에\s*",
+    r"\s+그\s*다음(?:으로)?\s+(?!(?:줄|행|칸|열|시트|탭|표|페이지|단계))",
+    r"\s+다음(?:으로)?\s+(?!(?:줄|행|칸|열|시트|탭|표|페이지|단계))",
     r"\s+이후\s+", r"\s*하고\s+", r"\s+then\s+", r"\s+and then\s+",
 ]
+
+
+_FILLER_ONLY_PART = re.compile(
+    r"^(?:(?:아|어|음|응|네|넵|옙|예|ㅇㅇ|ㅇㅋ|ㅋㅋ+|ㅎㅎ+|흠|오|아하|좋아|그래|ok|okay|그럼|자|그|이|저|일단|먼저|우선|그냥|아니|근데|그런데|그리고|그리구|또)[\s,.!~]*)+$",
+    re.I,
+)
 
 
 def split_composite(raw: str) -> list[str]:
@@ -68,13 +76,15 @@ def split_composite(raw: str) -> list[str]:
     text = re.sub(r"\n{2,}", "\n", text).strip()
     if not text:
         return []
+    if looks_like_value_list_write(text):
+        return [text]
     parts = [text]
     for sep in _SPLIT_SEPS:
         parts = [p for part in parts for p in re.split(sep, part, flags=re.I)]
     out = []
     for p in parts:
         p = re.sub(r"^[,\s]+|[,\s]+$", "", p.strip())
-        if p:
+        if p and not _FILLER_ONLY_PART.match(p):
             out.append(p)
     return out
 
@@ -248,6 +258,18 @@ async def run_once(round_no: int) -> list[dict]:
         else:
             good = all_executed
             why = "" if good else ("되묻기" if asked else "미지원")
+            # 조용한 오실행 감지 — "합계 줄 넣어줘, 이 표 아래에"가 값 쓰기로 처리돼 머리글이 덮였는데 '성공'으로
+            # 집계됐다(2026-08-19 ex11 v2 실측). 집계·서식 문장이 값 몇 개짜리 write_range로 끝나면 실패로 센다.
+            if good and action == "excel_live.write_range" and not paste:
+                _plain = re.sub(r"\s+", " ", str(raw or ""))
+                _report = str(result.get("execution_report") or getattr(resp, "execution_report", "") or "")
+                if (
+                    re.search(r"(합계|총합|평균|소계|개수)\s*(?:줄|행|한\s*줄|하나)|(?:아래|밑)에\s*(?:합계|평균)", _plain)
+                    and not re.search(r"[;\n]", _plain)
+                    and "수식" not in _report
+                ):
+                    good = False
+                    why = "오실행(집계를 값으로 씀)"
         reply = _reply_text(resp, result, approval_summary)
         entry = {
             "turn": i, "zone": zone, "text": display, "paste": paste, "ui": ui, "expect": expect,

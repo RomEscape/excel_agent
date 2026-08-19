@@ -163,7 +163,7 @@ def build_below_formula_plan(message: str, last: LastFormula | None) -> list[dic
         return None
     # "B10 아래 칸에는 …" — 직전 수식(F2)이 아니라 다른 셀을 지목했다면 이
     # 문맥의 소관이 아니다. 밀어붙이면 F3에 써진다(2026-08-18 멀티턴 사냥).
-    cited = {c.upper() for c in re.findall(r"\b[A-Za-z]{1,3}\d{1,7}\b", text)}
+    cited = {c.upper() for c in re.findall(r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}(?![A-Za-z0-9])", text)}
     if cited and last.cell not in cited:
         return None
     func = next((f for pattern, f in _AGG_WORDS if pattern.search(text)), "")

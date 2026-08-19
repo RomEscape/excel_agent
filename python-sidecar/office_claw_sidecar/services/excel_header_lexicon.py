@@ -144,7 +144,18 @@ def resolve_header(term: Any, headers: list[str]) -> str | None:
 
 def _surfaces_for_header(header: str) -> list[str]:
     """머리글 하나를 원문에서 찾을 때 쓸 표현 목록(자기 자신 + 같은 개념의 한국어 표현)."""
-    surfaces = [str(header or "").strip()]
+    raw = str(header or "").strip()
+    surfaces = [raw]
+    # 사람은 단위 꼬리를 떼고 부른다 — "재적생 수(명)"을 "재적생 수"로, "장학금 지급액(억원)"을
+    # "장학금 지급액"으로(2026-08-19 ex11 실측: "재적생 수 많은 순으로"가 기준 열을 못 찾아 되물었다).
+    # 띄어쓰기 없는 꼴("재적생수")도 같은 머리글이다.
+    bare = re.sub(r"\s*[(\[（][^)\]）]*[)\]）]\s*$", "", raw).strip()
+    if len(bare) >= 2 and bare != raw:
+        surfaces.append(bare)
+    for cand in (raw, bare):
+        squashed = re.sub(r"\s+", "", cand)
+        if len(squashed) >= 2 and squashed != cand:
+            surfaces.append(squashed)
     group_id = concept_id(header)
     if group_id is not None:
         surfaces.extend(_CONCEPT_GROUPS[group_id])
@@ -181,6 +192,25 @@ def find_header_mentions(message: str, headers: list[str]) -> list[dict[str, Any
                         "end": match.end(),
                     }
                 )
+
+    # 여러 낱말 머리글은 **마지막 낱말만으로** 부르기도 한다 — "평균 평점(GPA)"을 "평점 높은 순".
+    # 그 낱말이 다른 머리글과 겹치지 않을 때만(두 머리글이 '건수'로 끝나면 안 쓴다).
+    tails: dict[str, list[str]] = {}
+    for header in headers:
+        bare = re.sub(r"\s*[(\[（][^)\]）]*[)\]）]\s*$", "", str(header or "").strip())
+        words = [w for w in re.split(r"[\s_/·]+", bare) if w]
+        if len(words) >= 2 and len(words[-1]) >= 2 and not words[-1].isdigit():
+            tails.setdefault(words[-1], []).append(header)
+    for tail, owners in tails.items():
+        if len(owners) != 1 or any(tail == str(h).strip() for h in headers):
+            continue
+        pattern = re.escape(tail)
+        if tail.isascii():
+            pattern = rf"(?<![A-Za-z0-9]){pattern}(?![A-Za-z0-9])"
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            candidates.append(
+                {"header": owners[0], "surface": tail, "start": match.start(), "end": match.end()}
+            )
 
     # 앞에 나온 표현이 먼저 자리를 잡되, 같은 자리를 다투면 긴 쪽이 이긴다.
     # - "매출이익 나누기 매출": 0번 자리는 Gross_Profit이 가져가고 Sales는 뒤 자리를 쓴다.

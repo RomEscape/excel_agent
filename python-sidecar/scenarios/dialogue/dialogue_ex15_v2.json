@@ -1,0 +1,272 @@
+{
+ "workbook_name": "채용_dialogue.xlsx",
+ "turns": [
+  {
+   "zone": "Requisition 요약",
+   "command": "시트 새로 하나 파 주세요, 이름은 Requisition으로"
+  },
+  {
+   "zone": "Requisition 요약",
+   "command": "여기다가 넣어줘",
+   "paste": "A1:H11",
+   "expect": "ask"
+  },
+  {
+   "zone": "Requisition 요약",
+   "command": "ㅇㅇ 여기에 Req ID, 포지션, 부서, 채용단계, 지원자, Urgent, Target, Progress(%); REQ-2501, AI Engineer, AI연구소, 과제, 14, ★, 3, 67; REQ-2502, Data Scientist, 데이터본부, 1차면접, 11, —, 2, 100; REQ-2503, ML Ops Engineer, AI플랫폼, 서류심사, 18, ★, 2, 50; REQ-2504, Product Manager, 제품본부, 과제, 10, —, 2, 50; REQ-2505, Backend Engineer, 개발본부, 1차면접, 20, —, 4, 75; REQ-2506, Frontend Engineer, 개발본부, 서류심사, 25, —, 3, 33; REQ-2507, Data Analyst, 데이터본부, 과제, 13, —, 2, 0; REQ-2508, UX Designer, 디자인본부, 지원 접수, 15, —, 2, 0; REQ-2509, DevOps Engineer, 인프라본부, 서류심사, 12, ★, 2, 50; REQ-2510, HRBP, 경영지원본부, 1차면접, 6, —, 1, 100 넣어주라~",
+   "paste": "A1:H11"
+  },
+  {
+   "zone": "Requisition 요약",
+   "command": "함계 줄 하나 넣어줘, 이 표 아래에"
+  },
+  {
+   "zone": "Requisition 요약",
+   "command": "header 줄은 남섹 바탕에 흰 글자 bold로 부탁해요"
+  },
+  {
+   "zone": "Requisition 요약",
+   "command": "이 표 전체 border 쳐줘"
+  },
+  {
+   "zone": "Requisition 요약",
+   "command": "data bar 넣어줄래? H2:H11에"
+  },
+  {
+   "zone": "Requisition 요약",
+   "command": "F2:F11 중에 ★인 칸만 주황색 칠해줘"
+  },
+  {
+   "zone": "Requisition 요약",
+   "command": "sort 좀 해주세요",
+   "expect": "ask"
+  },
+  {
+   "zone": "Requisition 요약",
+   "command": "지원자 기준 내림차순이요"
+  },
+  {
+   "zone": "차트",
+   "command": "chart 하나만 만들어줘",
+   "expect": "ask"
+  },
+  {
+   "zone": "차트",
+   "command": "막대 chart로, E2:E11 써서"
+  },
+  {
+   "zone": "파이프라인 상세",
+   "command": "아 그리고 여기에 단계,Req ID,포지션,인원,경과(D); 지원 접수,REQ-2508,UX Designer,15,D-3; 지원 접수,REQ-2511,Intern Backend,7,D-1; 서류심사,REQ-2503,ML Ops Engineer,18,D+2; 서류심사,REQ-2506,Frontend Engineer,25,D+1; 서류심사,REQ-2509,DevOps Engineer,12,D+1; 과제,REQ-2501,AI Engineer,14,D+3; 과제,REQ-2504,Product Manager,10,D+2; 과제,REQ-2507,Data Analyst,13,D+4; 1차면접,REQ-2502,Data Scientist,11,D+1; 1차면접,REQ-2505,Backend Engineer,20,D+2; 1차면접,REQ-2510,HRBP,6,D+0; 최종면접,REQ-2502,Data Scientist,5,D+2; 최종면접,REQ-2505,Backend Engineer,3,D+1; 최종면접,REQ-2501,AI Engineer,1,D+1; 오퍼,REQ-2502,Data Scientist,2,D+1; 오퍼,REQ-2505,Backend Engineer,3,D+0; 오퍼,REQ-2501,AI Engineer,1,D+0; 합격,REQ-2502,Data Scientist,1,입사 예정; 합격,REQ-2505,Backend Engineer,2,입사 예정; 합격,REQ-2510,HRBP,1,입사 예정 채워주세요~",
+   "paste": "J1:N21"
+  },
+  {
+   "zone": "파이프라인 상세",
+   "command": "J1:N1 남색 배경 + 흰 글씨 + bold 해줘요"
+  },
+  {
+   "zone": "파이프라인 상세",
+   "command": "테두리도 J1:N21에 넣어줘"
+  },
+  {
+   "zone": "파이프라인 상세",
+   "command": "J2:J21에 최종면접이라고 적힌 칸만 빨갛게 색 넣어줘"
+  },
+  {
+   "zone": "면접 일정",
+   "command": "면접일정이라는 시트 하나 추가해줘여"
+  },
+  {
+   "zone": "면접 일정",
+   "command": "여기다가 일자,시간,Req ID,지원자,단계,면접관,면접 형태,장소/링크; 5/20(화),10:00,REQ-2502,김지민,1차면접,이영수,화상,Teams; 5/20(화),11:30,REQ-2505,박서준,1차면접,최인호,화상,Teams; 5/20(화),14:00,REQ-2503,이수진,과제리뷰,정다은,대면,Conference A; 5/20(화),15:30,REQ-2501,최현우,1차면접,김태환,화상,Teams; 5/21(수),10:00,REQ-2502,정하나,최종면접,이영수 외2,대면,Conference A; 5/21(수),11:30,REQ-2505,강민석,2차면접,최인호 외2,대면,Conference B; 5/21(수),14:00,REQ-2506,김인정,서류리뷰,정다은,화상,Teams; 5/21(수),16:00,REQ-2509,오주영,1차면접,박진우,화상,Teams; 5/22(목),10:00,REQ-2501,이준호,과제리뷰,김태환,화상,Teams; 5/22(목),11:30,REQ-2504,유지인,1차면접,이영수,화상,Teams; 5/22(목),14:00,REQ-2507,김도윤,과제리뷰,최인호,화상,Teams 입력해 줄래?",
+   "paste": "A1:H12"
+  },
+  {
+   "zone": "면접 일정",
+   "command": "첫 줄 header는 남색 바탕 흰 글씨 굵게로 해줘"
+  },
+  {
+   "zone": "면접 일정",
+   "command": "표 전체 테두리 부탁해"
+  },
+  {
+   "zone": "면접 일정",
+   "command": "E2:E12 중 1차면접인 셀만 하늘색으로 칠해줘"
+  },
+  {
+   "zone": "면접 일정",
+   "command": "Teams라고 된 건 다 MS Teams로 replace 해줘"
+  },
+  {
+   "zone": "면접 일정",
+   "command": "첫 줄 freeze 해줘, 스크롤해도 보이게"
+  },
+  {
+   "zone": "대시보드 타이틀",
+   "command": "대시보드 시트 하나 만들어줘요"
+  },
+  {
+   "zone": "대시보드 타이틀",
+   "command": "대시보드 시트 A1에 AI 기반 채용 파이프라인·면접 운영 보드 써줘"
+  },
+  {
+   "zone": "대시보드 타이틀",
+   "command": "A1부터 L1까지 merge 해줘, 제목 줄이니까"
+  },
+  {
+   "zone": "대시보드 타이틀",
+   "command": "제목은 남색 바탕에 흰 글자 bold로 해주세요"
+  },
+  {
+   "zone": "대시보드 타이틀",
+   "command": "대시보드 시트 A2에 최종 업데이트 2025-05-20 09:30 (담당 HR Team) 써줘"
+  },
+  {
+   "zone": "KPI 카드",
+   "command": "대시보드 시트 A4에 1. 핵심 KPI 써줘"
+  },
+  {
+   "zone": "KPI 카드",
+   "command": "여기에 지표,값,목표,단위,비고; Time to Hire (평균),27.4,—,일,▼6.2일 (vs 전월); 전체 전형 Pass Rate,31.8,—,%,▲4.6% (vs 전월); Urgent Roles,5,—,개 포지션,오늘 기준 / 상세는 좌측 표 확인; 이번 달 채용 목표,32,45,명,71% 달성 입력해줘요",
+   "paste": "A5:E9"
+  },
+  {
+   "zone": "KPI 카드",
+   "command": "A5:E5 header 남색 배경 흰 글씨 굵게로 해줘"
+  },
+  {
+   "zone": "KPI 카드",
+   "command": "F5에 달성률 입력"
+  },
+  {
+   "zone": "KPI 카드",
+   "command": "B9 나누기 C9 한 값을 F9에 넣어줘"
+  },
+  {
+   "zone": "KPI 카드",
+   "command": "F9 percent로 표시해줄래?"
+  },
+  {
+   "zone": "KPI 카드",
+   "command": "border 쳐줘 A5:F9에"
+  },
+  {
+   "zone": "Diversity",
+   "command": "대시보드 시트 A11에 Diversity Mix (지원자 기준) 써줘"
+  },
+  {
+   "zone": "Diversity",
+   "command": "여기 구분,비율(%); 여성,38; 남성,58; 기타,4 기록해둬",
+   "paste": "A12:B15"
+  },
+  {
+   "zone": "Diversity",
+   "command": "donut chart 하나 그려줘, B13:B15로"
+  },
+  {
+   "zone": "핵심 지표",
+   "command": "대시보드 시트 A17에 2. 핵심 지표 (이번 달) 써줘"
+  },
+  {
+   "zone": "핵심 지표",
+   "command": "넣어줘",
+   "paste": "A18",
+   "tsv": "지원자 수(누적)\t신규 지원자(오늘)\t전형 진행 중(전체)\t합격자 수(누적)\tOffer 수(누적)\t입사 확정(누적)\n144\t22\t76\t11\t6\t4"
+  },
+  {
+   "zone": "핵심 지표",
+   "command": "A18:F18 남색 바탕 흰 글자 bold 부탁해"
+  },
+  {
+   "zone": "핵심 지표",
+   "command": "A18:F19 테두리 넣어주세요"
+  },
+  {
+   "zone": "핵심 지표",
+   "command": "A19에다 Requisition 시트 지원자 다 더한 값 가져와줘"
+  },
+  {
+   "zone": "AI 인사이트",
+   "command": "대시보드 시트 A21에 3. AI 인사이트 (추천) 써줘"
+  },
+  {
+   "zone": "AI 인사이트",
+   "command": "그리고 여기에 REQ-2503 ML Ops Engineer,서류 탈락률이 72%로 높습니다. JD 요구/필수요건 재검토를 권장합니다.; REQ-2506 Frontend Engineer,지원자 풀은 충분하나 과제 전환율이 28%로 낮습니다.; REQ-2501 AI Engineer,과제 평균 소요 시간이 6.2일로 길어지고 있습니다. 넣어 주세요",
+   "paste": "A22:B24"
+  },
+  {
+   "zone": "파이프라인 단계",
+   "command": "대시보드 시트 A26에 4. 채용 파이프라인 (전체) 써줘"
+  },
+  {
+   "zone": "파이프라인 단계",
+   "command": "이쪽에 구분, 지원 접수, 서류심사, 과제, 1차면접, 최종면접, 오퍼, 합격; 단계 인원, 22, 42, 29, 18, 9, 6, 4; 전환율(%), 100, 48, 62, 61, 53, 53, 100; 단계별 합계, —, 22, 29, 18, 9, 6, 4; 전체 전환율(누적 %), —, 100, 48, 30, 9, 6, 4 입력해조",
+   "paste": "A27:H31"
+  },
+  {
+   "zone": "파이프라인 단계",
+   "command": "A27:H27 남색 배경에 흰 글씨 굵게"
+  },
+  {
+   "zone": "파이프라인 단계",
+   "command": "A27:H31에 테두리 쳐줘"
+  },
+  {
+   "zone": "파이프라인 단계",
+   "command": "B29:H29 중 60 넘는 칸만 초록색 강조해줘"
+  },
+  {
+   "zone": "퍼널",
+   "command": "대시보드 시트 A33에 6. 전형 단계별 퍼널 (이번 달) 써줘"
+  },
+  {
+   "zone": "퍼널",
+   "command": "음 여기에 단계, 인원, 비율(%), 전년 동기간 대비(%); 지원 접수, 144, 100, 18; 서류심사, 69, 47.9, 7; 과제, 33, 22.9, 3; 1차면접, 18, 12.5, 2; 최종면접, 9, 6.3, -1; 오퍼, 6, 4.2, 0; 합격, 4, 2.8, 1 입력 부탁해",
+   "paste": "A34:D41"
+  },
+  {
+   "zone": "퍼널",
+   "command": "A34:D34 header는 남색 바탕 흰 글자 bold로"
+  },
+  {
+   "zone": "퍼널",
+   "command": "테두리 그려줘 A34:D41에"
+  },
+  {
+   "zone": "퍼널",
+   "command": "B35:B41 값으로 막대 chart 하나"
+  },
+  {
+   "zone": "퍼널",
+   "command": "D35:D41에서 0보다 작은 칸만 빨간색으로 색 넣어줘"
+  },
+  {
+   "zone": "퍼널",
+   "command": "C35:C41 소수점 한 자리로 맞춰줘"
+  },
+  {
+   "zone": "퍼널",
+   "command": "E34에 탈락 인원 써줘"
+  },
+  {
+   "zone": "퍼널",
+   "command": "B35 빼기 B36 한 값을 E35에 넣어줘"
+  },
+  {
+   "zone": "마무리",
+   "command": "열 너비 auto로 맞춰줘요"
+  },
+  {
+   "zone": "마무리",
+   "command": "첫 줄 고정 부탁해, 스크롤해도 보이게"
+  },
+  {
+   "zone": "마무리",
+   "command": "저장은 아직 하지 마세요",
+   "expect": "noop"
+  },
+  {
+   "zone": "마무리",
+   "command": "ㅇㅋ 이제 저장해줘"
+  }
+ ]
+}

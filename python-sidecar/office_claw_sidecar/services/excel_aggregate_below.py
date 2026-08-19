@@ -77,18 +77,31 @@ def match_aggregate_columns(message: str) -> tuple[str, str] | None:
 # "A4에 지역성과 시트 주문건수 합계를 가져와줘" — 셀·원본 시트·열 이름·집계만
 # 말하는 크로스시트 문형. "E4에는 …를, F4에는 …를"처럼 한 문장에 여러 절이
 # 오면 시트 이름은 앞 절에서 이어받는다.
+# 집계어 — "합계"만이 아니라 사람이 쓰는 동의어까지(2026-08-19 블라인드 게이트: "다 더한 값", "총합",
+# "전부 더해서", "합"으로 18/24가 새어 텍스트가 써졌다).
+_AGG_WORD = r"(합계|총합계|총합|총계|합산|평균|개수|합|다\s*더한\s*값|전부\s*더한\s*값|더한\s*값|전부\s*더해서|다\s*더해서|더해서)"
+# ① 셀이 앞: "A2에 지역성과 시트 주문건수 합계 가져와"
 _CROSS_SHEET = re.compile(
-    r"([A-Z]+\d+)\s*에(?:는|다가)?\s*(?:([^\s,]+?)\s*시트(?:의|에서)?\s*)?"
-    r"([가-힣A-Za-z0-9_]+?)\s*(?:의)?\s*(합계|총합|평균|개수|합)",
+    r"([A-Z]+\d+)\s*(?:셀|칸)?\s*(?:에(?:는|다가|다)?)?\s*(?:([^\s,]+?)\s*(?:시트|탭)(?:의|에서|에\s*있는|안에\s*있는|안의|에)?\s*)?"
+    # 시트 낱말 없이 이름만 온 경우("A2에 지역성과 주문건수 합계") — 알려진 시트 이름일 때만 채택한다.
+    r"(?:([^\s,]+?)\s+)?"
+    r"([가-힣A-Za-z0-9_]+?)\s*(?:의|을|를)?\s*" + _AGG_WORD,
     re.IGNORECASE,
 )
-_CROSS_SHEET_VERB = re.compile(r"가져|끌어|연결|수식|넣어|채워|기록")
+# ② 셀이 뒤: "지역성과 시트 주문건수 합계를 A2로 끌어와" / "지역성과 주문건수 전부 더해서 A2에 넣어"
+_CROSS_SHEET_CELL_LAST = re.compile(
+    r"(?:([^\s,]+?)\s*(?:시트|탭)(?:의|에서|에\s*있는|안에\s*있는|안의|에)?\s*)?([가-힣A-Za-z0-9_]+?)\s*(?:의|을|를)?\s*" + _AGG_WORD
+    + r"\s*(?:을|를|값을|값)?\s*(?:여기\s*)?([A-Z]+\d+)\s*(?:셀|칸)?\s*(?:에|로|으로|에다가?|다)?",
+    re.IGNORECASE,
+)
+_CROSS_SHEET_VERB = re.compile(r"가져|끌어|연결|수식|넣어|채워|기록|불러|참조|더해|계산|놔|놓아|써|입력")
 _TOTAL_ROW_LABELS = frozenset({"합계", "총계", "계", "총합", "평균", "최대", "최소", "개수", "total", "sum", "avg", "average"})
 
 
 def build_cross_sheet_aggregate_plan(
     message: str,
     sheet_reader,
+    sheet_names: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """크로스시트 집계 수식 계획. sheet_reader(시트명) → (사용범위, values_2d).
 
@@ -97,21 +110,46 @@ def build_cross_sheet_aggregate_plan(
     이 문형이 의도 정규화로 새서 빈 값을 쓰고 성공으로 보고됐다(가짜 성공).
     """
     text = str(message or "")
-    if "시트" not in text or not _CROSS_SHEET_VERB.search(text):
+    known = [str(n) for n in (sheet_names or []) if str(n).strip()]
+    # "시트/탭"이라는 말이 없어도 실제 시트 이름이 문장에 있으면 크로스시트다("A2 지역성과 주문건수 합").
+    named = any(n in text for n in known)
+    mentions_sheet = ("시트" in text or "탭" in text) or named
+    # 동사 없는 짧은 말("A2 지역성과 주문건수 합")도 시트 이름·셀이 다 있으면 크로스시트다.
+    if not mentions_sheet or not (_CROSS_SHEET_VERB.search(text) or (named and re.search(r"[A-Z]+\d+", text, re.IGNORECASE))):
         return []
     steps: list[dict[str, Any]] = []
     current_sheet = ""
     cache: dict[str, tuple[str, list[list[Any]]]] = {}
+    matches: list[tuple[str, str, str, str]] = []
     for m in _CROSS_SHEET.finditer(text):
-        cell = m.group(1).upper()
-        sheet = (m.group(2) or "").strip().strip("'\"")
-        header_word = m.group(3).strip()
-        func_word = m.group(4)
+        sheet_tok = (m.group(2) or "").strip().strip("'\"")
+        bare = (m.group(3) or "").strip().strip("'\"")
+        header_tok = m.group(4).strip()
+        if not sheet_tok and bare:
+            if bare in known:
+                sheet_tok = bare
+            else:
+                # 시트가 아닌 낱말이면 머리글의 앞부분이다("평균 운행시간" 같은 두 낱말 머리글).
+                header_tok = f"{bare} {header_tok}".strip()
+        matches.append((m.group(1).upper(), sheet_tok, header_tok, m.group(5)))
+    if not matches:
+        for m in _CROSS_SHEET_CELL_LAST.finditer(text):
+            matches.append((m.group(4).upper(), (m.group(1) or "").strip().strip("'\""), m.group(2).strip(), m.group(3)))
+    for cell, sheet, header_word, func_word in matches:
+        if not sheet and known:
+            # 시트 낱말 없이 이름만 쓴 경우: 문장 안의 알려진 시트 이름을 잡는다.
+            for name in sorted(known, key=len, reverse=True):
+                if name and name in text:
+                    sheet = name
+                    break
         if sheet:
             current_sheet = sheet
         if not current_sheet:
             continue
-        func = {"평균": "AVERAGE", "개수": "COUNT"}.get(func_word, "SUM")
+        # 시트 이름이 머리글 낱말 앞에 붙어 들어온 경우("지역성과 주문건수" → 머리글 '주문건수')
+        if current_sheet and header_word.startswith(current_sheet) and len(header_word) > len(current_sheet):
+            header_word = header_word[len(current_sheet):].strip()
+        func = "AVERAGE" if "평균" in func_word else ("COUNT" if ("개수" in func_word or "건수" in func_word) else "SUM")
         try:
             if current_sheet not in cache:
                 cache[current_sheet] = sheet_reader(current_sheet)

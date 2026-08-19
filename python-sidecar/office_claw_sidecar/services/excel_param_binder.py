@@ -55,7 +55,7 @@ _REQUIRE_EXPLICIT_COLUMN: dict[str, tuple[str, ...]] = {
     "excel_live.sort_range": ("key_column",),
     # 플래너는 sort_rows로 내기도 한다. 목록에 없으면 "정렬 좀"에 학습셋 열
     # 이름('이름')을 지어내 실행까지 간다(2026-08-18 대화형 러너 실측).
-    "excel_live.sort_rows": ("key_column",),
+    "excel_live.sort_rows": ("column",),
     "excel_live.dedupe_rows": ("key_columns",),
 }
 # 결과를 새 시트에 쓰는 액션. output_sheet 오염을 정리한다.
@@ -69,7 +69,9 @@ _OUTPUT_SHEET_ACTIONS = {
 }
 
 _SHEET_MENTION_PATTERN = re.compile(r"([A-Za-z0-9가-힣_]{1,20})\s*(?:시트|sheet)", re.IGNORECASE)
-_REFERENCE_CONTEXT = re.compile(r"(참조표|참조|참고표|조회표는|기준표|룩업|lookup|reference)\s*(?:는|은|을|를|:)?\s*$")
+_REFERENCE_CONTEXT = re.compile(
+    r"(참조표|참조|참고표|조회표는|기준표|룩업|lookup|reference)\s*(?:는|은|을|를|:)?\s*$"
+)
 _COLUMN_LETTER_MENTION = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]\s*열")
 _CELL_REF_PATTERN = re.compile(r"^[A-Z]{1,3}\d{1,7}$")
 _COLUMN_LETTER_ONLY = re.compile(r"^[A-Za-z]{1,3}$")
@@ -178,6 +180,15 @@ def _column_meta(entry: dict[str, Any], header: str) -> dict[str, Any]:
     return {}
 
 
+_SINGLE_CELL_WRITE_MESSAGE = re.compile(
+    r"^(.*?(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7})\s*(?:셀|칸)?\s*에(?:다가?|는)?\s+\S.*?(?:입력|기록|넣어|채워|써|적어)\s*(?:해)?\s*(?:줘요|줘|주세요|주라|줄래|놔|둬|봐|라)?\s*[~.!?…]*$",
+    re.DOTALL,
+)
+_VALUE_GRID_MESSAGE = re.compile(
+    r"(?s)^(?=(?:.*[,;\t\n]){3,}).*(?:입력|기록|넣어|채워|써|적어)\s*(?:해)?\s*(?:줘요|줘|주세요|주라|줄래|놔|둬|봐)?\s*[~.!?…]*$"
+)
+
+
 def resolve_sheet_from_message(
     message: str,
     digest: dict[str, Any],
@@ -194,22 +205,175 @@ def resolve_sheet_from_message(
     names = {name for name in sheet_names(digest) if name}
     if not names:
         return default
+    # 값 격자(붙여넣기)에서는 값 안의 낱말이 시트 이름과 같아도 지목이 아니다 — "재고 관리, 수요 예측 기반 …" 행이
+    # 든 표가 **재고 관리 시트**에 써졌다(2026-08-19 ex12 실측: 대시보드에 표가 없어 합계 줄이 빈 계획). 격자는
+    # 첫 쉼표 앞 머리말("대시보드 시트에 여기에")만 지목으로 본다.
+    # 한 칸 쓰기("A1에 재고 관리 현황 써줘")도 같다 — 셀 좌표 뒤는 값이다. 값 속 낱말이 실재 시트 이름과
+    # 같다고 다른 시트에 쓰면 조용한 오실행이다(2026-08-19 ex12 실측과 같은 부류).
+    single_write = _SINGLE_CELL_WRITE_MESSAGE.match(text)
+    if single_write:
+        lead = single_write.group(1)
+        return (
+            next(
+                (name for m in _SHEET_MENTION_PATTERN.finditer(lead) for name in _josa_variants(m.group(1)) if name in names),
+                "",
+            )
+            or _sheet_named_verbatim(lead, names)
+            or _sheet_called_by_its_korean_name(lead, names)
+            or default
+        )
+    if _VALUE_GRID_MESSAGE.search(text):
+        lead = re.split(r"[,;\t\n]", text, maxsplit=1)[0]
+        lead_names = {n for n in names if n}
+        for match in _SHEET_MENTION_PATTERN.finditer(lead):
+            candidate = next((name for name in _josa_variants(match.group(1)) if name in lead_names), "")
+            if candidate:
+                return candidate
+        return _sheet_named_verbatim(lead, lead_names) or _sheet_called_by_its_korean_name(lead, lead_names) or default
     for match in _SHEET_MENTION_PATTERN.finditer(text):
         # 원문형("추이")이 실제 시트면 그걸 쓴다. 조사를 뗀 형태("추")를 먼저 보면
         # 멀쩡한 이름이 잘려 나간다.
-        candidate = next(
-            (name for name in _josa_variants(match.group(1)) if name in names), ""
-        )
+        candidate = next((name for name in _josa_variants(match.group(1)) if name in names), "")
         if not candidate:
             continue
         if _REFERENCE_CONTEXT.search(text[max(0, match.start() - 12) : match.start()]):
             continue
         return candidate
-    return (
-        _sheet_named_verbatim(text, names)
-        or _sheet_called_by_its_korean_name(text, names)
-        or default
-    )
+    return _sheet_named_verbatim(text, names) or _sheet_called_by_its_korean_name(text, names) or default
+
+
+# 시트 이름 앞에 붙을 수 없는 낱말 — 조사·접속어·지시어·동사 연결형으로 끝나면 이름의 일부가 아니다.
+# 끝 글자만으로 조사를 가리면 명사를 자른다(재고·평가·제도·결과·순서) — 명사 끝에 드문 조사만 쓰고,
+# 동사 연결형("넣고", "만들어서")은 어간 목록으로 잡는다.
+_SHEET_NAME_STOP_WORD = re.compile(
+    r"(?:에|에서|에는|에도|에다|은|는|을|를|으로|랑|이랑|하고|부터|까지|니까)$"
+    # '로'는 조사이기도 명사 끝이기도 하다(자료·도로·경로·진로·통로) — 명사는 빼고 조사로 본다.
+    r"|(?<!자|도|경|진|통|항|선|가|세|별|대|바)로$"
+    # 관형형("대시보드로 쓸 요약 시트", "저장할 결과 시트")은 이름이 아니다.
+    r"|(?:쓸|할|넣을|만들|볼|될|담을|옮길|정리할|쓰는|하는|넣는|되는|있는|없는|같은|위한|통한|대한|관한|따른|새로운)$"
+    r"|(?:넣|하|쓰|적|만들|채우|끝내|정리하|저장하|입력하|붙이|붙여넣|그리|지우|삭제하|바꾸|고치|보|주|두|놓|시키|나누|합치)고$"
+    r"|(?:해|써|넣어|만들어|채워|적어|붙여|그려|지워|바꿔|고쳐|나눠|합쳐)서$"
+    r"|(?:하|넣으|쓰|만들|채우|끝내|되)면$"
+    # 청유·의지형("시작하자", "해 보자", "할게")도 앞 절이다.
+    r"|(?:하자|보자|합시다|할게|할까|해볼게|해보자|해볼까|가자|갑시다)$"
+)
+_SHEET_NAME_STOP_SET = frozenset(
+    {
+        "시트",
+        "sheet",
+        "탭",
+        "아니",
+        "아니면",
+        "아님",
+        "아뇨",
+        "아니요",
+        "아니라",
+        "말고",
+        "대신",
+        "그게",
+        "아까",
+        "방금",
+        "거기",
+        "여기",
+        "저기",
+        "이름",
+        "이름의",
+        "이름으로",
+        "이름은",
+        "명으로",
+        "표",
+        "테이블",
+        "값",
+        "내용",
+        "그리고",
+        "그럼",
+        "이제",
+        "다음으로",
+        "이번엔",
+        "이번에는",
+        "또",
+        "또한",
+        "한번",
+        "하나",
+        "새",
+        "새로",
+        "새로운",
+        "빈",
+        "다른",
+        "이",
+        "그",
+        "저",
+        "요",
+        "아",
+        "음",
+        "어",
+        "그냥",
+        "일단",
+        "먼저",
+        "우선",
+        "ㅇㅇ",
+        "ㅇㅋ",
+        "ok",
+        "자",
+        "네",
+        "응",
+        "좀",
+        "혹시",
+        "이제는",
+        "그다음",
+        "그담에",
+        "그리구",
+        "근데",
+        "그런데",
+    }
+)
+
+
+def extend_sheet_name_leftward(text: str, name_start: int, name: str, *, max_words: int = 3) -> str:
+    """ "재고 관리 시트" — 한 낱말 패턴이 잡은 '관리' 앞으로 이름 낱말을 붙인다.
+
+    앞 낱말이 조사·접속어·지시어로 끝나면 거기서 멈춘다. 최대 세 낱말.
+    """
+    head = str(text or "")[:name_start]
+    words = head.split()
+    picked = [name]
+    while words and len(picked) < max_words:
+        raw_prev = words[-1]
+        # 쉼표·마침표·콜론으로 끝난 낱말은 앞 절이다("시작하자, 체크리스트 시트").
+        if re.search(r"[,.:;!?~]$", raw_prev):
+            break
+        prev = raw_prev.strip("\"'“”‘’")
+        if (
+            not prev
+            or prev.lower() in _SHEET_NAME_STOP_SET
+            or _SHEET_NAME_STOP_WORD.search(prev)
+            or re.fullmatch(r"[A-Za-z]{1,3}\d{1,7}(?::[A-Za-z]{1,3}\d{1,7})?", prev)
+            or not re.fullmatch(r"[A-Za-z0-9_가-힣.&-]+", prev)
+        ):
+            break
+        picked.insert(0, prev)
+        words.pop()
+    return " ".join(picked)
+
+
+def sheet_mention_matches_known(message: str, token: str, known: list[str]) -> bool:
+    """'<token> 시트' 지목 자리에서 실재 시트 이름(띄어쓰기 무시)이 끝나면 True.
+
+    "재고 관리 시트"의 token='관리'는 실재 "재고 관리"(또는 "재고관리")로 풀린다.
+    """
+    text = str(message or "")
+    squash = lambda v: re.sub(r"\s+", "", str(v or "")).casefold()  # noqa: E731
+    names = [squash(n) for n in known if str(n or "").strip()]
+    if not names or not token:
+        return False
+    for m in re.finditer(r"(?:시트|sheet)", text, re.IGNORECASE):
+        prefix = text[max(0, m.start() - 40) : m.start()]
+        if not squash(prefix).endswith(squash(token)):
+            continue
+        sp = squash(prefix)
+        if any(sp.endswith(n) for n in names):
+            return True
+    return False
 
 
 def explicit_sheet_mentions(message: str) -> list[str]:
@@ -377,7 +541,9 @@ def _pick_role_column(message: str, headers: list[str], markers: tuple[str, ...]
 
 # "매출 데이터를 날짜순으로" — 앞의 '매출'은 대상을 부르는 말이지 정렬 기준이 아니다.
 _DATASET_LABELS = ("데이터", "자료", "표", "목록", "리스트", "시트", "파일", "내역")
-_SORT_ORDER_MARKER = re.compile(r"오름차순|내림차순|정렬|순으로|순서대로|큰\s*순|작은\s*순|최신순|과거순|순위")
+_SORT_ORDER_MARKER = re.compile(
+    r"오름차순|내림차순|정렬|순으로|순서대로|큰\s*순|작은\s*순|최신순|과거순|순위"
+)
 
 # "A1:L37" 처럼 원문이 직접 말한 범위. 이게 없으면 플래너가 지어낸 범위를 믿으면 안 된다.
 _EXPLICIT_RANGE_MENTION = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}\s*:\s*[A-Za-z]{1,3}\d{1,7}")
@@ -720,9 +886,19 @@ def write_values_echo_the_request(params: dict[str, Any], message: str) -> bool:
                 continue
             if token.startswith("="):
                 continue  # 수식은 정상이다
+            # 각주·완결 문장은 지시문의 되뇜이 아니라 **글자 그대로 쓸 값**이다 —
+            # "A45에 ※ AI 적용 후 수치는 … 산출되었습니다 입력"(2026-08-19 ex11 실측: '산출' 한 낱말
+            # 때문에 되묻기로 샜다). 되뇐 조각은 짧은 구("가장 큰 매출")지 문장이 아니다.
+            if _LITERAL_SENTENCE_VALUE.search(token) or len(token) >= 24:
+                continue
             if token in text:
                 return True
     return False
+
+
+_LITERAL_SENTENCE_VALUE = re.compile(
+    r"^[※*＊†‡#(\[]|(?:습니다|입니다|됩니다|합니다|세요|십시오|하세요|바랍니다|드립니다|요|임|음)[.!?]?$|[.!?。]$"
+)
 
 
 def write_values_are_empty(params: dict[str, Any]) -> bool:
@@ -1392,16 +1568,28 @@ def _bind_message_only_slots(
             # 실제로 타는 경로에서 그대로 통과한다(2026-08-17 실측: 검사가 True를
             # 돌려주는데도 셀에 '가장 큰 매출'이 그대로 써졌다).
             if write_values_echo_the_request(params, message):
-                notes.append({
-                    "action": step.action,
-                    "slot": "values_2d",
-                    "status": "unresolved",
-                    "reason": "echoed_request",
-                })
+                notes.append(
+                    {
+                        "action": step.action,
+                        "slot": "values_2d",
+                        "status": "unresolved",
+                        "reason": "echoed_request",
+                    }
+                )
+        # 머리글을 모르는 시트에서 "정렬 좀 해주세요" — 플래너가 학습셋 열 이름('이름')을 지어내 실행까지
+        # 갔다(2026-08-19 ex15 v2 실측). 원문이 열을 말하지 않았으면 여기서도 미해결이다.
+        if step.action in _REQUIRE_EXPLICIT_COLUMN and not _COLUMN_LETTER_MENTION.search(str(message or "")):
+            for slot in _REQUIRE_EXPLICIT_COLUMN[step.action]:
+                if not (_SORT_KEY_STATED.search(str(message or ""))):
+                    notes.append({"action": step.action, "slot": slot, "status": "unresolved", "reason": "not_stated"})
         if changes:
             notes.append({"action": step.action, "status": "bound", "changes": changes})
         bound.append(PlanStep(action=step.action, params=params, reason=step.reason))
     return bound, notes
+
+
+# 머리글을 모를 때 "X 기준", "X 순으로", "X별"처럼 기준 열을 **말로** 댔는지만 본다.
+_SORT_KEY_STATED = re.compile(r"[가-힣A-Za-z0-9_()%]+\s*(?:기준|순으로|순서로|높은\s*순|낮은\s*순|많은\s*순|적은\s*순|큰\s*순|작은\s*순|오름차순|내림차순|별로|별)")
 
 
 def bind_plan_steps(
@@ -1508,9 +1696,7 @@ def bind_plan_steps(
             if params.get(slot) is None and slot == "column_field":
                 continue
             before = params[slot]
-            resolved, reason = _resolve_column_value(
-                before, entry=entry, candidates=candidates, used=used
-            )
+            resolved, reason = _resolve_column_value(before, entry=entry, candidates=candidates, used=used)
             if isinstance(resolved, str):
                 used.add(resolved)
             if reason == "unresolved":
@@ -1532,9 +1718,7 @@ def bind_plan_steps(
                 continue
             resolved_list: list[Any] = []
             for item in raw_list:
-                resolved, _reason = _resolve_column_value(
-                    item, entry=entry, candidates=candidates, used=used
-                )
+                resolved, _reason = _resolve_column_value(item, entry=entry, candidates=candidates, used=used)
                 if isinstance(resolved, str):
                     used.add(resolved)
                 resolved_list.append(resolved)
@@ -1552,9 +1736,7 @@ def bind_plan_steps(
             # 시킨 말을 값으로 쓰려 한다면, 그게 집계 요청인지 먼저 본다.
             # 여기서는 다이제스트가 있어 "매출"이 몇 번 열인지 안다 —
             # 빠른 규칙은 그걸 몰라서 되묻는 데서 멈출 수밖에 없었다.
-            plan_already_has_formulas = any(
-                s.action == "excel_live.set_formula" for s in steps
-            )
+            plan_already_has_formulas = any(s.action == "excel_live.set_formula" for s in steps)
             if write_values_echo_the_request(params, message) and not plan_already_has_formulas:
                 # 계획에 수식 단계가 이미 있으면 이 쓰기는 집계 줄의 **이름표**다.
                 # 변환하면 "합계" 라벨이 =SUM(A2:A6)이 된다(2026-08-18 지저분판
@@ -1566,17 +1748,23 @@ def bind_plan_steps(
                         step_action_override = "excel_live.set_formula"
                         params = {"range_ref": target, "formula_a1": aggregate}
                         changes.append(f"formula_a1={aggregate}")
-            if step_action_override is None and write_values_are_empty(params) and not _CLEARING_INTENT.search(str(message or "")):
+            if (
+                step_action_override is None
+                and write_values_are_empty(params)
+                and not _CLEARING_INTENT.search(str(message or ""))
+            ):
                 notes.append({"action": step.action, "slot": "values_2d", "status": "unresolved"})
             elif step_action_override is None and write_values_echo_the_request(params, message):
                 # 값이 **있는데 그게 지시문**인 경우다. 낡음 필터는 "값이 채워졌으면
                 # 해결된 것"으로 보므로, 사유를 붙여 걸러지지 않게 한다.
-                notes.append({
-                    "action": step.action,
-                    "slot": "values_2d",
-                    "status": "unresolved",
-                    "reason": "echoed_request",
-                })
+                notes.append(
+                    {
+                        "action": step.action,
+                        "slot": "values_2d",
+                        "status": "unresolved",
+                        "reason": "echoed_request",
+                    }
+                )
 
         if step.action == "excel_live.set_formula" and (
             params.get("named_formula_message") or str(params.get("formula_mode") or "") == "named"
@@ -1767,9 +1955,7 @@ _WRITE_INTO_NEW_SHEET_ACTIONS = frozenset(
 )
 
 
-def _bind_created_sheet_target(
-    action: str, params: dict[str, Any], *, created_sheet: str
-) -> list[str]:
+def _bind_created_sheet_target(action: str, params: dict[str, Any], *, created_sheet: str) -> list[str]:
     """ "Summary 시트 만들어서 A1에 ... 쓰고" 의 두 번째 단계가 갈 곳.
 
     시트를 만들면 활성 시트가 따라 옮겨갈 거라 기대하지만 실제로는 그렇지 않다.

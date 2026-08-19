@@ -346,3 +346,47 @@ class TestSortPinsEveryTailAggregateRow:
         col = [wb2["지역성과"].cell(row=r, column=1).value for r in range(2, 7)]
         assert col == ["가", "다", "나", "합계", "평균"], col
         wb2.close()
+
+
+class TestHorizontalSeriesChart:
+    """"B68:J68로 선 그래프" — 월이 열 방향인 한 줄 계열(2026-08-19 ex16 실측: 데이터 부족으로 실패)."""
+
+    def _service(self, tmp_path):
+        from openpyxl import Workbook
+
+        path = tmp_path / "row.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "월별"
+        ws.append(["구분", "1월", "2월", "3월", "4월"])
+        ws.append(["예상 임대수익", 100, 120, 130, 150])
+        wb.save(path)
+        wb.close()
+        svc = FileExcelLiveService(workspace_root=tmp_path)
+        svc.select_workbook(str(path))
+        return svc, path
+
+    def test_single_row_range_becomes_one_series_with_headers_above(self, tmp_path):
+        from openpyxl import load_workbook
+
+        svc, path = self._service(tmp_path)
+        out = svc.create_chart(str(path), "월별", "B2:E2", chart_type="line", title="추이")
+        assert out["created"] is True
+        wb = load_workbook(path)
+        chart = wb["월별"]._charts[0]
+        assert len(chart.series) == 1
+        s = chart.series[0]
+        assert "$B$2:$E$2" in s.val.numRef.f
+        cat_ref = s.cat.strRef or s.cat.numRef
+        assert cat_ref is not None and "$B$1:$E$1" in cat_ref.f
+        # 왼쪽 칸이 계열 이름
+        assert s.tx is not None and s.tx.strRef.f.endswith("A2")
+
+    def test_single_row_with_title_cell(self, tmp_path):
+        from openpyxl import load_workbook
+
+        svc, path = self._service(tmp_path)
+        svc.create_chart(str(path), "월별", "A2:E2", chart_type="bar", title="추이")
+        chart = load_workbook(path)["월별"]._charts[0]
+        assert len(chart.series) == 1
+        assert "$B$2:$E$2" in chart.series[0].val.numRef.f

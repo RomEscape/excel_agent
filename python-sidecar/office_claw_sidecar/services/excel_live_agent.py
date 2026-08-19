@@ -135,6 +135,32 @@ _DEICTIC_VALUE_PREFIX = re.compile(
     r"(?:여기(?:에|에다|다가|다)?|요기에?|이\s*(?:곳|쪽|자리|칸|셀|범위|영역)에?)\s*"
 )
 
+# 값 자리에 대명사만 남은 경우 — "이거", "그거", "복사한 거", "방금 거", "이 내용"은 값이 아니다.
+_DEICTIC_PRONOUN_ONLY = re.compile(
+    r"(?:(?:방금|지금|아까|위에|위)\s*)?(?:복사한|복붙한|붙여넣은|긁어온|잡은|선택한)?\s*"
+    r"(?:이거|이걸|이것|요거|요걸|그거|그걸|그것|저거|저걸|얘|얘네|이\s*값|이\s*내용|그\s*값|그\s*내용|"
+    r"이\s*표|그\s*표|복사한\s*거|복사한\s*것|복사본|붙여넣기|클립보드|거|것)\s*(?:을|를|도|은|는)?"
+)
+
+_VALUE_FILLER_LEAD = re.compile(
+    r"^(?:(?:칸|셀)\s*에(?:다가?)?\s*|(?:제목|타이틀|title|값|내용|텍스트|글자|문구)(?:으로|로|은|는|을|를|이라고|라고)?\s+)+",
+    re.IGNORECASE,
+)
+_VALUE_FILLER_TAIL = re.compile(
+    r"(?:\s*(?:이?라고|으로|로)?\s*(?:제목|타이틀|title|텍스트|문구|으로|로)\s*)+$",
+    re.IGNORECASE,
+)
+
+
+def _strip_value_fillers(raw: str) -> str:
+    """값 앞뒤의 군더더기("칸에", "제목으로", "라고 title")를 뗀다. 값이 비면 원문을 돌려준다."""
+    text = str(raw or "").strip()
+    out = _VALUE_FILLER_LEAD.sub("", text)
+    out = _VALUE_FILLER_TAIL.sub("", out)
+    out = re.sub(r"\s*이?라고\s*$", "", out).strip().strip("'\"“”‘’")
+    return out or text
+
+
 # "C열", "C 열을"처럼 조사가 붙어도 열 문자를 인식한다.
 COLUMN_LETTER_PATTERN = re.compile(r"(?<![A-Za-z0-9])([A-Za-z])\s*열")
 
@@ -419,9 +445,11 @@ def _parse_operator_threshold(text: str) -> tuple[str, float] | None:
 def _parse_literal_value(raw: str) -> Any:
     text = raw.strip().strip("\"'")
     lowered = text.lower()
-    if lowered in {"true", "yes"}:
+    # Excel이 불리언 셀을 복사하면 TRUE/FALSE 다. "Yes"/"No"는 문자열이고 "No"는 번호 머리글로 더 자주
+    # 쓰인다 — 2026-08-19 각본 작성자 3명이 "No 열이 False로 기록된다"고 따로 보고했다.
+    if lowered == "true":
         return True
-    if lowered in {"false", "no"}:
+    if lowered == "false":
         return False
     if re.fullmatch(r"-?\d+", text):
         return int(text)
@@ -902,6 +930,33 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
         r"(?<![:A-Za-z0-9])([a-z]+\d+)\s*(?:셀)?\s*값(?:을|를)?\s*['\"]?([^'\"]+?)['\"]?\s*(?:로)?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|채워(?:줘)?|write|set|input)",
         r"(?<![:A-Za-z0-9])\b([a-z]+\d+)\s+['\"]?([^'\"]+?)['\"]?\s*(입력(?:해(?:줘)?)?|써(?:줘)?|작성(?:해(?:줘)?)?|적어(?:줘)?|넣어(?:줘)?|채워(?:줘)?|write|set|input)\b",
     ]
+    # 값이 먼저 오는 어순: "물류 관제 대시보드 H1에 입력해줘" / "제목 '분기 보고' A1에 써줘"
+    # (2026-08-19 블라인드 게이트: 이 어순이 모델로 가 'H1'에 '입력'이라는 글자가 써졌다).
+    value_first = re.search(
+        r"^\s*(?:제목(?:으로|은|을)?\s*)?['\"]?([^'\"=;]+?)['\"]?\s*(?:을|를|이라고|라고)?\s+"
+        r"(?<![:A-Za-z0-9])([a-z]+\d+)\s*(?:셀|칸)?\s*에(?:다가?)?\s*"
+        r"(?:입력|써|넣어|적어|기록|작성)(?:해)?(?:\s*(?:줘|주세요|주라|줄래|라|봐))?\s*[~.!]*$",
+        text,
+        re.IGNORECASE,
+    )
+    if value_first and not re.search(r"[a-z]+\d+:[a-z]+\d+", text, re.IGNORECASE):
+        raw_value = _strip_value_fillers(value_first.group(1))
+        # "Sales_Data 시트 H1에 넣어줘"의 앞부분은 값이 아니라 시트 지목이다 — 시트·탭으로 끝나거나
+        # 조사로 끝나는 조각은 값으로 보지 않는다.
+        looks_like_target = re.search(r"(시트|탭|sheet|에서|의|에)\s*$", raw_value, re.IGNORECASE) is not None
+        if (
+            raw_value
+            and not looks_like_target
+            and not _DEICTIC_PRONOUN_ONLY.fullmatch(raw_value)
+            and "수식" not in raw_value
+            and "=" not in raw_value
+            and len(raw_value.split()) <= 8
+        ):
+            return {
+                "action": "excel_live.write_range",
+                "params": {"start_cell": value_first.group(2).upper(), "values_2d": [[_parse_literal_value(raw_value)]]},
+                "reason": "단일 셀 값 입력 요청(값 선행)",
+            }
     # 셀은 지목했는데 넣을 값이 없는 문장("H1에 넣어줘")을 만났는지.
     valueless_cell_write = False
     for pattern in single_write_patterns:
@@ -920,8 +975,14 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
         raw_value = re.sub(r"\s*이?라고\s*$", "", raw_value)
         # "A3 여기에 합계 써줘" — 셀 뒤에 붙은 지시어는 값이 아니다(2026-08-19).
         raw_value = _DEICTIC_VALUE_PREFIX.sub("", raw_value).strip()
+        # "H1 칸에 물류 관제 대시보드 적어" / "H1에 제목으로 … 입력" / "… 라고 title 적어" —
+        # 칸·제목·title 같은 말은 값이 아니다(2026-08-19 블라인드 게이트 title_cell 11건 오염).
+        raw_value = _strip_value_fillers(raw_value)
         if "수식" in raw_value or "formula" in raw_value.lower() or "=" in raw_value:
             continue
+        # "A1에 이거 넣어줘" — 대명사는 값이 아니라 복사한 것을 가리킨다(2026-08-19).
+        if _DEICTIC_PRONOUN_ONLY.fullmatch(raw_value):
+            raw_value = ""
         if not raw_value:
             valueless_cell_write = True
             continue
@@ -968,6 +1029,14 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
         # 써진다(2026-08-19 붙여넣기 흐름 실측). 값이 남으면 그 값만 쓰고, 없으면
         # 물러나서 되묻게 한다.
         raw_value = _DEICTIC_VALUE_PREFIX.sub("", raw_value).strip()
+        # "이거 여기다 써줘" — 값 뒤에 붙은 자리 지시어도 값이 아니다.
+        raw_value = re.sub(
+            r"\s*(?:여기(?:에다가|에다|다가|다|에)?|요기에?|이\s*(?:곳|쪽|자리|칸|셀|범위|영역)에?(?:다가?)?)\s*$", "", raw_value
+        ).strip()
+        # "이거 넣어줘", "그거 입력" — 대명사는 값이 아니라 **방금 복사한 것**을 가리킨다. 값으로 쓰면
+        # A1에 '이거'가 들어간다(2026-08-19 ex9 v2 실측: 값 없는 붙여넣기 턴이 되묻기 대신 A1에 기록).
+        if _DEICTIC_PRONOUN_ONLY.fullmatch(raw_value):
+            return None
         if not raw_value:
             return None
         # 셀 지목 없이 네 낱말 넘는 문장은 값이 아니라 명령일 가능성이 크다.
@@ -1614,7 +1683,82 @@ _COMMON_TYPO_PAIRS: tuple[tuple[re.Pattern[str], str], ...] = (
     ),
     (re.compile(r"쉬트(?=[^가-힣]|$)"), "시트"),
     (re.compile(r"엑샐"), "엑셀"),
+    # ---- 2026-08-19 블라인드 게이트(코드를 못 본 작성자 624문장)에서 반복된 오타 ----
+    (re.compile(r"남섹"), "남색"),
+    (re.compile(r"굵께|굴께|굵계"), "굵게"),
+    (re.compile(r"글시(?=[^가-힣]|$)"), "글씨"),
+    (re.compile(r"흰글씨"), "흰 글씨"),
+    (re.compile(r"쎌"), "셀"),
+    (re.compile(r"펑균"), "평균"),
+    (re.compile(r"합꼐|합꼐"), "합계"),
+    (re.compile(r"아레(?=\s*(에|로|쪽|줄|칸))"), "아래"),
+    (re.compile(r"소숫점|소수졈"), "소수점"),
+    (re.compile(r"바꺼(?=\s|줘|라|$)"), "바꿔"),
+    (re.compile(r"틀고졍|틀고정"), "틀 고정"),
+    (re.compile(r"태두리"), "테두리"),
+    (re.compile(r"분홍샥|분홍섹"), "분홍색"),
+    (re.compile(r"클래임"), "클레임"),
+    (re.compile(r"데이타"), "데이터"),
+    (re.compile(r"컴마"), "콤마"),
+    (re.compile(r"마춰|맞처"), "맞춰"),
+    (re.compile(r"정렬헤"), "정렬해"),
+    (re.compile(r"입럭|입녁"), "입력"),
+    (re.compile(r"(?<![가-힣])해봐(?=[^가-힣]|$)"), "해줘"),
+    (re.compile(r"(?<![가-힣])해라(?=[^가-힣]|$)"), "해줘"),
+    (re.compile(r"변경해줴|변경해줴"), "변경해줘"),
+    (re.compile(r"강죠"), "강조"),
+    (re.compile(r"(?<=[가-힣])햐(?=[\s~!.]|$)"), "해"),
+    (re.compile(r"핑크(?:색)?(?=[^가-힣]|$)"), "분홍색"),
+    (re.compile(r"하이라이트"), "강조"),
+    (re.compile(r"컬럼"), "열"),
 )
+
+# 사람이 채팅에 섞는 **말머리·꼬리 군말**. 값 나열이 아닌 문장에서만 떼어 낸다 — 값("ㅇㅇ")을 건드리면 안 되므로
+# 호출부(normalize_common_typos)가 값 격자 문장인지 먼저 본다.
+_LEADING_FILLER = re.compile(
+    r"^(?:(?:아\s*그리고|그리고\s*나서|그리고나서|그리고|그럼|아아|아|음|ㅇㅇ|ㅇㅋ|ㅋㅋ+|ㅎㅎ+|넵|네|응|오케이|ok|okay)"
+    r"(?=[,\s~!.]|$)[,\s~!.]*)+",
+    re.IGNORECASE,
+)
+# 꼬리 군말은 **앞에 구분자(공백·쉼표)가 있을 때만** — "주세요"의 '요', "보이게요"의 '요'는 건드리지 않는다.
+_TRAILING_FILLER = re.compile(
+    r"(?:[,\s~!.]+(?:빨리|빨ㄹ리|빨랑|얼른|ㅋㅋ+|ㅎㅎ+|ㅇㅇ|ㅇㅋ|이렇게|플리즈|please|고마워|땡큐))+[\s~!.]*$",
+    re.IGNORECASE,
+)
+# 영어 낱말 → 한국어(규칙 어휘). 단어 경계·대소문자 무시. 수식("=SUM(")이 있는 문장은 건드리지 않는다.
+def _en_terms(pairs: tuple[tuple[str, str], ...]) -> tuple[tuple[re.Pattern[str], str], ...]:
+    return tuple((re.compile(rf"(?<![A-Za-z0-9_]){en}(?![A-Za-z0-9_])", re.IGNORECASE), ko) for en, ko in pairs)
+
+
+# 값으로 쓰일 일이 거의 없는 명령 낱말 — 쓰기 문장에서도 바꾼다.
+_ENGLISH_TERMS_COMMAND: tuple[tuple[re.Pattern[str], str], ...] = _en_terms((
+    ("freeze panes", "틀 고정"), ("freeze", "고정"), ("bold", "굵게"), ("header", "머리글"), ("headers", "머리글"),
+    ("comma", "콤마"), ("merge", "병합"), ("sort", "정렬"), ("line chart", "선 그래프"), ("bar chart", "막대 그래프"),
+    ("pie chart", "원 그래프"), ("chart", "차트"), ("graph", "그래프"), ("highlight", "강조"), ("data bar", "데이터 막대"),
+    ("delete", "삭제"), ("remove", "삭제"), ("save", "저장"), ("percent", "퍼센트"), ("format", "형식"),
+    ("border", "테두리"), ("borders", "테두리"), ("autofit", "자동 맞춤"), ("rename", "이름 변경"),
+    ("paste", "붙여넣기"),
+))
+# 값일 수도 있는 낱말("A1에 Total 넣어줘"의 Total은 데이터다) — 쓰기 문장에서는 바꾸지 않는다.
+_ENGLISH_TERMS_VALUEISH: tuple[tuple[re.Pattern[str], str], ...] = _en_terms((
+    ("average", "평균"), ("avg", "평균"), ("sum", "합계"), ("total", "합계"), ("title", "제목"),
+    ("pink", "분홍색"), ("red", "빨간색"), ("blue", "파란색"), ("green", "초록색"), ("yellow", "노란색"),
+    ("navy", "남색"), ("white", "흰색"), ("cell", "셀"), ("cells", "셀"), ("column", "열"), ("columns", "열"),
+    ("row", "행"), ("rows", "행"), ("sheet", "시트"), ("tab", "탭"), ("input", "입력"),
+))
+# 쓰기 문장 안에서도 "sum 줄/average 행"처럼 줄·행이 뒤따르면 집계 명령이다.
+_ENGLISH_AGG_LINE = re.compile(r"(?<![A-Za-z0-9_])(average|avg|sum|total)(?![A-Za-z0-9_])(?=\s*(?:줄|행|라인|row|line))", re.IGNORECASE)
+_ENGLISH_AGG_KO = {"average": "평균", "avg": "평균", "sum": "합계", "total": "합계"}
+_ENGLISH_TERMS: tuple[tuple[re.Pattern[str], str], ...] = _ENGLISH_TERMS_COMMAND + _ENGLISH_TERMS_VALUEISH
+_WRITE_VERB_ANY = re.compile(r"(입력|기록|넣어|채워|써\s*(?:줘|주|놔|둬|봐|라)|적어)")
+
+
+def _looks_like_value_grid(text: str) -> bool:
+    """값 나열(쉼표·세미콜론·탭 셋 이상 + 쓰기 동사)인지 — 군말 제거를 값 안에서는 하지 않는다."""
+    t = str(text or "")
+    return len(re.findall(r"[,;\t\n]", t)) >= 3 and re.search(
+        r"(입력|기록|넣어|채워|써)\s*(?:해)?\s*(?:줘요|줘|주세요|주라|줄래|놔|둬|봐)?\s*[~.!?…]*\s*$", t
+    ) is not None
 
 
 def normalize_common_typos(text: str) -> str:
@@ -1627,6 +1771,32 @@ def normalize_common_typos(text: str) -> str:
     out = str(text or "")
     for pattern, repl in _COMMON_TYPO_PAIRS:
         out = pattern.sub(repl, out)
+    # 2026-08-19 블라인드 게이트: 말머리("아 그리고", "ㅇㅇ")·꼬리("빨ㄹ리", "이렇게", "좀")가 값으로
+    # 새거나 규칙을 빗나가게 했다. 값 격자 문장은 값 보존을 위해 **머리 군말만** 떼고, 그 외는 양쪽을 뗀다.
+    grid = _looks_like_value_grid(out)
+    stripped = _LEADING_FILLER.sub("", out)
+    # 프론트가 "여기" 문장 앞에 붙여넣기 범위를 붙이면 "A5:J6 아 그리고 여기에 …"처럼 군말이 범위 **뒤**로 간다
+    # (2026-08-19 ex11 v2 실측: 그 한 줄 때문에 KPI 표가 compare 되묻기로 샜다).
+    lead_range = re.match(r"^\s*([A-Za-z]{1,3}\d{1,7}(?::[A-Za-z]{1,3}\d{1,7})?)\s+", stripped)
+    if lead_range:
+        rest = _LEADING_FILLER.sub("", stripped[lead_range.end():])
+        if rest.strip():
+            stripped = f"{lead_range.group(1)} {rest}"
+    if not grid:
+        stripped = _TRAILING_FILLER.sub("", stripped)
+    # 군말만 있던 문장("ㅇㅇ")을 빈 문장으로 만들지 않는다.
+    if stripped.strip():
+        out = stripped.strip()
+    # 영어 혼용("average 줄", "bold로", "freeze 해") → 규칙 어휘. 수식 문자열이 있으면 건드리지 않는다.
+    # 한글이 섞인 문장에서만 — 영어로만 된 명령("write header in E1:G1")은 영어 규칙이 따로 받는다.
+    # 값 격자는 바이트 단위로 보존한다 — "HEK293 Cell Lysate"의 Cell이 셀로 바뀌어 기록됐다
+    # (2026-08-19 ex18 작성자 실측). 쓰기 문장에서는 값이 될 수 있는 낱말(total, red, cell…)을 건드리지 않는다.
+    if "=" not in out and re.search(r"[가-힣]", out) and not grid:
+        terms = _ENGLISH_TERMS_COMMAND if _WRITE_VERB_ANY.search(out) else _ENGLISH_TERMS
+        for pattern, repl in terms:
+            out = pattern.sub(repl, out)
+        if terms is _ENGLISH_TERMS_COMMAND:
+            out = _ENGLISH_AGG_LINE.sub(lambda m: _ENGLISH_AGG_KO[m.group(1).lower()], out)
     return out
 
 
@@ -1641,6 +1811,14 @@ _ROW_WRITE_PATTERN = re.compile(
     r"(입력|기록|작성|적어|넣어|채워|써|write|set)(?:해)?(?:\s*(?:줘요|줘|주세요|주라|줄래|놔|둬|봐))?",
     re.IGNORECASE,
 )
+# "A12:F17 <값들> 여기(에|다) 입력해줘" — 범위 뒤 조사 없이 값이 오고 지시어가 동사 앞에 붙은 꼴.
+_ROW_WRITE_TRAILING_DEICTIC = re.compile(
+    r"^\s*((?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}:[A-Za-z]{1,3}\d{1,7})\s+((?:[^\n]|\n)+?)\s*"
+    r"(?:(?:이거|이걸|이것|요거|이\s*값|이\s*내용)\s*)?(?:여기(?:에다가|에다|다가|다|에)?|요기에?|이\s*(?:범위|영역|자리|곳)에?)\s*"
+    r"((?:(?:이거|이걸|이것|요거)\s*)?(?:입력|기록|작성|적어|넣어|채워|써)(?:해)?(?:\s*(?:줘요|줘|주세요|주라|줄래|놔|둬|봐))?\s*[~.!?…]*)$",
+    re.IGNORECASE,
+)
+
 # 값 자리에 이런 낱말이 오면 값이 아니라 서식·차트 명령일 가능성이 크다 —
 # 선점(strong) 모드에서는 쓰기로 채가지 않고 원래 규칙에 맡긴다.
 _ROW_WRITE_FORMAT_VOCAB = re.compile(
@@ -1658,6 +1836,12 @@ def parse_explicit_row_write(text: str, *, strong_verb_only: bool = False) -> di
     잡혀 라벨 행이 통째로 사라졌다.
     """
     source = str(text or "")
+    # 프론트는 "여기" 문장에 붙여넣기 범위를 **앞에** 붙인다. 사람이 "값들 … 여기 입력해줘"처럼 지시어를
+    # 뒤에 두면 "A12:F17 월,…; … 여기 입력해줘" 꼴이 되어 범위 뒤 조사가 없다 — 같은 뜻이므로
+    # "A12:F17 여기에 월,… 입력해줘"로 고쳐 읽는다(2026-08-19 ex10 v2 실측: 표 한 장이 통째로 되묻기).
+    trailing = _ROW_WRITE_TRAILING_DEICTIC.match(source)
+    if trailing and re.search(r"[,;\t\n]", trailing.group(2)):
+        source = f"{trailing.group(1)} 여기에 {trailing.group(2).strip()} {trailing.group(3)}"
     lowered = source.lower()
     row_write = _ROW_WRITE_PATTERN.search(source)
     if not row_write or "헤더" in lowered or "header" in lowered:
@@ -1684,7 +1868,11 @@ def parse_explicit_row_write(text: str, *, strong_verb_only: bool = False) -> di
         return None
     raw_values = row_write.group(2).strip()
     # "서울, 부산, 대구 **순서대로**" — 꼬리 부사는 값이 아니다(2026-08-18 사냥).
-    raw_values = re.sub(r"\s*(?:순서대로|차례대로|순으로|각각|전부|모두)\s*$", "", raw_values)
+    raw_values = re.sub(
+        r"(?:\s*(?:순서대로|차례대로|순으로|각각|전부|모두|이렇게|요렇게|이거|이걸|이것|요거|여기에?|여기다|그대로|대로|쭉|한\s*번에))+\s*$",
+        "",
+        raw_values,
+    )
     # 복합문("…넣고 D2에 합계 써줘")의 뒤 절이 값으로 흘러들면 표가 오염된다.
     # 값 안에 또 다른 절이 보이면 물러난다 — 해석 카드가 받는다.
     if re.search(r"(?:넣고|쓰고|입력하고|적고)\s", raw_values) or re.search(
@@ -1716,7 +1904,7 @@ def parse_explicit_row_write(text: str, *, strong_verb_only: bool = False) -> di
             ]
     rows_2d = []
     for group in row_groups:
-        tokens = _split_header_tokens(group)
+        tokens = _split_tokens_expecting(group, col_count)
         if not tokens:
             continue
         row_values = [_parse_literal_value(t) for t in tokens[:col_count]]
@@ -1734,6 +1922,28 @@ def parse_explicit_row_write(text: str, *, strong_verb_only: bool = False) -> di
             else f"여러 행({len(rows_2d)}) 값 일괄 입력 요청"
         ),
     }
+
+
+# 값 자리에 오면 값이 아니라 명령인 조각 — 자리말("이 표 아래에"), 집계말("합계 줄", "평균 한 줄"), 군말.
+_COMMANDISH_TOKEN = re.compile(
+    r"(?:(?:이|그|저|요|바로|그\s*다음|다음)?\s*(?:표|범위|영역|칸|셀|줄|행)?\s*"
+    r"(?:아래쪽|밑쪽|위쪽|옆쪽|오른쪽|왼쪽|아래|밑|옆|위|뒤|끝|맨\s*밑|맨\s*아래|맨\s*위)\s*(?:에다가|에다|에|로|으로|쪽에)?"
+    r"|(?:합계|총합계|총합|총계|평균|소계|개수|합)\s*(?:줄|행|라인|한\s*줄|하나)\s*(?:을|를|도|은|는)?"
+    r"|(?:한|하나|두|세)\s*(?:줄|행|칸|개)(?:로|으로)?"
+    r"|(?:이거|이걸|이것|그거|저거|여기|여기에|요기|거기|전부|모두|다|전체|쭉|이렇게|그대로|부탁|부탁해|부탁해요|해줘|해주세요|줘|주세요|요)"
+    r")"
+)
+
+_PASTE_POS = r"(?:아래쪽|밑쪽|위쪽|옆쪽|오른편|왼편|오른쪽|왼쪽|아래|밑|옆|위|다음|뒤)"
+_PASTE_PARTICLE = r"(?:에다가|에다|다가|다|에|로|으로|부터)"
+_PASTE_LOCATIVE_LEAD = re.compile(
+    r"^(?:(?:"
+    + r"(?:여기|요기)" + _PASTE_PARTICLE + r"?"
+    + r"|(?:이|그|저|요|바로|그\s*다음|다음|새|새로운)\s*(?:곳|쪽|자리|범위|영역|칸|셀|표|것|거|줄|행|열|시트)\s*" + _PASTE_POS + r"?\s*" + _PASTE_PARTICLE + r"?"
+    + r"|(?:바로|그|이|저|요)?\s*" + _PASTE_POS + r"\s*" + _PASTE_PARTICLE
+    + r"|이어서|이어|계속해서|계속|붙여서|추가로|덧붙여서|연달아|연이어|이거|이걸|이것|요거"
+    + r")(?=[\s,:]|$)[\s,:]*)+"
+)
 
 
 def parse_rangeless_row_write(text: str, target_range: str) -> dict | None:
@@ -1774,9 +1984,25 @@ def parse_rangeless_row_write(text: str, target_range: str) -> dict | None:
     # 문장 전체가 텍스트로 들어갔다).
     # "지역성과 시트에 이 영역에 …" — 시트 지목과 지시어가 겹쳐 붙어도 값이
     # 아니다(2026-08-18 실사용 문장 배터리 실측: 문장 전체가 A1 값으로 들어갔다).
-    body = re.sub(r"^[^\s,]+\s*시트(?:에|의|에서|에다가?)?\s*", "", body)
-    body = re.sub(r"^(?:여기(?:에다가|에다|다가|다|에)?|이\s*(?:곳|쪽|자리|범위|영역)에?|요기에?)\s*", "", body)
-    body = re.sub(r"\s*(?:순서대로|차례대로|순으로|각각|전부|모두)\s*$", "", body)
+    # 시트 이름은 "재고 관리 시트에"처럼 띄어 쓴 여러 낱말일 수 있다(최대 3낱말, 쉼표 앞까지).
+    body = re.sub(r"^(?:[^\s,]+\s+){0,2}[^\s,]+\s*(?:시트|탭)(?:에|의|에서|에다가?)?\s*", "", body)
+    # "방금 붙여넣은 표 아래에 …", "선택한 범위에 …" — 자리를 가리키는 말머리도 값이 아니다.
+    body = re.sub(
+        r"^(?:(?:방금|지금|아까)\s*)?(?:붙여\s*넣은|복사한|선택한|잡은|드래그한)\s*(?:표|범위|영역|곳|자리)?\s*(?:아래에?|밑에?|에다가?|에|의)?\s*",
+        "",
+        body,
+    )
+    # 자리를 가리키는 말머리 전부 — "여기에", "이 표 옆에 이어서", "오른쪽에", "바로 밑에", "그 다음 줄에",
+    # "이어서". 각 조각 뒤에 공백·쉼표 경계를 요구해 "이어폰", "이름"이 잘리지 않는다
+    # (2026-08-19 각본 작성자 4명이 "이 표 옆에"가 첫 칸에 새어 들어간다고 보고).
+    body = _PASTE_LOCATIVE_LEAD.sub("", body)
+    # 꼬리 군말: "… 이렇게 입력해줘", "… 이거 여기 붙여 넣어", "… 으로 채워" — 값이 아니다
+    # (2026-08-19 블라인드 게이트: 마지막 칸이 '200 이렇게', '200 이거 여기 붙여'로 오염).
+    body = re.sub(
+        r"(?:\s*(?:순서대로|차례대로|순으로|각각|전부|모두|이렇게|요렇게|이거|이것|요거|여기에?|여기다|으로|로|을|를|붙여서|붙여|대로|그대로|한\s*번에|쭉))+\s*$",
+        "",
+        body,
+    )
     if re.search(r"(?:넣고|쓰고|입력하고|적고)\s", body):
         # 복합문의 뒤 절이 값으로 흘러들면 오염이다 — 해석 카드가 받는다.
         return None
@@ -1788,7 +2014,12 @@ def parse_rangeless_row_write(text: str, target_range: str) -> dict | None:
     if re.search(
         r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}:[A-Za-z]{1,3}\d{1,7}(?![A-Za-z0-9])", body
     ) or re.search(
-        r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}\s*(?:에다가?|에|부터|까지|셀|칸|범위)(?![A-Za-z0-9가-힣])",
+        r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}\s*(?:에다가?|에|부터|까지|범위)(?![A-Za-z0-9가-힣])",
+        body,
+    ) or re.match(
+        # "A1 셀 철수, 영희" — 셀/칸 낱말만으로는 **문장 맨 앞**에서만 대상 지목으로 본다.
+        # 값 안의 "HEK293 셀 용해물"(생물 시료명)까지 물러나면 표를 못 넣는다(2026-08-19 ex18 작성자 실측).
+        r"\s*[A-Za-z]{1,3}\d{1,7}\s*(?:셀|칸)(?![A-Za-z0-9가-힣])",
         body,
     ):
         return None
@@ -1801,6 +2032,13 @@ def parse_rangeless_row_write(text: str, target_range: str) -> dict | None:
         return None
     if not row_groups:
         return None
+    # "넣어줘 합계 줄, 이 표 아래에" — 쉼표로 갈린 조각이 자리말·집계말뿐이면 값 나열이 아니라 명령이다.
+    # 이걸 값으로 쓰면 **머리글 줄이 '합계 줄 | 이 표 아래에'로 덮인다**(2026-08-19 ex11 v2 실측: 조용한 오실행 뒤
+    # 정렬 답변까지 연쇄 실패). 한 줄 나열에서 조각 하나라도 명령말이면 물러난다.
+    if len(row_groups) == 1:
+        _first_tokens = _split_header_tokens(row_groups[0])
+        if any(_COMMANDISH_TOKEN.fullmatch(tok.strip()) for tok in _first_tokens):
+            return None
     if rng:
         col_count = _column_span(rng.group(1), rng.group(3))
         start_cell = f"{rng.group(1)}{rng.group(2)}"
@@ -1811,7 +2049,7 @@ def parse_rangeless_row_write(text: str, target_range: str) -> dict | None:
             # 한 칸에 낱말 하나 — 단일 쓰기 규칙이 더 잘 안다.
             return None
     rows_2d = []
-    token_rows = [_split_header_tokens(group) for group in row_groups]
+    token_rows = [_split_tokens_expecting(group, col_count) for group in row_groups]
     # 잡은 범위보다 값이 넓으면(예: A1:E6을 잡고 6열을 붙임) 잘라 버리지 않는다 —
     # 마지막 열이 조용히 사라지는 것보다 Excel 붙여넣기처럼 오른쪽으로 흘리는 편이
     # 사람이 기대하는 결과다(2026-08-19 붙여넣기 흐름 강건화).
@@ -1918,6 +2156,25 @@ def parse_cell_arithmetic_write(text: str) -> dict | None:
             "reason": f"두 셀의 {op} 연산 수식",
         }
     return None
+
+
+def _split_tokens_expecting(source: str, expected: int) -> list[str]:
+    """열 수를 알 때의 토큰화 — 천 단위 병합("2,100"→2100)으로 칸이 모자라면 병합 없이 다시 쪼갠다.
+
+    2026-08-19 각본 작성자 5명이 같은 함정을 보고했다: "지원자,2,100,…"에서 2와 100은 두 칸인데
+    2100 한 칸으로 합쳐져 열이 밀렸다. 범위가 K열이면 K가 정답의 기준이다 — 병합본이 K에 못 미치고
+    비병합본이 정확히 K면 비병합본을 쓴다. (둘 다 K가 아니면 기존 동작.)
+    """
+    merged = _split_header_tokens(source)
+    if expected <= 0 or len(merged) == expected or "\t" in str(source or ""):
+        return merged
+    if len(merged) < expected:
+        text = str(source or "")
+        if "," in text:
+            plain = [token.strip() for token in text.split(",") if token.strip()]
+            if len(plain) == expected:
+                return plain
+    return merged
 
 
 def _split_header_tokens(source: str) -> list[str]:

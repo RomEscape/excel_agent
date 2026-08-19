@@ -2423,7 +2423,8 @@ class FileExcelLiveService(ExcelLiveService):
         try:
             ws = self._sheet_or_raise(wb, sheet_name)
             min_row, min_col, max_row, max_col = self._range_bounds(ws, source_range)
-            if max_row <= min_row or max_col < min_col:
+            # 한 줄짜리 가로 계열("B68:J68로 선 그래프" — 월이 열 방향)도 차트다(2026-08-19 ex16 실측).
+            if max_col < min_col or (max_row <= min_row and max_col <= min_col):
                 raise ExcelLiveError("차트를 만들 데이터가 부족합니다. 머리글과 데이터 행이 필요합니다.")
 
             kind = str(chart_type or "line").strip().lower()
@@ -2487,6 +2488,27 @@ class FileExcelLiveService(ExcelLiveService):
                     chart.set_categories(
                         Reference(ws, min_col=label_col, min_row=data_min_row, max_row=max_row)
                     )
+            elif min_row == max_row:
+                # 가로 한 줄 계열: 첫 칸이 글자면 계열 이름, 숫자면 왼쪽 칸을 이름으로 쓴다.
+                # 항목(카테고리)은 바로 윗줄(예: 월 머리글)이 글자일 때만 잡는다.
+                first_value = ws.cell(row=min_row, column=min_col).value
+                has_title = isinstance(first_value, str) and bool(first_value.strip())
+                data_min_col = min_col + 1 if has_title else min_col
+                values = Reference(ws, min_col=min_col, max_col=max_col, min_row=min_row, max_row=min_row)
+                chart.add_data(values, from_rows=True, titles_from_data=has_title)
+                if not has_title:
+                    left = ws.cell(row=min_row, column=min_col - 1).value if min_col > 1 else None
+                    if isinstance(left, str) and left.strip():
+                        header_ref = f"'{ws.title}'!{ws.cell(row=min_row, column=min_col - 1).coordinate}"
+                        chart.series[0].tx = SeriesLabel(strRef=StrRef(header_ref))
+                    else:
+                        chart.legend = None
+                if min_row > 1:
+                    above_cells = [ws.cell(row=min_row - 1, column=c).value for c in range(data_min_col, max_col + 1)]
+                    if any(v is not None and str(v).strip() for v in above_cells):
+                        chart.set_categories(
+                            Reference(ws, min_col=data_min_col, max_col=max_col, min_row=min_row - 1, max_row=min_row - 1)
+                        )
             else:
                 categories = Reference(ws, min_col=min_col, min_row=min_row + 1, max_row=max_row)
                 value_min_col = min_col + 1

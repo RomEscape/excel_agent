@@ -78,6 +78,7 @@ from office_claw_sidecar.services.excel_header_lexicon import (
     resolve_header,
 )
 from office_claw_sidecar.services.excel_live_agent import (
+    _ROW_WRITE_FORMAT_VOCAB,
     COLUMN_LETTER_PATTERN,
     RANGE_REF_PATTERN,
     clarify_question_from_plan,
@@ -132,8 +133,10 @@ from office_claw_sidecar.services.excel_param_binder import (
     _retarget_sheet_by_headers,
     bind_plan_steps,
     explicit_sheet_mention_variants,
+    extend_sheet_name_leftward,
     resolve_sheet_from_message,
     sheet_entry,
+    sheet_mention_matches_known,
 )
 from office_claw_sidecar.services.excel_planner_escalation import (
     EscalationResult,
@@ -588,6 +591,9 @@ def _action_lacks_evidence(action: str, message: str) -> bool:
 # 사라지고, 사용자는 "필터 완료" 메시지만 본다.
 _AMBIGUITY_SENSITIVE_SLOTS = {
     ("excel_live.sort_range", "key_column"),
+    # sort_rows의 기준 열 슬롯은 "column"이다 — "key_column"으로 적혀 있어 되묻기 게이트가 한 번도 안 열렸고
+    # "정렬 좀"이 모델이 지어낸 '이름' 열로 실행됐다(2026-08-19 ex9·15·19·21 실측, 바인더 쪽 같은 오기도 함께 고침).
+    ("excel_live.sort_rows", "column"),
     ("excel_live.sort_rows", "key_column"),
     ("excel_live.dedupe_rows", "key_columns"),
     ("excel_live.create_chart", "chart_type"),
@@ -608,7 +614,7 @@ _AMBIGUITY_SENSITIVE_SLOTS = {
 # 이건 "종류를 말했는가"를 판정하는 곳이라, 여기 없으면 종류를 말해도 안 말한 것이
 # 된다. 두 목록이 어긋나면 이런 식으로 조용히 되묻기가 된다 — 같이 고쳐야 한다.
 _CHART_TYPE_MENTION = re.compile(
-    r"(선\s*그래프|꺾은|라인|line|막대|bar|원형|파이|pie|영역|area|분산|scatter"
+    r"(선\s*그래프|꺾은|라인|line|막대|bar|원형|파이|pie|원\s*그래프|원\s*차트|영역|area|분산|scatter"
     r"|도넛|도너츠|donut|doughnut|링\s*차트|바\s*차트|바\s*그래프"
     # 종류를 함의하는 낱말도 종류 언급이다 — _CHART_KIND_WORDS와 같이 간다.
     # "추이 그래프"가 종류 질문으로 새던 문제(2026-08-18 배터리 실측).
@@ -906,6 +912,10 @@ def _edit_target_problem(
         # 멀쩡한 "추이"를 두고 되묻게 된다(2026-08-17 실측).
         for group in explicit_sheet_mention_variants(message):
             if any(name.strip().casefold() in existing for name in group):
+                continue
+            # "재고 관리 시트" / "간트 관리 시트"처럼 띄어 쓴 다낱말 이름은 한 낱말 패턴이 '관리'만 잡는다 —
+            # 실재 시트 이름이 그 자리에서 끝나면 해결된 지목이다(2026-08-19 ex12·ex13 실측).
+            if sheet_mention_matches_known(message, group[0], sheets):
                 continue
             target_sheet = group[0]
             break
@@ -1448,8 +1458,11 @@ _AGGREGATE_SENSITIVE_QUICK_ACTIONS = frozenset(
 # 값 없이 쓰기 동사만 온 문장 — 붙여넣기 뒤 값을 빠뜨린 실수("여기에 입력해줘").
 _BARE_WRITE_REQUEST = re.compile(
     r"^(?:(?:[A-Za-z]{1,3}\d{1,7}(?::[A-Za-z]{1,3}\d{1,7})?)\s*)?"
+    # "이거 넣어줘", "복사한 거 여기에 붙여줘", "방금 거 입력" — 대명사는 값이 아니다(2026-08-19 ex9 v2 실측).
+    r"(?:(?:방금|지금|아까)\s*)?(?:복사한|복붙한|붙여넣은|긁어온|선택한)?\s*"
+    r"(?:이거|이걸|이것|요거|그거|그걸|그것|저거|얘네|이\s*값|이\s*내용|이\s*표|복사한\s*거|복사본|클립보드|거|것)?\s*(?:을|를|도)?\s*"
     r"(?:여기(?:에|에다|다가|다)?|요기에?|이\s*(?:곳|쪽|자리|칸|셀|범위|영역)에?)?\s*(?:값\s*(?:을|를)?\s*)?"
-    r"(?:입력|기록|넣어|채워|써|적어)\s*(?:해)?\s*(?:줘요|줘|주세요|주라|줄래|놔|둬|봐)?\s*[~.!?…]*$"
+    r"(?:입력|기록|넣어|채워|써|적어|붙여\s*넣어|붙여|붙여넣기)\s*(?:해)?\s*(?:줘요|줘|주세요|주라|줄래|놔|둬|봐)?\s*[~.!?…]*$"
 )
 _AGGREGATE_REQUEST_PATTERN = re.compile(
     r"(교차표|피벗|pivot)"
@@ -2122,7 +2135,11 @@ def _detect_operation_intent(message: str) -> str:
         return "compare"
     if _contains_any_keyword(lowered, compact, ["예측", "추세", "시뮬레이션", "다음 달", "연말", "forecast", "앞으로"]):
         return "forecast"
-    if _contains_any_keyword(lowered, compact, ["a4", "인쇄", "pdf", "출력", "제출"]):
+    # "a4"는 낱말로만 — "A46:F51"의 a4가 인쇄로 분류돼 합계 줄 요청이 "인쇄 기준을 알려주세요"로 샜다
+    # (2026-08-19 ex12 실측).
+    if _contains_any_keyword(lowered, compact, ["인쇄", "pdf", "출력", "제출"]) or re.search(
+        r"(?<![a-z0-9])a4(?![a-z0-9])", lowered
+    ):
         return "print"
     if _contains_any_keyword(
         lowered,
@@ -2469,14 +2486,44 @@ def _named_sheet_in_text(text: str) -> str | None:
     여러 개면 마지막을 쓴다 — 앞쪽은 대개 원본이라 그걸 고르면 원본을 덮어쓴다
     (`_extract_output_sheet_from_text`와 같은 이유).
     """
-    for name in reversed(_extract_sheet_mentions(text)):
+    src = str(text or "")
+    for match in reversed(list(_SHEET_MENTION_PATTERN.finditer(src))):
+        name = str(match.group(1)).strip().strip("\"'")
         if name and name.lower() not in _SHEET_DEMONSTRATIVES:
-            return name
+            # "재고 관리 시트" — 이름은 여러 낱말일 수 있다(2026-08-19 ex12 실측: '관리' 시트를 찾았다).
+            return extend_sheet_name_leftward(src, match.start(1), name)
     return None
 
 
 _HEADER_INTENT_PATTERN = re.compile(r"헤더|머리글|컬럼\s*명|열\s*이름|header", re.IGNORECASE)
 _TABLE_CREATE_INTENT_PATTERN = re.compile(r"(?:표|테이블|table)\s*\S{0,4}\s*(?:만들|생성|작성|create)", re.IGNORECASE)
+
+
+_FREEZE_WORD = re.compile(r"(틀\s*고정|고정|freeze|프리즈)", re.IGNORECASE)
+_FREEZE_ROW_HINT = re.compile(
+    r"(첫\s*줄|첫줄|첫\s*번째\s*행|첫\s*행|1\s*행|맨\s*윗\s*줄|윗줄|위\s*줄|상단|머리글|헤더|제목\s*줄|타이틀\s*줄|"
+    r"스크롤|내려도|내려가도|따라오게|안\s*사라지게|계속\s*보이게|항상\s*보이게)"
+)
+_FREEZE_COL_HINT = re.compile(r"(첫\s*열|첫열|A\s*열|왼쪽\s*열|첫\s*번째\s*열)")
+_FREEZE_OFF = re.compile(r"(해제|풀어|풀고|없애|취소|끄|지워)")
+
+
+def _quick_freeze_step(text: str) -> dict[str, Any] | None:
+    """"첫 줄 고정해줘", "머리글 줄 고정, 내려도 보이게", "틀 고정 해제" — 틀 고정은 결정적 규칙이다.
+
+    2026-08-19 블라인드 게이트: 규칙이 없어 전부 모델로 갔고 5/24가 빈 파라미터로 실행돼 아무 일도 없었다.
+    """
+    if not _FREEZE_WORD.search(text):
+        return None
+    # "고정"이 다른 뜻인 문장("합계 줄은 고정", "값 고정") — 줄/열/스크롤 맥락이 없으면 물러난다.
+    if not (_FREEZE_ROW_HINT.search(text) or _FREEZE_COL_HINT.search(text) or re.search(r"틀\s*고정|freeze", text, re.IGNORECASE)):
+        return None
+    if _FREEZE_OFF.search(text):
+        return {"action": "excel_live.freeze_panes", "params": {"freeze_at": "해제"}, "reason": "빠른 규칙 기반 틀 고정 해제"}
+    row = bool(_FREEZE_ROW_HINT.search(text)) or not _FREEZE_COL_HINT.search(text)
+    col = bool(_FREEZE_COL_HINT.search(text))
+    freeze_at = "B2" if (row and col) else ("B1" if col else "A2")
+    return {"action": "excel_live.freeze_panes", "params": {"freeze_at": freeze_at}, "reason": "빠른 규칙 기반 틀 고정"}
 
 
 def _quick_header_write_step(text: str, preferred_cell: str) -> dict[str, Any] | None:
@@ -2487,6 +2534,17 @@ def _quick_header_write_step(text: str, preferred_cell: str) -> dict[str, Any] |
     목록이 명시된 문장은 추론할 게 없으므로 규칙으로 확정한다.
     """
     if not _HEADER_INTENT_PATTERN.search(text) or _TABLE_CREATE_INTENT_PATTERN.search(text):
+        return None
+    # "머리글은, 글씨는 흰색 굵게" / "머리글 줄 고정해줘, 내려도 계속 보이게" — 서식·고정 문장의 쉼표 조각을
+    # 머리글 목록으로 읽어 **표 첫 줄을 덮어썼다**(2026-08-19 블라인드 게이트: 머리글 서식 6건·틀 고정 5건).
+    # 목록 쓰기는 "머리글(은|을|로|:) 이름, 이름, …" 꼴에서만 — 서식·동작 어휘가 섞이면 물러난다.
+    if re.search(
+        r"(굵게|진하게|색|배경|바탕|글씨|글자|고정|보이게|스크롤|테두리|병합|정렬|콤마|서식|"
+        r"해줘|해주|해라|해봐|부탁|주세요|줄래|줘요|사라지|내려도|너비|높이|폰트|크기)",
+        text,
+    ):
+        return None
+    if not re.search(r"(?:헤더|머리글|컬럼\s*명|열\s*이름|header)\s*(?:은|는|을|를|로|으로|에는|:|\s)", text):
         return None
 
     headers = extract_create_table_slot_hints(text).get("headers") or []
@@ -2566,6 +2624,10 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
     if header_step is not None:
         return [header_step]
 
+    freeze_step = _quick_freeze_step(text)
+    if freeze_step is not None:
+        return [freeze_step]
+
     fmt_step = _quick_number_format_step(
         text, normalized_ctx or explicit_range or "__ACTIVE_SELECTION__"
     )
@@ -2621,12 +2683,13 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
     # 이름을 따로 부르는 문형이 먼저다. 아니면 '이름으로'가 시트 이름이 된다
     # (2026-08-18 사람 말투 배터리 실측: '이름으로' 시트가 생겼다).
     named_sheet_match = re.search(
-        r"(?:([^\s,]+?)\s*(?:이?라는)\s*(?:이름(?:의|으로)?)?|이름은\s*([^\s,]+?)(?:으로|로)?)"
-        r"[^\n]{0,12}(?:시트|sheet)[^\n]{0,8}(?:만들|생성|추가|파\s*줘|파줘)",
+        r"(?:([^\s,]+?)\s*(?:이?라는|이?란|이?라고)\s*(?:이름(?:의|으로|은)?)?|이름은\s*([^\s,]+?)(?:으로|로)?(?=[\s,]|$))"
+        r"[^\n]{0,12}(?:시트|sheet|탭)[^\n]{0,10}(?:만들|생성|추가|파\s*줘|파줘)",
         text,
         re.IGNORECASE,
     ) or re.search(
-        r"(?:시트|sheet)[^\n]{0,10}(?:만들|생성|추가|파\s*줘|파줘)[^\n]{0,8}이름은\s*([^\s,]+?)(?:으로|로)?(?:\s|$)",
+        # "시트 새로 하나 파 주세요, 이름은 Requisition으로"(2026-08-19 ex15 v2 실측) — 사이말·쉼표·높임을 허용.
+        r"(?:시트|sheet|탭)[^\n]{0,14}(?:만들|생성|추가|파\s*주|파\s*줘|파줘|파\s*줄)[^\n]{0,12}이름은\s*([^\s,]+?)(?:으로|로)?(?=[\s,.!]|$)",
         text,
         re.IGNORECASE,
     )
@@ -2645,7 +2708,8 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
         # 조사(를/을/도)와 "하나/새로" 같은 사이말을 허용한다. "시트를 만들어줘"의
         # 를 하나 때문에 퀵이 미스나 플래너로 갔고, 플래너가 이름 끝 글자(과)를
         # 잘라 '지역성' 시트를 만들었다(2026-08-18 GUI 실측).
-        r"([^\s,]+)\s*(?:시트|sheet)\s*(?:을|를|도)?\s*(?:하나|새로)?\s*(?:만들|생성|추가|create|add)",
+        # "시트도 하나 더 만들어", "시트 새로 하나", "시트 좀 추가" — 사이말은 몇 개든 온다(2026-08-19 ex10 v2 실측).
+        r"([^\s,]+)\s*(?:시트|sheet)\s*(?:을|를|도|좀|부터|는|은|먼저)?(?:\s*(?:하나|새로|새로이|한\s*개|더|추가로|새|좀|먼저))*\s*(?:만들|생성|추가|create|add|파\s*줘|파줄|파주)",
         text,
         re.IGNORECASE,
     )
@@ -2655,6 +2719,9 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
             # "새 시트 만들어줘"의 '새'는 이름이 아니다.
             sheet_name = ""
         if sheet_name:
+            # "재고 관리 시트도 하나 만들어줄래" — 이름은 한 낱말이 아닐 수 있다. 앞 낱말이 조사·접속어로
+            # 끝나지 않으면 이름의 일부다(2026-08-19 ex12 실측: '관리' 시트가 생기고 뒤 턴이 전부 어긋났다).
+            sheet_name = extend_sheet_name_leftward(text, create_sheet_match.start(1), sheet_name)
             return [
                 {
                     "action": "excel_live.create_sheet",
@@ -3215,10 +3282,16 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
         ):
             return None
         chart_mentioned = bool(re.search(r"(차트|그래프|chart)", lowered))
-        cell_scope_mentioned = bool(
-            re.search(r"(셀|내용|값|전체|전부|초기화|리셋|서식|데이터|표|뭐든)", lowered)
+        # "데이터는 놔두고 / 값은 그대로 / 표는 두고" — 값을 지키라는 한정사. 차트만 지우라는 뜻이다
+        # (2026-08-19 블라인드 게이트: "지워줘 차트 다, 데이터는 놔두고"가 데이터까지 비웠다).
+        keep_data = bool(
+            re.search(r"(데이터|값|내용|표|숫자)\s*(?:는|은|만)?\s*(?:놔두|놔둬|두고|남기|그대로|빼고|건드리지)", lowered)
         )
-        if chart_mentioned and not cell_scope_mentioned:
+        # "차트 전부/다 없애"의 전부·다는 차트의 수량이지 셀 범위가 아니다 — 차트가 언급된 문장에서는
+        # 전체/전부/다를 범위 어휘로 세지 않는다(같은 날 실측: "시트에 있는 차트 전부 없애"가 표까지 지웠다).
+        scope_words = r"(셀|내용|값|초기화|리셋|서식|데이터|표|뭐든)" if chart_mentioned else r"(셀|내용|값|전체|전부|초기화|리셋|서식|데이터|표|뭐든)"
+        cell_scope_mentioned = bool(re.search(scope_words, lowered)) and not keep_data
+        if chart_mentioned and (not cell_scope_mentioned or keep_data):
             # "차트 다 지워줘" — 차트만 지목했으면 값은 건드리지 않는다.
             # 삭제 액션 부재로 차트 **생성** 슬롯("차트 종류를 선택해 주세요")에
             # 새던 문형이다(2026-08-18 GUI 실측).
@@ -3298,6 +3371,86 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
                 }
             ]
         return [{"action": "excel_live.save_workbook", "params": {}, "reason": "빠른 규칙 기반 저장"}]
+
+    replace_step = _quick_find_replace_step(text, context_range)
+    if replace_step is not None:
+        return [replace_step]
+    return None
+
+
+# "처리중을 진행중으로 바꿔줘", "ML Ops를 MLOps로 찾아 바꿔", "'김선생' → '김선생님'" — 찾아 바꾸기는 결정적이다.
+# 2026-08-19 ex16 실측: 규칙이 없어 전부 모델로 갔고 플래너가 JSON을 못 내 되물었다.
+_FIND_REPLACE_VERB = r"(?:전부|모두|다|싹|일괄|한\s*번에)?\s*(?:찾아서?\s*)?(?:바꿔|바꾸|변경|교체|치환|replace|고쳐)"
+_Q = r"[\"'“”‘’]?"
+# 낱말 1~3개(띄어쓰기 허용), 쉼표·세미콜론·따옴표 없음. 비탐욕이라 바로 뒤 조사에서 멈춘다.
+_FIND_REPLACE_TOKEN = r"([^\s,;\"'“”‘’]{1,30}?(?:\s+[^\s,;\"'“”‘’]{1,30}?){0,2})"
+_FIND_REPLACE_SCOPE = (
+    r"(?:(?:[A-Za-z]{1,3}\d{1,7}(?::[A-Za-z]{1,3}\d{1,7})?|[A-Za-z]\s*열|[^\s,;]+\s*열|[^\s,;]+\s*시트|전체|시트\s*전체|표\s*전체|표)"
+    r"\s*(?:에서|의|에|안에서|은|는)?\s+)?"
+)
+_FIND_REPLACE_PATTERNS = (
+    re.compile(
+        # "처리중이라고 된 거 전부 진행중으로 바꿔줘" / "대기라고 적힌 셀은 보류로"
+        r"^\s*" + _FIND_REPLACE_SCOPE + _Q + _FIND_REPLACE_TOKEN + _Q
+        + r"\s*(?:이?라고|이?라|으?로)\s*(?:된|적힌|쓰인|써진|입력된|표시된|돼\s*있는|되어\s*있는|써\s*있는)\s*(?:거|것|셀|칸|값|글자|애들|부분)?\s*(?:은|는|을|를|도)?\s*(?:전부|모두|다|싹|일괄)?\s*"
+        + _Q + _FIND_REPLACE_TOKEN + _Q
+        + r"\s*(?:으로|로|이라고|라고)\s*" + _FIND_REPLACE_VERB,
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*" + _FIND_REPLACE_SCOPE + _Q + _FIND_REPLACE_TOKEN + _Q
+        + r"\s*(?:을|를|이라는|라는|이란|란|은|는|에서)\s*(?:글자|텍스트|값|단어|문자|문구|표기)?\s*(?:을|를|은|는)?\s*"
+        + _Q + _FIND_REPLACE_TOKEN + _Q
+        + r"\s*(?:으로|로|이라고|라고)\s*" + _FIND_REPLACE_VERB,
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*" + _FIND_REPLACE_SCOPE + _Q + _FIND_REPLACE_TOKEN + _Q + r"\s*(?:→|->|=>|⇒)\s*" + _Q + _FIND_REPLACE_TOKEN + _Q
+        + r"\s*(?:으로|로)?\s*" + _FIND_REPLACE_VERB,
+        re.IGNORECASE,
+    ),
+)
+# 이런 낱말이 찾을/바꿀 값에 들어 있으면 텍스트 치환이 아니라 서식·구조 명령이다.
+_FIND_REPLACE_NOT_TEXT = re.compile(
+    r"(열|행|시트|탭|차트|그래프|글꼴|폰트|색|배경|서식|형식|크기|너비|높이|이름|제목|굵게|기울임|테두리|병합|정렬|"
+    r"수식|함수|숫자|날짜|퍼센트|콤마|소수|자리|순서|위치|방향|모양|스타일|타입|종류|단위|통화|원화|달러)$"
+)
+
+
+def _quick_find_replace_step(text: str, context_range: str | None) -> dict[str, Any] | None:
+    src = str(text or "").strip()
+    if not src or "=" in src:
+        return None
+    for pattern in _FIND_REPLACE_PATTERNS:
+        m = pattern.search(src)
+        if not m:
+            continue
+        find_text = m.group(1).strip()
+        replace_text = m.group(2).strip()
+        # "N/A는 빈칸으로" — 빈 값으로 바꾸라는 말이다.
+        if re.fullmatch(r"(?:빈\s*칸|공백|빈\s*값|빈\s*문자열|아무것도\s*없음|없음|삭제)", replace_text):
+            replace_text = ""
+        if not find_text or find_text == replace_text:
+            return None
+        if _FIND_REPLACE_NOT_TEXT.search(find_text) or _FIND_REPLACE_NOT_TEXT.search(replace_text):
+            return None
+        if re.fullmatch(r"[A-Za-z]{1,3}\d{1,7}(?::[A-Za-z]{1,3}\d{1,7})?", find_text, re.IGNORECASE):
+            return None
+        explicit = re.search(r"(?<![A-Za-z0-9])([A-Za-z]{1,3}\d{1,7}:[A-Za-z]{1,3}\d{1,7})(?![A-Za-z0-9])", src)
+        col = re.search(r"(?<![A-Za-z0-9])([A-Za-z])\s*열", src)
+        if explicit:
+            target = explicit.group(1).upper()
+        elif col:
+            target = f"{col.group(1).upper()}:{col.group(1).upper()}"
+        elif context_range and ":" in str(context_range):
+            target = str(context_range).upper()
+        else:
+            target = "__USED_RANGE__"
+        return {
+            "action": "excel_live.find_replace",
+            "params": {"target_range": target, "find_text": find_text, "replace_text": replace_text, "whole_cell": False},
+            "reason": "빠른 규칙 기반 찾아 바꾸기",
+        }
     return None
 
 
@@ -3624,7 +3777,7 @@ def _build_generic_excel_follow_up(message: str) -> str:
             "성능 진단을 위해 어떤 작업에서 느린지 알려주세요. 예: 피벗 새로고침/대용량 수식/조건부서식. "
             "원하면 원본 보존 상태로 진단용 요약 시트를 먼저 만들겠습니다."
         )
-    if any(token in lowered for token in ["a4", "인쇄", "pdf", "출력", "제출"]):
+    if any(token in lowered for token in ["인쇄", "pdf", "출력", "제출"]) or re.search(r"(?<![a-z0-9])a4(?![a-z0-9])", lowered):
         return (
             "출력 형식을 정할게요. A4 가로/세로, 한 페이지 맞춤 여부, PDF 저장 필요 여부를 알려주세요."
         )
@@ -4385,7 +4538,7 @@ def _rank_limit_fill_color(plan) -> str:
 _CHART_KIND_WORDS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(도넛|도너츠|donut|doughnut|링\s*차트)", re.IGNORECASE), "doughnut"),
     (re.compile(r"(막대|bar|컬럼|column)", re.IGNORECASE), "bar"),
-    (re.compile(r"(원형|파이|pie)", re.IGNORECASE), "pie"),
+    (re.compile(r"(원형|파이|pie|원\s*그래프|원\s*차트)", re.IGNORECASE), "pie"),
     (re.compile(r"(분산|산점|scatter)", re.IGNORECASE), "scatter"),
     (re.compile(r"(영역\s*차트|면적\s*차트|area\s*chart)", re.IGNORECASE), "area"),
     (re.compile(r"(선\s*그래프|꺾은|라인|line|추이|트렌드)", re.IGNORECASE), "line"),
@@ -5183,7 +5336,7 @@ def _merge_create_table_slots(
         # 못 타고 "표 크기를 알려주세요"로 되물었다 — 2026-08-16에 고친 바로 그
         # 버그가 다른 입구로 되살아난 것이다.
         inline = re.search(
-            r"\b[A-Za-z]{1,3}\d{1,7}:[A-Za-z]{1,3}\d{1,7}\b", str(req.message or "")
+            r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}:[A-Za-z]{1,3}\d{1,7}(?![A-Za-z0-9])", str(req.message or "")
         )
         if inline:
             dragged = _normalize_range_text(inline.group(0))
@@ -7199,6 +7352,27 @@ def _drop_trailing_verification(steps: list[PlanStep]) -> list[PlanStep]:
     return steps[:-1]
 
 
+_NEGATION_VERBS = r"(저장|삭제|지우|정렬|병합|실행|바꾸|넣|칠하|만들|고정|복사|이동|옮기|보내|삽입|추가|변경|수정|적용|그리|그려)"
+_NEGATION_TAIL = r"(?:하지|지)\s*(?:마|말|맠|않|마라|말아|마세요|마요|말고)|금지|하지마|하지\s*말"
+
+
+def _negated_command(text: str) -> str | None:
+    """"저장하지 마" 류 부정 지시 — 어순이 바뀌어도("하지 마 저장은 아직", "저장 금지 아직은") 잡는다.
+
+    2026-08-19 블라인드 게이트: 같은 뜻의 11문장 중 4개가 동사-부정 어순이 달라 **실행돼 버렸다**(저장됨).
+    돌려주는 값은 부정된 동사(로그·응답용).
+    """
+    message = str(text or "")
+    # ① 동사 … 하지 마   ② 하지 마 … 동사   ③ 동사 금지
+    m = re.search(_NEGATION_VERBS + r"[^\n]{0,8}?(?:" + _NEGATION_TAIL + r")", message)
+    if m:
+        return m.group(1)
+    m = re.search(r"(?:" + _NEGATION_TAIL + r")[^\n]{0,8}?" + _NEGATION_VERBS, message)
+    if m:
+        return m.group(1)
+    return None
+
+
 def _engine_name() -> str:
     """이 턴을 실행하는 엔진 — Excel 앱(xlwings)인지 파일(openpyxl)인지. 로그 전용."""
     try:
@@ -7316,16 +7490,16 @@ async def _run_command(
         # 부정 지시("아직 저장하지 마", "지우지 마")는 실행 요청이 아니다. 플래너에
         # 넘기면 부정을 못 보고 그 행동을 계획하고, 해석 카드조차 "저장합니다"로
         # 뜬다(2026-08-18 대화형 러너 실측). 결정적으로 알아듣고 확인만 준다.
-        negated = re.search(
-            r"(저장|삭제|지우|정렬|병합|실행|바꾸|넣|칠하|만들)[^\n]{0,6}?(?:하지|지)\s*(?:마|말|않)",
-            str(req.message or ""),
+        negated = _negated_command(str(req.message or ""))
+        substitution = re.search(r"(대신|말고)\s", str(req.message or "")) and not re.search(
+            r"(?:하지|지)\s*말고", str(req.message or "")
         )
-        if negated and not re.search(r"(대신|말고)\s", str(req.message or "")):
+        if negated and not substitution:
             return ExcelLiveActionResponse(
                 ok=True,
                 action="excel_live.noop",
                 reason="네, 하지 않겠습니다. 다음 작업을 말씀해 주세요.",
-                result={"noop": True, "negated": negated.group(1)},
+                result={"noop": True, "negated": negated},
             )
 
     # 지금 끌어 둔 영역이 옛 주소를 이긴다.
@@ -7487,7 +7661,7 @@ async def _run_command(
         has_explicit_formula = (
             rule_action == "excel_live.set_formula"
             and str(rule_params.get("formula_a1", "")).strip().startswith("=")
-            and bool(re.search(r"\b[A-Z]+\d+(?::[A-Z]+\d+)?\b", str(req.message or ""), re.IGNORECASE))
+            and bool(re.search(r"(?<![A-Za-z0-9])[A-Z]+\d+(?::[A-Z]+\d+)?(?![A-Za-z0-9])", str(req.message or ""), re.IGNORECASE))
         )
         # 값 나열의 "건수"·"합계" 같은 낱말이 formula 힌트를 켠 경우다. 범위와
         # 값을 다 말한 쓰기(values_2d 있는 write_range)는 수식 요청이 아니므로
@@ -7496,7 +7670,7 @@ async def _run_command(
         is_explicit_row_write = (
             rule_action == "excel_live.write_range"
             and bool(rule_params.get("values_2d"))
-            and bool(re.search(r"\b[A-Z]+\d+(?::[A-Z]+\d+)?\b", str(req.message or ""), re.IGNORECASE))
+            and bool(re.search(r"(?<![A-Za-z0-9])[A-Z]+\d+(?::[A-Z]+\d+)?(?![A-Za-z0-9])", str(req.message or ""), re.IGNORECASE))
         )
         if not has_explicit_formula and not is_explicit_row_write:
             fallback_rule_step = None
@@ -7515,7 +7689,23 @@ async def _run_command(
         # 규칙이 문장을 표현하지 못한다고 판단해 플래너로 넘겨 놓고, 플래너가 실패했다고
         # 다시 그 규칙으로 돌아오면 앞의 판단이 무의미해진다. 조건을 버린 계획을
         # 실행하느니 되묻는 편이 낫다 — 실행하면 되돌릴 수 없다.
-        fallback_rule_step = None
+        #
+        # 단, "A17에 단과대별 실적 현황 (2025-1학기) 써줘"처럼 **한 칸 쓰기의 값 안**에 미달을 켠 낱말('별')이
+        # 있으면 그 낱말은 값이다 — 값을 지운 문장이 미달이 아니면 규칙을 살린다(2026-08-19 ex11 v2 실측:
+        # 제목 한 줄이 피벗 해석 카드로 바뀌었다).
+        _fb_params = fallback_rule_step.get("params") or {}
+        _fb_vals = _fb_params.get("values_2d") or []
+        _fb_first = str(_fb_vals[0][0]).strip() if _fb_vals and isinstance(_fb_vals[0], list) and _fb_vals[0] else ""
+        _keep = False
+        if (
+            str(fallback_rule_step.get("action", "")) == "excel_live.write_range"
+            and re.fullmatch(r"[A-Z]{1,3}\d{1,7}", str(_fb_params.get("start_cell", "")))
+            and _fb_first
+            and _fb_first in str(req.message or "")
+        ):
+            _keep = not _quick_plan_underfits_message("excel_live.write_range", str(req.message or "").replace(_fb_first, "", 1))
+        if not _keep:
+            fallback_rule_step = None
 
     parsed: dict[str, Any] | None = None
     reflection_attempted = False
@@ -7586,6 +7776,44 @@ async def _run_command(
         # 모델(해석 카드)로 갈려 대화가 흔들린다(2026-08-19 붙여넣기 흐름 실측:
         # 한 줄 머리글 붙여넣기가 해석 카드로 떴다). 여기서 확정해 둔다.
         row_write_confirmed = preempt_write is not None or paste_write is not None
+        # "상태가 대기인 셀만 분홍색으로 표시해 주세요" — 값 일치 강조는 규칙 파서가 조건·색을 다 읽는다.
+        # 퀵 계획이 비면 모델로 가서 0건 강조가 났다(2026-08-19 블라인드 게이트 highlight_status 12/24).
+        if (
+            not quick_action_plan
+            and isinstance(fallback_rule_step, dict)
+            and fallback_rule_step.get("action") == "excel_live.highlight_by_condition"
+            and parse_text_equals_condition(req.message)
+        ):
+            quick_action_plan = [dict(fallback_rule_step)]
+            rule_hook = "highlight_text_equals"
+        # 한 칸 쓰기("H1에 물류 관제 대시보드 라고 써줘")도 셀·값이 다 있으면 규칙이 확정한 것이다.
+        # 예전엔 퀵 계획이 비어 모델(3~4초)로 갔고 해석 카드가 떴다 — 같은 문장이 날마다 달라지는
+        # 원인 중 하나(2026-08-19 로그 커버리지 프로브·블라인드 게이트 title_cell 실측).
+        single_cell_rule = (
+            isinstance(fallback_rule_step, dict)
+            and fallback_rule_step.get("action") == "excel_live.write_range"
+            and re.fullmatch(r"[A-Z]{1,3}\d{1,7}", str((fallback_rule_step.get("params") or {}).get("start_cell", "")))
+            and not _ROW_WRITE_FORMAT_VOCAB.search(str(req.message or ""))
+        )
+        if single_cell_rule and quick_action_plan:
+            # "A66에 월별 요약 (Forecast) 입력" — 값 안의 'Forecast'가 예측 규칙을 켰다(2026-08-19 ex16 실측:
+            # 제목 대신 추세 예측이 실행돼 "숫자 데이터가 필요합니다"로 실패). 값을 지운 문장에서 같은 퀵
+            # 계획이 안 나오면 그 낱말은 값이었다 — 쓰기가 이긴다.
+            _cell_vals = (fallback_rule_step.get("params") or {}).get("values_2d") or []
+            _first_val = str(_cell_vals[0][0]).strip() if _cell_vals and isinstance(_cell_vals[0], list) and _cell_vals[0] else ""
+            _quick_act = str((quick_action_plan[0] or {}).get("action", ""))
+            if _first_val and _quick_act != "excel_live.write_range" and _first_val in str(req.message or ""):
+                _without_value = str(req.message or "").replace(_first_val, "", 1)
+                _replan = _build_quick_action_plan(_without_value, req.context_range)
+                if not _replan or str((_replan[0] or {}).get("action", "")) != _quick_act:
+                    quick_action_plan = None
+                    trace_note("rules", hook="single_cell_write_over_keyword", displaced=_quick_act)
+        if single_cell_rule and not quick_action_plan:
+            cell_values = (fallback_rule_step.get("params") or {}).get("values_2d") or []
+            if cell_values and any(str(c).strip() for row in cell_values for c in (row if isinstance(row, list) else [row])):
+                quick_action_plan = [dict(fallback_rule_step)]
+                row_write_confirmed = True
+                rule_hook = "single_cell_write"
         # "E15에 A15에서 C15 뺀 값 넣어줘" — 두 셀 사칙연산은 결정적 수식이다.
         # set_formula는 고신뢰 목록에 있어 모델을 부르지 않는다(2026-08-19).
         if quick_action_plan is None or not quick_action_plan:
@@ -7747,7 +7975,7 @@ async def _run_command(
                     rule_hook = "chart_kind"
         # 크로스시트 사람 말투: "A4에 지역성과 시트 주문건수 합계를 가져와줘".
         # 원본 시트를 실제로 읽어 열을 찾고 =SUM('시트'!구간) 수식을 만든다.
-        if not quick_action_plan and "시트" in (req.message or ""):
+        if not quick_action_plan and re.search(r"(합계|총합|평균|개수|건수|더한|더해|합)", req.message or ""):
 
             def _cross_sheet_reader(sheet: str) -> tuple[str, list]:
                 svc = get_excel_live_service()
@@ -7756,7 +7984,13 @@ async def _run_command(
                 data = svc.read_range(wb_id, sheet, ref)
                 return ref, (data.get("values") if isinstance(data, dict) else [])
 
-            cross_steps = build_cross_sheet_aggregate_plan(req.message, _cross_sheet_reader)
+            try:
+                _svc_names = get_excel_live_service()
+                _names_payload = _svc_names.list_sheets(_resolve_workbook_id(_svc_names, req.workbook_id))
+                cross_sheet_names = [str(n) for n in ((_names_payload or {}).get("sheets") or [])]
+            except Exception:
+                cross_sheet_names = []
+            cross_steps = build_cross_sheet_aggregate_plan(req.message, _cross_sheet_reader, cross_sheet_names)
             if cross_steps:
                 # 문장에 나온 시트는 **원본**이다. 대상 시트를 활성 시트로 못박지
                 # 않으면 시트 언급 해석이 원본 시트에 수식을 써 버린다(2026-08-18
@@ -7810,9 +8044,16 @@ async def _run_command(
         "excel_live.apply_formula_cf",
         "excel_live.convert_to_excel_table",
         "excel_live.set_font",
+        "excel_live.freeze_panes",
+        "excel_live.find_replace",
     }:
         should_parse_with_llm = False
         llm_decision_reason = "high_confidence_action"
+        if quick_first_action in {"excel_live.create_sheet", "excel_live.rename_sheet", "excel_live.delete_sheet", "excel_live.select_sheet"}:
+            # "재고 관리 시트도 하나 만들어줄래" — 시트 문장의 '재고'가 표 생성 인터뷰를 열면 확정된
+            # 시트 생성이 "재고표에 입고/출고까지 함께 관리할까요?"에 가로채인다(2026-08-19 ex12 실측,
+            # 뒤 턴 붙여넣기·정렬까지 연쇄 실패).
+            hints.pop("table_intent", None)
     elif quick_first_action == "excel_live.fill_range":
         # 단순 색 채우기 요청은 fast path로 즉시 실행하는 편이 안정적이다.
         should_parse_with_llm = False
@@ -8257,9 +8498,13 @@ async def _run_command(
     explicit_write = bool(preferred_write) and (
         bool(RANGE_REF_PATTERN.search(req.message)) or bool(req.context_range)
     )
-    if explicit_write and _TABLE_KEYWORD_PATTERN.search(req.message):
+    if explicit_write and _TABLE_KEYWORD_PATTERN.search(req.message) and not row_write_confirmed:
         # "B2부터 3행 3열 표 만들어줘"는 범위가 있어도 표 생성이 맞다.
+        # 단, 값 격자까지 규칙이 확정한 붙여넣기("이 표 아래에 <격자> 기록해둬")의 '표'는 자리말이다 —
+        # 여기서 표 생성 인터뷰로 넘기면 A1에 쪼개진 쓰레기 값을 쓴다(2026-08-19 ex21 v2 실측, 승인 카드 뒤 실행).
         explicit_write = False
+    if row_write_confirmed:
+        hints.pop("table_intent", None)
     if explicit_write and pending_operation is None and (operation_intent or operation_hints.get("intent")):
         # 값 나열에 "비교 기준", "총 주문 건수" 같은 낱말이 섞이면 힌트 추출이
         # 작업 의도로 오인해 새 멀티턴 슬롯을 연다(2026-08-18 ex2 재현 실측:
@@ -9045,10 +9290,18 @@ def _plan_approval_gate(ctx: PlanExecution, plan: list[PlanStep]) -> ExcelLiveAc
     # 계획이 시트를 지정했으면 그 시트만 본다. 지정하지 않았을 때만 원문을 넘겨,
     # "Dashboard 시트 ~"처럼 콕 집었는데 없는 시트를 활성 시트로 대체하지 못하게 막는다.
     plan_sheet = str(head.params.get("sheet_name") or "").strip()
+    guard_message = req.message
+    if head.action == "excel_live.write_range":
+        # "대시보드 시트 A1에 AI 기반 … 분석 시트 입력" — 셀 좌표 뒤는 값이다. 값 속 "분석 시트"를 지목으로
+        # 읽어 "'분석' 시트를 찾을 수 없습니다"라고 되물었다(2026-08-19 ex13·ex16 실측).
+        _cell = str(head.params.get("start_cell") or "")
+        _pos = re.search(rf"(?<![A-Za-z0-9]){re.escape(_cell)}(?![A-Za-z0-9])", str(req.message or ""), re.IGNORECASE) if re.fullmatch(r"[A-Za-z]{1,3}\d{1,7}", _cell) else None
+        if _pos:
+            guard_message = str(req.message or "")[: _pos.end()]
     target_problem = _edit_target_problem(
         req.workbook_id,
         plan_sheet or req.sheet_name,
-        message="" if plan_sheet else req.message,
+        message="" if plan_sheet else guard_message,
     )
     if target_problem:
         trace_note("target_missing", action=head.action, detail=target_problem)

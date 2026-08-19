@@ -450,3 +450,300 @@ class TestRealUsagePhraseBattery:
         assert step is None or step["params"].get("start_cell") != "__ACTIVE_CELL__" or (
             ";" not in str(step["params"].get("values_2d"))
         ), step
+
+
+class TestNewScenarioAuthorTraps:
+    """2026-08-19 ex9~22 각본 작성자 7명이 독립적으로 보고한 파서 함정 — 붙여넣기 앞말·No 머리글·값 안 영어."""
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "이 표 옆에 이어서 No., 과제, 점수; 1, 보고서, 90 입력해줘",
+            "이 옆에 No., 과제, 점수; 1, 보고서, 90 넣어줘",
+            "오른쪽에 이어서 No., 과제, 점수; 1, 보고서, 90 써줘",
+            "바로 밑에 No., 과제, 점수; 1, 보고서, 90 입력해줘",
+            "그 다음 줄에 No., 과제, 점수; 1, 보고서, 90 입력해줘",
+            "이어서 No., 과제, 점수; 1, 보고서, 90 입력해줘",
+            "아 그리고 이 표 밑에 No., 과제, 점수; 1, 보고서, 90 입력해줘",
+        ],
+    )
+    def test_locative_lead_words_are_not_values(self, text):
+        from office_claw_sidecar.services.excel_live_agent import (
+            normalize_common_typos,
+            parse_rangeless_row_write,
+        )
+
+        r = parse_rangeless_row_write(normalize_common_typos(text), "A1:C2")
+        assert r is not None, text
+        assert r["params"]["values_2d"][0] == ["No.", "과제", "점수"], (text, r)
+
+    def test_value_words_that_start_like_lead_words_survive(self):
+        from office_claw_sidecar.services.excel_live_agent import parse_rangeless_row_write
+
+        r = parse_rangeless_row_write("이어폰, 케이블, 충전기; 3, 4, 5 입력", "A1:C2")
+        assert r["params"]["values_2d"][0] == ["이어폰", "케이블", "충전기"]
+        r = parse_rangeless_row_write("여기에 다음, 이전; 1, 2 입력해줘", "A1:B2")
+        assert r["params"]["values_2d"][0] == ["다음", "이전"]
+
+    def test_no_header_is_a_string_not_false(self):
+        from office_claw_sidecar.services.excel_live_agent import (
+            _parse_literal_value,
+            parse_rangeless_row_write,
+        )
+
+        assert _parse_literal_value("No") == "No"
+        assert _parse_literal_value("Yes") == "Yes"
+        assert _parse_literal_value("TRUE") is True and _parse_literal_value("false") is False
+        r = parse_rangeless_row_write("여기에 No, 이름, 승인; 1, 김철수, Yes 입력해줘", "A1:C2")
+        assert r["params"]["values_2d"] == [["No", "이름", "승인"], [1, "김철수", "Yes"]]
+
+    def test_english_words_inside_value_grid_are_preserved(self):
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        src = "여기에 샘플, HEK293 Cell Lysate, Flow Cytometry (T cell); 1, 2, 3 입력해줘"
+        assert normalize_common_typos(src) == src
+
+    def test_english_values_in_single_write_are_preserved_but_commands_map(self):
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        assert normalize_common_typos("A1에 Total 넣어줘") == "A1에 Total 넣어줘"
+        assert normalize_common_typos("B2에 red 라고 써줘") == "B2에 red 라고 써줘"
+        assert normalize_common_typos("sum 줄 넣어줘") == "합계 줄 넣어줘"
+        assert normalize_common_typos("header bold 해줘") == "머리글 굵게 해줘"
+        assert normalize_common_typos("첫 줄 freeze 해줘") == "첫 줄 고정 해줘"
+        # 영어로만 된 명령은 영어 규칙 몫 — 건드리지 않는다.
+        assert normalize_common_typos("write header in E1:G1") == "write header in E1:G1"
+
+
+class TestNewScenarioRound1:
+    """2026-08-19 ex9~15 1라운드 실패 7건(실제 원인 4종)의 회귀 핀."""
+
+    def test_cell_ref_followed_by_hangul_counts_as_explicit(self):
+        # "A45에"의 A45는 셀 좌표다 — `\b`는 한글 앞에서 경계가 아니라 못 잡았다(ex11 t57).
+        from office_claw_sidecar.services.excel_selection_context import mentions_explicit_range
+
+        assert mentions_explicit_range("대시보드 시트 A45에 각주 입력") is True
+        assert mentions_explicit_range("A2:F6에 값 넣어줘") is True
+
+    def test_footnote_sentence_is_a_literal_value_not_an_echo(self):
+        from office_claw_sidecar.services.excel_param_binder import write_values_echo_the_request
+
+        note = "※ AI 적용 후 수치는 추정값으로 시스템 로그 및 표본 분석 결과를 기반으로 산출되었습니다"
+        assert write_values_echo_the_request({"values_2d": [[note]]}, f"대시보드 시트 A45에 {note} 입력") is False
+        # 원래 잡던 되뇜은 그대로 잡는다.
+        assert write_values_echo_the_request({"values_2d": [["가장 큰 매출"]]}, "F7에 가장 큰 매출 값 넣어줘") is True
+
+    @pytest.mark.parametrize(
+        "text, expected",
+        [
+            ("재고 관리 시트도 하나 만들어줄래?", "재고 관리"),
+            ("그리고 재고 관리 시트 만들어줘", "재고 관리"),
+            ("이제 2024 실적 시트를 새로 만들어", "2024 실적"),
+            ("매출 넣고 요약 시트 만들어줘", "요약"),
+            ("데이터 시트는 두고 대시보드 시트 만들어줘", "대시보드"),
+            ("월간 보고 시트 하나 파줘", "월간 보고"),
+            ("ㅇㅇ 안전 점검 체크리스트 시트 추가", "안전 점검 체크리스트"),
+        ],
+    )
+    def test_multiword_sheet_names_in_create(self, text, expected):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        plan = _build_quick_action_plan(normalize_common_typos(text), None)
+        assert plan and plan[0]["action"] == "excel_live.create_sheet", (text, plan)
+        assert plan[0]["params"]["sheet_name"] == expected, (text, plan)
+
+    def test_multiword_sheet_mention_resolves_against_known_names(self):
+        from office_claw_sidecar.services.excel_param_binder import sheet_mention_matches_known
+
+        assert sheet_mention_matches_known("재고 관리 시트 A1에 값", "관리", ["Sheet", "재고 관리"]) is True
+        assert sheet_mention_matches_known("간트 관리 시트 입력", "관리", ["Sheet", "간트관리"]) is True
+        assert sheet_mention_matches_known("판매 관리 시트에", "관리", ["Sheet", "재고관리"]) is False
+
+    def test_multiword_sheet_prefix_is_not_a_paste_value(self):
+        from office_claw_sidecar.services.excel_live_agent import parse_rangeless_row_write
+
+        r = parse_rangeless_row_write("재고 관리 시트에 여기에 품목 코드, 품목명; SUP-1, 장갑 입력해줘", "A1:B2")
+        assert r["params"]["values_2d"][0] == ["품목 코드", "품목명"]
+
+    def test_sort_key_without_unit_suffix_or_by_tail_word(self):
+        from office_claw_sidecar.services.excel_param_binder import _pick_sort_key
+
+        headers = ["단과대학", "재적생 수(명)", "신입생 수(명)", "평균 평점(GPA)", "장학금 지급액(억원)"]
+        assert _pick_sort_key("재적생 수 많은 순으로", headers) == "재적생 수(명)"
+        assert _pick_sort_key("평점 높은 순", headers) == "평균 평점(GPA)"
+        # 꼬리 낱말이 겹치면 쓰지 않는다.
+        assert _pick_sort_key("건수 많은 순", ["지역", "주문 건수", "출고 건수"]) is None
+
+    def test_cell_word_inside_values_does_not_bail(self):
+        from office_claw_sidecar.services.excel_live_agent import parse_rangeless_row_write
+
+        r = parse_rangeless_row_write("여기에 ID, 시료; S1, HEK293 셀 용해물 입력해줘", "A1:B2")
+        assert r["params"]["values_2d"][1] == ["S1", "HEK293 셀 용해물"]
+        assert parse_rangeless_row_write("A1 셀 철수, 영희 입력해줘", "A1:B1") is None
+
+
+class TestNewScenarioRound2And3:
+    """2026-08-19 ex9~22 v2(말 바꾼 변형)·ex16~22 1라운드 실패의 회귀 핀."""
+
+    @pytest.mark.parametrize(
+        "text",
+        ["이거 넣어줘", "음 이거 넣어줘", "복사한 거 여기에 붙여넣어줘", "방금 거 입력", "이거 여기다 써줘"],
+    )
+    def test_pronoun_only_write_is_not_a_value(self, text):
+        from office_claw_sidecar.routers.excel_live import _BARE_WRITE_REQUEST
+        from office_claw_sidecar.services.excel_live_agent import (
+            normalize_common_typos,
+            parse_command_rule_based,
+        )
+
+        t = normalize_common_typos(text)
+        assert _BARE_WRITE_REQUEST.match(t) is not None, text
+        assert parse_command_rule_based(t, context_range="A1:E13") is None, text
+
+    def test_pronoun_with_cell_is_valueless(self):
+        from office_claw_sidecar.services.excel_live_agent import parse_command_rule_based
+
+        assert parse_command_rule_based("A1에 이거 넣어") is None
+        assert parse_command_rule_based("이거 A1에 넣어줘") is None
+        step = parse_command_rule_based("A1에 123 넣어줘")
+        assert step and step["params"]["values_2d"] == [[123]]
+
+    @pytest.mark.parametrize(
+        "text, expected",
+        [
+            ("대시보드라는 시트 하나 더 만들어주세요", "대시보드"),
+            ("아 그리고 지점데이터 시트도 하나 더 만들어주세요", "지점데이터"),
+            ("리소스관리 시트 하나 더 추가해주세요", "리소스관리"),
+            ("시트 새로 하나 파 주세요, 이름은 Requisition으로", "Requisition"),
+            ("대시보드란 이름의 시트 추가", "대시보드"),
+            ("요약이라고 시트 하나 파줘", "요약"),
+        ],
+    )
+    def test_sheet_creation_phrasings(self, text, expected):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+        from office_claw_sidecar.services.excel_macro_planner import looks_like_macro_request
+
+        t = normalize_common_typos(text)
+        assert looks_like_macro_request(t) is False, text
+        plan = _build_quick_action_plan(t, None)
+        assert plan and plan[0]["action"] == "excel_live.create_sheet", (text, plan)
+        assert plan[0]["params"]["sheet_name"] == expected, (text, plan)
+
+    def test_range_then_values_then_deictic(self):
+        from office_claw_sidecar.services.excel_live_agent import parse_explicit_row_write
+
+        r = parse_explicit_row_write("A12:F17 월,객실 매출(원),부대매출(원); 2026-01,1328950000,342715000 여기 입력해줘")
+        assert r["params"]["start_cell"] == "A12"
+        assert r["params"]["values_2d"][1][:3] == ["2026-01", 1328950000, 342715000]
+        r = parse_explicit_row_write("A1:B2 철수, 영희; 1, 2 여기에 이거 써줘")
+        assert r["params"]["values_2d"] == [["철수", "영희"], [1, 2]]
+
+    def test_a4_inside_a_range_is_not_print(self):
+        from office_claw_sidecar.routers.excel_live import _extract_operation_hints
+
+        assert _extract_operation_hints("A46:F51 표 아래에 합계를 한 줄로 넣어줘").get("intent") != "print"
+        assert _extract_operation_hints("A4 가로로 인쇄해줘").get("intent") == "print"
+
+    @pytest.mark.parametrize(
+        "text, find, repl",
+        [
+            ("처리중을 진행중으로 바꿔줘", "처리중", "진행중"),
+            ('"처리중"을 "진행중"으로 바꿔줘', "처리중", "진행중"),
+            ("ML Ops를 MLOps로 찾아 바꿔줘", "ML Ops", "MLOps"),
+            ("처리중 → 진행중으로 바꿔", "처리중", "진행중"),
+            ("상태 열의 대기를 보류로 바꿔", "대기", "보류"),
+            ("표에서 N/A는 빈칸으로 바꿔줘", "N/A", ""),
+        ],
+    )
+    def test_find_replace_rule(self, text, find, repl):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+
+        plan = _build_quick_action_plan(text, "D60:D64")
+        assert plan and plan[0]["action"] == "excel_live.find_replace", (text, plan)
+        assert plan[0]["params"]["find_text"] == find and plan[0]["params"]["replace_text"] == repl
+
+    @pytest.mark.parametrize(
+        "text", ["시트 이름을 요약으로 바꿔줘", "차트를 막대로 바꿔줘", "아니 부산으로 바꿔줘", "A열을 B열로 바꿔줘"]
+    )
+    def test_find_replace_rule_does_not_grab_structure_commands(self, text):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+
+        plan = _build_quick_action_plan(text, None)
+        assert not plan or plan[0]["action"] != "excel_live.find_replace", (text, plan)
+
+    def test_sort_without_column_is_unresolved_even_without_headers(self):
+        from office_claw_sidecar.services.excel_live_executor import PlanStep
+        from office_claw_sidecar.services.excel_param_binder import bind_plan_steps
+
+        steps = [PlanStep(action="excel_live.sort_rows", params={"column": "이름", "order": "asc"}, reason="")]
+        _bound, notes = bind_plan_steps(steps, digest={"sheets": []}, message="정렬 좀 해주세요", sheet_name=None)
+        assert any(n.get("status") == "unresolved" and n.get("slot") == "column" for n in notes), notes
+        _bound, notes = bind_plan_steps(steps, digest={"sheets": []}, message="지원자 기준 내림차순이요", sheet_name=None)
+        assert not any(n.get("status") == "unresolved" for n in notes), notes
+
+
+class TestNewScenarioRound4:
+    """2026-08-19 4라운드(28본) 잔여 실패의 회귀 핀 — 조용한 오실행 2종 포함."""
+
+    def test_paste_grid_is_not_retargeted_by_a_value_that_names_a_sheet(self):
+        from office_claw_sidecar.services.excel_param_binder import resolve_sheet_from_message
+
+        digest = {"sheets": [{"name": "Sheet"}, {"name": "재고 관리"}, {"name": "대시보드"}]}
+        grid = "적용 영역, 자동화 과제; 예약 관리, AI; 재고 관리, 수요 예측 입력해줘"
+        assert resolve_sheet_from_message(grid, digest, default="대시보드") == "대시보드"
+        assert resolve_sheet_from_message("재고 관리 시트에 여기에 품목, 수량; A, 1 입력해줘", digest, default="대시보드") == "재고 관리"
+        # 한 칸 쓰기도 셀 좌표 앞부분만 본다.
+        assert resolve_sheet_from_message("A1에 재고 관리 현황 써줘", digest, default="대시보드") == "대시보드"
+        assert resolve_sheet_from_message("재고 관리 시트 A1에 현황 써줘", digest, default="대시보드") == "재고 관리"
+
+    def test_commandish_fragments_are_never_paste_values(self):
+        from office_claw_sidecar.services.excel_live_agent import (
+            normalize_common_typos,
+            parse_rangeless_row_write,
+        )
+
+        for text in ["넣어줘 합계 줄, 이 표 아래에", "합계 줄 하나 넣어줘, 이 표 아래에", "입력해줘 평균 한 줄, 표 밑에"]:
+            assert parse_rangeless_row_write(normalize_common_typos(text), "A1:G7") is None, text
+        r = parse_rangeless_row_write("넣어줘 지역, 건수, 합계", "A1:C1")
+        assert r["params"]["values_2d"][0] == ["지역", "건수", "합계"]
+
+    def test_leading_filler_after_range_prefix(self):
+        from office_claw_sidecar.services.excel_live_agent import (
+            normalize_common_typos,
+            parse_explicit_row_write,
+        )
+
+        m = normalize_common_typos("A5:J6 아 그리고 여기에 총 재적생 수(명),등록금 수입(억원); 23842, 428 입력해줘")
+        assert m.startswith("A5:J6 여기에")
+        assert parse_explicit_row_write(m) is not None
+
+    def test_chart_kind_pie_spelled_as_won_graph(self):
+        from office_claw_sidecar.routers.excel_live import _chart_kind_from_message
+
+        assert _chart_kind_from_message("B40:B45로 원 그래프 그려줘") == "pie"
+
+    @pytest.mark.parametrize(
+        "text, find, repl",
+        [("처리중이라고 된 거 전부 진행중으로 바꿔줘", "처리중", "진행중"), ("대기라고 적힌 셀은 보류로 바꿔", "대기", "보류")],
+    )
+    def test_find_replace_said_as_cells(self, text, find, repl):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+
+        plan = _build_quick_action_plan(text, "D60:D64")
+        assert plan and plan[0]["action"] == "excel_live.find_replace"
+        assert plan[0]["params"]["find_text"] == find and plan[0]["params"]["replace_text"] == repl
+
+    def test_sheet_creation_after_a_clause(self):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        plan = _build_quick_action_plan(normalize_common_typos("ㅇㅇ 시작하자, 체크리스트 시트부터 하나 파줘"), None)
+        assert plan and plan[0]["action"] == "excel_live.create_sheet" and plan[0]["params"]["sheet_name"] == "체크리스트"
+
+    def test_cross_sheet_with_in_the_sheet_phrasing(self):
+        from office_claw_sidecar.services.excel_aggregate_below import _CROSS_SHEET
+
+        m = _CROSS_SHEET.search("B21에 간트관리 시트에 있는 예산 총합 가져와줄래")
+        assert m and m.group(2) == "간트관리"
