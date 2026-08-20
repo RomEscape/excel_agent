@@ -28,6 +28,23 @@ from typing import Any
 
 from office_claw_sidecar.services.excel_header_lexicon import resolve_header
 
+#: 사람이 쓰는 맞춤 낱말 → 표준 값. 표에 없는 낱말은 None이 돼 맞춤을 건드리지 않는다.
+#: 한국어 "정렬"은 줄 세우기도 뜻하므로, **방향 낱말이 있을 때만** 맞춤이다.
+_ALIGN_WORDS = {
+    "left": "left",
+    "center": "center",
+    "centre": "center",
+    "right": "right",
+    "justify": "justify",
+    "왼쪽": "left",
+    "좌": "left",
+    "가운데": "center",
+    "중앙": "center",
+    "오른쪽": "right",
+    "우": "right",
+    "양쪽": "justify",
+}
+
 
 class ExcelLiveError(Exception):
     """Excel Live 서비스 기본 예외."""
@@ -1252,12 +1269,20 @@ class ExcelLiveService:
         name: str | None = None,
         size: float | None = None,
         color: str | None = None,
+        align: str | None = None,
     ) -> dict[str, Any]:
         target_id = workbook_id or self._selected_workbook_id
         if not target_id:
             raise WorkbookNotFoundError("workbook_id가 필요합니다.")
         sheet = self._find_sheet(self._find_workbook(target_id), sheet_name)
         rng = self._resolve_target_range(sheet, target_range)
+        # 두 엔진의 공개 계약은 같아야 한다(2026-08-19 GUI 실측 교훈: 파일 엔진에만
+        # 있던 메서드를 Excel을 띄운 채 부르면 AttributeError로 죽었다).
+        _xl_align = {"left": -4131, "center": -4108, "right": -4152, "justify": -4130}.get(
+            _ALIGN_WORDS.get(str(align or "").strip().lower()) or ""
+        )
+        if _xl_align is not None:
+            rng.api.HorizontalAlignment = _xl_align
         font = rng.api.Font
         if bold is not None:
             font.Bold = bool(bold)

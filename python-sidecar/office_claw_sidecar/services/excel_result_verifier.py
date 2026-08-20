@@ -610,7 +610,13 @@ def _verify_format_effect(
         return None
 
     if action in {"excel_live.create_chart", "excel_live.delete_charts"}:
-        target_sheet = str(params.get("output_sheet") or params.get("sheet_name") or "").strip() or sheet_name
+        # 실행 결과가 말하는 시트가 사실이다. 계획의 sheet_name은 원본 시트일 수 있어
+        # 그걸 세면 멀쩡히 그려진 차트를 '안 만들어졌다'고 판정한다(2026-08-20 ex26·ex27 실측).
+        target_sheet = (
+            str((result or {}).get("sheet_name") or "").strip()
+            or str(params.get("output_sheet") or params.get("sheet_name") or "").strip()
+            or sheet_name
+        )
         snap = _format_snapshot(service, workbook_id, target_sheet, "A1:A1")
         if snap is None or "chart_count" not in snap:
             return None

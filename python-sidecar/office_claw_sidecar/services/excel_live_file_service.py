@@ -30,7 +30,7 @@ from openpyxl.chart.series import SeriesLabel
 from openpyxl.comments import Comment
 from openpyxl.formatting.rule import ColorScaleRule, DataBarRule, FormulaRule
 from openpyxl.formula.translate import Translator
-from openpyxl.styles import Border, Font, PatternFill, Side
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import column_index_from_string, get_column_letter
 from openpyxl.utils.cell import range_boundaries
 from openpyxl.workbook.defined_name import DefinedName
@@ -48,6 +48,7 @@ from office_claw_sidecar.services.excel_formula_eval import (
 )
 from office_claw_sidecar.services.excel_header_lexicon import resolve_header
 from office_claw_sidecar.services.excel_live_service import (
+    _ALIGN_WORDS,
     AmbiguousWorkbookError,
     ExcelConnectionError,
     ExcelLiveError,
@@ -2474,6 +2475,7 @@ class FileExcelLiveService(ExcelLiveService):
         name: str | None = None,
         size: float | None = None,
         color: str | None = None,
+        align: str | None = None,
     ) -> dict[str, Any]:
         path = self._resolve_workbook_path(workbook_id)
         wb = self._load_wb(path)
@@ -2483,6 +2485,7 @@ class FileExcelLiveService(ExcelLiveService):
             min_row, min_col, max_row, max_col = bounds
             changed = 0
             font_color = self._to_argb(color)[2:] if color else None
+            horizontal = _ALIGN_WORDS.get(str(align or "").strip().lower())
             for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
                 for cell in row:
                     current = cell.font
@@ -2493,12 +2496,22 @@ class FileExcelLiveService(ExcelLiveService):
                         italic=current.italic,
                         color=font_color or current.color,
                     )
+                    if horizontal:
+                        # 세로 맞춤·줄바꿈은 사용자가 안 부른 것이므로 그대로 둔다.
+                        cur_align = cell.alignment
+                        cell.alignment = Alignment(
+                            horizontal=horizontal,
+                            vertical=cur_align.vertical,
+                            wrap_text=cur_align.wrap_text,
+                            indent=cur_align.indent,
+                        )
                     changed += 1
             self._save_wb(wb, path)
             return {
                 "changed_cells": changed,
                 "address": self._address_from_bounds(bounds),
                 "bold": bold,
+                "align": horizontal,
             }
         finally:
             wb.close()

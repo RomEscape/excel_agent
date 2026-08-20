@@ -755,7 +755,10 @@ def _validate_step_body(
         if size_raw not in {None, ""}:
             size = float(size_raw)
         color = str(params.get("color") or params.get("font_color") or "").strip() or None
-        out = {"target_range": target_range}
+        align = str(params.get("align") or params.get("horizontal") or "").strip() or None
+        out: dict[str, Any] = {"target_range": target_range}
+        if align:
+            out["align"] = align
         if bold is not None:
             out["bold"] = bool(bold)
         if name:

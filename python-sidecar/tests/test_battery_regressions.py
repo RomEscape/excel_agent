@@ -2494,3 +2494,140 @@ class TestBlankCellCondition:
         service.select_sheet(None, "발주")
         result = service.highlight_by_condition(None, "발주", "B2:B5", "isblank", 0, "#FFFF00", None, None)
         assert result["matched_cells"] == 2, result
+
+
+class TestCreateSheetIsNotBlockedByTheMissingSheetGuard:
+    """"급여계산 시트 하나 만들어줄래?" → "'급여계산' 시트를 찾을 수 없습니다"로 되묻혔다.
+
+    2026-08-20 ex24 실측: 1·2번째 턴이 이렇게 죽고, 그 시트를 쓰는 43·44번째 턴이
+    연쇄로 무너져 44/49가 됐다. **만들어 달라는 시트가 없는 건 정상**이다.
+    """
+
+    def test_sheet_creating_actions_are_exempt(self) -> None:
+        from office_claw_sidecar.routers.excel_live import _SHEET_CREATING_ACTIONS
+
+        assert "excel_live.create_sheet" in _SHEET_CREATING_ACTIONS
+        assert "excel_live.rename_sheet" in _SHEET_CREATING_ACTIONS
+        # 값을 쓰는 액션은 면제 대상이 아니다 — 없는 시트에 쓰면 되물어야 한다.
+        assert "excel_live.write_range" not in _SHEET_CREATING_ACTIONS
+        assert "excel_live.set_formula" not in _SHEET_CREATING_ACTIONS
+
+    def test_the_guard_still_covers_writes(self) -> None:
+        """면제가 가드를 통째로 무력화하지 않았는지 — 새 층은 실패만 더할 수 있다."""
+        import inspect
+
+        from office_claw_sidecar.routers import excel_live
+
+        src = inspect.getsource(excel_live._plan_approval_gate)
+        assert "_SHEET_CREATING_ACTIONS" in src
+        assert "_edit_target_problem" in src
+
+
+class TestCenterAlignIsNotRowSorting:
+    """한국어 "정렬"은 줄 세우기와 맞춤 둘 다다 — 늘 줄 세우기로 갔다.
+
+    2026-08-20 ex24 실측: "달력 전체 가운데 정렬해줘" → `sort` 분류 → "어떤 열 기준으로
+    정렬할까요?"로 되물었다. 분류기에 맞춤 예외가 **있었는데 둘째 가지에만** 붙어 있어,
+    낱말 "정렬"만 보는 첫째 가지가 늘 먼저 걸렸다.
+    """
+
+    @pytest.mark.parametrize(
+        "message",
+        ["달력 전체 가운데 정렬해줘", "머리글 가운데 정렬", "금액 열 오른쪽 정렬해줘", "제목 줄 가운데로 맞춤"],
+    )
+    def test_alignment_words_go_to_format(self, message: str) -> None:
+        from office_claw_sidecar.routers.excel_live import _detect_operation_intent
+
+        assert _detect_operation_intent(message) == "format", message
+
+    @pytest.mark.parametrize(
+        "message",
+        ["매출 높은 순으로 정렬해줘", "가나다순으로 정렬", "금액 내림차순 정렬", "재고 적은 순서대로 줄세워"],
+    )
+    def test_real_sorting_still_sorts(self, message: str) -> None:
+        """예외가 줄 세우기를 통째로 삼키지 않았는지 — 방향 낱말이 없으면 여전히 sort다."""
+        from office_claw_sidecar.routers.excel_live import _detect_operation_intent
+
+        assert _detect_operation_intent(message) == "sort", message
+
+    @pytest.mark.parametrize(
+        ("message", "want_align"),
+        [("달력 전체 가운데 정렬해줘", "가운데"), ("금액 열 오른쪽 정렬해줘", "오른쪽"), ("가운데 정렬해줘", "가운데")],
+    )
+    def test_the_quick_rule_builds_a_font_step(self, message: str, want_align: str) -> None:
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+
+        plan = _build_quick_action_plan(message, "D3:J8")
+        assert plan, message
+        assert plan[0]["action"] == "excel_live.set_font", message
+        assert plan[0]["params"]["align"] == want_align, message
+
+    def test_whole_table_wording_beats_the_previous_range(self) -> None:
+        """"달력 **전체**"는 직전 결과 범위가 아니라 표 전체다."""
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+
+        plan = _build_quick_action_plan("달력 전체 가운데 정렬해줘", "D3:J8")
+        assert plan[0]["params"]["target_range"] == "__TABLE_REGION__"
+
+    def test_the_executor_actually_aligns_cells(self, tmp_path) -> None:
+        from openpyxl import Workbook, load_workbook
+
+        from office_claw_sidecar.services.excel_live_file_service import FileExcelLiveService
+
+        path = tmp_path / "cal.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "달력"
+        for row in [["월", "화", "수"], [1, 2, 3], [4, 5, 6]]:
+            ws.append(row)
+        wb.save(path)
+        service = FileExcelLiveService()
+        service.select_workbook(str(path))
+        service.select_sheet(None, "달력")
+        result = service.set_font(None, "달력", "A1:C3", align="가운데")
+        assert result["align"] == "center", result
+        assert result["changed_cells"] == 9, result
+        ws = load_workbook(path)["달력"]
+        assert all(c.alignment.horizontal == "center" for row in ws.iter_rows(max_row=3, max_col=3) for c in row)
+
+        # 뒤이은 글꼴 작업이 맞춤을 지우면 안 된다 — 사용자가 안 부른 것은 그대로 둔다.
+        service.set_font(None, "달력", "A1:C1", bold=True)
+        ws = load_workbook(path)["달력"]
+        assert [c.alignment.horizontal for c in ws[1]] == ["center", "center", "center"]
+        assert [c.font.bold for c in ws[1]] == [True, True, True]
+
+    def test_an_unknown_word_leaves_alignment_alone(self, tmp_path) -> None:
+        from openpyxl import Workbook, load_workbook
+
+        from office_claw_sidecar.services.excel_live_file_service import FileExcelLiveService
+
+        path = tmp_path / "x.xlsx"
+        wb = Workbook()
+        wb.active["A1"] = "값"
+        wb.save(path)
+        service = FileExcelLiveService()
+        service.select_workbook(str(path))
+        sheet = load_workbook(path).sheetnames[0]
+        service.select_sheet(None, sheet)
+        result = service.set_font(None, sheet, "A1:A1", align="비스듬히")
+        assert result["align"] is None, result
+        assert load_workbook(path)[sheet]["A1"].alignment.horizontal is None
+
+
+class TestChartVerificationLooksAtTheSheetItLandedOn:
+    """차트는 만들어졌는데 `chart_not_created`로 실패했다.
+
+    2026-08-20 ex26·ex27 실측: 실행은 활성 시트(손익요약)에 그리는데, 검증은 계획의
+    `sheet_name`(매출원장 — 플래너가 적어 둔 **원본** 시트)에서 차트를 세어 0개를 봤다.
+    """
+
+    def test_the_result_sheet_wins_over_the_plan_sheet(self) -> None:
+        import inspect
+
+        from office_claw_sidecar.services import excel_result_verifier
+
+        src = inspect.getsource(excel_result_verifier)
+        head = src[src.index('if action in {"excel_live.create_chart"') :][:600]
+        assert '(result or {}).get("sheet_name")' in head
+        # 계획 값도 여전히 뒤에 남아 있어야 한다 — 결과가 시트를 안 알려주는 엔진 대비.
+        assert 'params.get("output_sheet")' in head

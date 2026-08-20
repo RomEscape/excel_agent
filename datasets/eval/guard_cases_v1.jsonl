@@ -34,3 +34,39 @@
 {"task": "clear_only_named", "text": "결석 데이터만 클리어", "persona": "D_작성자(비블라인드)"}
 {"task": "clear_only_named", "text": "결석 열 값 전부 삭제해줘 (다른 열은 유지)", "persona": "D_작성자(비블라인드)"}
 {"task": "clear_only_named", "text": "결석열만비워", "persona": "D_작성자(비블라인드)"}
+{"task": "merge_keeps_values", "text": "제목 줄 병합해줘", "persona": "D_작성자(비블라인드)"}
+{"task": "merge_keeps_values", "text": "맨 위 제목 칸 하나로 합쳐줘", "persona": "D_작성자(비블라인드)"}
+{"task": "merge_keeps_values", "text": "1행이 제목이니까 가로로 쭉 병합해 주세요", "persona": "D_작성자(비블라인드)"}
+{"task": "merge_keeps_values", "text": "위에 제목 줄은 셀 병합해서 가운데 놓고 싶어요", "persona": "D_작성자(비블라인드)"}
+{"task": "merge_keeps_values", "text": "제목 있는 줄 병합 좀", "persona": "D_작성자(비블라인드)"}
+{"task": "merge_keeps_values", "text": "맨 윗줄 제목 칸들 합쳐줄래?", "persona": "D_작성자(비블라인드)"}
+{"task": "merge_keeps_values", "text": "표 위 제목 한 칸으로 만들어줘", "persona": "D_작성자(비블라인드)"}
+{"task": "merge_keeps_values", "text": "제목 줄만 병합하고 나머지는 건드리지 마", "persona": "D_작성자(비블라인드)"}
+{"task": "merge_keeps_values", "text": "첫 줄 제목 셀 병합해 주실 수 있나요", "persona": "D_작성자(비블라인드)"}
+{"task": "merge_keeps_values", "text": "타이틀 줄 머지해줘", "persona": "D_작성자(비블라인드)"}
+{"task": "merge_keeps_values", "text": "제목 행 병합 부탁해요", "persona": "D_작성자(비블라인드)"}
+{"task": "merge_keeps_values", "text": "위쪽 제목 줄 쭉 이어서 하나로 만들어줘", "persona": "D_작성자(비블라인드)"}
+{"task": "filter_keeps_rows", "text": "상태가 대기인 것만 보여줘", "persona": "D_작성자(비블라인드)"}
+{"task": "filter_keeps_rows", "text": "대기중인 건만 남겨줘", "persona": "D_작성자(비블라인드)"}
+{"task": "filter_keeps_rows", "text": "상태 대기인 행만 골라서 보고 싶어요", "persona": "D_작성자(비블라인드)"}
+{"task": "filter_keeps_rows", "text": "대기 상태만 필터 걸어줘", "persona": "D_작성자(비블라인드)"}
+{"task": "filter_keeps_rows", "text": "지금 대기인 것만 보이게 해줄래?", "persona": "D_작성자(비블라인드)"}
+{"task": "filter_keeps_rows", "text": "상태 열에서 대기만 추려줘", "persona": "D_작성자(비블라인드)"}
+{"task": "filter_keeps_rows", "text": "대기 아닌 건 잠깐 안 보이게 해줘", "persona": "D_작성자(비블라인드)"}
+{"task": "filter_keeps_rows", "text": "대기 건만 화면에 남겨 주세요", "persona": "D_작성자(비블라인드)"}
+{"task": "filter_keeps_rows", "text": "상태가 대기인 줄만 보여주세요", "persona": "D_작성자(비블라인드)"}
+{"task": "filter_keeps_rows", "text": "대기인 것들만 걸러줘", "persona": "D_작성자(비블라인드)"}
+{"task": "filter_keeps_rows", "text": "필터로 대기만 보이게", "persona": "D_작성자(비블라인드)"}
+{"task": "filter_keeps_rows", "text": "대기 상태인 행만 보고 싶어", "persona": "D_작성자(비블라인드)"}
+{"task": "chart_keeps_data", "text": "이 표로 막대 그래프 그려줘", "persona": "D_작성자(비블라인드)"}
+{"task": "chart_keeps_data", "text": "지역별 주문건수 막대 차트 하나 만들어줘", "persona": "D_작성자(비블라인드)"}
+{"task": "chart_keeps_data", "text": "표 보고 그래프 좀 그려줄래?", "persona": "D_작성자(비블라인드)"}
+{"task": "chart_keeps_data", "text": "주문건수로 차트 그려 주세요", "persona": "D_작성자(비블라인드)"}
+{"task": "chart_keeps_data", "text": "지역별로 막대 그래프 만들어줘", "persona": "D_작성자(비블라인드)"}
+{"task": "chart_keeps_data", "text": "이 데이터 시각화해줘", "persona": "D_작성자(비블라인드)"}
+{"task": "chart_keeps_data", "text": "주문건수 비교되게 그래프 하나", "persona": "D_작성자(비블라인드)"}
+{"task": "chart_keeps_data", "text": "표를 차트로 보여줘", "persona": "D_작성자(비블라인드)"}
+{"task": "chart_keeps_data", "text": "지역 주문건수 그래프로 그려줄 수 있어?", "persona": "D_작성자(비블라인드)"}
+{"task": "chart_keeps_data", "text": "막대 그래프로 정리해줘", "persona": "D_작성자(비블라인드)"}
+{"task": "chart_keeps_data", "text": "이 표 기준으로 차트 만들어 주세요", "persona": "D_작성자(비블라인드)"}
+{"task": "chart_keeps_data", "text": "주문건수 막대로 그려줘", "persona": "D_작성자(비블라인드)"}

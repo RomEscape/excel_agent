@@ -885,6 +885,12 @@ def _split_sheet_qualified_range(service, workbook_id: str | None, range_ref: st
     return "", cell_part
 
 
+#: 이 액션들은 **없는 시트 이름을 받는 게 정상**이다 — 그 이름을 만들거나 붙이는 일이므로.
+_SHEET_CREATING_ACTIONS = frozenset(
+    {"excel_live.create_sheet", "excel_live.rename_sheet", "excel_live.consolidate_sheets"}
+)
+
+
 def _edit_target_problem(
     workbook_id: str | None, sheet_name: str | None, *, message: str = ""
 ) -> str:
@@ -2470,6 +2476,11 @@ def _detect_operation_intent(message: str) -> str:
         ],
     ):
         return "debug"
+    # "가운데 정렬"은 맞춤이지 줄 세우기가 아니다. 예외가 아래 둘째 가지에만 붙어 있어
+    # 낱말 "정렬"이 먼저 걸렸고, "달력 전체 가운데 정렬해줘"가 기준 열을 되물었다
+    # (2026-08-20 ex24 실측). 예외는 **가지 전체**를 덮어야 한다.
+    if _ALIGN_REQUEST.search(lowered):
+        return "format"
     if _contains_any_keyword(
         lowered,
         compact,
@@ -3118,6 +3129,12 @@ def _quick_number_format_step(text: str, target: str) -> dict[str, Any] | None:
     }
 
 
+#: 사람이 부르는 **맞춤**. 한국어 "정렬"은 줄 세우기도 뜻하므로 방향 낱말이 있어야 맞춤이다.
+_ALIGN_REQUEST = re.compile(r"(가운데|중앙|왼쪽|오른쪽|양쪽|좌|우)\s*(?:로|으로)?\s*(?:정렬|맞춤)")
+#: "표 전체"·"달력 전부"처럼 **통째로**를 뜻하는 말.
+_WHOLE_WORDED = re.compile(r"(전체|전부|모두|모든|통째)")
+
+
 def _build_quick_action_plan(message: str, context_range: str | None) -> list[dict[str, Any]] | None:
     text = str(message or "").strip()
     lowered = text.lower()
@@ -3528,12 +3545,19 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
     # 크기·색을 버리면 "제목 글씨 흰색으로 크게"가 굵게로만 끝난다. 같은 추출기를 쓴다.
     # "글씨 흰색"처럼 굵게·글꼴이라는 말이 없는 문장이 배경색 규칙으로 새지 않게 한다.
     font_params = extract_font_params(text)
+    # "가운데 정렬"은 글꼴 분기가 처리한다 — 대상 범위 고르기(머리글·표 전체·컨텍스트)를
+    # 그대로 쓰려는 것이다. 액션은 set_font 하나이므로 파라미터만 얹으면 된다.
+    _align_word = _ALIGN_REQUEST.search(lowered)
+    if _align_word:
+        font_params = dict(font_params)
+        font_params["align"] = _align_word.group(1)
     if (
         # '굵은 글씨'·'진하게'도 굵게다 — 어미 하나 때문에 분기에 못 들어가면
         # 배경만 칠해지고 굵게가 통째로 빠진다(2026-08-20 게이트3 header_navy).
         re.search(r"(굵게|굵은|굵직|진하게|진한|두껍게|볼드|bold|글꼴|폰트)", lowered)
         or font_params.get("color")
         or font_params.get("size")
+        or font_params.get("align")
     ) and not re.search(r"(테두리|경계선|border|괘선)", lowered):
         # "첫줄/제목줄"도 1행이다 — 어휘 밖이라 활성 셀에 칠해졌다(2026-08-18
         # 지저분판 실측: 첫줄 남색이 F7 한 칸 배경이 됐다).
@@ -3550,6 +3574,9 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
                 if ctx_rows
                 else "1:1"
             )
+        elif font_params.get("align") and not explicit_range and _WHOLE_WORDED.search(lowered):
+            # "달력 **전체** 가운데 정렬" — 직전 결과 범위가 아니라 표 전체다.
+            target = "__TABLE_REGION__"
         else:
             target = normalized_ctx or explicit_range or "__ACTIVE_SELECTION__"
         font_params = font_params or {"bold": True}
@@ -6846,6 +6873,7 @@ def _dispatch_action(
             name=str(params.get("name") or "").strip() or None,
             size=size,
             color=str(params.get("color") or "").strip() or None,
+            align=str(params.get("align") or "").strip() or None,
         )
 
     if action == "excel_live.convert_to_excel_table":
@@ -10319,10 +10347,19 @@ def _plan_approval_gate(ctx: PlanExecution, plan: list[PlanStep]) -> ExcelLiveAc
         _pos = re.search(rf"(?<![A-Za-z0-9]){re.escape(_cell)}(?![A-Za-z0-9])", str(req.message or ""), re.IGNORECASE) if re.fullmatch(r"[A-Za-z]{1,3}\d{1,7}", _cell) else None
         if _pos:
             guard_message = str(req.message or "")[: _pos.end()]
-    target_problem = _edit_target_problem(
-        req.workbook_id,
-        plan_sheet or req.sheet_name,
-        message="" if plan_sheet else guard_message,
+    # 시트를 **만드는·새로 이름 붙이는** 액션은 그 이름이 아직 없는 게 정상이다.
+    # 가드를 그대로 걸면 "급여계산 시트 하나 만들어줄래?"가
+    # "'급여계산' 시트를 찾을 수 없습니다"로 되묻힌다 — 만들어 달라는 그 시트를 두고
+    # 어디에 만들지 되묻는 꼴이다(2026-08-20 ex24 실측: 1·2번째 턴이 이렇게 죽고
+    # 그 시트를 쓰는 뒤 턴들이 연쇄로 무너져 44/49가 됐다).
+    target_problem = (
+        ""
+        if head.action in _SHEET_CREATING_ACTIONS
+        else _edit_target_problem(
+            req.workbook_id,
+            plan_sheet or req.sheet_name,
+            message="" if plan_sheet else guard_message,
+        )
     )
     if target_problem:
         trace_note("target_missing", action=head.action, detail=target_problem)

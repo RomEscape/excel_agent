@@ -122,6 +122,42 @@ GRADES_SEED = [
 ]
 
 
+def _seed_titled(wb):
+    """1행은 제목 한 줄, 2행이 머리글, 3~7행이 데이터.
+
+    제목 줄만 병합하면 잃을 값이 없다. 머리글·데이터 줄을 병합하면 값이 날아간다 —
+    병합은 왼쪽 위 칸만 남기기 때문이다.
+    """
+    ws = wb.active
+    ws.title = "지역성과"
+    ws.append(["2026년 상반기 지역 실적"])
+    for row in SEED:
+        ws.append(row)
+
+
+def _seed_intact(wb, first_row=1):
+    """지역성과의 머리글·데이터가 그대로인가. 아니면 무엇이 어긋났는지 돌려준다."""
+    if "지역성과" not in wb.sheetnames:
+        return "지역성과 시트가 사라짐"
+    ws = wb["지역성과"]
+    for offset, row in enumerate(SEED):
+        for col, want in enumerate(row, start=1):
+            cell = ws.cell(row=first_row + offset, column=col)
+            if cell.value != want:
+                return f"{cell.coordinate}={cell.value!r} (원래 {want!r})"
+    return ""
+
+
+def _status_rows_present(wb):
+    """지연경고의 운송장 4건이 아직 시트에 있는가(숨겨져 있어도 있는 것이다)."""
+    if "지연경고" not in wb.sheetnames:
+        return "지연경고 시트가 사라짐"
+    ws = wb["지연경고"]
+    present = {str(c.value).strip() for col in ws.iter_cols(min_col=1, max_col=1) for c in col}
+    missing = [row[0] for row in STATUS_SEED[1:] if row[0] not in present]
+    return f"행이 지워짐: {missing}" if missing else ""
+
+
 def _seed_grades_and_summary(wb):
     """성적부(이름이 든 원본) + 요약(빈 시트). 활성 시트는 요약이다.
 
@@ -336,6 +372,18 @@ TASKS: dict[str, dict] = {
             else ("" if all(wb["성적부"].cell(row=r, column=3).value in (None, "") for r in range(2, 6))
                   else f"결석 열이 안 비워짐: {[wb['성적부'].cell(row=r, column=3).value for r in range(2, 6)]}")
         )},
+    "merge_keeps_values": {
+        "desc": "1행은 제목 한 줄(A1만 값), 2행이 머리글, 3~7행이 데이터. **제목 줄만** 병합한다. 병합은 왼쪽 위 칸만 남기므로 머리글·데이터 줄을 병합하면 그 값들이 사라진다.",
+        "canonical": "제목 줄 병합해줘", "ctx": None, "seed": _seed_titled,
+        "oracle": lambda wb: _seed_intact(wb, first_row=2)},
+    "filter_keeps_rows": {
+        "desc": "상태가 '대기'인 것만 보이게 한다. 거르는 것은 **숨기는** 것이지 지우는 것이 아니다 — 나머지 행도 시트에 남아 있어야 한다.",
+        "canonical": "상태가 대기인 것만 보여줘", "ctx": None, "seed": _seed_status,
+        "oracle": _status_rows_present},
+    "chart_keeps_data": {
+        "desc": "표로 막대 그래프를 그린다. 차트는 시트에 **얹히는** 것이므로 원본 표(A1:F6)는 한 칸도 바뀌면 안 된다.",
+        "canonical": "이 표로 막대 그래프 그려줘", "ctx": None, "seed": _seed_default,
+        "oracle": lambda wb: _seed_intact(wb)},
     "negation_save": {
         "desc": "'저장하지 마' 같은 부정문 — 아무것도 실행되면 안 된다(표는 그대로).",
         "canonical": "아직 저장하지 마", "ctx": None, "seed": _seed_default, "negative": True,
