@@ -1667,6 +1667,56 @@ class FileExcelLiveService(ExcelLiveService):
             return str(cell) == str(value)
         return number is not None and compare(number, threshold)
 
+    def _hide_unmatched_rows(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        *,
+        address: str,
+        has_header: bool,
+        keep_order: list[int],
+        body_len: int,
+        matched: int,
+        col_idx: int,
+        op: str,
+        value: Any,
+    ) -> dict[str, Any]:
+        """안 맞는 행을 숨긴다. **한 칸도 지우지 않는다.**
+
+        엑셀 자동필터 표시(`auto_filter.ref`)도 함께 걸어, 사람이 파일을 열었을 때
+        필터가 걸려 있다는 걸 알아보고 직접 풀 수 있게 한다.
+        """
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            _, min_row, _, _ = range_boundaries(address)
+            body_start = min_row + (1 if has_header else 0)
+            keep = set(keep_order)
+            hidden = 0
+            for offset in range(body_len):
+                row_no = body_start + offset
+                should_hide = offset not in keep
+                ws.row_dimensions[row_no].hidden = should_hide
+                hidden += 1 if should_hide else 0
+            ws.auto_filter.ref = address
+            self._save_wb(wb, path)
+        finally:
+            wb.close()
+        return {
+            "filtered_rows": matched,
+            "matched_rows": matched,
+            "hidden_rows": hidden,
+            "removed_rows": 0,
+            "remaining_rows": body_len,
+            "no_change": hidden == 0,
+            "address": address,
+            "column_index": col_idx + 1,
+            "operator": op,
+            "value": value,
+            "mode": "hide",
+        }
+
     def filter_rows(
         self,
         workbook_id: str | None,
@@ -1676,9 +1726,17 @@ class FileExcelLiveService(ExcelLiveService):
         operator: str = "==",
         value: Any = None,
         has_header: bool = True,
-        mode: str = "keep",
+        mode: str = "hide",
     ) -> dict[str, Any]:
-        """조건에 맞는 행만 남기고 나머지를 시트에서 지운다.
+        """조건에 맞는 행만 남긴다. `mode`가 무엇을 "남긴다"의 뜻으로 정한다.
+
+        - `hide`(기본): 안 맞는 행을 **숨긴다**. 엑셀의 필터가 하는 일이고, 되돌릴 수 있다.
+        - `keep`: 안 맞는 행을 **지운다**. 사람이 지우라고 말했을 때만 쓴다.
+        - `remove`: 맞는 행을 지운다("취소된 주문은 빼줘").
+
+        2026-08-20 파괴 게이트: 기본이 `keep`이라 "잠깐 안 보이게 해줘"가 행을 지웠다.
+        숨기기는 되돌릴 수 있고 삭제는 아니므로, 애매하면 숨기는 쪽이 옳다.
+
 
         `mode="remove"`면 반대로 조건에 맞는 행을 지운다 — "취소된 주문은 빼줘"처럼
         제외를 요청한 문장용이다. 세는 것만으로는 사용자가 요청한 편집이 일어나지 않는데도
@@ -1708,7 +1766,9 @@ class FileExcelLiveService(ExcelLiveService):
 
         col_idx = self._resolve_column_selector(column, 1, col_count, header)
         op = str(operator or "==").strip()
-        exclude = str(mode or "keep").strip().lower() in {"remove", "exclude", "drop"}
+        mode_word = str(mode or "hide").strip().lower()
+        exclude = mode_word in {"remove", "exclude", "drop"}
+        hide_only = mode_word in {"hide", "숨김", "숨기기"}
         keep_order: list[int] = []
         matched = 0
         for index, row in enumerate(body):
@@ -1753,6 +1813,23 @@ class FileExcelLiveService(ExcelLiveService):
                 "value": value,
                 "mode": "keep",
             }
+
+        # 숨기기는 **무일치 가드 뒤**에 온다. 앞에 두면 "제주인 행만 남겨줘"인데 제주가
+        # 없을 때 표를 통째로 숨겨 빈 화면을 만든다 — 지우진 않지만 정직하지도 않다
+        # (2026-08-20 자체 검토: 새 층을 앞에 끼워 기존 판단을 덮은, 내가 적어 둔 그 유형).
+        if hide_only:
+            return self._hide_unmatched_rows(
+                workbook_id,
+                sheet_name,
+                address=address,
+                has_header=has_header,
+                keep_order=keep_order,
+                body_len=before,
+                matched=matched,
+                col_idx=col_idx,
+                op=op,
+                value=value,
+            )
 
         min_col, min_row, max_col, max_row = range_boundaries(address)
         body_start_row = min_row + (1 if has_header else 0)
@@ -2198,8 +2275,25 @@ class FileExcelLiveService(ExcelLiveService):
             address = self._address_from_bounds(bounds)
             # 병합은 왼쪽 위 셀 값만 남기고 나머지를 지운다 — 병합 전 값이 여러 개면
             # 표시상 하나만 보이는 게 openpyxl/Excel 동작과 같다. 첫 값을 보존한다.
-            min_row, min_col, max_row, _max_col = bounds
+            min_row, min_col, max_row, max_col = bounds
             keep_value = ws.cell(row=min_row, column=min_col).value
+            # 값이 둘 이상이면 병합은 **지우는 일**이다. 조용히 넘어가지 않는다 —
+            # "제목 줄 병합해줘"가 머리글 줄을 먹어 머리글 다섯 개가 사라졌다
+            # (2026-08-20 파괴 게이트: 12문형 중 9개).
+            doomed = [
+                f"{self._idx_to_col(c)}{r}={ws.cell(row=r, column=c).value!r}"
+                for r in range(min_row, max_row + 1)
+                for c in range(min_col, max_col + 1)
+                if not (r == min_row and c == min_col)
+                and str(ws.cell(row=r, column=c).value or "").strip() != ""
+            ]
+            if doomed:
+                raise ExcelLiveError(
+                    f"{address}를 병합하면 왼쪽 위({self._idx_to_col(min_col)}{min_row}) 말고 "
+                    f"{len(doomed)}칸의 값이 사라집니다: {', '.join(doomed[:4])}"
+                    + (" 등" if len(doomed) > 4 else "")
+                    + ". 값이 없는 줄을 지목하거나, 먼저 값을 옮겨 주세요."
+                )
             ws.merge_cells(address)
             ws.cell(row=min_row, column=min_col, value=keep_value)
             self._save_wb(wb, path, value_changed_sheet=ws.title, changed_rows=set(range(min_row, max_row + 1)))

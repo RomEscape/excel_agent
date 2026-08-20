@@ -69,14 +69,17 @@ def test_remove_mode_deletes_the_rows_that_match(service, orders):
 
 
 def test_numeric_filter_keeps_only_the_matching_rows(service, orders):
-    service.filter_rows(str(orders), "Sheet1", column="수량", operator=">=", value=3)
+    # 기본은 숨기기다(2026-08-20). 삭제를 재는 테스트이므로 keep을 명시한다.
+    service.filter_rows(str(orders), "Sheet1", column="수량", operator=">=", value=3, mode="keep")
     assert _column(orders, "A") == ["A-2", "A-4", "A-5"]
 
 
 def test_filter_on_a_formula_column_uses_computed_values(service, orders):
     """매출 열은 =D*E 수식이다. 수식 문자열로 비교하면 한 건도 안 걸린다."""
     # 매출: A-1 2000, A-2 10000, A-3 3000, A-4 6000, A-5 15000
-    service.filter_rows(str(orders), "Sheet1", column="매출", operator=">=", value=10000)
+    service.filter_rows(
+        str(orders), "Sheet1", column="매출", operator=">=", value=10000, mode="keep"
+    )
     assert _column(orders, "A") == ["A-2", "A-5"]
 
 

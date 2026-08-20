@@ -91,9 +91,18 @@ class TestNoMatchKeepFilterDoesNotWipeTheSheet:
         assert "조건에 맞는 행이 없어" in str(body.get("reason")), body.get("reason")
         assert body["result"].get("no_matching_cells") is True
 
-    def test_a_matching_filter_still_filters(self, workbook):
+    def test_a_matching_filter_hides_instead_of_deleting(self, workbook):
+        """거르는 건 **숨기는** 일이다 — 지우는 건 되돌릴 수 없다(2026-08-20).
+
+        "지워줘"라고 말하지 않은 이상 행은 시트에 남고, 안 맞는 행만 숨겨진다.
+        """
         _command(workbook, "지역이 서울인 행만 남겨줘")
-        assert _data_rows(workbook) == 2
+        assert _data_rows(workbook) == 4, "필터가 행을 지웠다"
+        wb = load_workbook(workbook)
+        ws = wb[SHEET]
+        hidden = [r for r in range(2, 6) if ws.row_dimensions[r].hidden]
+        wb.close()
+        assert len(hidden) == 2, f"숨겨진 행={hidden}"
 
 
 class TestServiceLevelGuard:

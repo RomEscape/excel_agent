@@ -3135,6 +3135,49 @@ _ALIGN_REQUEST = re.compile(r"(가운데|중앙|왼쪽|오른쪽|양쪽|좌|우)
 _WHOLE_WORDED = re.compile(r"(전체|전부|모두|모든|통째)")
 
 
+#: "제목 줄 병합" 계열. 범위를 직접 적지 않고 **줄을 이름으로** 부른 병합이다.
+_TITLE_MERGE_WORDED = re.compile(
+    r"(제목|타이틀|title|맨\s*윗|맨\s*위|첫\s*줄|첫\s*행|위쪽|1\s*행)"
+)
+_MERGE_VERB_WORDED = re.compile(r"(병합|머지|merge|하나로\s*합|한\s*칸으로|합쳐)")
+
+
+def _title_row_merge_plan(message: str, digest: dict[str, Any]) -> list[dict[str, Any]]:
+    """"제목 줄 병합해줘" — **값이 하나뿐인 맨 윗줄**을 병합한다.
+
+    그게 제목 줄의 정의다. 머리글 줄(값이 여러 개)을 병합하면 그 값들이 사라진다
+    (2026-08-20 파괴 게이트: 12문형 중 9개가 머리글 줄을 먹었다).
+    그런 줄이 없으면 **빈 계획을 돌려주고 물러난다** — 짐작해서 지우지 않는다.
+    """
+    text = str(message or "")
+    if not _MERGE_VERB_WORDED.search(text) or not _TITLE_MERGE_WORDED.search(text):
+        return []
+    if re.search(r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}\s*:\s*[A-Za-z]{1,3}\d{1,7}", text):
+        return []  # 범위를 직접 적었으면 그건 사람 뜻이다
+    entry = _digest_active_entry(digest)
+    used = str(entry.get("used_range") or "")
+    span = re.match(r"^([A-Z]+)\d+:([A-Z]+)\d+$", used.upper())
+    if not span:
+        return []
+    # 다이제스트는 1행을 `columns`(머리글)로, 2행부터를 `sample_rows`로 담는다.
+    columns = [c for c in (entry.get("columns") or []) if isinstance(c, dict)]
+    rows = [[str(c.get("header") or "") for c in columns], *(entry.get("sample_rows") or [])]
+    if not columns:
+        return []
+    first_col, last_col = span.group(1), span.group(2)
+    for offset, row in enumerate(rows[:3], start=1):
+        cells = [str(v).strip() for v in (row or []) if str(v or "").strip()]
+        if len(cells) == 1:
+            return [
+                {
+                    "action": "excel_live.merge_cells",
+                    "params": {"target_range": f"{first_col}{offset}:{last_col}{offset}"},
+                    "reason": "빠른 규칙 기반 제목 줄 병합(값이 하나뿐인 줄)",
+                }
+            ]
+    return []
+
+
 def _build_quick_action_plan(message: str, context_range: str | None) -> list[dict[str, Any]] | None:
     text = str(message or "").strip()
     lowered = text.lower()
@@ -6950,7 +6993,7 @@ def _dispatch_action(
             operator=str(params.get("operator", "==")),
             value=params.get("value"),
             has_header=bool(params.get("has_header", True)),
-            mode=str(params.get("mode", "keep")),
+            mode=str(params.get("mode", "hide")),
         )
 
     if action == "excel_live.dedupe_rows":
@@ -9066,6 +9109,19 @@ async def _run_command(
     # 빈 칸 조건("입고예정일이 비어 있는 행만 노란색") — 규칙이 없어 모델이 엉뚱한 칸을
     # 칠하던 문형이다(2026-08-20 ex23). 머리글로 열을 짚을 수 있을 때만 만든다.
     if (not quick_action_plan or _blanket_fill) and pending_slot is None and pending_operation is None:
+        _title_merge = _title_row_merge_plan(req.message, workbook_digest)
+        if _title_merge:
+            quick_action_plan = _title_merge
+            rule_hook = rule_hook or "title_row_merge"
+            should_parse_with_llm = False
+            llm_decision_reason = "title_row_merge"
+            quick_plan_for_parse = _normalize_plan_or_empty(quick_action_plan)
+            quick_first_action = quick_plan_for_parse[0].action if quick_plan_for_parse else ""
+            trace_note(
+                "title_row_merge",
+                detail=str((_title_merge[0].get("params") or {}).get("target_range") or ""),
+                action=quick_first_action,
+            )
         _blank_plan = _blank_condition_highlight(req.message, workbook_digest)
         if _blank_plan:
             quick_action_plan = _blank_plan

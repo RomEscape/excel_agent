@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from openpyxl import Workbook, load_workbook
 
 from office_claw_sidecar.services.excel_live_executor import PlanStep
@@ -57,8 +58,28 @@ def test_find_replace_match_case_only_replaces_exact_case(tmp_path):
     wb.close()
 
 
+def test_merge_over_values_is_refused(tmp_path):
+    """병합은 왼쪽 위 말고 다 버린다 — 값이 있으면 무엇을 잃는지 말하고 멈춘다.
+
+    2026-08-20 파괴 게이트: "제목 줄 병합해줘"가 머리글 줄을 먹어 머리글 다섯 개가
+    사라졌다(12문형 중 9개). 조용히 지우느니 실패하는 편이 낫다.
+    """
+    from office_claw_sidecar.services.excel_live_service import ExcelLiveError
+
+    service, _path = _service(tmp_path)
+    with pytest.raises(ExcelLiveError) as excinfo:
+        service.merge_cells(None, "Sheet1", "A1:B1")
+    assert "사라집니다" in str(excinfo.value)
+    assert "B1" in str(excinfo.value)
+
+
 def test_merge_and_unmerge_cells(tmp_path):
     service, path = _service(tmp_path)
+    # 값이 없는 칸끼리는 그대로 병합된다.
+    wb = load_workbook(path)
+    wb["Sheet1"]["B1"] = None
+    wb.save(path)
+    wb.close()
     merge_result = service.merge_cells(None, "Sheet1", "A1:B1")
     assert merge_result["merged"] is True
 

@@ -138,12 +138,15 @@ CASES: list[BenchCase] = [
             expected_count=5,
         ),
         oracle=[
+            # 이 벤치는 **파라미터가 맞는가**를 재는 것이지 지울지 숨길지의 정책이 아니다.
+            # 기본이 숨기기로 바뀌었으므로(2026-08-20) 삭제 경로를 명시해 재던 것을 그대로 잰다.
             _step(
                 "filter_rows",
                 target_range="A1:F9",
                 column="매출",
                 operator=">=",
                 value=1_000_000,
+                mode="keep",
             )
         ],
         # 부등호 방향 반대
@@ -152,6 +155,7 @@ CASES: list[BenchCase] = [
                 "filter_rows",
                 target_range="A1:F9",
                 column="매출",
+                mode="keep",
                 operator="<",
                 value=1_000_000,
             )

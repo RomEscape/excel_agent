@@ -104,7 +104,9 @@ def test_existing_header_is_kept():
     steps = [PlanStep(action="excel_live.filter_rows", params={"column": "상태", "value": "완료"})]
     bound, notes = _bind(steps, "완료된 것만 남겨줘")
     assert bound[0].params["column"] == "상태"
-    assert notes == []
+    # 열은 그대로 두되, 필터가 지울지 숨길지는 기록한다(2026-08-20: 기본 숨기기).
+    assert [n["changes"] for n in notes] == [["mode=hide"]]
+    assert bound[0].params["mode"] == "hide"
 
 
 def test_missing_filter_value_is_bound_from_column_categories():

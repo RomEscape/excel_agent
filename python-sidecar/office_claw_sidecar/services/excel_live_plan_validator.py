@@ -838,7 +838,9 @@ def _validate_step_body(
         if value is None:
             raise ValueError("filter_rows.value는 필수입니다.")
         has_header = bool(params.get("has_header", True))
-        mode = str(params.get("mode") or "keep").strip().lower()
+        # 기본은 **숨기기**다 — 지우는 건 되돌릴 수 없으므로 사람이 지우라고 했을 때만 한다
+        # (2026-08-20 파괴 게이트: 12문형 전부가 행을 지웠다).
+        mode = str(params.get("mode") or "hide").strip().lower()
         return PlanStep(
             action=action,
             params={
@@ -847,7 +849,11 @@ def _validate_step_body(
                 "operator": operator,
                 "value": value,
                 "has_header": has_header,
-                "mode": "remove" if mode in {"remove", "exclude", "drop"} else "keep",
+                "mode": (
+                    "remove"
+                    if mode in {"remove", "exclude", "drop"}
+                    else ("keep" if mode == "keep" else "hide")
+                ),
             },
             reason=reason,
         )

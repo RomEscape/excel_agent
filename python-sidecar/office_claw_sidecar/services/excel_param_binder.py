@@ -785,6 +785,27 @@ def _bind_filter_column_from_value(params: dict[str, Any], *, entry: dict[str, A
 _EXCLUSION_VERB = re.compile(r"(빼|제외|없애|제거|지워|지우|삭제|말고|아닌|제하고|빠뜨)", re.IGNORECASE)
 
 
+#: 행을 **지워** 달라고 말한 것. 이 말이 없으면 필터는 숨기기다.
+#: "보여줘"·"필터 걸어줘"·"추려줘"는 지우라는 말이 아니다 — 엑셀에서 필터는 숨기는 일이다.
+_DELETE_ROWS_WORDED = re.compile(r"(지워|지우|삭제|없애|없앤|제거|치워|버려|날려)")
+
+
+def _bind_filter_delete_or_hide(params: dict[str, Any], *, message: str) -> list[str]:
+    """필터가 **지울지 숨길지** 정한다. 지우라는 말이 있을 때만 지운다.
+
+    2026-08-20 파괴 게이트(`filter_keeps_rows`) 실측: 12문형 전부가 행을 지웠다 —
+    "잠깐 안 보이게 해줘"까지. 숨기기는 되돌릴 수 있고 삭제는 아니므로, 애매하면
+    숨기는 쪽이 옳다. `remove`(맞는 행을 뺀다)는 앞에서 정해지므로 건드리지 않는다.
+    """
+    if str(params.get("mode") or "").strip().lower() in {"remove", "exclude", "drop"}:
+        return []
+    want = "keep" if _DELETE_ROWS_WORDED.search(str(message or "")) else "hide"
+    if str(params.get("mode") or "").strip().lower() == want:
+        return []
+    params["mode"] = want
+    return [f"mode={want}"]
+
+
 def _bind_filter_mode(params: dict[str, Any], *, message: str) -> list[str]:
     """ "남길 것"과 "뺄 것"을 가른다.
 
@@ -1810,6 +1831,7 @@ def bind_plan_steps(
         if step.action == "excel_live.filter_rows":
             changes.extend(_bind_filter_value(params, message=message, entry=entry))
             changes.extend(_bind_filter_mode(params, message=message))
+            changes.extend(_bind_filter_delete_or_hide(params, message=message))
 
         if step.action == "excel_live.write_range":
             changes.extend(_bind_write_values(params, message=message))
