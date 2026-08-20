@@ -1,8 +1,11 @@
 """배터리 결과 워크북을 전수 감사한다 — API의 자기보고 대신 파일을 연다.
 
-    & $PY python-sidecar\\scripts\audit_result_workbooks.py [워크스페이스 경로]
+    & $PY python-sidecar/scripts/audit_result_workbooks.py [워크스페이스 경로]
 
-기본 경로는 `%LOCALAPPDATA%\\office_claw\\Workspace`다. 발견이 0건이어야 정상이다.
+기본 경로는 `%LOCALAPPDATA%/office_claw/Workspace`다. 발견이 0건이어야 정상이다.
+
+한 가지 예외: `AI_Excel_Automation_Demo.xlsx`의 `AI_Command_Center` 시트는
+**예시 명령을 일부러 적어 둔 데모**라 9건이 늘 잡힌다 — 오염이 아니다.
 
 2026-08-19 감사에서 배운 것: 배터리가 99.7%라고 한 상태에서 결과 워크북에는
 명령문이 박힌 칸 4개, 원본 시트에 잘못 쓰인 수식 6건, **지워진 학생 이름 1개**가 있었다.

@@ -30,8 +30,14 @@ $PY = "$env:LOCALAPPDATA\officeclaw\venvs\python-sidecar\Scripts\python.exe"
 원본 시트에 잘못 쓰인 수식 6건, **지워진 학생 이름 1개**가 있었다.
 
 ```powershell
-& $PY <scratchpad>\scan_command_text_cells.py   # 셀에 명령문이 박혔는지 전수 검사
+& $PY python-sidecar\scripts\audit_result_workbooks.py   # 결과 워크북 전수 감사
 ```
+
+다섯 가지를 본다: 셀에 박힌 명령문 · 글자로 박힌 수식 요청문 · `0.1` 같은 자릿수 오해
+표시 형식 · 순환 참조 수식 · 표 전체가 한 칸으로 병합된 것. **0건이어야 정상**이다
+(데모 파일 `AI_Excel_Automation_Demo.xlsx`의 9건은 일부러 적어 둔 예시라 예외).
+
+2026-08-20 실측: 28각본 배터리 뒤 대화 워크북 **0건** — 자기보고 100%와 파일이 일치했다.
 
 ## 3. 고쳤으면 재고 나서 고쳤다고 한다
 
