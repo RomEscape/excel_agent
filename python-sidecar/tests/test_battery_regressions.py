@@ -2058,3 +2058,39 @@ class TestHeaderNamesToleranceForTypos:
         from office_claw_sidecar.services.excel_aggregate_below import _norm_header
 
         assert _header_in_message(header, _norm_header(message)) is expected
+
+
+class TestAggregateGuardDoesNotEatPastedValues:
+    """붙여넣은 **값 안의 '평균'**이 집계 가드를 켜던 회귀.
+
+    2026-08-20 28각본 배터리(1,838턴)의 유일한 실패였다 — 내가 만든 것.
+    `이 표 아래에 자산 요약,값; … 평균 임대료 평당(원),32500; … 입력해줘`
+    → 값 나열이 집계 요청으로 읽혀 표 만들기 인터뷰로 샜다.
+    """
+
+    PASTE = (
+        "이 표 아래에 자산 요약,값; 총 자산 가치 감정가(원),285430000000; "
+        "총 대출 잔액(원),126800000000; LTV(%),44.4; WALE 가중 평균 임대 만료(년),2.83; "
+        "평균 임대료 평당(원),32500; 관리비 회수율(%),78.6 입력해줘"
+    )
+
+    def test_a_long_value_list_is_still_a_write(self) -> None:
+        from office_claw_sidecar.services.excel_live_agent import (
+            normalize_common_typos,
+            parse_rangeless_row_write,
+        )
+
+        step = parse_rangeless_row_write(normalize_common_typos(self.PASTE), "A9:B17")
+        assert step and step["action"] == "excel_live.write_range"
+        values = step["params"]["values_2d"]
+        assert values[0] == ["자산 요약", "값"], values[0]
+        assert ["평균 임대료 평당(원)", 32500] in values, values
+
+    @pytest.mark.parametrize(
+        "text",
+        ["한 줄로 합계, 표 바로 아래에 넣어줘", "합계를 표 아래에 한 줄로 넣어줘", "평균 한 줄 밑에 넣어줘"],
+    )
+    def test_a_short_aggregate_command_is_not_a_value_list(self, text: str) -> None:
+        from office_claw_sidecar.services.excel_live_agent import parse_rangeless_row_write
+
+        assert parse_rangeless_row_write(text, "A1:F6") is None, text

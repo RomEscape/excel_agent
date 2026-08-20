@@ -2198,7 +2198,10 @@ def parse_rangeless_row_write(text: str, target_range: str) -> dict | None:
     # 집계 훅에도 못 간다(훅은 쓰기 계획이 사소할 때만 돈다).
     # 2026-08-20 게이트5 실측: "한 줄로 합계, 표 바로 아래에 넣어줘"
     #   → write_range(A1, [['한 줄로 합계', '표 바로 아래에']])
-    if match_aggregate_below(text) is not None:
+    # 값 안의 낱말이 규칙을 켜면 안 된다 — 붙여넣은 표에 '평균 임대료'가 있다는 이유로
+    # 값 나열이 집계 요청으로 읽혔다(2026-08-20 28각본 배터리 ex16_v2 턴25).
+    # 집계 명령은 짧고 `;`로 줄을 나누지 않는다.
+    if ";" not in text and len(text) <= 60 and match_aggregate_below(text) is not None:
         return None
     # "넣어줘 합계 줄, 이 표 아래에" — 쉼표로 갈린 조각이 자리말·집계말뿐이면 값 나열이 아니라 명령이다.
     # 이걸 값으로 쓰면 **머리글 줄이 '합계 줄 | 이 표 아래에'로 덮인다**(2026-08-19 ex11 v2 실측: 조용한 오실행 뒤
