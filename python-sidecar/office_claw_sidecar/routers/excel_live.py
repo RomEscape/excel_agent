@@ -1391,10 +1391,16 @@ def _quick_extract_colors(text: str) -> list[str]:
 _UNSCOPED_HIGHLIGHT_TARGETS = frozenset({"", "A:Z", "__ACTIVE_SELECTION__", "__USED_RANGE__"})
 
 
-def _header_in_message(header: str, compact_message: str) -> bool:
+def _header_in_message(
+    header: str, compact_message: str, taken: frozenset[str] | set[str] = frozenset()
+) -> bool:
     """머리글이 문장에 나왔는가 — **한 글자 오타까지** 같은 것으로 본다.
 
     "출고**겅**수"는 "출고건수"다(2026-08-20 게이트9). 세 글자 미만은 보지 않는다.
+
+    `taken`: 문장에 **정확히** 나온 다른 머리글들. 오차 창이 그중 하나와 정확히 일치하면
+    그 언급은 이미 임자가 있다 — '매출액'을 매입액의 오타로 읽으면 안 된다
+    (2026-08-20 자체 검토 실측: "매출액만 콤마"가 매입액까지 서식을 걸었다).
     """
     needle = _norm_header(str(header or ""))
     if not needle:
@@ -1406,6 +1412,8 @@ def _header_in_message(header: str, compact_message: str) -> bool:
         return False
     for start in range(len(compact_message) - size + 1):
         window = compact_message[start : start + size]
+        if window in taken:
+            continue
         if sum(1 for a, b in zip(needle, window) if a != b) <= 1:
             return True
     return False
@@ -1425,7 +1433,14 @@ def _header_column_from_message(message: str, columns: list[dict[str, Any]]) -> 
     compact = _norm_header(str(message or ""))
     if not compact:
         return None
-    hits = [column for column in columns if _header_in_message(column.get("header"), compact)]
+    exact_norms = {
+        _norm_header(str(c.get("header") or ""))
+        for c in columns
+        if _norm_header(str(c.get("header") or "")) and _norm_header(str(c.get("header") or "")) in compact
+    }
+    hits = [
+        column for column in columns if _header_in_message(column.get("header"), compact, exact_norms)
+    ]
     if not hits:
         return None
     if len(hits) == 1:
@@ -1534,7 +1549,12 @@ def _scope_number_format_to_headers(
     entry = _digest_active_entry(digest)
     columns = [c for c in (entry.get("columns") or []) if isinstance(c, dict)]
     compact = _norm_header(str(message or ""))
-    named = [c for c in columns if _header_in_message(c.get("header"), compact)]
+    exact_norms = {
+        _norm_header(str(c.get("header") or ""))
+        for c in columns
+        if _norm_header(str(c.get("header") or "")) and _norm_header(str(c.get("header") or "")) in compact
+    }
+    named = [c for c in columns if _header_in_message(c.get("header"), compact, exact_norms)]
     if not named or len(named) == len(columns):
         return ""
     used = str(entry.get("used_range") or "")
@@ -1566,6 +1586,30 @@ _CLEAR_WHOLE_WORDS = re.compile(
     # 전체를 가리키는 말이 앞에 붙었을 때만 전체 리셋으로 본다(2026-08-20 실측).
     r"|(?:표|시트|전체|전부|다)\s*(?:를|을)?\s*(?:초기화|리셋|reset))"
 )
+#: 머리글과 보호 낱말 사이에 이게 있으면 보호가 아니라 삭제 지시다.
+_CLEAR_VERB_BREAK = re.compile(r"(비우|비워|지우|지워|삭제|없애|클리어|초기화|리셋|밀어|날리|clear)")
+
+
+def _clear_protected_headers(text: str, columns: list[dict[str, Any]]) -> set[str]:
+    """지키라고 불린 머리글들 — "점수는 건드리지 말고"·"결석 빼고"의 점수·결석.
+
+    머리글 뒤 24자 안에 보호 낱말이 있고, 그 사이에 삭제 동사가 없으면 보호다.
+    삭제 동사가 끼면("결석 열 **비우고** 나머지는 그대로") 보호 낱말은 다른 대상 얘기다.
+    """
+    out: set[str] = set()
+    for column in columns:
+        header = str(column.get("header") or "").strip()
+        if not header:
+            continue
+        for m in re.finditer(re.escape(header), str(text or "")):
+            tail = str(text)[m.end() : m.end() + 24]
+            pm = _CLEAR_PROTECT_CLAUSE.search(tail)
+            if pm and not _CLEAR_VERB_BREAK.search(tail[: pm.start()]):
+                out.add(header)
+                break
+    return out
+
+
 #: 리셋 계열 계획의 단계들. `초기화`는 테두리·채움까지 걷어내는 여러 단계를 만든다.
 _CLEAR_RESET_ACTIONS = frozenset(
     {"excel_live.clear_range", "excel_live.fill_range", "excel_live.apply_border"}
@@ -1608,12 +1652,17 @@ def _scope_clear_to_header_column(
     columns = [c for c in (entry.get("columns") or []) if isinstance(c, dict)]
     # "이름이랑 **점수는 건드리지 말고**" — 지키라고 부른 열은 대상이 아니다.
     # 이 절을 안 빼면 마지막에 불린 '점수'가 대상이 된다(2026-08-20 실측).
-    target_text = ",".join(
-        seg
-        for seg in re.split(r"[,;·\n]", text)
-        if not _CLEAR_PROTECT_CLAUSE.search(seg)
-    )
-    column = _header_column_from_message(target_text or text, columns)
+    # 보호 판정은 절 단위가 아니라 **머리글 단위**다. 절 단위로 거르면
+    # "결석 열 값 전부 삭제해줘 (다른 열은 유지)"처럼 대상과 보호가 한 절에 있는
+    # 정상 문장까지 물러난다(2026-08-20 자체 검토에서 확인).
+    # 규칙: 머리글 뒤에, **삭제 동사를 거치지 않고** 보호 낱말이 오면 그 머리글은 보호다.
+    #   "결석 값들 **빼고**"                 → 사이에 동사 없음 → 보호 (지우면 안 된다)
+    #   "결석 열 **비우고** 나머지는 그대로"  → '비우고'가 사이에 있음 → 대상
+    protected = _clear_protected_headers(text, columns)
+    candidates = [c for c in columns if str(c.get("header") or "").strip() not in protected]
+    if not candidates:
+        return []
+    column = _header_column_from_message(text, candidates)
     if column is None:
         return []
     header = str(column.get("header") or "").strip()

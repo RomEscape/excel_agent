@@ -155,6 +155,23 @@ def _grades_intact(wb):
     return ""
 
 
+def _summary_total(wb):
+    """요약!A2가 **합계다운 값**인가 — 숫자 8이거나 SUM 수식이어야 한다.
+
+    2026-08-20 자체 검토: "비어 있지 않으면 통과"로 뒀더니 규칙이 흘린 쓰레기 한 글자('성')가
+    성공으로 세어졌다. 오라클이 느슨하면 수정이 나아졌는지 알 수 없다.
+    """
+    value = wb["요약"]["A2"].value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return "" if int(value) == 8 else f"요약!A2={value!r} (결석 합계는 8)"
+    text = str(value or "").strip()
+    if not text:
+        return "요약!A2 비어 있음"
+    if text.startswith("=") and "SUM" in text.upper():
+        return ""
+    return f"요약!A2={text[:40]!r} — 합계가 아니다"
+
+
 def _pairs(wb, sheet="성적부"):
     ws = wb[sheet]
     out = []
@@ -302,9 +319,7 @@ TASKS: dict[str, dict] = {
     "cross_sheet_keeps_source": {
         "desc": "요약 시트에서 성적부를 집계한다. 결과는 요약에 쓰고 **성적부는 그대로**여야 한다.",
         "canonical": "A2에 성적부 결석 합계 넣어줘", "ctx": None, "seed": _seed_grades_and_summary,
-        "oracle": lambda wb: _grades_intact(wb) or (
-            "" if wb["요약"]["A2"].value not in (None, "") else "요약!A2 비어 있음"
-        )},
+        "oracle": lambda wb: _grades_intact(wb) or _summary_total(wb)},
     "sort_keeps_pairs": {
         "desc": "점수로 정렬한다. **이름과 점수의 짝이 유지**되어야 한다(한 열만 정렬하면 어긋난다).",
         "canonical": "점수 높은 순으로 정렬해줘", "ctx": None, "seed": _seed_grades,

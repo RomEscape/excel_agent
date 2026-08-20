@@ -219,15 +219,20 @@ def resolve_sheet_from_message(
     single_write = _SINGLE_CELL_WRITE_MESSAGE.match(text)
     if single_write:
         lead = single_write.group(1)
-        return (
+        found = (
             next(
                 (name for m in _SHEET_MENTION_PATTERN.finditer(lead) for name in _josa_variants(m.group(1)) if name in names),
                 "",
             )
             or _sheet_named_verbatim(lead, names)
             or _sheet_called_by_its_korean_name(lead, names)
-            or default
         )
+        # "성적부 **기준으로** A2에"·"성적부**에 있는** 표를 A2부터" — 머리말의 시트가
+        # 출처로 불렸으면 실행 시트를 옮기지 않는다(2026-08-20 자체 검토:
+        # 이 경로는 출처 판정을 안 거쳐 성적부로 실행이 옮겨졌다).
+        if found and _sheet_named_as_source(lead, {found}):
+            return default
+        return found or default
     if _VALUE_GRID_MESSAGE.search(text):
         lead = re.split(r"[,;\t\n]", text, maxsplit=1)[0]
         lead_names = {n for n in names if n}
@@ -236,6 +241,17 @@ def resolve_sheet_from_message(
             if candidate:
                 return candidate
         return _sheet_named_verbatim(lead, lead_names) or _sheet_called_by_its_korean_name(lead, lead_names) or default
+    # "성적부 시트 결석 열 합계를 **요약 A2에** 부탁해요" — 시트 이름이 **대상 셀에 바로 붙어**
+    # 있으면 그게 대상 시트다. 이 문장은 시트를 둘 부르는데(성적부=원본, 요약=대상),
+    # 앞의 것을 고르면 성적부!A2의 학생 이름 위에 수식이 써진다(2026-08-20 파괴 게이트 실측).
+    for name in sorted(names, key=len, reverse=True):
+        if re.search(
+            rf"(?<![A-Za-z0-9_]){re.escape(name)}\s*(?:시트|sheet|탭)?\s*"
+            rf"[A-Za-z]{{1,3}}\d{{1,7}}\s*(?:셀|칸)?\s*에",
+            text,
+            re.IGNORECASE,
+        ):
+            return name
     # "B10에다 성적부 시트 결석 다 더한 값 가져와줘" — **대상 셀이 시트 언급보다 앞**이면 그 시트는 원본이고
     # 결과는 지금 보고 있는 시트에 써야 한다. 여기서 원본으로 작업 시트를 옮기면 수식이 원본 시트에 써지고,
     # 실측에서는 성적부!B10의 학생 이름을 덮었다(2026-08-19 결과 워크북 감사).
@@ -447,8 +463,15 @@ def _sheet_named_as_source(text: str, names: set[str]) -> bool:
     """
     for name in sorted(names, key=len, reverse=True):
         for match in re.finditer(rf"(?<![A-Za-z0-9_]){re.escape(name)}", text, re.IGNORECASE):
-            if _SOURCE_MARKER.match(text[match.end() : match.end() + 8]):
-                return True
+            tail = text[match.end() : match.end() + 24]
+            marker = _SOURCE_MARKER.match(tail)
+            if marker is None:
+                continue
+            # 마커 바로 뒤가 셀 참조면 출처가 아니라 **그 시트 안의 대상**이다 —
+            # "성적부의 A2에 제목 써줘"는 성적부!A2에 쓰라는 말이다(2026-08-20 자체 검토).
+            if re.match(r"\s*[A-Za-z]{1,3}\d{1,7}(?![A-Za-z0-9])", tail[marker.end() :]):
+                continue
+            return True
     return False
 
 

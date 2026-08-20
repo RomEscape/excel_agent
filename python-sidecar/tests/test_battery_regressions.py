@@ -2193,3 +2193,122 @@ class TestDestructiveScopeGuards:
         from office_claw_sidecar.services.excel_param_binder import resolve_sheet_from_message
 
         assert resolve_sheet_from_message(message, self.CROSS, default="요약") == "성적부", message
+
+
+class TestSelfReviewFixes:
+    """2026-08-20 자체 검토(수정 검토)에서 잡은 결함 4건의 핀."""
+
+    def test_an_exact_header_mention_is_not_lent_to_a_similar_one(self) -> None:
+        """`매출액만 콤마`가 한 글자 다른 **매입액까지** 서식을 걸었다."""
+        from office_claw_sidecar.routers.excel_live import _scope_number_format_to_headers
+
+        digest = {
+            "active_sheet": "장부",
+            "sheets": [
+                {
+                    "name": "장부",
+                    "used_range": "A1:C5",
+                    "columns": [
+                        {"letter": "A", "header": "월"},
+                        {"letter": "B", "header": "매출액"},
+                        {"letter": "C", "header": "매입액"},
+                    ],
+                }
+            ],
+        }
+        plan = [
+            {
+                "action": "excel_live.set_number_format",
+                "params": {"target_range": "__ACTIVE_SELECTION__", "format_code": "#,##0"},
+            }
+        ]
+        assert _scope_number_format_to_headers(plan, "매출액만 콤마", digest) == "B2:B5"
+        # 오타는 여전히 받는다 — 그 창이 다른 머리글과 정확히 일치하지 않으므로.
+        plan2 = [
+            {
+                "action": "excel_live.set_number_format",
+                "params": {"target_range": "__ACTIVE_SELECTION__", "format_code": "#,##0"},
+            }
+        ]
+        assert _scope_number_format_to_headers(plan2, "매출액 매입액 둘 다 콤마", digest) == "B2:B5,C2:C5"
+
+    GRADES = {
+        "active_sheet": "성적부",
+        "sheets": [
+            {
+                "name": "성적부",
+                "used_range": "A1:C5",
+                "columns": [
+                    {"letter": "A", "header": "학생"},
+                    {"letter": "B", "header": "점수"},
+                    {"letter": "C", "header": "결석"},
+                ],
+            }
+        ],
+    }
+
+    def test_a_column_named_with_ppaego_is_protected(self) -> None:
+        """`결석 값들 **빼고** 나머지 비워줘` — 지키라고 한 결석 열을 지웠다."""
+        from office_claw_sidecar.routers.excel_live import _scope_clear_to_header_column
+
+        assert _scope_clear_to_header_column(None, "결석 값들 빼고 나머지 비워줘", self.GRADES) == []
+        assert _scope_clear_to_header_column(None, "결석 제외하고 다 비워", self.GRADES) == []
+
+    def test_a_clear_verb_breaks_the_protection(self) -> None:
+        """`결석 열 **비우고** 나머지는 그대로` — '그대로'는 나머지 얘기지 결석 얘기가 아니다."""
+        from office_claw_sidecar.routers.excel_live import _scope_clear_to_header_column
+
+        out = _scope_clear_to_header_column(None, "결석 열 비우고 나머지는 그대로 둬", self.GRADES)
+        assert out and out[0]["params"]["target_range"] == "C2:C5"
+        out2 = _scope_clear_to_header_column(None, "점수 빼고 결석만 지워줘", self.GRADES)
+        assert out2 and out2[0]["params"]["target_range"] == "C2:C5"
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("H1 2026년 실적", [["2026년 실적"]]),
+            ("H1 3분기 성적", [["3분기 성적"]]),
+            ("A1 주요 업적", [["주요 업적"]]),
+            ("A2에 45 적으세요", [[45]]),
+            ("B3에 준비중 넣으세요", [["준비중"]]),
+        ],
+    )
+    def test_a_verb_stem_does_not_eat_the_last_character(self, text: str, expected) -> None:
+        """`H1 2026년 실적` → 셀에 `'2026년 실'` — 어간 '적'이 끝 글자를 동사로 먹었다."""
+        from office_claw_sidecar.services.excel_live_agent import (
+            normalize_common_typos,
+            parse_command_rule_based,
+        )
+
+        step = parse_command_rule_based(normalize_common_typos(text))
+        assert step and step["params"]["values_2d"] == expected, text
+
+    def test_a_merged_cell_noun_phrase_is_not_a_range(self) -> None:
+        """`제품코드 X1Y2 병합 셀에 넣어줘` — 값 X1Y2가 X1:Y2로 변조됐다."""
+        from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
+
+        assert normalize_common_typos("제품코드 X1Y2 병합 셀에 넣어줘") == "제품코드 X1Y2 병합 셀에 넣어줘"
+        assert normalize_common_typos("H1M1병합") == "H1:M1병합"
+
+    CROSS = {
+        "active_sheet": "요약",
+        "sheets": [
+            {"name": "성적부", "used_range": "A1:C5", "columns": []},
+            {"name": "요약", "used_range": "A1:A1", "columns": []},
+        ],
+    }
+
+    @pytest.mark.parametrize(
+        ("message", "expected"),
+        [
+            ("성적부 기준으로 A2에 합계 넣어줘", "요약"),
+            ("성적부의 A2에 제목 써줘", "성적부"),
+            ("성적부의 A2에 수식 걸어줘", "성적부"),
+            ("성적부에서 A2에 값 넣어줘", "성적부"),
+        ],
+    )
+    def test_a_source_marker_followed_by_a_cell_is_a_destination(self, message: str, expected: str) -> None:
+        """`성적부의 **A2**에`는 성적부 안의 대상이다 — 마커 뒤 셀 참조면 출처가 아니다."""
+        from office_claw_sidecar.services.excel_param_binder import resolve_sheet_from_message
+
+        assert resolve_sheet_from_message(message, self.CROSS, default="요약") == expected, message
