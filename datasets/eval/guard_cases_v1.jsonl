@@ -1,0 +1,36 @@
+{"task": "cross_sheet_keeps_source", "text": "A2에 성적부 결석 합계 넣어줘", "persona": "D_작성자(비블라인드)"}
+{"task": "cross_sheet_keeps_source", "text": "성적부 결석 다 더한 값을 A2에 넣어 주세요", "persona": "D_작성자(비블라인드)"}
+{"task": "cross_sheet_keeps_source", "text": "A2 칸에 성적부 시트 결석 총합 좀", "persona": "D_작성자(비블라인드)"}
+{"task": "cross_sheet_keeps_source", "text": "결석 합계 성적부에서 가져와서 A2에", "persona": "D_작성자(비블라인드)"}
+{"task": "cross_sheet_keeps_source", "text": "성적부에 있는 결석 수 전부 합쳐서 A2에 써줘", "persona": "D_작성자(비블라인드)"}
+{"task": "cross_sheet_keeps_source", "text": "학년 회의 자료라서요, 성적부의 결석 합계를 A2에 넣어 주시면 됩니다", "persona": "D_작성자(비블라인드)"}
+{"task": "cross_sheet_keeps_source", "text": "A2에다 성적부 결석 총계 계산해서 넣어줘", "persona": "D_작성자(비블라인드)"}
+{"task": "cross_sheet_keeps_source", "text": "ㅇㅇ 성적부 결석 합 A2", "persona": "D_작성자(비블라인드)"}
+{"task": "cross_sheet_keeps_source", "text": "A2에 성적부 결석 합계 수식으로 넣어줘, 나중에도 연동되게", "persona": "D_작성자(비블라인드)"}
+{"task": "cross_sheet_keeps_source", "text": "성적부 시트 결석 열 합계를 요약 A2에 부탁해요", "persona": "D_작성자(비블라인드)"}
+{"task": "cross_sheet_keeps_source", "text": "결석 몇 번인지 다 합쳐서 A2에 보여줘 (성적부 기준)", "persona": "D_작성자(비블라인드)"}
+{"task": "cross_sheet_keeps_source", "text": "성적부결석합계 A2", "persona": "D_작성자(비블라인드)"}
+{"task": "sort_keeps_pairs", "text": "점수 높은 순으로 정렬해줘", "persona": "D_작성자(비블라인드)"}
+{"task": "sort_keeps_pairs", "text": "점수 기준 내림차순으로 줄 세워 주세요", "persona": "D_작성자(비블라인드)"}
+{"task": "sort_keeps_pairs", "text": "성적 좋은 애들이 위로 오게 정렬", "persona": "D_작성자(비블라인드)"}
+{"task": "sort_keeps_pairs", "text": "점수 큰 것부터 정렬해줘", "persona": "D_작성자(비블라인드)"}
+{"task": "sort_keeps_pairs", "text": "등수 매기게 점수 순으로 좀 정렬해 주실래요?", "persona": "D_작성자(비블라인드)"}
+{"task": "sort_keeps_pairs", "text": "점수 내림차순 정렬", "persona": "D_작성자(비블라인드)"}
+{"task": "sort_keeps_pairs", "text": "높은 점수가 맨 위로 가게 바꿔줘", "persona": "D_작성자(비블라인드)"}
+{"task": "sort_keeps_pairs", "text": "ㅇㅇ 점수순", "persona": "D_작성자(비블라인드)"}
+{"task": "sort_keeps_pairs", "text": "학부모 상담 자료라서요, 점수가 높은 순서대로 정렬해 주시면 감사하겠습니다", "persona": "D_작성자(비블라인드)"}
+{"task": "sort_keeps_pairs", "text": "점수 열 기준으로 큰 값부터 나열해줘", "persona": "D_작성자(비블라인드)"}
+{"task": "sort_keeps_pairs", "text": "점수 높은 순 정렬해 주세요", "persona": "D_작성자(비블라인드)"}
+{"task": "sort_keeps_pairs", "text": "점수높은순정렬", "persona": "D_작성자(비블라인드)"}
+{"task": "clear_only_named", "text": "결석 열만 비워줘", "persona": "D_작성자(비블라인드)"}
+{"task": "clear_only_named", "text": "결석 값들만 지워 주세요", "persona": "D_작성자(비블라인드)"}
+{"task": "clear_only_named", "text": "결석 칸 내용만 싹 지워줘", "persona": "D_작성자(비블라인드)"}
+{"task": "clear_only_named", "text": "결석 열 비우고 나머지는 그대로 둬", "persona": "D_작성자(비블라인드)"}
+{"task": "clear_only_named", "text": "새 학기라 결석 기록만 초기화해 주세요", "persona": "D_작성자(비블라인드)"}
+{"task": "clear_only_named", "text": "결석 수치만 없애줘, 이름이랑 점수는 건드리지 말고", "persona": "D_작성자(비블라인드)"}
+{"task": "clear_only_named", "text": "ㅇㅇ 결석만 비워", "persona": "D_작성자(비블라인드)"}
+{"task": "clear_only_named", "text": "결석 열 내용 지워줄래?", "persona": "D_작성자(비블라인드)"}
+{"task": "clear_only_named", "text": "출결 다시 셀 거라서요, 결석 열의 값만 비워 주시면 됩니다", "persona": "D_작성자(비블라인드)"}
+{"task": "clear_only_named", "text": "결석 데이터만 클리어", "persona": "D_작성자(비블라인드)"}
+{"task": "clear_only_named", "text": "결석 열 값 전부 삭제해줘 (다른 열은 유지)", "persona": "D_작성자(비블라인드)"}
+{"task": "clear_only_named", "text": "결석열만비워", "persona": "D_작성자(비블라인드)"}

@@ -113,6 +113,59 @@ def _seed_with_summary_sheet(wb):
     wb.active = wb.sheetnames.index("요약")
 
 
+GRADES_SEED = [
+    ["학생", "점수", "결석"],
+    ["김민준", 88, 2],
+    ["이서연", 94, 0],
+    ["박도윤", 71, 5],
+    ["최지우", 83, 1],
+]
+
+
+def _seed_grades_and_summary(wb):
+    """성적부(이름이 든 원본) + 요약(빈 시트). 활성 시트는 요약이다.
+
+    2026-08-19 감사에서 크로스시트 집계가 **성적부에** 써져 학생 이름이 지워졌다.
+    """
+    ws = wb.active
+    ws.title = "성적부"
+    for row in GRADES_SEED:
+        ws.append(row)
+    wb.create_sheet("요약")
+    wb.active = wb.sheetnames.index("요약")
+
+
+def _seed_grades(wb):
+    ws = wb.active
+    ws.title = "성적부"
+    for row in GRADES_SEED:
+        ws.append(row)
+
+
+def _grades_intact(wb):
+    """성적부의 이름·점수·결석이 그대로인가. 아니면 무엇이 어긋났는지 돌려준다."""
+    if "성적부" not in wb.sheetnames:
+        return "성적부 시트가 사라짐"
+    ws = wb["성적부"]
+    for idx, row in enumerate(GRADES_SEED, start=1):
+        for col, expected in enumerate(row, start=1):
+            actual = ws.cell(row=idx, column=col).value
+            if actual != expected:
+                return f"성적부 {ws.cell(row=idx, column=col).coordinate} {expected!r} → {actual!r}"
+    return ""
+
+
+def _pairs(wb, sheet="성적부"):
+    ws = wb[sheet]
+    out = []
+    for r in range(2, ws.max_row + 1):
+        name, score = ws.cell(row=r, column=1).value, ws.cell(row=r, column=2).value
+        if name is None and score is None:
+            continue
+        out.append((name, score))
+    return out
+
+
 def _seed_small_calc(wb):
     ws = wb.active
     ws.title = "계산"
@@ -244,6 +297,30 @@ TASKS: dict[str, dict] = {
         "desc": "열 너비를 내용에 맞게 자동으로 맞춘다.",
         "canonical": "열 너비 보기 좋게 맞춰줘", "ctx": None, "seed": _seed_default,
         "oracle": lambda wb: "" if any((_sheet(wb).column_dimensions[c].width or 0) > 0 and _sheet(wb).column_dimensions[c].width != 13 for c in "ABCDEF") else "열 너비 변경 없음"},
+    # ── 파괴 위험 3종 (2026-08-20 추가) ──────────────────────────────
+    # 되묻기는 실패가 아니다. **망가뜨리는 것만** 실패다.
+    "cross_sheet_keeps_source": {
+        "desc": "요약 시트에서 성적부를 집계한다. 결과는 요약에 쓰고 **성적부는 그대로**여야 한다.",
+        "canonical": "A2에 성적부 결석 합계 넣어줘", "ctx": None, "seed": _seed_grades_and_summary,
+        "oracle": lambda wb: _grades_intact(wb) or (
+            "" if wb["요약"]["A2"].value not in (None, "") else "요약!A2 비어 있음"
+        )},
+    "sort_keeps_pairs": {
+        "desc": "점수로 정렬한다. **이름과 점수의 짝이 유지**되어야 한다(한 열만 정렬하면 어긋난다).",
+        "canonical": "점수 높은 순으로 정렬해줘", "ctx": None, "seed": _seed_grades,
+        "oracle": lambda wb: (
+            "" if sorted(_pairs(wb)) == sorted([(r[0], r[1]) for r in GRADES_SEED[1:]])
+            else f"이름·점수 짝이 어긋남: {_pairs(wb)}"
+        )},
+    "clear_only_named": {
+        "desc": "결석 열(C)만 비운다. 학생 이름과 점수는 **그대로**여야 한다.",
+        "canonical": "결석 열만 비워줘", "ctx": None, "seed": _seed_grades,
+        "oracle": lambda wb: (
+            f"이름·점수가 지워짐: {_pairs(wb)}"
+            if sorted(_pairs(wb)) != sorted([(r[0], r[1]) for r in GRADES_SEED[1:]])
+            else ("" if all(wb["성적부"].cell(row=r, column=3).value in (None, "") for r in range(2, 6))
+                  else f"결석 열이 안 비워짐: {[wb['성적부'].cell(row=r, column=3).value for r in range(2, 6)]}")
+        )},
     "negation_save": {
         "desc": "'저장하지 마' 같은 부정문 — 아무것도 실행되면 안 된다(표는 그대로).",
         "canonical": "아직 저장하지 마", "ctx": None, "seed": _seed_default, "negative": True,
@@ -271,7 +348,7 @@ async def run_one(idx: int, row: dict, llm) -> dict:
     get_excel_live_service().select_workbook(str(WB))
     text = str(row["text"])
     ctx = task.get("ctx")
-    session = f"test-blind-{idx}"
+    session = f"test-{os.environ.get('BLIND_SESSION_TAG', 'blind')}-{idx}"
     t0 = time.time()
     card = False
     summary = ""
