@@ -1996,3 +1996,65 @@ class TestNumberFormatScopedToNamedColumns:
 
         plan = self._plan(target="B2:B6")
         assert _scope_number_format_to_headers(plan, "주문건수 천 단위 콤마", self.DIGEST) == ""
+
+
+class TestHeaderNamesToleranceForTypos:
+    """머리글 이름의 오타 한 글자 — 게이트9가 잡은 내 회귀 2건.
+
+    `주문건수랑 **출고겅수** 천단위 콤마` → 주문건수(B)만 서식이 걸렸다.
+    열 좁히기를 넣기 전에는 표 전체에 걸려 우연히 맞았는데, 정확해지면서 오타난 쪽을 잃었다.
+    """
+
+    DIGEST = {
+        "active_sheet": "지역성과",
+        "sheets": [
+            {
+                "name": "지역성과",
+                "used_range": "A1:F6",
+                "columns": [
+                    {"letter": "A", "header": "지역"},
+                    {"letter": "B", "header": "주문건수"},
+                    {"letter": "C", "header": "출고건수"},
+                    {"letter": "D", "header": "정시배송률"},
+                    {"letter": "E", "header": "지연건수"},
+                    {"letter": "F", "header": "클레임"},
+                ],
+            }
+        ],
+    }
+
+    @pytest.mark.parametrize(
+        ("message", "expected"),
+        [
+            ("주문건수랑 출고겅수 천단위 콤마 표기로 바꺼", "B2:B6,C2:C6"),
+            ("주문건슈 출고건수 천단의 컴마로 보이게 해", "B2:B6,C2:C6"),
+            ("주문건수 출고건수는 천 단위 콤마로", "B2:B6,C2:C6"),
+            ("지연건수만 콤마", "E2:E6"),
+        ],
+    )
+    def test_one_wrong_character_still_finds_the_column(self, message: str, expected: str) -> None:
+        from office_claw_sidecar.routers.excel_live import _scope_number_format_to_headers
+
+        plan = [
+            {
+                "action": "excel_live.set_number_format",
+                "params": {"target_range": "__ACTIVE_SELECTION__", "format_code": "#,##0"},
+            }
+        ]
+        assert _scope_number_format_to_headers(plan, message, self.DIGEST) == expected, message
+
+    @pytest.mark.parametrize(
+        ("header", "message", "expected"),
+        [
+            ("주문건수", "지연건수만 콤마", False),
+            ("출고건수", "지연건수만 콤마", False),
+            ("지연건수", "지연건수만 콤마", True),
+            ("지역", "지연건수만 콤마", False),
+        ],
+    )
+    def test_similar_headers_do_not_cross_match(self, header: str, message: str, expected: bool) -> None:
+        """두 글자 이상 다르면 남의 열이다 — 오차 허용이 열을 뒤바꾸면 안 된다."""
+        from office_claw_sidecar.routers.excel_live import _header_in_message
+        from office_claw_sidecar.services.excel_aggregate_below import _norm_header
+
+        assert _header_in_message(header, _norm_header(message)) is expected

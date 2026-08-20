@@ -1391,6 +1391,26 @@ def _quick_extract_colors(text: str) -> list[str]:
 _UNSCOPED_HIGHLIGHT_TARGETS = frozenset({"", "A:Z", "__ACTIVE_SELECTION__", "__USED_RANGE__"})
 
 
+def _header_in_message(header: str, compact_message: str) -> bool:
+    """머리글이 문장에 나왔는가 — **한 글자 오타까지** 같은 것으로 본다.
+
+    "출고**겅**수"는 "출고건수"다(2026-08-20 게이트9). 세 글자 미만은 보지 않는다.
+    """
+    needle = _norm_header(str(header or ""))
+    if not needle:
+        return False
+    if needle in compact_message:
+        return True
+    size = len(needle)
+    if size < 3 or len(compact_message) < size:
+        return False
+    for start in range(len(compact_message) - size + 1):
+        window = compact_message[start : start + size]
+        if sum(1 for a, b in zip(needle, window) if a != b) <= 1:
+            return True
+    return False
+
+
 def _digest_active_entry(digest: dict[str, Any]) -> dict[str, Any]:
     active = str((digest or {}).get("active_sheet") or "")
     for sheet in (digest or {}).get("sheets") or []:
@@ -1405,12 +1425,7 @@ def _header_column_from_message(message: str, columns: list[dict[str, Any]]) -> 
     compact = _norm_header(str(message or ""))
     if not compact:
         return None
-    hits = [
-        column
-        for column in columns
-        if _norm_header(str(column.get("header") or ""))
-        and _norm_header(str(column.get("header") or "")) in compact
-    ]
+    hits = [column for column in columns if _header_in_message(column.get("header"), compact)]
     if not hits:
         return None
     if len(hits) == 1:
@@ -1519,11 +1534,7 @@ def _scope_number_format_to_headers(
     entry = _digest_active_entry(digest)
     columns = [c for c in (entry.get("columns") or []) if isinstance(c, dict)]
     compact = _norm_header(str(message or ""))
-    named = [
-        c
-        for c in columns
-        if _norm_header(str(c.get("header") or "")) and _norm_header(str(c.get("header") or "")) in compact
-    ]
+    named = [c for c in columns if _header_in_message(c.get("header"), compact)]
     if not named or len(named) == len(columns):
         return ""
     used = str(entry.get("used_range") or "")
