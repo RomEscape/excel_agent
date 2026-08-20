@@ -303,13 +303,33 @@ def build_aggregate_below_plan(
     data_start = start_row + 1 if has_header else start_row
     below = end_row + 1
 
+    # 꼬리의 집계 줄(합계·평균…)은 데이터가 아니다. 여기에 넣으면 **이중 집계**가 된다 —
+    # "합계 넣어줘" 다음 턴의 "그 아래 평균도"가 `=AVERAGE(B2:B7)`이 되어 합계까지 평균냈다
+    # (2026-08-20 ex1 결과 워크북 실측: 주문건수 평균이 5,368 대신 8,941로 보였다).
+    # `sort_range`가 쓰는 것과 같은 판정이다.
+    data_end = end_row
+    tail_index = len(rows) - 1
+    while tail_index > 0 and data_end > data_start:
+        tail = rows[tail_index] if tail_index < len(rows) else []
+        if not isinstance(tail, list):
+            break
+        tail_label = tail[0] if tail else None
+        tail_has_formula = any(isinstance(v, str) and str(v).startswith("=") for v in tail)
+        is_agg_label = (
+            isinstance(tail_label, str) and tail_label.strip().lower() in _TOTAL_ROW_LABELS
+        )
+        if not (tail_has_formula or is_agg_label):
+            break
+        data_end -= 1
+        tail_index -= 1
+
     steps: list[dict[str, Any]] = []
     label_letter: str | None = None
     for offset in range(n_cols):
         letter = get_column_letter(start_idx + offset)
         col_values = [
             _cell(r, offset)
-            for r in range(data_start - start_row, end_row - start_row + 1)
+            for r in range(data_start - start_row, data_end - start_row + 1)
         ]
         numeric = [
             v for v in col_values if isinstance(v, (int, float)) and not isinstance(v, bool)
@@ -320,7 +340,7 @@ def build_aggregate_below_plan(
                     "action": "excel_live.set_formula",
                     "params": {
                         "range_ref": f"{letter}{below}",
-                        "formula_a1": f"={func}({letter}{data_start}:{letter}{end_row})",
+                        "formula_a1": f"={func}({letter}{data_start}:{letter}{data_end})",
                     },
                     "reason": f"{letter}열 {label}을 범위 아랫줄에",
                 }

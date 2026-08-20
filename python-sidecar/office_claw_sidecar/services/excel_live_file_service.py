@@ -1453,6 +1453,17 @@ class FileExcelLiveService(ExcelLiveService):
             # 고정된 집계 줄들은 원래 자리(맨 아래)에 그대로 돌아간다 — 행이 안
             # 움직였으니 수식 참조도 손댈 필요가 없다.
             final_values.extend(pinned_tail_rows)
+        # 값을 다시 쓰기 **전에** 본문 행들의 서식을 찍어 둔다. 안 그러면 정렬 뒤
+        # 채움·글꼴이 제자리에 남아 다른 값을 가리킨다(2026-08-20 ex23 실측:
+        # 990,000에 칠한 빨강이 정렬 뒤 27,500 위에 남았다).
+        row_styles = self._capture_row_styles(
+            workbook_id,
+            sheet_name,
+            body_start_row=body_start_row,
+            row_count=len(body),
+            min_col=min_col,
+            col_count=col_count,
+        )
         self.clear_range(workbook_id, sheet_name, address)
         self.write_range(
             workbook_id=workbook_id,
@@ -1469,12 +1480,79 @@ class FileExcelLiveService(ExcelLiveService):
             min_col=min_col,
             body_start_row=body_start_row,
         )
+        self._apply_row_styles(
+            workbook_id,
+            sheet_name,
+            styles=row_styles,
+            order=sort_order,
+            body_start_row=body_start_row,
+            min_col=min_col,
+        )
         return {
             "sorted_rows": len(out_values),
             "address": self._address_from_bounds((min_row, min_col, max_row, max_col)),
             "key_column_index": key_idx + 1,
             "order": "desc" if reverse else "asc",
         }
+
+    def _capture_row_styles(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        *,
+        body_start_row: int,
+        row_count: int,
+        min_col: int,
+        col_count: int,
+    ) -> list[list[Any]]:
+        """정렬 대상 본문 행들의 셀 서식을 행 단위로 찍는다. 못 읽으면 빈 목록(서식 보정 생략)."""
+        from copy import copy
+
+        try:
+            path = self._resolve_workbook_path(workbook_id)
+            wb = self._load_wb(path)
+            ws = self._sheet_or_raise(wb, sheet_name)
+            out: list[list[Any]] = []
+            for offset in range(row_count):
+                row = []
+                for col_offset in range(col_count):
+                    cell = ws.cell(row=body_start_row + offset, column=min_col + col_offset)
+                    row.append(copy(cell._style))
+                out.append(row)
+            return out
+        except Exception:
+            return []
+
+    def _apply_row_styles(
+        self,
+        workbook_id: str | None,
+        sheet_name: str,
+        *,
+        styles: list[list[Any]],
+        order: list[int],
+        body_start_row: int,
+        min_col: int,
+    ) -> None:
+        """찍어 둔 서식을 **정렬된 순서대로** 되돌려 놓는다.
+
+        `order[j]`가 새 j번째 자리에 온 원래 행 번호다 — 그 행의 서식을 그대로 가져온다.
+        """
+        if not styles or not order:
+            return
+        try:
+            path = self._resolve_workbook_path(workbook_id)
+            wb = self._load_wb(path)
+            ws = self._sheet_or_raise(wb, sheet_name)
+            for new_offset, source_index in enumerate(order):
+                if source_index >= len(styles):
+                    continue
+                for col_offset, style in enumerate(styles[source_index]):
+                    ws.cell(
+                        row=body_start_row + new_offset, column=min_col + col_offset
+                    )._style = style
+            self._save_wb(wb, path)
+        except Exception:
+            return
 
     def dedupe_rows(
         self,

@@ -1537,6 +1537,34 @@ def _spans_multiple_columns(target: str) -> bool:
     return bool(rect and rect.group(1) != rect.group(2))
 
 
+def _scope_data_bar_to_header_column(
+    plan: list[dict[str, Any]] | None, message: str, digest: dict[str, Any]
+) -> str:
+    """데이터 막대 대상을 문장이 부른 머리글의 열로 좁힌다. 좁혔으면 그 범위를."""
+    if not plan or len(plan) != 1 or not isinstance(plan[0], dict):
+        return ""
+    step = plan[0]
+    if str(step.get("action") or "") != "excel_live.apply_data_bar":
+        return ""
+    params = dict(step.get("params") or {})
+    if re.search(r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}\s*:\s*[A-Za-z]{1,3}\d{1,7}", str(message or "")):
+        return ""
+    entry = _digest_active_entry(digest)
+    columns = [c for c in (entry.get("columns") or []) if isinstance(c, dict)]
+    column = _header_column_from_message(message, columns)
+    if column is None:
+        return ""
+    letter = str(column.get("letter") or "").strip().upper()
+    used = str(entry.get("used_range") or "")
+    last_row = int(m.group(1)) if (m := re.search(r"(\d+)$", used)) else 0
+    if not letter or last_row < 2:
+        return ""
+    scoped = f"{letter}2:{letter}{last_row}"
+    params["target_range"] = scoped
+    step["params"] = params
+    return scoped
+
+
 def _scope_number_format_to_headers(
     plan: list[dict[str, Any]] | None, message: str, digest: dict[str, Any]
 ) -> str:
@@ -3370,7 +3398,20 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
             normalized_ctx=normalized_ctx,
             explicit_range=explicit_range,
         )
-        target = normalized_ctx or explicit_range or ("__USED_RANGE__" if whole_sheet_border else "__ACTIVE_SELECTION__")
+        # "**표 전체** 테두리"는 직전 결과 범위가 아니라 **표 전체**를 뜻한다.
+        # `_is_whole_sheet_style_request`는 컨텍스트가 있으면 거짓을 주므로, 대화 중에는
+        # 그 말이 통째로 무시됐다 — 직전 턴이 머리글 서식이면 테두리가 머리글에만 갔다
+        # (2026-08-20 ex1 실측: 표가 A1:F8인데 A1:F1에만 둘러졌다).
+        # 원문이 범위를 직접 적었으면 그건 사람 뜻이므로 건드리지 않는다.
+        whole_table_worded = bool(re.search(r"(표|테이블|table)?\s*(전체|전부|모두|모든|통째)", lowered))
+        # 컨텍스트가 있을 때만 덮는다. 컨텍스트가 없으면 예전 경로(`__USED_RANGE__`)가
+        # 이미 맞다 — 계획 문자열을 바꿀 이유가 없다.
+        if whole_table_worded and not explicit_range and normalized_ctx:
+            target = "__TABLE_REGION__"
+        else:
+            target = normalized_ctx or explicit_range or (
+                "__USED_RANGE__" if whole_sheet_border else "__ACTIVE_SELECTION__"
+            )
         border_thin = any(token in lowered for token in ["얇", "thin"])
         # "회식"은 회색의 흔한 오타다 — 실측 문장("가장 기본 회식 얇은 색")에서 나왔다.
         border_light = any(token in lowered for token in ["옅", "연한", "회색", "회식", "그레이", "gray", "grey"])
@@ -3506,7 +3547,11 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
             ]
 
     if re.search(r"데이터\s*막대|data\s*bar", lowered):
-        target = normalized_ctx or explicit_range or "__ACTIVE_SELECTION__"
+        # "**연비효율** 열에도 데이터 막대" — 문장이 부른 머리글이 대상이다.
+        # 컨텍스트만 보면 직전 열에 다시 걸린다(2026-08-20 ex1 실측: 규칙이 B2:B6 하나뿐,
+        # C열에는 안 걸렸다). 열은 다이제스트가 준비된 뒤 `_scope_data_bar_to_header_column`이
+        # 확정하므로, 여기서는 **머리글을 불렀다는 표시**만 남긴다.
+        target = explicit_range or normalized_ctx or "__ACTIVE_SELECTION__"
         return [
             {
                 "action": "excel_live.apply_data_bar",
@@ -8956,6 +9001,13 @@ async def _run_command(
             quick_plan_for_parse = _normalize_plan_or_empty(quick_action_plan)
             quick_first_action = quick_plan_for_parse[0].action if quick_plan_for_parse else ""
             trace_note("highlight_scope", detail=_scoped, action=quick_first_action)
+        _bar_scoped = _scope_data_bar_to_header_column(quick_action_plan, req.message, workbook_digest)
+        if _bar_scoped:
+            should_parse_with_llm = False
+            llm_decision_reason = "data_bar_scoped_to_header"
+            quick_plan_for_parse = _normalize_plan_or_empty(quick_action_plan)
+            quick_first_action = quick_plan_for_parse[0].action if quick_plan_for_parse else ""
+            trace_note("data_bar_scope", detail=_bar_scoped, action=quick_first_action)
         _fmt_scoped = _scope_number_format_to_headers(quick_action_plan, req.message, workbook_digest)
         if _fmt_scoped:
             should_parse_with_llm = False
