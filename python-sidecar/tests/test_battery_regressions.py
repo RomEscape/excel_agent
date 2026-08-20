@@ -2094,3 +2094,102 @@ class TestAggregateGuardDoesNotEatPastedValues:
         from office_claw_sidecar.services.excel_live_agent import parse_rangeless_row_write
 
         assert parse_rangeless_row_write(text, "A1:F6") is None, text
+
+
+class TestDestructiveScopeGuards:
+    """2026-08-20 파괴 위험 게이트가 드러낸 것들 — 전부 표를 통째로 망쳤다."""
+
+    GRADES = {
+        "active_sheet": "성적부",
+        "sheets": [
+            {
+                "name": "성적부",
+                "used_range": "A1:C5",
+                "columns": [
+                    {"letter": "A", "header": "학생"},
+                    {"letter": "B", "header": "점수"},
+                    {"letter": "C", "header": "결석"},
+                ],
+            }
+        ],
+    }
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "결석 열만 비워줘",
+            "결석 값들만 지워 주세요",
+            "결석 칸 내용만 싹 지워줘",
+            "ㅇㅇ 결석만 비워",
+            "새 학기라 결석 기록만 초기화해 주세요",
+            "결석 열 값 전부 삭제해줘 (다른 열은 유지)",
+            "결석열만비워",
+        ],
+    )
+    def test_only_the_named_column_is_cleared(self, message: str) -> None:
+        """`결석 열만 비워줘`가 **표 전체를 비웠다**(12문장 중 8)."""
+        from office_claw_sidecar.routers.excel_live import (
+            _build_quick_action_plan,
+            _scope_clear_to_header_column,
+        )
+
+        plan = _build_quick_action_plan(message, None)
+        scoped = _scope_clear_to_header_column(plan, message, self.GRADES)
+        assert scoped, message
+        assert [s["params"]["target_range"] for s in scoped] == ["C2:C5"], message
+
+    def test_a_protected_column_is_not_the_target(self) -> None:
+        """"이름이랑 **점수는 건드리지 말고**" — 지키라고 부른 열을 대상으로 삼으면 안 된다."""
+        from office_claw_sidecar.routers.excel_live import _scope_clear_to_header_column
+
+        scoped = _scope_clear_to_header_column(
+            None, "결석 수치만 없애줘, 이름이랑 점수는 건드리지 말고", self.GRADES
+        )
+        assert scoped and scoped[0]["params"]["target_range"] == "C2:C5"
+
+    @pytest.mark.parametrize("message", ["표 전체 지워줘", "시트 전체 초기화해줘", "싹 다 지워", "전부 지워"])
+    def test_a_whole_sheet_reset_is_left_alone(self, message: str) -> None:
+        """넓게 지우라고 한 문장까지 한 열로 좁히면 안 된다."""
+        from office_claw_sidecar.routers.excel_live import (
+            _build_quick_action_plan,
+            _scope_clear_to_header_column,
+        )
+
+        plan = _build_quick_action_plan(message, None)
+        assert _scope_clear_to_header_column(plan, message, self.GRADES) == [], message
+
+    CROSS = {
+        "active_sheet": "요약",
+        "sheets": [
+            {"name": "성적부", "used_range": "A1:C5", "columns": []},
+            {"name": "요약", "used_range": "A1:A1", "columns": []},
+        ],
+    }
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "결석 합계 성적부에서 가져와서 A2에",
+            "성적부에 있는 결석 수 전부 합쳐서 A2에 써줘",
+            "학년 회의 자료라서요, 성적부의 결석 합계를 A2에 넣어 주시면 됩니다",
+            "A2에 성적부 결석 합계 넣어줘",
+        ],
+    )
+    def test_a_sheet_named_as_a_source_is_not_the_write_target(self, message: str) -> None:
+        """`성적부**에서** … A2에`가 **성적부에** 써져 학생 이름을 덮었다.
+
+        2026-08-19에 넣은 보호는 어순만 봤는데, 이 문장들은 시트가 앞에 온다.
+        한국어는 어순이 아니라 **조사**로 출처를 표시한다.
+        """
+        from office_claw_sidecar.services.excel_param_binder import resolve_sheet_from_message
+
+        assert resolve_sheet_from_message(message, self.CROSS, default="요약") == "요약", message
+
+    @pytest.mark.parametrize(
+        "message",
+        ["성적부 시트 A1에 제목 써줘", "성적부에 합계 넣어줘", "성적부 정렬해줘"],
+    )
+    def test_a_sheet_named_as_a_destination_still_wins(self, message: str) -> None:
+        from office_claw_sidecar.services.excel_param_binder import resolve_sheet_from_message
+
+        assert resolve_sheet_from_message(message, self.CROSS, default="요약") == "성적부", message

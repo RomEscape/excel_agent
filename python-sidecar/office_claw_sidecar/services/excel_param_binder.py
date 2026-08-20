@@ -72,6 +72,12 @@ _SHEET_MENTION_PATTERN = re.compile(r"([A-Za-z0-9가-힣_]{1,20})\s*(?:시트|sh
 _REFERENCE_CONTEXT = re.compile(
     r"(참조표|참조|참고표|조회표는|기준표|룩업|lookup|reference)\s*(?:는|은|을|를|:)?\s*$"
 )
+#: 시트 이름 뒤에 붙는 **출처 표시**. 한국어는 어순이 아니라 조사로 원본을 가리킨다.
+#: `성적부에서` · `성적부의` · `성적부에 있는` · `성적부 기준` → 그 시트는 **원본**이다.
+_SOURCE_MARKER = re.compile(
+    r"^\s*(?:시트|sheet|탭)?\s*"
+    r"(?:에서|의\s|의$|에\s*있는|에\s*든|에\s*나온|기준|것|거|쪽)"
+)
 _COLUMN_LETTER_MENTION = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]\s*열")
 _CELL_REF_PATTERN = re.compile(r"^[A-Z]{1,3}\d{1,7}$")
 _COLUMN_LETTER_ONLY = re.compile(r"^[A-Za-z]{1,3}$")
@@ -237,6 +243,12 @@ def resolve_sheet_from_message(
     if dest_first:
         first_mention = _SHEET_MENTION_PATTERN.search(text)
         if first_mention and first_mention.start() > dest_first.start():
+            return default
+        # 어순만 보면 위 세 문장을 놓친다 — 시트가 앞에 오기 때문이다.
+        # 한국어는 **조사**로 출처를 표시한다: `성적부에서`·`성적부의`·`성적부에 있는`.
+        # 대상 셀이 따로 있는데 시트가 출처로 불렸으면 실행 시트를 옮기지 않는다
+        # (2026-08-20 파괴 게이트: 성적부!A2의 '김민준' 위에 `=SUM(C2:C5)`가 써졌다).
+        if _sheet_named_as_source(text, names):
             return default
     for match in _SHEET_MENTION_PATTERN.finditer(text):
         # 원문형("추이")이 실제 시트면 그걸 쓴다. 조사를 뗀 형태("추")를 먼저 보면
@@ -425,6 +437,19 @@ def explicit_sheet_mention_variants(message: str) -> list[list[str]]:
         if group:
             groups.append(group)
     return groups
+
+
+def _sheet_named_as_source(text: str, names: set[str]) -> bool:
+    """문장이 어떤 시트를 **출처로** 불렀는가.
+
+    `성적부에서 …`·`성적부의 …`·`성적부에 있는 …`처럼 조사가 출처를 표시하면 참.
+    `성적부 시트에 써줘`처럼 대상으로 부른 경우는 거짓이다.
+    """
+    for name in sorted(names, key=len, reverse=True):
+        for match in re.finditer(rf"(?<![A-Za-z0-9_]){re.escape(name)}", text, re.IGNORECASE):
+            if _SOURCE_MARKER.match(text[match.end() : match.end() + 8]):
+                return True
+    return False
 
 
 def _sheet_named_verbatim(text: str, names: set[str]) -> str | None:

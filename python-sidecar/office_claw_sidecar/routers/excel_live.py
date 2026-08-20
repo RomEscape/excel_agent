@@ -1558,6 +1558,90 @@ def _scope_number_format_to_headers(
     return ",".join(ranges)
 
 
+#: "표 전체", "시트 다" 처럼 **넓게** 지우라는 말. 이때는 열로 좁히지 않는다.
+_CLEAR_WHOLE_WORDS = re.compile(
+    r"(표\s*전체|시트\s*전체|전체\s*(?:표|시트|내용|데이터)|시트\s*(?:를|을)?\s*(?:다|싹|통째)"
+    r"|싹\s*(?:다\s*)?(?:지워|비워|밀어)|다\s*지워|모두\s*지워|전부\s*지워"
+    # '초기화'는 그 자체로 전체가 아니다 — "결석 기록**만** 초기화"는 한 열이다.
+    # 전체를 가리키는 말이 앞에 붙었을 때만 전체 리셋으로 본다(2026-08-20 실측).
+    r"|(?:표|시트|전체|전부|다)\s*(?:를|을)?\s*(?:초기화|리셋|reset))"
+)
+#: 리셋 계열 계획의 단계들. `초기화`는 테두리·채움까지 걷어내는 여러 단계를 만든다.
+_CLEAR_RESET_ACTIONS = frozenset(
+    {"excel_live.clear_range", "excel_live.fill_range", "excel_live.apply_border"}
+)
+
+#: "~는 건드리지 말고", "~는 그대로" — **지키라고** 부른 열이라 대상이 아니다.
+_CLEAR_PROTECT_CLAUSE = re.compile(r"(건드리지|손대지|지우지|그대로|유지|놔두|놔둬|냅두|남기|남겨|빼고|제외)")
+
+#: "결석 **열만**", "결석 값**만**" — 한 열로 한정한다는 표시.
+_CLEAR_ONLY_WORDS = re.compile(r"(만|열|칸|컬럼|column|값들|수치|데이터)")
+
+
+def _scope_clear_to_header_column(
+    plan: list[dict[str, Any]] | None, message: str, digest: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """`결석 열만 비워줘` → 결석 열의 데이터 구간만 비우는 계획.
+
+    계획이 없거나 **표 전체를 비우는 계획**일 때만 만든다.
+    머리글을 유일하게 못 짚으면 빈 목록 — 추측해서 지우지 않는다.
+    """
+    text = str(message or "")
+    if not _is_clear_reset_request(text.lower()):
+        return []
+    if not _CLEAR_ONLY_WORDS.search(text):
+        return []
+    if re.search(r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}\s*:\s*[A-Za-z]{1,3}\d{1,7}", text):
+        return []
+    if plan:
+        if not all(
+            isinstance(step, dict) and str(step.get("action") or "") in _CLEAR_RESET_ACTIONS
+            for step in plan
+        ):
+            return []
+        if not any(
+            _spans_multiple_columns(str((step.get("params") or {}).get("target_range") or ""))
+            for step in plan
+        ):
+            return []
+    entry = _digest_active_entry(digest)
+    columns = [c for c in (entry.get("columns") or []) if isinstance(c, dict)]
+    # "이름이랑 **점수는 건드리지 말고**" — 지키라고 부른 열은 대상이 아니다.
+    # 이 절을 안 빼면 마지막에 불린 '점수'가 대상이 된다(2026-08-20 실측).
+    target_text = ",".join(
+        seg
+        for seg in re.split(r"[,;·\n]", text)
+        if not _CLEAR_PROTECT_CLAUSE.search(seg)
+    )
+    column = _header_column_from_message(target_text or text, columns)
+    if column is None:
+        return []
+    header = str(column.get("header") or "").strip()
+    # "결석 칸 내용**만** 싹 지워줘" — '싹'은 그 열 안에서 남김없이라는 뜻이다.
+    # **머리글 + 만**이 있으면 좁히는 쪽이 이긴다(2026-08-20 파괴 게이트 2차).
+    scoped_by_name = bool(
+        header
+        and re.search(
+            rf"{re.escape(header)}\s*(?:열|칸|값|값들|기록|데이터|수치|내용|의)*\s*(?:내용|값)?\s*만",
+            text,
+        )
+    )
+    if not scoped_by_name and _CLEAR_WHOLE_WORDS.search(text):
+        return []
+    letter = str(column.get("letter") or "").strip().upper()
+    used = str(entry.get("used_range") or "")
+    last_row = int(m.group(1)) if (m := re.search(r"(\d+)$", used)) else 0
+    if not letter or last_row < 2:
+        return []
+    return [
+        {
+            "action": "excel_live.clear_range",
+            "params": {"target_range": f"{letter}2:{letter}{last_row}"},
+            "reason": "빠른 규칙 기반 열 비우기(머리글로 열 확인)",
+        }
+    ]
+
+
 def _value_equals_highlight(message: str, digest: dict[str, Any]) -> list[dict[str, Any]]:
     """"상태 대기 분홍 강조!" / "대기만 분홍" — 값과 색만 있는 강조 문장.
 
@@ -8781,6 +8865,22 @@ async def _run_command(
         if _value_plan:
             quick_action_plan = _value_plan
             rule_hook = rule_hook or "value_equals_highlight"
+    # `결석 열만 비워줘` — 계획이 없거나 표 전체를 비우는 계획이면 그 열만 비운다.
+    # 예전에는 표 전체가 지워졌다(2026-08-20 파괴 게이트: 12문장 중 8).
+    if pending_slot is None and pending_operation is None:
+        _clear_plan = _scope_clear_to_header_column(quick_action_plan, req.message, workbook_digest)
+        if _clear_plan:
+            quick_action_plan = _clear_plan
+            rule_hook = rule_hook or "clear_scoped_to_header"
+            should_parse_with_llm = False
+            llm_decision_reason = "clear_scoped_to_header"
+            quick_plan_for_parse = _normalize_plan_or_empty(quick_action_plan)
+            quick_first_action = quick_plan_for_parse[0].action if quick_plan_for_parse else ""
+            trace_note(
+                "clear_scope",
+                detail=str((_clear_plan[0].get("params") or {}).get("target_range") or ""),
+                action=quick_first_action,
+            )
     if quick_action_plan and pending_slot is None and pending_operation is None:
         _scoped = _scope_highlight_to_header_column(quick_action_plan, req.message, workbook_digest)
         if not _scoped and rule_hook == "value_equals_highlight":
