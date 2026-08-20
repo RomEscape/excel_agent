@@ -36,6 +36,7 @@ import {
   Hash,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BrandMark } from "@/components/ui/logo";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,7 +48,6 @@ import {
   WizardSteps,
 } from "@/components/ui/wizard";
 import { buildModelOptions, RECOMMENDED_MODEL } from "@/lib/modelCatalog";
-import { BrandMark } from "@/components/ui/logo";
 import useAppStore from "@/store/appStore";
 import {
   saveLLMSettings,
@@ -1088,6 +1088,7 @@ export default function OnboardingWizard() {
       <div className="flex min-h-full items-center justify-center p-4">
         <div className="w-full max-w-md">
           <div className="mb-4 flex flex-col items-center gap-1">
+            {/* 브랜드 마크 — 이전에는 OpenClaw 시절 잔재인 🦞 이모지였다. */}
             <BrandMark className="h-9 w-9 rounded-lg" />
             <p className="text-xs uppercase tracking-widest text-muted-foreground">
               김대리 시작하기

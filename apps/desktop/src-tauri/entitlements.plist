@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS hardened runtime entitlements.
+
+  서명·공증(Apple Developer 계정)을 붙이기 전까지는 적용되지 않는다 —
+  entitlements 는 코드 서명 시점에 바이너리에 박히기 때문이다. 그래도 지금
+  넣어두는 이유는, 서명을 켜는 순간 이 파일이 없으면 공증은 통과해도
+  **런타임에 Apple Events 가 막혀** 원인을 찾기 어려운 실패가 나기 때문이다.
+
+  각 항목이 필요한 이유:
+    automation.apple-events  — xlwings 가 AppleScript 로 Excel 을 제어한다.
+                               hardened runtime 에서는 이게 없으면 차단된다.
+    cs.allow-jit             — WKWebView(JavaScriptCore)가 JIT 를 쓴다.
+    cs.disable-library-validation
+                             — PyInstaller 로 만든 사이드카를 externalBin 으로
+                               함께 실행한다. 별도 서명 주체의 dylib 가 로드되므로
+                               라이브러리 검증을 풀지 않으면 사이드카가 죽는다.
+    network.client           — 사이드카(localhost)·Ollama·릴레이 서버 접속.
+-->
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+
+    <key>com.apple.security.network.client</key>
+    <true/>
+</dict>
+</plist>

@@ -11,16 +11,19 @@ env:
 
 jobs:
   build:
+    # Intel Mac(x86_64-apple-darwin)은 의도적으로 뺐다.
+    #   - Apple Silicon 전환이 2020년에 시작돼 신규 사용자 대부분이 ARM이다.
+    #   - macOS 러너는 청구 분이 10배라, Intel 잡 하나가 릴리스당 ~180분을 먹는다.
+    #     빼는 것만으로 릴리스 비용이 절반 가까이 줄어든다.
+    # 되살리려면 이 매트릭스에 항목을 더하고, 랜딩 페이지 다운로드 버튼도 함께
+    # 늘려야 한다(브라우저는 Apple Silicon과 Intel Mac을 구분하지 못한다).
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: macos-latest
-            target: aarch64-apple-darwin     # macOS M1/M2
+            target: aarch64-apple-darwin     # macOS Apple Silicon
             sidecar_suffix: aarch64-apple-darwin
-          - os: macos-13
-            target: x86_64-apple-darwin      # macOS Intel
-            sidecar_suffix: x86_64-apple-darwin
           - os: windows-latest
             target: x86_64-pc-windows-msvc   # Windows
             sidecar_suffix: x86_64-pc-windows-msvc
@@ -118,18 +121,25 @@ jobs:
           projectPath: apps/desktop
           tagName: ${{ github.ref_name }}
           releaseName: 'kimdaeri ${{ github.ref_name }}'
+          # 자산 이름에서 버전을 뺀다 — 랜딩 페이지가
+          # `releases/latest/download/<고정이름>` 을 영구 URL로 쓰기 위함이다.
+          # 버전이 들어가면 릴리스마다 랜딩 페이지를 고쳐야 한다.
+          # 기본 이름은 productName(한글 `김대리`)이 들어가 URL 인코딩도 지저분해진다.
+          releaseAssetNamePattern: 'kimdaeri-[platform]-[arch][ext]'
           releaseBody: |
             ## 변경사항
             이 릴리즈의 변경사항은 커밋 히스토리를 참고하세요.
 
             ## 설치 방법
-            아래 파일을 다운로드해 설치하세요. (파일명 앞부분은 앱 표시명 `김대리`)
-            - **macOS (Apple Silicon / M1·M2)**: `..._aarch64.dmg`
-            - **macOS (Intel)**: `..._x64.dmg`
-            - **Windows**: `..._x64_en-US.msi` 또는 `..._x64-setup.exe`
+            - **macOS (Apple Silicon)**: `kimdaeri-*.dmg`
+            - **Windows**: `kimdaeri-*-setup.exe` 또는 `kimdaeri-*.msi`
+
+            > Intel Mac은 지원하지 않습니다.
+            > macOS는 아직 코드서명·공증 전이라, 처음 실행할 때
+            > 시스템 설정 → 개인정보 보호 및 보안에서 열기를 허용해야 합니다.
 
             ## 시스템 요구사항
-            - macOS 12 Monterey 이상 / Windows 10 이상
+            - macOS 12 Monterey 이상 (Apple Silicon) / Windows 10 이상
             - 메모리 4GB 이상 권장
             - Ollama 설치 (로컬 LLM 사용 시) — 앱 내 설치 가이드 제공
           releaseDraft: true   # Draft로 생성 → 직접 검토 후 Publish
