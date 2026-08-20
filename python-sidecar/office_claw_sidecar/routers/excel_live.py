@@ -8295,9 +8295,12 @@ async def _run_command(
     # 실행기가 하위 명령을 돌릴 때 쓰는 경로라 둘 다 여기로 들어오면 안 된다.
     # 규칙이 이미 문장을 다 담았으면(부족하지 않으면) 매크로로 쪼갤 일이 아니다.
     # "요약이라는 이름의 새 시트를 만들어 주세요"가 21단계로 분해됐다(2026-08-20 게이트8).
-    _early_quick = _build_quick_action_plan(req.message, req.context_range)
-    _rule_covers_message = bool(_early_quick) and not _quick_plan_underfits_message(
-        str((_early_quick[0] or {}).get("action") or ""), req.message
+    # 계획은 여기서 **한 번만** 만든다. 예전에는 매크로 판정용으로 한 번, 아래에서 또 한 번
+    # 같은 인자로 불렀다 — 순수 함수라 결과는 같지만, 사이에 누가 계획을 손대면 두 값이
+    # 조용히 갈라진다(2026-08-20 자체 검토에서 발견).
+    quick_action_plan = _build_quick_action_plan(req.message, req.context_range)
+    _rule_covers_message = bool(quick_action_plan) and not _quick_plan_underfits_message(
+        str((quick_action_plan[0] or {}).get("action") or ""), req.message
     )
     if (
         not req.approve
@@ -8314,7 +8317,6 @@ async def _run_command(
     operation_hints = _extract_operation_hints(req.message)
     user_key = resolve_user_key({"user_id": req.user_id, "session_id": req.session_id})
     personalization_hint = build_personalization_prompt(user_key)
-    quick_action_plan = _build_quick_action_plan(req.message, req.context_range)
     # "아니 부산으로 바꿔줘"는 시트를 뒤지라는 말이 아니라 방금 쓴 칸을 고치라는 말이다.
     # 문맥 없이 플래너에 넘기면 찾을 말과 바꿀 말이 뒤집혀 남의 셀이 지워진다.
     # "그 아래 칸에는 평균"도 같은 부류 — 직전 수식을 기억하면 규칙으로 풀린다.
