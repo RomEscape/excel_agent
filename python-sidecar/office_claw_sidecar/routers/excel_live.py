@@ -521,7 +521,15 @@ _ACTION_EVIDENCE: dict[str, re.Pattern[str]] = {
     "excel_live.apply_color_scale": re.compile(r"(색조|컬러\s*스케일|color\s*scale)", re.IGNORECASE),
     "excel_live.forecast_linear": re.compile(r"(예측|추세|forecast|전망)", re.IGNORECASE),
     "excel_live.compare_ranges": re.compile(r"(비교|차이|diff|대조)", re.IGNORECASE),
-    "excel_live.consolidate_sheets": re.compile(r"(통합|합쳐|병합|모아)", re.IGNORECASE),
+    # 통합은 **시트·파일을** 하나로 합치는 것이다. 맨 동사만 근거로 삼으면
+    # "결석 몇 번인지 다 **합쳐서** A2에"까지 시트 통합으로 읽혀 "통합할 시트명을
+    # 알려주세요"가 나간다(2026-08-20 파괴 게이트 실측). 대상 명사를 함께 요구한다.
+    "excel_live.consolidate_sheets": re.compile(
+        r"(?:시트|탭|파일|워크북|통합문서|sheet)\s*(?:들|를|을|이|가)?\s*[^\n]{0,10}?(?:통합|합쳐|합치|병합|모아)"
+        r"|(?:통합|합쳐|합치|병합|모아)\s*[^\n]{0,10}?(?:시트|탭|파일|워크북|통합문서|sheet)"
+        r"|여러\s*(?:시트|탭|파일)",
+        re.IGNORECASE,
+    ),
     "excel_live.set_data_validation": re.compile(
         r"(드롭다운|유효성|목록|제한|validation|선택되도록)", re.IGNORECASE
     ),
@@ -8072,7 +8080,10 @@ _NEGATION_TAIL = (
     r"|금지|하지마|하지\s*말"
     r"|안\s*(?:해도|하셔도)\s*(?:돼|되|됩니|괜찮)"
     r"|(?:안|않)\s*(?:해|합니다|할래|할\s*래)"
-    r"|말고|말아|말아라|말아\s*주|나중에|이따가|보류"
+    # `나중에**도** 연동되게`는 미루자는 말이 아니라 **이유**다("나중에도 값이 따라오게").
+    # 보조사 '도'가 뜻을 뒤집는다 — 이걸 부정으로 읽어 "네, 하지 않겠습니다"가 나갔다
+    # (2026-08-20 파괴 게이트: 크로스시트 수식 요청이 통째로 무시됐다).
+    r"|말고|말아|말아라|말아\s*주|나중에(?!도)|이따가|보류"
 )
 
 
@@ -8709,8 +8720,11 @@ async def _run_command(
         # 시트 접두 없는 =SUM(F2:F11)이 대시보드에 써지거나(값 0), 문장이 원본 시트의 이름 칸을 덮었다
         # (2026-08-19 결과 워크북 감사: 성적부!B10의 '학생9'가 사라졌다). 그 두 훅은 크로스시트에 양보한다.
         _cross_yieldable = rule_hook in {"aggregate_below", "aggregate_columns", "single_cell_write", "cell_arithmetic"}
+        # 훅의 방아쇠 어휘가 빌더(`_AGG_WORD`)보다 좁으면, 빌더가 풀 수 있는 문장이
+        # 여기서 걸러진다 — `총계`가 목록에 없어 "A2에다 성적부 결석 **총계** 계산해서
+        # 넣어줘"가 통째로 빠졌다(2026-08-20 파괴 게이트).
         if (not quick_action_plan or _cross_yieldable) and re.search(
-            r"(합계|총합|평균|개수|건수|더한|더해|합)", req.message or ""
+            r"(합계|총합계|총합|총계|합산|평균|개수|건수|더한|더해|합쳐|합친|합해|합)", req.message or ""
         ):
 
             def _cross_sheet_reader(sheet: str) -> tuple[str, list]:

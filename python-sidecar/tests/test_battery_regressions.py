@@ -2312,3 +2312,60 @@ class TestSelfReviewFixes:
         from office_claw_sidecar.services.excel_param_binder import resolve_sheet_from_message
 
         assert resolve_sheet_from_message(message, self.CROSS, default="요약") == expected, message
+
+
+class TestCrossSheetAggregateWordOrder:
+    """크로스시트 집계가 **어순 변형**에서 통째로 빠지던 문제.
+
+    2026-08-20 파괴 게이트: 12문장 중 4만 계획이 나왔다. 나머지는 규칙이 비어
+    플래너가 명령문 조각이나 `'SUM'`을 셀에 썼다(원본은 안 망가뜨렸지만 결과가 틀렸다).
+    """
+
+    GRID = [
+        ["학생", "점수", "결석"],
+        ["김민준", 88, 2],
+        ["이서연", 94, 0],
+        ["박도윤", 71, 5],
+        ["최지우", 83, 1],
+    ]
+
+    def _reader(self, name):
+        return ("A1:C5", self.GRID) if name == "성적부" else ("A1:A1", [[None]])
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "A2에 성적부 결석 합계 넣어줘",
+            "결석 합계 성적부에서 가져와서 A2에",
+            "성적부에 있는 결석 수 전부 합쳐서 A2에 써줘",
+            "학년 회의 자료라서요, 성적부의 결석 합계를 A2에 넣어 주시면 됩니다",
+            "A2에다 성적부 결석 총계 계산해서 넣어줘",
+            "A2에 성적부 결석 합계 수식으로 넣어줘, 나중에도 연동되게",
+            "성적부 시트 결석 열 합계를 요약 A2에 부탁해요",
+            "결석 몇 번인지 다 합쳐서 A2에 보여줘 (성적부 기준)",
+            "ㅇㅇ 성적부 결석 합 A2",
+            "성적부 결석 다 더한 값을 A2에 넣어 주세요",
+            "A2 칸에 성적부 시트 결석 총합 좀",
+            "성적부결석합계 A2",
+        ],
+    )
+    def test_every_word_order_yields_the_same_formula(self, message: str) -> None:
+        from office_claw_sidecar.services.excel_aggregate_below import (
+            build_cross_sheet_aggregate_plan,
+        )
+
+        steps = build_cross_sheet_aggregate_plan(message, self._reader, ["성적부", "요약"])
+        assert steps, message
+        assert steps[0]["params"]["range_ref"] == "A2", message
+        assert steps[0]["params"]["formula_a1"] == "=SUM('성적부'!C2:C5)", message
+
+    @pytest.mark.parametrize(
+        "message",
+        ["결석 합계 알려줘", "성적부 정렬해줘", "A2에 제목 써줘"],
+    )
+    def test_it_does_not_fire_without_a_cross_sheet_request(self, message: str) -> None:
+        from office_claw_sidecar.services.excel_aggregate_below import (
+            build_cross_sheet_aggregate_plan,
+        )
+
+        assert build_cross_sheet_aggregate_plan(message, self._reader, ["성적부", "요약"]) == []
