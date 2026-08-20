@@ -4,41 +4,111 @@
 
 @layer base {
   /*
-   * 강조색은 김대리 브랜드 초록에서 온다.
-   * 원본은 src/assets/brand-logo-{light,dark}.svg 의 fill·stop-color:
-   *   코어 #2DB400 = 105 100% 35% · 다크 지면 #0C1909 = 109 47% 7%
-   * --primary 는 흰 전경(--primary-foreground)과 4.5:1을 넘겨야 해서
-   * 같은 색상/채도를 유지한 채 명도만 낮춘 105 100% 24% (#1F7A00, 5.2:1) 를 쓴다.
+   * 색의 단일 소스는 브랜드 SVG와 최종 와이어프레임(design/desktop-shell/TOKENS.md)이다.
+   *   코어 #2DB400 = 105 100% 35%
+   *   라이트 지면 #FDFEFC = 90 50% 99% · 다크 지면 #0C1909 = 109 47% 7%
+   *
+   * --primary 만은 #2DB400 을 그대로 쓰지 않는다. 흰 전경(--primary-foreground)과의
+   * 대비가 2.75:1 이라 본문 대비 기준 4.5:1 에 못 미치기 때문이다. 같은 색상/채도를
+   * 유지한 채 명도만 낮춘 105 100% 24% (#1F7A00, 5.2:1) 를 쓴다.
+   * 글자를 얹지 않는 자리(상태 점·장식·아이콘 채움)는 --brand 로 원값을 쓴다.
    */
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --background: 90 50% 99%;
+    --foreground: 120 10% 12%;
+    --card: 100 60% 98%;
+    --card-foreground: 120 10% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 120 10% 12%;
     --primary: 105 100% 24%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 100 60% 96%;
+    --secondary-foreground: 120 10% 12%;
+    --muted: 100 60% 98%;
+    --muted-foreground: 105 6% 42%;
+    --accent: 100 40% 95%;
+    --accent-foreground: 120 10% 12%;
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 105 100% 24%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 103 12% 89%;
+    --input: 103 12% 89%;
+    --ring: 105 100% 35%;
     --radius: 0.5rem;
-    /* 사이드바는 다크 지면이라 코어 초록(35%)을 그대로 얹어도 대비가 6:1 넘는다. */
+
+    /* 브랜드 원값 — 글자를 얹지 않는 자리에서만 쓴다. */
+    --brand: 105 100% 35%; /* #2DB400 */
+    --brand-step: 105 60% 48%; /* #56C331 — 온보딩 활성 스텝 */
+    --brand-file: 118 54% 52%; /* #46C642 — 파일·폴더 아이콘 */
+    --brand-glow: 105 54% 60%; /* #7FD163 — 홈 배경 장식 타원 */
+
+    /* AI 말풍선 · 툴 진행 스텝 칩 지면 (라이트 #E1E6DF / 다크 #535D50) */
+    --chat-bubble: 103 12% 89%;
+    --chat-bubble-foreground: 120 10% 12%;
+
+    /*
+     * 사이드바는 본문과 같은 밝기다 (와이어프레임 라이트 159~172의 #FDFEFC).
+     * 예전에는 라이트 모드에서도 사이드바만 다크 지면이었는데, 최종안은
+     * 사이드바가 테마를 따라간다.
+     */
+    --sidebar-background: 90 50% 99%;
+    --sidebar-foreground: 120 10% 12%;
+    --sidebar-primary: 105 100% 24%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 100 40% 95%;
+    --sidebar-accent-foreground: 120 10% 12%;
+    --sidebar-border: 103 12% 89%;
+    --sidebar-ring: 105 100% 35%;
+  }
+
+  /*
+   * 다크는 레이아웃이 아니라 토큰만 바뀐다 — 와이어프레임 145~158과 159~172의
+   * 노드 트리가 동일하다는 걸 확인하고 내린 결론(TOKENS.md "구조 동일성").
+   */
+  .dark {
+    --background: 109 47% 7%; /* #0C1909 */
+    --foreground: 100 12% 94%;
+    --card: 108 19% 16%; /* #243021 */
+    --card-foreground: 100 12% 94%;
+    --popover: 108 19% 16%;
+    --popover-foreground: 100 12% 94%;
+    /*
+     * 다크 지면에서는 #2DB400 위의 흰 글자가 이미 5.6:1 이라 명도를 낮출 이유가 없다.
+     * 오히려 낮추면 지면(#0C1909)과 붙어 버튼이 사라진다.
+     */
+    --primary: 105 100% 35%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 111 11% 25%;
+    --secondary-foreground: 100 12% 94%;
+    --muted: 108 19% 16%;
+    --muted-foreground: 109 5% 62%;
+    --accent: 111 11% 25%; /* #3B4739 */
+    --accent-foreground: 100 12% 94%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 106 8% 34%; /* #535D50 */
+    --input: 106 8% 34%;
+    --ring: 105 100% 35%;
+
+    --brand: 105 100% 35%;
+    --brand-step: 105 60% 48%;
+    --brand-file: 118 54% 52%;
+    --brand-glow: 105 54% 60%;
+
+    /*
+     * 다크 프레임의 AI 말풍선 fill 은 #E1E6DF(라이트 값) 그대로 남아 있지만,
+     * 같은 프레임의 루트 fill 도 #FDFEFC 로 남아 있는 걸 보면 되돌리지 않은
+     * 작업 흔적이다. TOKENS.md 가 정리한 매핑(#E1E6DF → #535D50)을 따른다.
+     */
+    --chat-bubble: 106 8% 34%;
+    --chat-bubble-foreground: 100 12% 94%;
+
     --sidebar-background: 109 47% 7%;
-    --sidebar-foreground: 210 40% 98%;
+    --sidebar-foreground: 100 12% 94%;
     --sidebar-primary: 105 100% 35%;
-    --sidebar-primary-foreground: 210 40% 98%;
-    --sidebar-accent: 109 25% 17%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 109 25% 17%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 111 11% 25%;
+    --sidebar-accent-foreground: 100 12% 94%;
+    --sidebar-border: 106 8% 34%;
     --sidebar-ring: 105 100% 35%;
   }
 }
@@ -81,4 +151,36 @@ textarea,
 }
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-muted-foreground/30;
+}
+
+/*
+ * 스켈레톤 로딩 shimmer — 와이어프레임 B-7의 "새로운 시트 제작중..." 아래 바.
+ * prefers-reduced-motion 이면 흐르지 않고 은은한 지면으로만 남는다.
+ */
+@keyframes oc-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+.oc-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.oc-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    hsl(var(--brand) / 0.14),
+    transparent
+  );
+  animation: oc-shimmer 1.6s infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .oc-shimmer::after {
+    animation: none;
+  }
 }

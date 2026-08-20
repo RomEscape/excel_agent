@@ -16,6 +16,8 @@ const SHORTCUTS = [
     items: [
       { keys: ["⌘/Ctrl", "K"], label: "명령 팔레트 열기/닫기" },
       { keys: ["⌘/Ctrl", "B"], label: "사이드바 접기/펼치기" },
+      { keys: ["⌘/Ctrl", "J"], label: "채팅 패널 열기/닫기" },
+      { keys: ["⌘/Ctrl", "⇧", "L"], label: "화면 테마 전환 (라이트 ↔ 다크)" },
       { keys: ["?"], label: "이 도움말 열기" },
       { keys: ["⌘/Ctrl", "/"], label: "이 도움말 열기" },
       { keys: ["Esc"], label: "모달/팝오버 닫기" },
@@ -24,7 +26,7 @@ const SHORTCUTS = [
   {
     group: "승인",
     items: [
-      { keys: ["Y"], label: "승인 (보안 확인 다이얼로그)" },
+      { keys: ["Y"], label: "승인 (보안 확인 · 엑셀 인라인 승인)" },
       { keys: ["Enter"], label: "승인" },
       { keys: ["N"], label: "거부" },
       { keys: ["Esc"], label: "거부 / 닫기" },

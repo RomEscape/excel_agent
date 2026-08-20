@@ -1,10 +1,21 @@
 /**
- * OnboardingWizard — 첫 실행 시 표시되는 온보딩 마법사 (Phase 3 officeclaw).
+ * OnboardingWizard — 첫 실행 시 표시되는 온보딩 마법사.
  *
- * Step 0: LLM 엔진 선택 (Ollama 설치 가이드 강화)
- * Step 1: 메신저 선택 (Telegram / Slack / Discord)
- * Step 2: 선택된 메신저 설정
- * Step 3: 워크스페이스 폴더 확인
+ * 최종 와이어프레임 A군(Frame 159~165)은 3단계다:
+ *   파일 설치 → 모델 설치 → 워크스페이스 지정
+ *
+ * 앱에는 그 3단계 말고 메신저 연결도 필요해서, 3단계 뒤에 붙였다. 와이어프레임
+ * 하단 스텝 인디케이터는 그 3단계에만 붙는다 — 메신저·완료 화면에는 없다.
+ *
+ * `파일 설치`와 `모델 설치`는 별도 화면이 아니라 같은 화면의 두 상태다:
+ * Ollama가 아직 없으면 파일 설치(1단계), 깔려 있으면 모델 선택(2단계).
+ * 실제로 사용자가 하는 일이 그 순서대로이고, 화면을 쪼개면 Ollama가 이미
+ * 설치된 사람에게 빈 1단계가 한 번 스쳐 지나간다.
+ *
+ * Step 0: AI 엔진 — Ollama 설치 + 모델 선택 (와이어프레임 1·2단계)
+ * Step 1: 워크스페이스 지정            (와이어프레임 3단계)
+ * Step 2: 메신저 선택 (Telegram / Slack / Discord)
+ * Step 3: 선택된 메신저 설정
  * Step 4: 완료 안내
  *
  * appStore의 `onboardingComplete`가 false일 때만 표시된다.
@@ -19,7 +30,6 @@ import {
   AlertTriangle,
   Bot,
   MessageCircle,
-  FolderOpen,
   RefreshCw,
   Copy,
   ExternalLink,
@@ -28,15 +38,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { BrandMark } from "@/components/ui/logo";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  FileChecklist,
+  FolderField,
+  InstallProgress,
+  ModelSelectField,
+  WizardSteps,
+} from "@/components/ui/wizard";
+import { buildModelOptions, RECOMMENDED_MODEL } from "@/lib/modelCatalog";
 import useAppStore from "@/store/appStore";
 import {
   saveLLMSettings,
@@ -55,17 +66,23 @@ import { toUserMessage } from "@/lib/errorMessages";
 const TOTAL_STEPS = 5;
 
 const STEP_LABELS = [
-  "LLM 선택",
+  "AI 엔진",
+  "워크스페이스",
   "메신저 선택",
   "메신저 설정",
-  "워크스페이스",
   "완료",
 ];
 
-/** Step progress indicator — dots + text label */
+/**
+ * 와이어프레임 밖 화면(메신저·완료)의 진행 표시.
+ *
+ * 3단계 인디케이터(WizardSteps)는 와이어프레임 A군 화면에만 붙는다. 그 뒤
+ * 화면까지 3단계를 그리면 "워크스페이스 지정"이 활성인 채로 메신저 화면이
+ * 떠서 어느 단계인지 거짓말을 하게 된다.
+ */
 function StepDots({ current }) {
   return (
-    <div className="mb-8 space-y-2">
+    <div className="mb-6 space-y-2">
       <div className="flex items-center justify-center gap-2">
         {Array.from({ length: TOTAL_STEPS }, (_, i) => (
           <span
@@ -100,6 +117,9 @@ function StepLLM({ onNext, onPrev }) {
   const [ollamaStatus, setOllamaStatus] = useState("unknown");
   const [ollamaModels, setOllamaModels] = useState([]);
   const [copied, setCopied] = useState(false);
+
+  // 설치된 모델 → 셀렉트 옵션 (추천 모델이 맨 위로 올라온다).
+  const modelOptions = React.useMemo(() => buildModelOptions(ollamaModels), [ollamaModels]);
 
   useEffect(() => {
     if (provider !== "ollama") {
@@ -229,7 +249,7 @@ function StepLLM({ onNext, onPrev }) {
         </Card>
       </div>
 
-      {/* Ollama 미설치 — 설치 가이드 강화 */}
+      {/* Ollama 미설치 — 와이어프레임 A-1의 `파일 설치` 상태 */}
       {provider === "ollama" && ollamaStatus === "not_installed" && (
         <Card className="border-amber-300 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20">
           <CardContent className="space-y-3 py-4">
@@ -239,6 +259,25 @@ function StepLLM({ onNext, onPrev }) {
                 Ollama가 설치되어 있지 않아요.
               </p>
             </div>
+
+            {/*
+              와이어프레임 A-1의 진행 바 + 파일 체크리스트.
+              Ollama 설치는 우리가 아니라 사용자가 외부 설치 프로그램으로 하므로
+              바이트 단위 진행률을 알 수 없다. 그래서 "무엇이 남았는지"를
+              체크리스트로 보여주고, 진행 바는 그 단계 수로 채운다 —
+              가짜 퍼센트를 흘리는 것보다 정확하다.
+            */}
+            <InstallProgress
+              value={0}
+              label="Ollama 설치 대기 중"
+              detail="0/2 단계"
+            />
+            <FileChecklist
+              items={[
+                { name: "Ollama 런타임", state: "active" },
+                { name: `AI 모델 (${RECOMMENDED_MODEL})`, state: "pending" },
+              ]}
+            />
 
             <div className="space-y-2">
               <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
@@ -286,10 +325,17 @@ function StepLLM({ onNext, onPrev }) {
         </Card>
       )}
 
-      {/* Ollama 설치됨, 모델 없음 */}
+      {/* Ollama 설치됨, 모델 없음 — 와이어프레임 A-2(설치 완료) → A-3(모델 설치) 사이 */}
       {provider === "ollama" && ollamaStatus === "ok" && ollamaModels.length === 0 && (
         <Card className="border-blue-300 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20">
           <CardContent className="space-y-2 py-3">
+            <InstallProgress value={50} label="Ollama 설치 완료" detail="1/2 단계" />
+            <FileChecklist
+              items={[
+                { name: "Ollama 런타임", state: "done" },
+                { name: `AI 모델 (${RECOMMENDED_MODEL})`, state: "active" },
+              ]}
+            />
             <p className="text-xs font-medium text-blue-700 dark:text-blue-400">
               Ollama가 설치되었어요. 이제 AI 모델을 받아야 해요.
             </p>
@@ -315,20 +361,19 @@ function StepLLM({ onNext, onPrev }) {
         </Card>
       )}
 
-      {/* Ollama 모델 선택 */}
+      {/* Ollama 모델 선택 — 와이어프레임 A-3/A-4 (제조사 아이콘 + `추천` 배지) */}
       {provider === "ollama" && ollamaStatus === "ok" && ollamaModels.length > 0 && (
-        <div className="space-y-1.5">
-          <Label htmlFor="ob-ollama-model">사용할 모델</Label>
-          <Select value={model} onValueChange={setModel}>
-            <SelectTrigger id="ob-ollama-model">
-              <SelectValue placeholder="모델 선택" />
-            </SelectTrigger>
-            <SelectContent>
-              {ollamaModels.map((m) => (
-                <SelectItem key={m} value={m}>{m}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="space-y-2">
+          <Label>설치할 AI 모델을 선택해주세요.</Label>
+          <ModelSelectField
+            options={modelOptions}
+            value={model}
+            onChange={setModel}
+            placeholder="모델을 선택해주세요."
+          />
+          <p className="text-xs text-muted-foreground">
+            AI 모델은 추후에 언제든 변경이 가능합니다.
+          </p>
         </div>
       )}
 
@@ -365,6 +410,15 @@ function StepLLM({ onNext, onPrev }) {
           <ChevronRight className="ml-1 h-4 w-4" />
         </Button>
       </div>
+
+      {/*
+        와이어프레임 3단계 인디케이터.
+        Ollama가 아직 없으면 `파일 설치`(0), 깔려 있으면 `모델 설치`(1)가 활성이다.
+        Claude API를 고른 경우엔 받을 파일이 없으므로 곧바로 모델 단계로 본다.
+      */}
+      <WizardSteps
+        current={provider === "ollama" && ollamaStatus !== "ok" ? 0 : 1}
+      />
     </div>
   );
 }
@@ -837,27 +891,23 @@ function StepWorkspace({ onNext, onPrev }) {
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-          <FolderOpen className="h-7 w-7 text-primary" />
-        </div>
-        <h2 className="text-xl font-bold">워크스페이스 폴더</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          모든 파일 접근은 아래 폴더 안으로 안전하게 제한됩니다.
-        </p>
+        <h2 className="text-xl font-bold">워크스페이스 위치를 지정해주세요.</h2>
       </div>
 
-      <Card className="border-primary/30 bg-primary/5">
-        <CardContent className="py-4">
-          <p className="text-xs text-muted-foreground mb-1 font-medium uppercase tracking-wide">
-            워크스페이스 경로
-          </p>
-          <code className="text-sm font-mono break-all">{workspacePath}</code>
-          <p className="mt-3 text-xs text-muted-foreground">
-            앱을 처음 실행할 때 자동으로 생성됩니다.
-            메신저에서 "파일 목록 보여줘" 같은 명령으로 이 폴더의 파일에 접근할 수 있습니다.
-          </p>
-        </CardContent>
-      </Card>
+      {/* 와이어프레임 A-6/A-7의 폴더 선택 필드 441×40.
+          경로는 앱이 정하고 사용자는 확인만 하므로 항상 값이 채워진 A-7 상태다.
+          누르면 Finder/탐색기로 그 폴더를 연다. */}
+      <div className="flex flex-col items-center gap-3">
+        <FolderField
+          value={workspacePath}
+          onClick={handleOpenFolder}
+          disabled={opening}
+        />
+        <p className="text-center text-xs text-muted-foreground">
+          워크스페이스 위치는 추후에 언제든 변경이 가능합니다. 모든 파일 접근은 이
+          폴더 안으로 제한됩니다.
+        </p>
+      </div>
 
       {openError && <p className="text-xs text-destructive">{openError}</p>}
 
@@ -866,15 +916,13 @@ function StepWorkspace({ onNext, onPrev }) {
           <ChevronLeft className="mr-1 h-4 w-4" />
           이전
         </Button>
-        <Button variant="outline" className="flex-1" onClick={handleOpenFolder} disabled={opening}>
-          <FolderOpen className="mr-1.5 h-4 w-4" />
-          {opening ? "열기 중..." : "폴더 열기"}
-        </Button>
-        <Button className="flex-1" onClick={onNext}>
-          다음
+        <Button className="flex-1" onClick={onNext} disabled={!workspacePath}>
+          확인
           <ChevronRight className="ml-1 h-4 w-4" />
         </Button>
       </div>
+
+      <WizardSteps current={2} />
     </div>
   );
 }
@@ -1021,30 +1069,36 @@ export default function OnboardingWizard() {
     discord: StepDiscord,
   }[selectedMessenger] ?? StepTelegram;
 
+  // 순서는 와이어프레임 A군을 따른다: AI 엔진(파일 설치 → 모델 설치) →
+  // 워크스페이스 지정. 메신저 연결은 와이어프레임에 없어서 그 뒤에 붙였다.
   const steps = [
     <StepLLM key="llm" onNext={goNext} onPrev={goPrev} />,
+    <StepWorkspace key="workspace" onNext={goNext} onPrev={goPrev} />,
     <StepMessengerChoice key="messenger-choice" onNext={goNext} onPrev={goPrev} />,
     <MessengerStep key={`messenger-${selectedMessenger}`} onNext={goNext} onPrev={goPrev} />,
-    <StepWorkspace key="workspace" onNext={goNext} onPrev={goPrev} />,
     <StepComplete key="complete" onFinish={completeOnboarding} onPrev={goPrev} />,
   ];
+
+  // 와이어프레임 3단계 화면(0·1)은 자기 하단에 WizardSteps를 직접 그린다.
+  // 그 밖의 화면만 여기서 점 인디케이터를 얹는다.
+  const showDots = step >= 2;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-background/95 backdrop-blur-sm">
       <div className="flex min-h-full items-center justify-center p-4">
         <div className="w-full max-w-md">
-          <div className="mb-2 flex flex-col items-center text-center">
+          <div className="mb-4 flex flex-col items-center gap-1">
             {/* 브랜드 마크 — 이전에는 OpenClaw 시절 잔재인 🦞 이모지였다. */}
-            <BrandMark className="h-10 w-10 rounded-lg" />
-            <p className="mt-1.5 text-xs text-muted-foreground uppercase tracking-widest">
+            <BrandMark className="h-9 w-9 rounded-lg" />
+            <p className="text-xs uppercase tracking-widest text-muted-foreground">
               김대리 시작하기
             </p>
           </div>
 
-          <StepDots current={step} />
+          {showDots && <StepDots current={step} />}
 
           <Card>
-            <CardContent className="pt-6 pb-6">{steps[step]}</CardContent>
+            <CardContent className="pb-6 pt-6">{steps[step]}</CardContent>
           </Card>
         </div>
       </div>

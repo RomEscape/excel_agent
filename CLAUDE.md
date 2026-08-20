@@ -48,6 +48,12 @@
 | 모바일 브랜드 테마 | — | (mobile) `lib/theme/brand_palette.dart`(색 토큰, 순수) · `brand_theme.dart`(ThemeData + `AgentStatusColors` 확장) · `agent_status_tokens.dart`(상태→라벨·색) | — | (mobile) `lib/widgets/brand_wordmark.dart` · `agent_status_chip.dart` (조합만) |
 | relay 페어링 보안 | — | (relay) `oc_relay/pairing.py`(code 발급·TTL·바인딩) · `oc_relay/rate_limit.py`(시도 제한, 순수) | — | — (`app.py`가 두 모듈을 결합만) |
 | 모바일 relay 주소 정책 | — | (mobile) `lib/transport/relay_url.dart`(스킴 검증·정규화 + 평문 차단, 순수) | — | — (`relay_transport.dart`·`pairing_service.dart`가 구독만) |
+| 화면 테마(라이트/다크) | `store/themeStore.js` | `lib/theme.js`(preference+OS→resolved, 순수) · `lib/themeManager.js`(`<html>.dark` 적용) | — | `components/settings/ThemePicker.jsx` (조합만) |
+| 채팅 패널 크기 | chatStore의 `panelOpen`·`panelMode` | `lib/chatPanel.js`(도킹↔플로팅 계약, 순수) | — | `components/chat/ChatPanel.jsx` (조합만) |
+| 워크스페이스 문서 | `store/documentStore.js` | `lib/documents.js`(카드 모델·`3일 전`, 순수) · `lib/documentManager.js`(목록·생성·업로드·삭제) | `ipc.rs`의 `workspace_delete_file` | `components/ui/document-card.jsx` |
+| 툴 진행 스텝 | chatStore의 `toolSteps` | `lib/toolSteps.js`(executed_actions→칩 문구, 순수) | — | `ui/chat.jsx`의 `ToolStepChip` |
+| 페어링 TTL 표시 | relayStore의 `pairingExpiresAt` | `lib/pairingCountdown.js`(남은 시간·`3:29` 포맷, 순수) | — | `components/relay/RelayPairing.jsx` (조합만) |
+| 온보딩 모델 목록 | — | `lib/modelCatalog.js`(모델 ID→제조사·추천, 순수) | — | `components/ui/wizard.jsx`의 `ModelSelectField` |
 
 새 기능을 추가할 때 이 표에 한 줄이 더 늘어나야 한다.
 
@@ -61,17 +67,25 @@
 >
 > **2026-08 페어링 code 방어 노트**: 페어링 code의 방어는 **TTL(120초) · rate-limit(IP당 10회/60초) · 엔트로피(8 hex = 2^32)** 세 가지가 곱해져야 성립한다. 하나씩은 부족하다 — TTL만 있으면 초당 1만 회 공격에 창당 약 7% 확률로 뚫리고, rate-limit만 있으면 미소비 code가 쌓여 "아무거나 하나만 맞히면 되는" 상태가 된다. **셋 중 하나를 줄이려면 나머지를 키워야 한다.** rate-limit 키는 클라이언트 IP이고, `X-Forwarded-For`는 위조 가능하므로 기본 비신뢰다 — 리버스 프록시가 들어오는 XFF를 **덮어쓰도록** 설정한 경우에만 `RELAY_TRUST_PROXY=1`로 켠다. 전역 잠금(전체 실패 N회 → 엔드포인트 차단)은 공격자가 정상 사용자의 페어링을 막는 DoS 수단이 되므로 의도적으로 넣지 않았다.
 >
-> TTL 도입으로 QR은 120초 후 만료된다. `/pair/start`가 `expires_in`을 함께 주므로 **데스크톱 UI는 이 값으로 카운트다운·재발급을 붙여야 한다** — 안 붙이면 사용자는 이유 없는 페어링 실패만 본다(현재 `RelayPairing.jsx` 미구현, 후속 과제).
+> TTL 도입으로 QR은 120초 후 만료된다. `/pair/start`가 `expires_in`을 주고, 사이드카 `/relay/pair`가 그 값을 **그대로 흘려보내야** 한다 — 데스크톱이 TTL을 하드코딩해 추측하면 relay 설정이 바뀔 때 카운트다운이 실제 만료와 어긋나서 "아직 남았다"고 표시된 QR이 이미 죽어 있게 된다. 계산은 `lib/pairingCountdown.js`, 표시는 `RelayPairing.jsx`(카운트다운·재발급·스토어 배지)가 맡는다. `expires_in`이 0/없음이면 **만료 개념 없음**으로 다뤄 카운트다운을 숨긴다(구버전 relay 호환) — 0초 만료로 치면 QR을 띄우자마자 만료로 보인다.
 >
-> **2026-08 데스크톱 채팅 우선 레이아웃 노트**: 앱의 주 작업면은 채팅이다(`currentPage` 기본값 `"chat"`). 왼쪽은 `ConversationSidebar`(사용자 칩 → 새 대화 → 오늘/어제 그룹 대화 목록)이고, **채팅·대시보드·워크스페이스·대화 모니터링·설정 진입은 그 사이드바 푸터에 있다** — 디자인 원본(`8a6513e`의 `DesktopAppShell.jsx`)은 채팅 표면만 그려서 내비게이션이 아예 없었기 때문에 진입 경로가 사라지지 않도록 푸터에 붙인 것이다. 지우지 말 것.
+> **2026-08 데스크톱 최종 와이어프레임 노트** (구 "채팅 우선 레이아웃 노트"를 대체): 스펙 원본은 `design/desktop-shell/`(`SCREENS.md`·`TOKENS.md`·`raw/{light,dark}/Frame_*.txt`)이고, Figma는 `김대리_기획안`의 라이트 `Frame 159~172` / 다크 `Frame 145~158`이다. PR #28이 따르던 `8a6513e`의 `DesktopAppShell.jsx`는 **채택되지 않은 안**이었다 — 그 구조를 근거로 삼지 말 것.
 >
-> 푸터의 **`채팅` 항목은 없으면 안 된다**. 대화 목록 클릭은 *다른* 대화로 가고 `새 대화`는 화면을 비우므로, 이 항목이 빠지면 대시보드에 갔다가 *보던 대화로* 돌아올 경로가 Cmd+K뿐이다.
+> **홈이 시작 화면이고 `currentPage: "chat"`은 그 홈을 가리킨다**(`Layout`의 `PAGE_MAP.chat = HomePage`). 홈은 채팅 스레드가 아니라 **문서 카드 그리드 + 문서 CRUD 액션 바**다(B-1). 구버전의 상태 카드 3장(보안/AI엔진/최근 대화)은 이 자리에서 빠졌다.
 >
-> 접힘(Cmd/Ctrl+B)은 **통째 숨김이 아니라 64px 아이콘 레일**이다 — 대화 목록만 숨고 내비게이션은 남는다. 통째로 없애면 접는 순간 모든 페이지 진입 경로를 잃고 돌아올 길이 StatusBar 구석 버튼뿐이라 사용자가 길을 잃는다. 접힘 모양은 `ConversationSidebar`가 직접 소유하므로 `Layout`에서 조건부 언마운트하지 않는다.
+> **채팅은 페이지가 아니라 본문 위의 390px 패널**이다(B-2/B-3). `Layout`이 소유하고 어느 페이지 위에든 뜬다. 크기는 도킹(본문을 밀어냄) ↔ 플로팅(본문 위에 겹침) 2단이고 규칙은 `lib/chatPanel.js`가 소유한다 — `reservesLayoutSpace()`가 false인데 본문 폭을 줄이면 오른쪽에 빈 띠가 생긴다.
 >
-> 그 Figma export는 7570px 캔버스에 5개 화면을 절대좌표로 늘어놓은 **정적 목업**이라 컴포넌트로 쓸 수 없었다(props·state 없음, 문자열 하드코딩). 시각 규격만 가져오고 색은 전부 테마 토큰으로 옮겼다 — 목업의 `lime-600/100/800`은 브랜드 초록의 Figma 근사치이므로 **그대로 쓰면 안 된다**(브랜드 색 노트 참조). 목업의 `● ● ● 김대리 AI` 타이틀바도 옮기지 않았다: Figma가 "데스크톱 창"임을 나타내려 그린 장식이고 실제 Tauri 창에는 OS 타이틀바가 이미 있다.
+> 내비에서 **`채팅` 항목이 빠졌다** — 최종안 사이드바는 `대시보드 · 워크스페이스 · 작업 검색 · 대화목록` + 푸터 `도움말 · 환경 설정`이다. 대신 **패널 재진입 경로를 반드시 남길 것**: 우하단 FAB(패널이 닫혔고 홈이 아닐 때) + `Cmd/Ctrl+J`. 둘 다 지우면 패널을 한 번 닫은 사용자가 보던 대화로 돌아갈 길이 없다.
 >
-> 인라인 결과 카드(표·막대)는 `lib/excelResult.js`가 `action`+`result`를 표시 모델로 번역해서 만든다. 기존 `formatExcelLiveResult()`는 데이터를 한 줄 문장으로 눌러버려 `read_range`의 `values`가 버려졌었다 — 그래서 문자열 대신 구조화 모델을 돌려주되 `summary` 필드로 종전 문장을 그대로 유지한다(세션 영속화·메신저 전송이 그 문자열에 의존). **카드가 붙는 결과를 추가하려면 `toResultView()`에 case를 넣고 `result-card.jsx`에 렌더를 더한다.**
+> 접힘(Cmd/Ctrl+B)은 **통째 숨김이 아니라 64px 아이콘 레일**이다 — 확장 목록만 숨고 내비는 남는다. 접힘 모양은 `ConversationSidebar`가 직접 소유하므로 `Layout`에서 조건부 언마운트하지 않는다. 와이어프레임에 없지만 남긴 것: `대화목록` 확장 안의 `+ 새 대화`(없으면 대화 중 새 주제를 못 꺼낸다).
+>
+> **다크모드는 레이아웃이 아니라 토큰 작업이다** — 라이트/다크 14쌍의 노드 트리가 동일하다. `index.css`의 `:root {}` / `.dark {}` 두 블록이 전부이고 `<html>.dark` 토글은 `lib/themeManager.js`가 한다. 라이트 모드에서 **사이드바도 본문과 같은 밝기**다(예전엔 사이드바만 다크였다). 다크 프레임에 남아 있는 `#E1E6DF` AI 말풍선·`#FDFEFC` 루트 fill은 되돌리지 않은 작업 흔적이라 `TOKENS.md`의 매핑(`#E1E6DF → #535D50`)을 따랐다.
+>
+> `--primary`가 브랜드 원값 `#2DB400`이 **아닌** 이유: 라이트에서 흰 글자와의 대비가 2.75:1이라 본문 기준 4.5:1에 못 미친다. 글자를 얹는 자리는 `--primary`(라이트에서 명도만 낮춘 값), 글자를 안 얹는 자리(상태 점·장식·아이콘)는 `--brand`를 쓴다.
+>
+> **인라인 결과 카드(`SheetPreviewCard`·`BarChartCard`)는 제거했다** — 최종안 14화면 어디에도 없다. `lib/excelResult.js`는 `formatResultText()` 하나만 남아 문장을 돌려주고, 그 문자열에 말풍선 본문·세션 영속화·메신저 전송이 함께 의존한다. 진행 표현은 대신 **툴 진행 스텝 칩**(`lib/toolSteps.js`)과 **스켈레톤 로딩**이 맡는다. 그 대가로 `read_range`의 `values`는 다시 화면에 안 나온다(행×열 수는 문장에 남는다) — 표를 되살리려면 카드부터 다시 만들어야 한다.
+>
+> **엑셀 CONFIRM 승인은 모달이 아니라 말풍선 인라인 버튼**(`네 Y` / `아니오 N`)이다(B-6). 승인·거부는 사용자 말풍선으로 스레드에 남는다(B-7) — 기록을 되짚을 때 "누가 승인했나"가 스레드 안에 있어야 감사 로그를 따로 열지 않는다. 메신저/에이전트 스킬 CONFIRM은 여전히 `ApprovalDialog` 모달이다.
 >
 > **2026-08 모바일 평문 차단 노트**: 모바일의 TLS 강제는 **매니페스트/plist가 아니라 Dart 코드**(`apps/mobile/lib/transport/relay_url.dart`)가 책임진다. 안드로이드 `usesCleartextTraffic`·네트워크 보안 설정과 iOS ATS는 *플랫폼이 소유한* 소켓에만 걸리는데, 이 앱의 통신은 `package:http`와 `web_socket_channel` 둘 다 Dart 소유 소켓이라 적용되지 않는다(Flutter 공식: "If the socket is owned by Dart/Flutter, no policy will be enforced" — flutter/flutter#106678은 not planned로 닫힘). 그래서 `kAllowInsecureRelayByDefault = !kReleaseMode`로 debug·profile만 평문을 허용하고, relay 주소는 QR·수동입력 어느 경로든 `normalizeRelayBaseUrl`을 통과시킨다. **새 네트워크 경로를 추가하면 이 함수를 반드시 태울 것** — 안 태우면 릴리스에서 평문이 그대로 나간다.
 >

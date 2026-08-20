@@ -1,17 +1,22 @@
 import React, { lazy, Suspense, useCallback, useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, MessageCircle } from "lucide-react";
 import ConversationSidebar from "./ConversationSidebar";
 import StatusBar from "./StatusBar";
 // 통합 승인 다이얼로그: Phase 2 메신저 CONFIRM과 Phase 4 에이전트 스킬 CONFIRM이
 // 동일한 pendingApproval 상태를 공유한다.
+// (엑셀 CONFIRM은 이제 채팅 패널 안의 인라인 버튼이 받는다 — 와이어프레임 B-6)
 import ApprovalDialog from "@/components/security/ApprovalDialog";
 import CommandPalette from "@/components/cmdk/CommandPalette";
 import ShortcutHelp from "@/components/cmdk/ShortcutHelp";
 import UpdateNotice from "@/components/updater/UpdateNotice";
+import ChatPanel from "@/components/chat/ChatPanel";
 import { Toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import useAppStore from "@/store/appStore";
+import useChatStore from "@/store/chatStore";
 import useToast from "@/hooks/useToast";
+import { reservesLayoutSpace } from "@/lib/chatPanel";
+import { toggleTheme } from "@/lib/themeManager";
 import { securityRespondApproval } from "@/lib/api";
 import { toUserMessage } from "@/lib/errorMessages";
 
@@ -47,7 +52,11 @@ function isImeComposing(e) {
 // Lazy-loaded page components — each module is its own code-split chunk.
 // This keeps the initial bundle small and defers loading of heavy modules
 // until the user first navigates to them.
-const ChatPage = lazy(() => import("@/components/chat/ChatPage"));
+//
+// `chat` 키는 이제 홈(문서 그리드)을 가리킨다 — 최종 와이어프레임 B-1에서
+// 시작 화면이 채팅 스레드가 아니라 문서 관리 지면이고, 채팅은 그 위에 뜨는
+// 패널(ChatPanel)이기 때문이다.
+const HomePage = lazy(() => import("@/components/home/HomePage"));
 const Dashboard = lazy(() => import("@/components/dashboard/Dashboard"));
 const WorkspacePage = lazy(() => import("@/components/workspace/WorkspacePage"));
 const ConversationsPage = lazy(() => import("@/components/conversations/ConversationsPage"));
@@ -61,7 +70,7 @@ const SettingsHub = lazy(() => import("@/components/settings/SettingsHub"));
  * Settings 허브로 라우팅(설정 내부에서 자동으로 해당 탭이 열림).
  */
 const PAGE_MAP = {
-  chat: ChatPage,
+  chat: HomePage,
   dashboard: Dashboard,
   workspace: WorkspacePage,
   conversations: ConversationsPage,
@@ -74,6 +83,7 @@ const PAGE_MAP = {
   permissions: SettingsHub,
   messenger_settings: SettingsHub,
   guide: SettingsHub,
+  mobile_relay: SettingsHub,
 };
 
 /** Full-page loading fallback shown while a lazy chunk is being fetched. */
@@ -90,11 +100,17 @@ export default function Layout() {
   const pendingApproval = useAppStore((s) => s.pendingApproval);
   const setPendingApproval = useAppStore((s) => s.setPendingApproval);
   const setSidebarCollapsed = useAppStore((s) => s.setSidebarCollapsed);
-  const PageComponent = PAGE_MAP[currentPage] ?? ChatPage;
+  const panelOpen = useChatStore((s) => s.panelOpen);
+  const panelMode = useChatStore((s) => s.panelMode);
+  const setPanelOpen = useChatStore((s) => s.setPanelOpen);
+  const PageComponent = PAGE_MAP[currentPage] ?? HomePage;
 
-  // 채팅은 스레드·컴포저가 자기 여백과 스크롤을 직접 관리한다.
-  // 여기서 p-6을 얹으면 컴포저가 창 하단에서 떠 보인다.
-  const isChat = currentPage === "chat";
+  // 홈(문서 그리드)은 배경 장식·그리드 여백을 스스로 관리한다.
+  // 여기서 p-6을 얹으면 장식 타원이 잘린다.
+  const isHome = currentPage === "chat";
+
+  // 도킹일 때만 본문이 자리를 내준다 — 플로팅은 본문 위에 겹친다.
+  const panelDocked = panelOpen && reservesLayoutSpace(panelMode);
 
   // 로컬 토스트 상태 (승인/거부 결과 안내) — useToast 훅이 상태·자동 dismiss 소유
   const { toast: notifyToast, showToast: showNotify, dismissToast: dismissNotify } = useToast();
@@ -124,6 +140,18 @@ export default function Layout() {
         setShortcutOpen((prev) => !prev);
         return;
       }
+      // 채팅 패널 토글 — 최종안 내비에 `채팅` 항목이 없어졌으므로
+      // 키보드로도 열 수 있어야 한다.
+      if (meta && (key === "j" || key === "J")) {
+        e.preventDefault();
+        setPanelOpen(!useChatStore.getState().panelOpen);
+        return;
+      }
+      if (meta && e.shiftKey && (key === "l" || key === "L")) {
+        e.preventDefault();
+        toggleTheme();
+        return;
+      }
 
       // ── 단일키 (입력 중 / IME 조합 중이면 무시) ──
       if (isTypingTarget(e.target)) return;
@@ -146,7 +174,7 @@ export default function Layout() {
       window.removeEventListener("officeclaw:open-cmdk", handleOpenCmdk);
       window.removeEventListener("officeclaw:open-shortcut-help", handleOpenHelp);
     };
-  }, [setSidebarCollapsed]);
+  }, [setSidebarCollapsed, setPanelOpen]);
 
   // 모달 Esc 처리 (개별 모달 외에 안전망).
   // IME 조합 중 Esc는 변환 취소용이므로 가로채지 않는다.
@@ -189,25 +217,58 @@ export default function Layout() {
   }, [pendingApproval, setPendingApproval]);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-background">
+    <div className="relative flex h-screen w-screen overflow-hidden bg-background">
       {/* 대화 목록 사이드바 — Cmd/Ctrl+B로 접으면 아이콘 레일이 된다.
           접힘 모양은 사이드바가 직접 소유하므로 여기서 언마운트하지 않는다. */}
       <ConversationSidebar />
 
-      {/* Main area */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <StatusBar />
-        <main
-          className={cn(
-            "flex-1 overflow-hidden",
-            isChat ? "flex flex-col" : "overflow-y-auto p-6"
-          )}
-        >
-          <Suspense fallback={<PageLoader />}>
-            <PageComponent />
-          </Suspense>
-        </main>
+      {/*
+        본문 + 채팅 패널.
+
+        relative인 이유: 플로팅 모드의 패널이 이 영역 기준으로 우하단에 뜬다
+        (와이어프레임 Frame 169). 화면 전체 기준으로 잡으면 사이드바를 접었다
+        폈을 때 패널이 같이 밀린다.
+      */}
+      <div className="relative flex min-w-0 flex-1 overflow-hidden">
+        <div className={cn("flex min-w-0 flex-col overflow-hidden", panelDocked ? "flex-1" : "w-full")}>
+          {/*
+            홈에서는 StatusBar를 숨긴다.
+            와이어프레임의 홈(B-1)에는 상단 바가 없고 우상단의 `로컬 에이전트 작동중`
+            하나만 있는데, StatusBar를 같이 띄우면 같은 AI 상태가 40px 간격으로
+            두 번 나온다. 나머지 페이지에서는 그대로 둔다 — 보안·메신저 상태와
+            Cmd+K 힌트는 홈 밖에서 대체 경로가 없다.
+          */}
+          {!isHome && <StatusBar />}
+          <main
+            className={cn(
+              "flex-1 overflow-hidden",
+              isHome ? "flex flex-col" : "overflow-y-auto p-6"
+            )}
+          >
+            <Suspense fallback={<PageLoader />}>
+              <PageComponent />
+            </Suspense>
+          </main>
+        </div>
+
+        {/* 채팅 패널 — 어느 페이지 위에든 뜬다 (와이어프레임 B-2 / B-3) */}
+        {panelOpen && <ChatPanel />}
       </div>
+
+      {/* 패널이 닫혀 있고 홈이 아닐 때의 재진입 버튼.
+          최종안 내비에 `채팅` 항목이 없어서, 이게 없으면 패널을 한 번 닫은 뒤
+          워크스페이스에서 보던 대화로 돌아갈 길이 Cmd+J뿐이다. */}
+      {!panelOpen && !isHome && (
+        <button
+          type="button"
+          onClick={() => setPanelOpen(true)}
+          className="absolute bottom-5 right-5 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105"
+          aria-label="채팅 열기"
+          title="채팅 열기 (Cmd/Ctrl+J)"
+        >
+          <MessageCircle className="h-5 w-5" />
+        </button>
+      )}
 
       {/* 전역 승인 다이얼로그 — 어느 페이지에서든 표시 (security/ApprovalDialog 단일화) */}
       {pendingApproval && (

@@ -102,6 +102,7 @@ pub fn run() {
             ipc::workspace_list_files,
             ipc::workspace_read_file,
             ipc::workspace_write_file,
+            ipc::workspace_delete_file,
             ipc::workspace_create_excel_file,
             ipc::workspace_write_file_binary, // Sprint 3: 바이너리 업로드 (S-2 해소)
             ipc::telegram_setup,
