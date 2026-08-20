@@ -1038,11 +1038,20 @@ class FileExcelLiveService(ExcelLiveService):
 
             text_value = None if value is None or str(value).strip() == "" else str(value).strip()
             text_ops = {"==", "=", "!=", "<>"}
+            # "입고예정일이 **비어 있는** 행만 노란색" — 빈 칸 자체가 조건인 문형.
+            # 지금까지는 표현할 방법이 없어 0칸이 칠해지고 성공으로 보고됐다(2026-08-20 ex23).
+            blank_op = str(operator or "").strip().lower()
+            want_blank = blank_op in {"isblank", "blank", "empty", "빈칸", "비어있음"}
+            want_filled = blank_op in {"notblank", "nonblank", "filled", "안비어있음"}
             for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
                 for cell in row:
                     scanned += 1
                     left = computed(cell.row, cell.column, cell.value)
-                    if text_value is not None and str(operator or "").strip() in text_ops:
+                    if want_blank or want_filled:
+                        is_blank = left is None or str(left).strip() == ""
+                        if is_blank is not want_blank:
+                            continue
+                    elif text_value is not None and str(operator or "").strip() in text_ops:
                         left_text = "" if left is None else str(left).strip()
                         op = str(operator or "").strip()
                         matched_text = left_text == text_value

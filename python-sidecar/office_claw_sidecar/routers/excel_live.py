@@ -1493,16 +1493,13 @@ def _scope_highlight_to_header_column(
         if re.search(r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}\s*:\s*[A-Za-z]{1,3}\d{1,7}", str(message or "")):
             return ""
     entry = _digest_active_entry(digest)
-    columns = [c for c in (entry.get("columns") or []) if isinstance(c, dict)]
-    column = _header_column_from_message(message, columns)
-    if column is None:
+    # 1행 머리글 → 표 블록 머리글 순으로 본다. 대시보드는 한 시트에 표를 쌓으므로
+    # 1행만 보면 아래쪽 표를 통째로 놓친다(2026-08-20 ex23: "지연일수 5 넘는 셀" 0칸).
+    span = _locate_header_span(message, entry)
+    if span is None:
         return ""
-    letter = str(column.get("letter") or "").strip().upper()
-    used = str(entry.get("used_range") or "")
-    last_row = int(m.group(1)) if (m := re.search(r"(\d+)$", used)) else 0
-    if not letter or last_row < 2:
-        return ""
-    scoped = f"{letter}2:{letter}{last_row}"
+    letter, first_row, last_row = span
+    scoped = f"{letter}{first_row}:{letter}{last_row}"
     params["target_range"] = scoped
     step["params"] = params
     return scoped
@@ -1537,6 +1534,77 @@ def _spans_multiple_columns(target: str) -> bool:
     return bool(rect and rect.group(1) != rect.group(2))
 
 
+#: "비어 있는 칸", "빈 칸", "공란" — 빈 칸 자체가 조건인 문형.
+_BLANK_CONDITION = re.compile(r"(비어\s*있|비었|빈\s*(?:칸|셀|값|행)|공란|미입력|안\s*(?:적힌|채워진|들어간))")
+#: 반대: "값이 있는", "채워진"
+_FILLED_CONDITION = re.compile(r"(값이\s*있|채워진|입력된|들어\s*있)")
+
+
+def _blank_condition_highlight(
+    message: str, digest: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """"입고예정일이 비어 있는 행만 노란색으로 칠해줘" — 빈 칸 조건 강조.
+
+    2026-08-20 ex23 실측: 이 문형에 규칙이 없어 모델이 엉뚱한 한 칸(N1)을 칠했다.
+    머리글로 열을 못 짚으면 물러난다 — 어느 열이 비었는지 추측하지 않는다.
+    """
+    text = str(message or "")
+    if not _BLANK_CONDITION.search(text) or _FILLED_CONDITION.search(text):
+        return []
+    if not re.search(r"(강조|칠해|칠하|표시|색|하이라이트|highlight|빨갛|노랗|파랗)", text):
+        return []
+    colors = _quick_extract_colors(text.lower())
+    entry = _digest_active_entry(digest)
+    span = _locate_header_span(text, entry)
+    if span is None:
+        return []
+    letter, first_row, last_row = span
+    return [
+        {
+            "action": "excel_live.highlight_by_condition",
+            "params": {
+                "target_range": f"{letter}{first_row}:{letter}{last_row}",
+                "operator": "isblank",
+                "threshold": 0,
+                "fill_color": colors[0] if colors else "#FFFF00",
+            },
+            "reason": "빠른 규칙 기반 빈 칸 강조",
+        }
+    ]
+
+
+def _locate_header_span(message: str, entry: dict[str, Any]) -> tuple[str, int, int] | None:
+    """문장이 부른 머리글의 (열문자, 첫 데이터 행, 마지막 행). 못 짚으면 None.
+
+    ① 시트 1행 머리글 ② 표 블록별 머리글 순으로 본다. 대시보드는 한 시트에 표를 여럿
+    쌓으므로 ①만 보면 아래쪽 표의 머리글을 통째로 놓친다(2026-08-20 ex23 실측:
+    "지연일수 5 넘는 셀만 빨간색" → **0칸 칠해짐**. '지연일수'는 A25 표의 머리글이었다).
+    여러 블록에 같은 머리글이 있으면 **추측하지 않고 물러난다.**
+    """
+    columns = [c for c in (entry.get("columns") or []) if isinstance(c, dict)]
+    column = _header_column_from_message(message, columns)
+    if column is not None:
+        letter = str(column.get("letter") or "").strip().upper()
+        used = str(entry.get("used_range") or "")
+        last_row = int(m.group(1)) if (m := re.search(r"(\d+)$", used)) else 0
+        if letter and last_row >= 2:
+            return letter, 2, last_row
+    hits: list[tuple[str, int, int]] = []
+    for block in entry.get("blocks") or []:
+        if not isinstance(block, dict):
+            continue
+        block_columns = [c for c in (block.get("columns") or []) if isinstance(c, dict)]
+        found = _header_column_from_message(message, block_columns)
+        if found is None:
+            continue
+        letter = str(found.get("letter") or "").strip().upper()
+        first = int(block.get("first_data_row") or 0)
+        last = int(block.get("last_row") or 0)
+        if letter and 0 < first <= last:
+            hits.append((letter, first, last))
+    return hits[0] if len(hits) == 1 else None
+
+
 def _scope_data_bar_to_header_column(
     plan: list[dict[str, Any]] | None, message: str, digest: dict[str, Any]
 ) -> str:
@@ -1550,16 +1618,13 @@ def _scope_data_bar_to_header_column(
     if re.search(r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}\s*:\s*[A-Za-z]{1,3}\d{1,7}", str(message or "")):
         return ""
     entry = _digest_active_entry(digest)
-    columns = [c for c in (entry.get("columns") or []) if isinstance(c, dict)]
-    column = _header_column_from_message(message, columns)
-    if column is None:
+    # 1행 머리글 → 표 블록 머리글 순으로 본다. 대시보드는 한 시트에 표를 쌓으므로
+    # 1행만 보면 아래쪽 표를 통째로 놓친다(2026-08-20 ex23: "지연일수 5 넘는 셀" 0칸).
+    span = _locate_header_span(message, entry)
+    if span is None:
         return ""
-    letter = str(column.get("letter") or "").strip().upper()
-    used = str(entry.get("used_range") or "")
-    last_row = int(m.group(1)) if (m := re.search(r"(\d+)$", used)) else 0
-    if not letter or last_row < 2:
-        return ""
-    scoped = f"{letter}2:{letter}{last_row}"
+    letter, first_row, last_row = span
+    scoped = f"{letter}{first_row}:{letter}{last_row}"
     params["target_range"] = scoped
     step["params"] = params
     return scoped
@@ -8970,6 +9035,22 @@ async def _run_command(
             str(((quick_action_plan[0] or {}).get("params") or {}).get("target_range") or "")
         )
     )
+    # 빈 칸 조건("입고예정일이 비어 있는 행만 노란색") — 규칙이 없어 모델이 엉뚱한 칸을
+    # 칠하던 문형이다(2026-08-20 ex23). 머리글로 열을 짚을 수 있을 때만 만든다.
+    if (not quick_action_plan or _blanket_fill) and pending_slot is None and pending_operation is None:
+        _blank_plan = _blank_condition_highlight(req.message, workbook_digest)
+        if _blank_plan:
+            quick_action_plan = _blank_plan
+            rule_hook = rule_hook or "blank_condition_highlight"
+            should_parse_with_llm = False
+            llm_decision_reason = "blank_condition_highlight"
+            quick_plan_for_parse = _normalize_plan_or_empty(quick_action_plan)
+            quick_first_action = quick_plan_for_parse[0].action if quick_plan_for_parse else ""
+            trace_note(
+                "blank_condition",
+                detail=str((_blank_plan[0].get("params") or {}).get("target_range") or ""),
+                action=quick_first_action,
+            )
     if (not quick_action_plan or _blanket_fill) and pending_slot is None and pending_operation is None:
         _value_plan = _value_equals_highlight(req.message, workbook_digest)
         if _value_plan:

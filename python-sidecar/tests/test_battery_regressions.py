@@ -2369,3 +2369,128 @@ class TestCrossSheetAggregateWordOrder:
         )
 
         assert build_cross_sheet_aggregate_plan(message, self._reader, ["성적부", "요약"]) == []
+
+
+class TestDashboardStackedTables:
+    """대시보드는 한 시트에 표를 여럿 쌓는다 — 머리글 탐색이 1행만 보면 아래쪽 표를 놓친다.
+
+    2026-08-20 ex23 실측: 구매요약 시트에 표가 셋(KPI A4:H9 · 카테고리 A14:F20 · 지연알림 A25:F30).
+    `지연일수 5 넘는 셀만 빨간색으로 칠해줘` → **0칸 칠해짐**. '지연일수'는 A25 표의 머리글이다.
+    """
+
+    DIGEST = {
+        "active_sheet": "구매요약",
+        "sheets": [
+            {
+                "name": "구매요약",
+                "used_range": "A1:I31",
+                "columns": [{"letter": "A", "header": "구매 운영 대시보드"}],
+                "blocks": [
+                    {
+                        "ref": "A4:H9",
+                        "header_row": 4,
+                        "first_data_row": 5,
+                        "last_row": 9,
+                        "columns": [
+                            {"letter": "A", "header": "지표"},
+                            {"letter": "B", "header": "값"},
+                            {"letter": "C", "header": "전월 대비(%)"},
+                        ],
+                    },
+                    {
+                        "ref": "A25:F30",
+                        "header_row": 25,
+                        "first_data_row": 26,
+                        "last_row": 30,
+                        "columns": [
+                            {"letter": "A", "header": "PO번호"},
+                            {"letter": "E", "header": "지연일수"},
+                            {"letter": "F", "header": "금액"},
+                        ],
+                    },
+                ],
+            }
+        ],
+    }
+
+    def _plan(self):
+        return [
+            {
+                "action": "excel_live.highlight_by_condition",
+                "params": {"target_range": "__ACTIVE_SELECTION__", "operator": ">", "threshold": 5.0},
+            }
+        ]
+
+    @pytest.mark.parametrize(
+        ("message", "expected"),
+        [
+            ("지연일수 5 넘는 셀만 빨간색으로 칠해줘", "E26:E30"),
+            ("금액 100만 넘는 셀 빨갛게", "F26:F30"),
+            ("전월 대비가 0 밑도는 셀만 빨간색", "C5:C9"),
+        ],
+    )
+    def test_a_header_in_a_lower_table_is_found(self, message: str, expected: str) -> None:
+        from office_claw_sidecar.routers.excel_live import _scope_highlight_to_header_column
+
+        plan = self._plan()
+        assert _scope_highlight_to_header_column(plan, message, self.DIGEST) == expected, message
+
+    def test_an_unknown_header_still_backs_off(self) -> None:
+        from office_claw_sidecar.routers.excel_live import _scope_highlight_to_header_column
+
+        assert _scope_highlight_to_header_column(self._plan(), "없는열 5 넘는 셀", self.DIGEST) == ""
+
+
+class TestBlankCellCondition:
+    """`입고예정일이 비어 있는 행만 노란색으로 칠해줘` — 빈 칸이 조건인 문형.
+
+    2026-08-20 ex23 실측: 규칙이 없어 모델이 엉뚱한 한 칸(N1)을 칠했다.
+    실행기에도 표현 수단이 없어 `==`/`=`/`isblank` 셋 다 0칸이었다.
+    """
+
+    DIGEST = {
+        "active_sheet": "발주",
+        "sheets": [
+            {
+                "name": "발주",
+                "used_range": "A1:B5",
+                "columns": [{"letter": "A", "header": "PO"}, {"letter": "B", "header": "입고예정일"}],
+            }
+        ],
+    }
+
+    @pytest.mark.parametrize(
+        "message",
+        ["입고예정일이 비어 있는 행만 노란색으로 칠해줘", "입고예정일 빈 칸만 강조해줘", "입고예정일 공란만 표시해줘"],
+    )
+    def test_it_builds_a_blank_condition(self, message: str) -> None:
+        from office_claw_sidecar.routers.excel_live import _blank_condition_highlight
+
+        plan = _blank_condition_highlight(message, self.DIGEST)
+        assert plan, message
+        assert plan[0]["params"]["target_range"] == "B2:B5", message
+        assert plan[0]["params"]["operator"] == "isblank", message
+
+    @pytest.mark.parametrize("message", ["입고예정일 값이 있는 셀 강조", "PO 강조해줘", "빈 칸 세어줘"])
+    def test_it_does_not_fire_otherwise(self, message: str) -> None:
+        from office_claw_sidecar.routers.excel_live import _blank_condition_highlight
+
+        assert _blank_condition_highlight(message, self.DIGEST) == []
+
+    def test_the_executor_paints_only_empty_cells(self, tmp_path) -> None:
+        from openpyxl import Workbook
+
+        from office_claw_sidecar.services.excel_live_file_service import FileExcelLiveService
+
+        path = tmp_path / "t.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "발주"
+        for row in [["PO", "입고예정일"], ["P1", "2025-05-26"], ["P2", None], ["P3", "2025-05-27"], ["P4", None]]:
+            ws.append(row)
+        wb.save(path)
+        service = FileExcelLiveService()
+        service.select_workbook(str(path))
+        service.select_sheet(None, "발주")
+        result = service.highlight_by_condition(None, "발주", "B2:B5", "isblank", 0, "#FFFF00", None, None)
+        assert result["matched_cells"] == 2, result

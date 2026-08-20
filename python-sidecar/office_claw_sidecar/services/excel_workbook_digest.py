@@ -118,6 +118,58 @@ def _summarize_columns(columns: list[dict[str, Any]], body_rows: list[list[Any]]
             column["categories"] = distinct
 
 
+#: 한 시트에서 머리글을 붙일 표 블록 상한 — 대시보드도 보통 6개 안쪽이다.
+_MAX_BLOCKS = 12
+_BLOCK_REF = re.compile(r"^([A-Z]{1,3})(\d+)(?::([A-Z]{1,3})(\d+))?$")
+
+
+def _blocks_with_headers(
+    service: Any, workbook_id: str | None, sheet_name: str, layout: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """표 블록마다 머리글 줄을 읽어 붙인다.
+
+    돌려주는 것: [{"ref": "A25:F30", "header_row": 25, "first_data_row": 26,
+                   "last_row": 30, "columns": [{"letter","header"}, …]}]
+    한 칸짜리 블록(제목 셀)과 읽기 실패는 건너뛴다 — 못 읽었다고 다이제스트를 버리지 않는다.
+    """
+    out: list[dict[str, Any]] = []
+    refs = [str(r) for r in (layout.get("blocks") or []) if str(r).strip()]
+    if not refs:
+        return out
+    reader = getattr(service, "read_computed_range", None) or getattr(service, "read_range", None)
+    if reader is None:
+        return out
+    for ref in refs[:_MAX_BLOCKS]:
+        m = _BLOCK_REF.match(ref.upper())
+        if not m or not m.group(3):
+            continue  # 한 칸 블록은 표가 아니다
+        start_col, start_row, end_col, end_row = m.group(1), int(m.group(2)), m.group(3), int(m.group(4))
+        if end_row <= start_row:
+            continue  # 머리글만 있고 데이터가 없다
+        try:
+            payload = reader(workbook_id, sheet_name, f"{start_col}{start_row}:{end_col}{start_row}")
+            header_values = (payload.get("values") or [[]])[0]
+        except Exception:
+            continue
+        base = _start_column_index(f"{start_col}{start_row}")
+        columns = [
+            {"letter": _idx_to_col(base + offset), "header": _cell_text(cell)}
+            for offset, cell in enumerate(header_values[:_MAX_COLS])
+        ]
+        if not any(str(c["header"]).strip() for c in columns):
+            continue
+        out.append(
+            {
+                "ref": ref.upper(),
+                "header_row": start_row,
+                "first_data_row": start_row + 1,
+                "last_row": end_row,
+                "columns": columns,
+            }
+        )
+    return out
+
+
 def build_workbook_digest(
     service: Any,
     *,
@@ -181,6 +233,10 @@ def build_workbook_digest(
                 entry["layout"] = describe(workbook_id, name)
             except Exception:
                 pass
+        # 대시보드는 한 시트에 표를 여럿 쌓는다. `columns`는 1행만 담으므로, 아래쪽 표의
+        # 머리글("지연일수")을 부르면 못 찾아 조건부 서식이 0칸에 걸렸다(2026-08-20 ex23).
+        # 블록마다 첫 줄을 읽어 머리글과 데이터 행 범위를 붙인다.
+        entry["blocks"] = _blocks_with_headers(service, workbook_id, name, entry.get("layout") or {})
         digest["sheets"].append(entry)
 
     if use_cache:
