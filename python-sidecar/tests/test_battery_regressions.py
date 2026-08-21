@@ -2507,10 +2507,14 @@ class TestCreateSheetIsNotBlockedByTheMissingSheetGuard:
         from office_claw_sidecar.routers.excel_live import _SHEET_CREATING_ACTIONS
 
         assert "excel_live.create_sheet" in _SHEET_CREATING_ACTIONS
-        assert "excel_live.rename_sheet" in _SHEET_CREATING_ACTIONS
         # 값을 쓰는 액션은 면제 대상이 아니다 — 없는 시트에 쓰면 되물어야 한다.
         assert "excel_live.write_range" not in _SHEET_CREATING_ACTIONS
         assert "excel_live.set_formula" not in _SHEET_CREATING_ACTIONS
+        # rename_sheet의 sheet_name은 **바꿀 대상**이라 이미 있어야 한다. 면제했더니
+        # "수도권은 서울권으로 이름 바꿔놔"(값 치환 문장)가 활성 시트 이름을 바꿔
+        # 그 시트를 가리키던 수식이 전부 깨졌다(2026-08-20 624 게이트에서 드러남).
+        assert "excel_live.rename_sheet" not in _SHEET_CREATING_ACTIONS
+        assert "excel_live.consolidate_sheets" not in _SHEET_CREATING_ACTIONS
 
     def test_the_guard_still_covers_writes(self) -> None:
         """면제가 가드를 통째로 무력화하지 않았는지 — 새 층은 실패만 더할 수 있다."""

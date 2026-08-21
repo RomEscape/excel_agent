@@ -8,7 +8,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 5.2
+  "secs": 10.8
  },
  {
   "idx": 2,
@@ -19,7 +19,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 1.3
+  "secs": 3.9
  },
  {
   "idx": 3,
@@ -30,7 +30,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 5.0
+  "secs": 14.7
  },
  {
   "idx": 4,
@@ -41,7 +41,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 5.0
+  "secs": 14.4
  },
  {
   "idx": 5,
@@ -52,7 +52,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 4.9
+  "secs": 13.9
  },
  {
   "idx": 6,
@@ -63,7 +63,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 5.0
+  "secs": 13.7
  },
  {
   "idx": 7,
@@ -74,7 +74,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 5.0
+  "secs": 14.0
  },
  {
   "idx": 8,
@@ -85,7 +85,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 1.4
+  "secs": 3.6
  },
  {
   "idx": 9,
@@ -96,7 +96,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 1.3
+  "secs": 3.6
  },
  {
   "idx": 10,
@@ -107,7 +107,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 1.3
+  "secs": 3.6
  },
  {
   "idx": 11,
@@ -118,7 +118,7 @@
   "card": false,
   "action": "excel_live.consolidate",
   "detail": "요약!A2 비어 있음",
-  "secs": 4.0
+  "secs": 5.4
  },
  {
   "idx": 12,
@@ -129,7 +129,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 1.3
+  "secs": 3.5
  },
  {
   "idx": 13,
@@ -140,7 +140,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:C5",
-  "secs": 7.5
+  "secs": 22.7
  },
  {
   "idx": 14,
@@ -151,7 +151,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:C5",
-  "secs": 7.7
+  "secs": 22.6
  },
  {
   "idx": 15,
@@ -162,7 +162,7 @@
   "card": false,
   "action": "excel_live.sort",
   "detail": "어떤 열 기준으로 정렬할까요? 예: 매출 열 기준 내림차순",
-  "secs": 1.5
+  "secs": 5.4
  },
  {
   "idx": 16,
@@ -173,7 +173,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:C5",
-  "secs": 7.3
+  "secs": 22.5
  },
  {
   "idx": 17,
@@ -184,7 +184,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:C5",
-  "secs": 7.7
+  "secs": 22.6
  },
  {
   "idx": 18,
@@ -195,29 +195,29 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:C5",
-  "secs": 7.6
+  "secs": 22.5
  },
  {
   "idx": 19,
   "task": "sort_keeps_pairs",
   "text": "높은 점수가 맨 위로 가게 바꿔줘",
   "persona": "D_작성자(비블라인드)",
-  "outcome": "PASS_CARD",
-  "card": true,
-  "action": "excel_live.sort_range",
-  "detail": "정렬 — A1:C5",
-  "secs": 7.6
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.not_excel_request",
+  "detail": "엑셀 작업으로 볼 수 없는 요청입니다.",
+  "secs": 10.7
  },
  {
   "idx": 20,
   "task": "sort_keeps_pairs",
   "text": "ㅇㅇ 점수순",
   "persona": "D_작성자(비블라인드)",
-  "outcome": "PASS_CARD",
-  "card": true,
-  "action": "excel_live.sort_range",
-  "detail": "정렬 — A1:C5",
-  "secs": 7.7
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.not_excel_request",
+  "detail": "엑셀 작업으로 볼 수 없는 요청입니다.",
+  "secs": 10.6
  },
  {
   "idx": 21,
@@ -228,7 +228,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:C5",
-  "secs": 7.6
+  "secs": 22.5
  },
  {
   "idx": 22,
@@ -239,7 +239,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:C5",
-  "secs": 7.5
+  "secs": 22.5
  },
  {
   "idx": 23,
@@ -250,7 +250,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:C5",
-  "secs": 7.6
+  "secs": 22.5
  },
  {
   "idx": 24,
@@ -261,7 +261,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:C5",
-  "secs": 7.5
+  "secs": 22.6
  },
  {
   "idx": 25,
@@ -272,7 +272,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — C2:C5 · 값 4개 삭제",
-  "secs": 6.2
+  "secs": 17.2
  },
  {
   "idx": 26,
@@ -283,7 +283,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — C2:C5 · 값 4개 삭제",
-  "secs": 6.1
+  "secs": 17.3
  },
  {
   "idx": 27,
@@ -294,7 +294,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — C2:C5 · 값 4개 삭제",
-  "secs": 6.2
+  "secs": 17.1
  },
  {
   "idx": 28,
@@ -305,7 +305,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — C2:C5 · 값 4개 삭제",
-  "secs": 6.2
+  "secs": 17.3
  },
  {
   "idx": 29,
@@ -316,7 +316,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — C2:C5 · 값 4개 삭제",
-  "secs": 6.2
+  "secs": 17.2
  },
  {
   "idx": 30,
@@ -327,7 +327,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — C2:C5 · 값 4개 삭제",
-  "secs": 6.1
+  "secs": 17.1
  },
  {
   "idx": 31,
@@ -338,7 +338,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — C2:C5 · 값 4개 삭제",
-  "secs": 6.2
+  "secs": 17.2
  },
  {
   "idx": 32,
@@ -349,7 +349,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — C2:C5 · 값 4개 삭제",
-  "secs": 6.2
+  "secs": 17.0
  },
  {
   "idx": 33,
@@ -360,18 +360,18 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — C2:C5 · 값 4개 삭제",
-  "secs": 6.1
+  "secs": 17.1
  },
  {
   "idx": 34,
   "task": "clear_only_named",
   "text": "결석 데이터만 클리어",
   "persona": "D_작성자(비블라인드)",
-  "outcome": "PASS_CARD",
-  "card": true,
-  "action": "excel_live.clear_range",
-  "detail": "내용 비우기 — C1:C5 · 값 5개 삭제",
-  "secs": 9.8
+  "outcome": "WRONG",
+  "card": false,
+  "action": "excel_live.not_excel_request",
+  "detail": "결석 열이 안 비워짐: [2, 0, 5, 1]",
+  "secs": 10.6
  },
  {
   "idx": 35,
@@ -382,7 +382,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — C2:C5 · 값 4개 삭제",
-  "secs": 6.1
+  "secs": 16.9
  },
  {
   "idx": 36,
@@ -393,6 +393,402 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — C2:C5 · 값 4개 삭제",
-  "secs": 6.2
+  "secs": 17.3
+ },
+ {
+  "idx": 37,
+  "task": "merge_keeps_values",
+  "text": "제목 줄 병합해줘",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.merge_cells",
+  "detail": "⚠ 선택 범위의 셀을 병합합니다. — A1:F7",
+  "secs": 13.0
+ },
+ {
+  "idx": 38,
+  "task": "merge_keeps_values",
+  "text": "맨 위 제목 칸 하나로 합쳐줘",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.merge_cells",
+  "detail": "⚠ 선택 범위의 셀을 병합합니다. — A1:F7",
+  "secs": 13.0
+ },
+ {
+  "idx": 39,
+  "task": "merge_keeps_values",
+  "text": "1행이 제목이니까 가로로 쭉 병합해 주세요",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.merge_cells",
+  "detail": "⚠ 선택 범위의 셀을 병합합니다. — A1:F7",
+  "secs": 13.1
+ },
+ {
+  "idx": 40,
+  "task": "merge_keeps_values",
+  "text": "위에 제목 줄은 셀 병합해서 가운데 놓고 싶어요",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.merge_cells",
+  "detail": "⚠ 선택 범위의 셀을 병합합니다. — A1:F7",
+  "secs": 13.0
+ },
+ {
+  "idx": 41,
+  "task": "merge_keeps_values",
+  "text": "제목 있는 줄 병합 좀",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.merge_cells",
+  "detail": "⚠ 선택 범위의 셀을 병합합니다. — A1:F7",
+  "secs": 13.0
+ },
+ {
+  "idx": 42,
+  "task": "merge_keeps_values",
+  "text": "맨 윗줄 제목 칸들 합쳐줄래?",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.merge_cells",
+  "detail": "⚠ 선택 범위의 셀을 병합합니다. — A1:F7",
+  "secs": 13.0
+ },
+ {
+  "idx": 43,
+  "task": "merge_keeps_values",
+  "text": "표 위 제목 한 칸으로 만들어줘",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.create_table",
+  "detail": "표 크기와 헤더를 알려주세요. 예: 5*5 또는 4행 3열, 금액, 장소, 날짜, 요건, 비고 (기준 셀 미지정 시 A1에서 생성)",
+  "secs": 0.0
+ },
+ {
+  "idx": 44,
+  "task": "merge_keeps_values",
+  "text": "제목 줄만 병합하고 나머지는 건드리지 마",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.merge_cells",
+  "detail": "⚠ 선택 범위의 셀을 병합합니다. — A1:F7",
+  "secs": 12.9
+ },
+ {
+  "idx": 45,
+  "task": "merge_keeps_values",
+  "text": "첫 줄 제목 셀 병합해 주실 수 있나요",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.merge_cells",
+  "detail": "⚠ 선택 범위의 셀을 병합합니다. — A1:F7",
+  "secs": 13.0
+ },
+ {
+  "idx": 46,
+  "task": "merge_keeps_values",
+  "text": "타이틀 줄 머지해줘",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.merge_cells",
+  "detail": "셀 병합 — A1:F1",
+  "secs": 13.8
+ },
+ {
+  "idx": 47,
+  "task": "merge_keeps_values",
+  "text": "제목 행 병합 부탁해요",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.merge_cells",
+  "detail": "⚠ 선택 범위의 셀을 병합합니다. — A1:F7",
+  "secs": 13.0
+ },
+ {
+  "idx": 48,
+  "task": "merge_keeps_values",
+  "text": "위쪽 제목 줄 쭉 이어서 하나로 만들어줘",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.clarify",
+  "detail": "어떤 작업을 원하시는지 한 단계만 더 구체화해 주세요. 예: 표 생성 / 정렬·필터 / 계산 수식 / 피벗 집계 / 차트 / 검증 중 하나와 기준 열.",
+  "secs": 10.6
+ },
+ {
+  "idx": 49,
+  "task": "filter_keeps_rows",
+  "text": "상태가 대기인 것만 보여줘",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.filter",
+  "detail": "어떤 열을 기준으로 필터할까요? 예: 상태 열",
+  "secs": 5.4
+ },
+ {
+  "idx": 50,
+  "task": "filter_keeps_rows",
+  "text": "대기중인 건만 남겨줘",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.filter",
+  "detail": "어떤 열을 기준으로 필터할까요? 예: 상태 열",
+  "secs": 5.3
+ },
+ {
+  "idx": 51,
+  "task": "filter_keeps_rows",
+  "text": "상태 대기인 행만 골라서 보고 싶어요",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.clarify",
+  "detail": "보고/대시보드 방향을 정해볼까요? 예: 월별 매출 요약, 담당자별 실적, 핵심 차트 3개. 원본 유지 여부(유지/수정)도 알려주세요.",
+  "secs": 10.6
+ },
+ {
+  "idx": 52,
+  "task": "filter_keeps_rows",
+  "text": "대기 상태만 필터 걸어줘",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_CARD",
+  "card": true,
+  "action": "excel_live.filter_rows",
+  "detail": "행 필터 — A1:D5 · 제거된 행 없음",
+  "secs": 19.2
+ },
+ {
+  "idx": 53,
+  "task": "filter_keeps_rows",
+  "text": "지금 대기인 것만 보이게 해줄래?",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.clarify",
+  "detail": "어떤 작업을 원하시는지 한 단계만 더 구체화해 주세요. 예: 표 생성 / 정렬·필터 / 계산 수식 / 피벗 집계 / 차트 / 검증 중 하나와 기준 열.",
+  "secs": 10.6
+ },
+ {
+  "idx": 54,
+  "task": "filter_keeps_rows",
+  "text": "상태 열에서 대기만 추려줘",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_CARD",
+  "card": true,
+  "action": "excel_live.filter_rows",
+  "detail": "행 필터 — A1:D5 · 제거된 행 없음",
+  "secs": 19.1
+ },
+ {
+  "idx": 55,
+  "task": "filter_keeps_rows",
+  "text": "대기 아닌 건 잠깐 안 보이게 해줘",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.not_excel_request",
+  "detail": "엑셀 작업으로 볼 수 없는 요청입니다.",
+  "secs": 10.6
+ },
+ {
+  "idx": 56,
+  "task": "filter_keeps_rows",
+  "text": "대기 건만 화면에 남겨 주세요",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_CARD",
+  "card": true,
+  "action": "excel_live.filter_rows",
+  "detail": "행 필터 — A1:D5 · 제거된 행 없음",
+  "secs": 19.1
+ },
+ {
+  "idx": 57,
+  "task": "filter_keeps_rows",
+  "text": "상태가 대기인 줄만 보여주세요",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_CARD",
+  "card": true,
+  "action": "excel_live.filter_rows",
+  "detail": "행 필터 — A1:D5 · 제거된 행 없음",
+  "secs": 19.3
+ },
+ {
+  "idx": 58,
+  "task": "filter_keeps_rows",
+  "text": "대기인 것들만 걸러줘",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_CARD",
+  "card": true,
+  "action": "excel_live.filter_rows",
+  "detail": "행 필터 — A1:D5 · 제거된 행 없음",
+  "secs": 19.0
+ },
+ {
+  "idx": 59,
+  "task": "filter_keeps_rows",
+  "text": "필터로 대기만 보이게",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_CARD",
+  "card": true,
+  "action": "excel_live.filter_rows",
+  "detail": "행 필터 — A1:D5 · 제거된 행 없음",
+  "secs": 19.2
+ },
+ {
+  "idx": 60,
+  "task": "filter_keeps_rows",
+  "text": "대기 상태인 행만 보고 싶어",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.clarify",
+  "detail": "보고/대시보드 방향을 정해볼까요? 예: 월별 매출 요약, 담당자별 실적, 핵심 차트 3개. 원본 유지 여부(유지/수정)도 알려주세요.",
+  "secs": 10.6
+ },
+ {
+  "idx": 61,
+  "task": "chart_keeps_data",
+  "text": "이 표로 막대 그래프 그려줘",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.create_chart",
+  "detail": "차트를 생성합니다. — A1:F6",
+  "secs": 10.1
+ },
+ {
+  "idx": 62,
+  "task": "chart_keeps_data",
+  "text": "지역별 주문건수 막대 차트 하나 만들어줘",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.create_chart",
+  "detail": "차트를 생성합니다. — A1:F6",
+  "secs": 10.5
+ },
+ {
+  "idx": 63,
+  "task": "chart_keeps_data",
+  "text": "표 보고 그래프 좀 그려줄래?",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.chart",
+  "detail": "차트 종류를 선택해 주세요. 예: 선 그래프 / 막대 그래프 / 원형 차트",
+  "secs": 5.3
+ },
+ {
+  "idx": 64,
+  "task": "chart_keeps_data",
+  "text": "주문건수로 차트 그려 주세요",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.chart",
+  "detail": "차트 종류를 선택해 주세요. 예: 선 그래프 / 막대 그래프 / 원형 차트",
+  "secs": 5.3
+ },
+ {
+  "idx": 65,
+  "task": "chart_keeps_data",
+  "text": "지역별로 막대 그래프 만들어줘",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.create_chart",
+  "detail": "차트를 생성합니다. — A1:F6",
+  "secs": 10.4
+ },
+ {
+  "idx": 66,
+  "task": "chart_keeps_data",
+  "text": "이 데이터 시각화해줘",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.chart",
+  "detail": "차트 종류를 선택해 주세요. 예: 선 그래프 / 막대 그래프 / 원형 차트",
+  "secs": 5.3
+ },
+ {
+  "idx": 67,
+  "task": "chart_keeps_data",
+  "text": "주문건수 비교되게 그래프 하나",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.chart",
+  "detail": "차트 종류를 선택해 주세요. 예: 선 그래프 / 막대 그래프 / 원형 차트",
+  "secs": 5.3
+ },
+ {
+  "idx": 68,
+  "task": "chart_keeps_data",
+  "text": "표를 차트로 보여줘",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.chart",
+  "detail": "차트 종류를 선택해 주세요. 예: 선 그래프 / 막대 그래프 / 원형 차트",
+  "secs": 5.3
+ },
+ {
+  "idx": 69,
+  "task": "chart_keeps_data",
+  "text": "지역 주문건수 그래프로 그려줄 수 있어?",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.chart",
+  "detail": "차트 종류를 선택해 주세요. 예: 선 그래프 / 막대 그래프 / 원형 차트",
+  "secs": 5.3
+ },
+ {
+  "idx": 70,
+  "task": "chart_keeps_data",
+  "text": "막대 그래프로 정리해줘",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_CARD",
+  "card": true,
+  "action": "excel_live.create_chart",
+  "detail": "차트를 생성합니다. — A1:F6",
+  "secs": 15.7
+ },
+ {
+  "idx": 71,
+  "task": "chart_keeps_data",
+  "text": "이 표 기준으로 차트 만들어 주세요",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.chart",
+  "detail": "차트 종류를 선택해 주세요. 예: 선 그래프 / 막대 그래프 / 원형 차트",
+  "secs": 5.3
+ },
+ {
+  "idx": 72,
+  "task": "chart_keeps_data",
+  "text": "주문건수 막대로 그려줘",
+  "persona": "D_작성자(비블라인드)",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.create_chart",
+  "detail": "차트를 생성합니다. — A1:F6",
+  "secs": 10.1
  }
 ]

@@ -886,9 +886,13 @@ def _split_sheet_qualified_range(service, workbook_id: str | None, range_ref: st
 
 
 #: 이 액션들은 **없는 시트 이름을 받는 게 정상**이다 — 그 이름을 만들거나 붙이는 일이므로.
-_SHEET_CREATING_ACTIONS = frozenset(
-    {"excel_live.create_sheet", "excel_live.rename_sheet", "excel_live.consolidate_sheets"}
-)
+#
+# **`rename_sheet`는 여기 들어오면 안 된다.** 그 액션의 `sheet_name`은 새 이름이 아니라
+# **바꿀 대상**이라 이미 있어야 한다. 면제했더니 "수도권은 서울권으로 이름 바꿔놔"(값 치환
+# 문장)가 가드를 지나 **활성 시트 이름을 바꿔 버렸다** — 그 시트를 가리키던 수식이 전부
+# 깨진다(2026-08-20 624 게이트 159번에서 시트가 사라져 실행이 통째로 죽으며 드러났다).
+# `consolidate_sheets`도 `sheet_name`이 원본이므로 같은 이유로 뺀다.
+_SHEET_CREATING_ACTIONS = frozenset({"excel_live.create_sheet"})
 
 
 def _edit_target_problem(

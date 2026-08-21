@@ -432,7 +432,19 @@ async def run_one(idx: int, row: dict, llm) -> dict:
     asked = bool(result.get("ask_follow_up")) or "clarify" in action
     ok = bool(getattr(resp, "ok", False))
     wb = load_workbook(WB)
-    err = task["oracle"](wb)
+    try:
+        err = task["oracle"](wb)
+    except Exception as exc:
+        # 오라클이 터지면 그 문장 하나만 ERROR다. 예전엔 예외가 그대로 올라가
+        # **50분짜리 실행이 통째로 죽었다**(2026-08-20: 159번에서 명령이 시트 이름을
+        # 바꿔 버려 `KeyError: '지역성과'`, 465문장을 못 쟀다).
+        err = f"오라클 예외 {type(exc).__name__}: {exc}"[:160]
+        wb.close()
+        return {
+            "idx": idx, **row, "outcome": "ERROR", "card": False,
+            "action": str(getattr(resp, "action", "")), "detail": err,
+            "secs": round(time.time() - t0, 1),
+        }
     wb.close()
     if task.get("negative"):
         outcome = "PASS_RULE" if (err == "" and (asked or action in {"excel_live.noop", "excel_live.not_excel_request"} or not ok)) else "WRONG"
