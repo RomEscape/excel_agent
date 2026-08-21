@@ -797,9 +797,17 @@ def _bind_filter_delete_or_hide(params: dict[str, Any], *, message: str) -> list
     "잠깐 안 보이게 해줘"까지. 숨기기는 되돌릴 수 있고 삭제는 아니므로, 애매하면
     숨기는 쪽이 옳다. `remove`(맞는 행을 뺀다)는 앞에서 정해지므로 건드리지 않는다.
     """
-    if str(params.get("mode") or "").strip().lower() in {"remove", "exclude", "drop"}:
-        return []
-    want = "keep" if _DELETE_ROWS_WORDED.search(str(message or "")) else "hide"
+    current = str(params.get("mode") or "").strip().lower()
+    wants_delete = bool(_DELETE_ROWS_WORDED.search(str(message or "")))
+    if current in {"remove", "exclude", "drop"}:
+        # 제외 판정은 그대로 두되, **지우라는 말이 없으면 지우지 않는다.**
+        # "대기 아닌 건 잠깐 안 보이게 해줘"가 remove로 세워져 행이 지워졌다
+        # (2026-08-20 파괴 게이트). 어느 쪽을 뺄지는 유지하고 삭제만 없앤다.
+        if wants_delete:
+            return []
+        params["mode"] = "hide_exclude"
+        return ["mode=hide_exclude"]
+    want = "keep" if wants_delete else "hide"
     if str(params.get("mode") or "").strip().lower() == want:
         return []
     params["mode"] = want

@@ -1724,6 +1724,7 @@ class FileExcelLiveService(ExcelLiveService):
         col_idx: int,
         op: str,
         value: Any,
+        exclude: bool = False,
     ) -> dict[str, Any]:
         """안 맞는 행을 숨긴다. **한 칸도 지우지 않는다.**
 
@@ -1758,7 +1759,7 @@ class FileExcelLiveService(ExcelLiveService):
             "column_index": col_idx + 1,
             "operator": op,
             "value": value,
-            "mode": "hide",
+            "mode": "hide_exclude" if exclude else "hide",
         }
 
     def filter_rows(
@@ -1811,8 +1812,10 @@ class FileExcelLiveService(ExcelLiveService):
         col_idx = self._resolve_column_selector(column, 1, col_count, header)
         op = str(operator or "==").strip()
         mode_word = str(mode or "hide").strip().lower()
-        exclude = mode_word in {"remove", "exclude", "drop"}
-        hide_only = mode_word in {"hide", "숨김", "숨기기"}
+        # 숨길지 지울지(`hide_only`)와 어느 쪽을 뺄지(`exclude`)는 **다른 축**이다.
+        # `hide_exclude`는 "맞는 행을 숨긴다" — `remove`의 비파괴판이다.
+        exclude = mode_word in {"remove", "exclude", "drop", "hide_exclude"}
+        hide_only = mode_word in {"hide", "hide_exclude", "숨김", "숨기기"}
         keep_order: list[int] = []
         matched = 0
         for index, row in enumerate(body):
@@ -1873,6 +1876,7 @@ class FileExcelLiveService(ExcelLiveService):
                 col_idx=col_idx,
                 op=op,
                 value=value,
+                exclude=exclude,
             )
 
         min_col, min_row, max_col, max_row = range_boundaries(address)

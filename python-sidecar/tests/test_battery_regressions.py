@@ -2766,3 +2766,73 @@ class TestCrossSheetVocabularyAndYield:
             formula = plan[0]["params"]["formula_a1"]
             assert "지역성과" in formula and "SUM" in formula, (message, formula)
             assert plan[0]["params"]["range_ref"] == "A2", (message, plan[0]["params"])
+
+
+class TestExcludeAlsoHidesUnlessToldToDelete:
+    """"안 보이게 해줘"인데 행이 지워졌다 — 숨기기 기본이 `remove`를 못 덮었다.
+
+    2026-08-20 파괴 게이트: `대기 아닌 건 잠깐 안 보이게 해줘` → 행이 지워짐.
+    제외 바인더가 "아닌"을 보고 `remove`를 세우고, 숨김 바인더는 `remove`면 빠졌다.
+    어느 쪽을 뺄지는 유지하고 **되돌릴 수 없는 삭제만** 없앤다.
+    """
+
+    @pytest.mark.parametrize(
+        ("message", "value", "want"),
+        [
+            ("대기 아닌 건 잠깐 안 보이게 해줘", "대기", "hide_exclude"),
+            ("취소된 주문은 빼줘", "취소", "hide_exclude"),
+            ("상태가 대기인 것만 보여줘", "대기", "hide"),
+            # 지우라고 말했을 때만 지운다.
+            ("취소된 주문은 지워줘", "취소", "remove"),
+            ("대기 아닌 행은 삭제해줘", "대기", "remove"),
+        ],
+    )
+    def test_the_mode_follows_the_words(self, message: str, value: str, want: str) -> None:
+        from office_claw_sidecar.services.excel_param_binder import (
+            _bind_filter_delete_or_hide,
+            _bind_filter_mode,
+        )
+
+        params = {"value": value}
+        _bind_filter_mode(params, message=message)
+        _bind_filter_delete_or_hide(params, message=message)
+        assert params.get("mode") == want, (message, params)
+
+    @pytest.mark.parametrize(
+        ("mode", "kept", "hidden", "removed"),
+        [
+            ("hide", 4, [3, 5], 0),
+            ("hide_exclude", 4, [2, 4], 0),
+            ("keep", 2, [], 2),
+            ("remove", 2, [], 2),
+        ],
+    )
+    def test_each_mode_does_exactly_one_thing(self, tmp_path, mode, kept, hidden, removed) -> None:
+        from openpyxl import Workbook, load_workbook
+
+        from office_claw_sidecar.services.excel_live_file_service import FileExcelLiveService
+
+        path = tmp_path / f"{mode}.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "지연경고"
+        for row in [
+            ["운송장", "구간", "지연시간", "상태"],
+            ["INV-001", "김포-부산", "12시간", "대기"],
+            ["INV-002", "이천-대전", "3시간", "처리중"],
+            ["INV-003", "용인-광주", "8시간", "대기"],
+            ["INV-004", "평택-제주", "1시간", "완료"],
+        ]:
+            ws.append(row)
+        wb.save(path)
+        service = FileExcelLiveService()
+        service.select_workbook(str(path))
+        service.select_sheet(None, "지연경고")
+        result = service.filter_rows(
+            None, "지연경고", column="상태", operator="==", value="대기", mode=mode
+        )
+        assert result["removed_rows"] == removed, result
+        sheet = load_workbook(path)["지연경고"]
+        rows = [c for c in (sheet.cell(row=r, column=1).value for r in range(2, sheet.max_row + 1)) if c]
+        assert len(rows) == kept, rows
+        assert [r for r in range(2, sheet.max_row + 1) if sheet.row_dimensions[r].hidden] == hidden

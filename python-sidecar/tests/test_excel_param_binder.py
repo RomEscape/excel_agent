@@ -151,7 +151,9 @@ def test_exclusion_phrasing_flips_the_filter_to_remove():
         )
     ]
     bound, _notes = _bind(steps, "상태가 완료인 것들은 다 빼줘")
-    assert bound[0].params["mode"] == "remove"
+    # 제외 판정은 그대로 — 다만 **지우라는 말이 없으므로** 숨기기판으로 간다
+    # (2026-08-20: 되돌릴 수 없는 삭제는 지우라고 말했을 때만).
+    assert bound[0].params["mode"] == "hide_exclude"
 
 
 def test_inclusion_phrasing_keeps_the_filter_as_keep():
@@ -174,7 +176,10 @@ def test_exclusion_wins_when_the_only_particle_is_on_the_remainder():
         )
     ]
     bound, _notes = _bind(steps, "취소된 주문은 빼고 나머지만 남겨줘")
-    assert bound[0].params["mode"] == "remove"
+    assert bound[0].params["mode"] == "hide_exclude"
+    # 지우라고 말하면 그때는 지운다.
+    bound2, _n2 = _bind(steps, "취소된 주문은 지우고 나머지만 남겨줘")
+    assert bound2[0].params["mode"] == "remove"
 
 
 def test_invented_output_start_falls_back_to_a1():

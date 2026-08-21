@@ -852,7 +852,11 @@ def _validate_step_body(
                 "mode": (
                     "remove"
                     if mode in {"remove", "exclude", "drop"}
-                    else ("keep" if mode == "keep" else "hide")
+                    else (
+                        "keep"
+                        if mode == "keep"
+                        else ("hide_exclude" if mode == "hide_exclude" else "hide")
+                    )
                 ),
             },
             reason=reason,
