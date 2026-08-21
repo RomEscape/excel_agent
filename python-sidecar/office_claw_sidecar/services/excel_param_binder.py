@@ -1249,6 +1249,32 @@ def _split_range_prefix(range_ref: str) -> tuple[str, str]:
     return f"{sheet}!", ref
 
 
+#: 좌표를 직접 적은 것("A1:G1", "A1부터 G1까지"). 사람이 지목한 칸은 지금 보는 시트에 있다.
+_EXPLICIT_RANGE_IN_TEXT = re.compile(
+    r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}\s*(?::|~|-|부터|에서)\s*[A-Za-z]{1,3}\d{1,7}"
+)
+#: 머리글 낱말 뒤에 오면 **열 지목이 아니라 구조**를 뜻하는 말.
+#: "제목 **줄**"은 제목이라는 열이 아니라 표의 제목 행이다. "제목 **열**"이라야 열이다.
+_STRUCTURAL_AFTER_HEADER = re.compile(r"^\s*(?:줄|행|라인|row)")
+
+
+def _structural_free_mentions(text: str, headers: list[Any]) -> list[dict[str, Any]]:
+    """머리글 언급 중 **구조를 가리키는 것**은 뺀다.
+
+    2026-08-22 42각본 전수: "제목 줄은 A1부터 G1까지 병합해줘"의 '제목'이 다른 시트의
+    열 머리글이라, 그 시트로 대상이 옮겨져 머리글 7개를 지울 뻔했다. '제목 줄'은
+    그 열이 아니라 표의 제목 행이다.
+    """
+    body = str(text or "")
+    out: list[dict[str, Any]] = []
+    for hit in find_header_mentions(body, headers):
+        end = hit.get("end")
+        if isinstance(end, int) and _STRUCTURAL_AFTER_HEADER.match(body[end : end + 4]):
+            continue
+        out.append(hit)
+    return out
+
+
 def _retarget_sheet_by_headers(
     text: str,
     entry: dict[str, Any] | None,
@@ -1263,8 +1289,13 @@ def _retarget_sheet_by_headers(
     """
     if not digest:
         return entry, prefix
+    # 좌표를 직접 적었으면 그건 **지금 보고 있는 시트**의 좌표다. 머리글 낱말 하나로
+    # 다른 시트로 옮기면 사람이 지목한 칸이 아닌 데를 고친다(2026-08-22 42각본 전수:
+    # "제목 줄은 A1부터 G1까지 병합해줘"의 '제목'이 다른 시트의 열 머리글이라 그리로 끌려갔다).
+    if _EXPLICIT_RANGE_IN_TEXT.search(str(text or "")) and not _SHEET_MENTION_PATTERN.search(str(text or "")):
+        return entry, prefix
     scored = [
-        (len({hit["header"] for hit in find_header_mentions(text, _headers(sheet))}), sheet)
+        (len({hit["header"] for hit in _structural_free_mentions(text, _headers(sheet))}), sheet)
         for sheet in (digest.get("sheets") or [])
         if _headers(sheet)
     ]
@@ -1702,6 +1733,46 @@ def _bind_message_only_slots(
 _SORT_KEY_STATED = re.compile(r"[가-힣A-Za-z0-9_()%]+\s*(?:기준|순으로|순서로|높은\s*순|낮은\s*순|많은\s*순|적은\s*순|큰\s*순|작은\s*순|오름차순|내림차순|별로|별)")
 
 
+#: `sheet_name`이 **작업 대상**이 아니라 **이름**인 액션들. 여기서는 활성 시트로 되돌리면 안 된다.
+_SHEET_NAME_IS_NOT_A_TARGET = frozenset(
+    {
+        "excel_live.create_sheet",
+        "excel_live.rename_sheet",
+        "excel_live.select_sheet",
+        "excel_live.delete_sheet",
+        "excel_live.consolidate_sheets",
+        "excel_live.consolidate_workbooks_from_folder",
+    }
+)
+
+
+def _bind_sheet_stays_active(
+    params: dict[str, Any], *, action: str, message: str, digest: dict[str, Any], active: str | None
+) -> list[str]:
+    """원문이 시트를 안 불렀으면 편집 대상은 **활성 시트**다.
+
+    2026-08-22 42각본 전수 실측: "제목 줄은 A1부터 G1까지 병합해줘"(시트 언급 없음)를
+    모델이 데이터가 많은 다른 시트에 걸었다. 사람은 방금 만들어 쓴 시트를 보고 있었다.
+    남의 시트를 고치는 건 되돌리기 어렵고, 조용히 지나가면 알아채지도 못한다.
+    """
+    if action in _SHEET_NAME_IS_NOT_A_TARGET:
+        return []
+    target = str(params.get("sheet_name") or "").strip()
+    # 요청에 시트가 안 실려 오는 경로가 있다(GUI는 활성 시트를 따로 안 보낸다).
+    # 그때는 다이제스트가 아는 활성 시트가 사실이다 — 이걸 안 보면 이 층이 통째로 논다
+    # (2026-08-22 자체 검토: 바인더 단위 테스트는 통과하는데 실제 턴에서 안 걸렸다).
+    current = str(active or digest.get("active_sheet") or "").strip()
+    if not target or not current or target == current:
+        return []
+    # 원문이 시트를 하나라도 불렀으면 그 판정은 앞 단계들이 한다 — 여기서 덮지 않는다.
+    if resolve_sheet_from_message(message, digest, default=None):
+        return []
+    if not any(str(n).strip() == target for n in sheet_names(digest)):
+        return []  # 있지도 않은 시트는 다른 층(가드·복구)이 다룬다
+    params["sheet_name"] = current
+    return [f"sheet_name={current}"]
+
+
 def bind_plan_steps(
     steps: list[PlanStep],
     *,
@@ -1840,6 +1911,11 @@ def bind_plan_steps(
             changes.extend(_bind_filter_value(params, message=message, entry=entry))
             changes.extend(_bind_filter_mode(params, message=message))
             changes.extend(_bind_filter_delete_or_hide(params, message=message))
+        changes.extend(
+            _bind_sheet_stays_active(
+                params, action=step.action, message=message, digest=digest, active=sheet_name
+            )
+        )
 
         if step.action == "excel_live.write_range":
             changes.extend(_bind_write_values(params, message=message))

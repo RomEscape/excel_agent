@@ -3156,8 +3156,16 @@ def _title_row_merge_plan(message: str, digest: dict[str, Any]) -> list[dict[str
     text = str(message or "")
     if not _MERGE_VERB_WORDED.search(text) or not _TITLE_MERGE_WORDED.search(text):
         return []
-    if re.search(r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}\s*:\s*[A-Za-z]{1,3}\d{1,7}", text):
-        return []  # 범위를 직접 적었으면 그건 사람 뜻이다
+    # 범위를 직접 적었으면 그건 사람 뜻이다. **콜론만 보면 안 된다** —
+    # 사람은 "A1**부터** G1**까지**"라고 더 자주 쓴다. 콜론만 보다가
+    # "제목 줄은 A1부터 G1까지 병합해줘"를 가로채 `A1:A1`(한 칸)로 만들었다
+    # (2026-08-22 42각본 전수: ex14·ex14_v2·ex20의 유일한 실패 3건이 이것이었다).
+    if re.search(
+        r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}\s*"
+        r"(?::|~|-|부터|에서|~에서)\s*(?:[A-Za-z]{1,3}\d{1,7})",
+        text,
+    ):
+        return []
     entry = _digest_active_entry(digest)
     used = str(entry.get("used_range") or "")
     span = re.match(r"^([A-Z]+)\d+:([A-Z]+)\d+$", used.upper())

@@ -2836,3 +2836,150 @@ class TestExcludeAlsoHidesUnlessToldToDelete:
         rows = [c for c in (sheet.cell(row=r, column=1).value for r in range(2, sheet.max_row + 1)) if c]
         assert len(rows) == kept, rows
         assert [r for r in range(2, sheet.max_row + 1) if sheet.row_dimensions[r].hidden] == hidden
+
+
+class TestTitleMergeYieldsToAnyWrittenRange:
+    """"A1**부터** G1**까지**"를 범위로 못 알아봐 제목 줄 규칙이 가로챘다.
+
+    2026-08-22 42각본 전수(2492/2495)에서 실패한 3건이 전부 이것이었다:
+    ex14·ex14_v2 20번 턴, ex20 26번 턴. 사용자가 범위를 직접 말하고 승인 카드까지
+    승인했는데, 규칙이 `A1:A1`(한 칸)로 바꿔 놓아 병합이 안 됐다.
+    콜론만 보면 안 된다 — 사람은 '부터/까지'를 더 자주 쓴다.
+    """
+
+    EMPTY_TITLE_SHEET = {
+        "active_sheet": "대시보드",
+        "sheets": [
+            {
+                "name": "대시보드",
+                "used_range": "A1:A1",
+                "columns": [{"letter": "A", "header": "AI 기반 콘텐츠·캠페인 캘린더"}],
+                "sample_rows": [],
+            }
+        ],
+    }
+    TITLED_TABLE = {
+        "active_sheet": "지역성과",
+        "sheets": [
+            {
+                "name": "지역성과",
+                "used_range": "A1:F7",
+                "columns": [
+                    {"letter": "A", "header": "2026년 상반기 지역 실적"},
+                    {"letter": "B", "header": ""},
+                ],
+                "sample_rows": [["지역", "주문건수", "출고건수", "정시배송률", "지연건수", "클레임"]],
+            }
+        ],
+    }
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "제목 줄은 A1부터 G1까지 병합해줘",
+            "A1에서 G1까지 merge 해줘, 제목 줄이니까",
+            "제목 줄은 A1:G1 병합해줘",
+            "제목 줄은 A1~G1 병합",
+        ],
+    )
+    def test_it_yields_when_the_person_named_a_range(self, message: str) -> None:
+        from office_claw_sidecar.routers.excel_live import _title_row_merge_plan
+
+        assert _title_row_merge_plan(message, self.EMPTY_TITLE_SHEET) == [], message
+
+    @pytest.mark.parametrize("message", ["제목 줄 병합해줘", "맨 위 제목 칸 하나로 합쳐줘"])
+    def test_it_still_fires_without_a_range(self, message: str) -> None:
+        from office_claw_sidecar.routers.excel_live import _title_row_merge_plan
+
+        plan = _title_row_merge_plan(message, self.TITLED_TABLE)
+        assert plan, message
+        assert plan[0]["params"]["target_range"] == "A1:F1", message
+
+
+class TestAWordInAnotherSheetsHeadersDoesNotStealTheTarget:
+    """"제목 줄"의 '제목'이 **다른 시트의 열 머리글**이라 대상이 그리로 옮겨졌다.
+
+    2026-08-22 42각본 전수(ex14·ex14_v2·ex20)의 마지막 실패:
+      18턴 `대시보드 시트 만들어조` → 19턴 `대시보드 시트 A1에 … 입력`
+      20턴 `제목 줄은 A1부터 G1까지 병합해줘` → **콘텐츠 일정** 시트 A1:G1 계획
+
+    콘텐츠 일정의 열은 날짜/요일/유형/**제목**/마감/채널/담당이다. 머리글 낱말 하나가
+    겹쳤다고 시트를 옮기면, 사람이 좌표로 지목한 칸이 아닌 데를 고친다.
+    병합 가드가 막아 줘서 드러났지, 가드 전에는 머리글 7개를 지우고 '성공'으로 집계됐다.
+    """
+
+    HEADERS = ["날짜", "요일", "유형", "제목", "마감", "채널", "담당"]
+
+    def _digest(self):
+        return {
+            "active_sheet": "대시보드",
+            "sheets": [
+                {
+                    "name": "콘텐츠 일정",
+                    "used_range": "A1:O26",
+                    "columns": [
+                        {"letter": chr(65 + i), "header": h} for i, h in enumerate(self.HEADERS)
+                    ],
+                },
+                {
+                    "name": "대시보드",
+                    "used_range": "A1:A1",
+                    "columns": [{"letter": "A", "header": "AI 기반 콘텐츠·캠페인 캘린더"}],
+                },
+            ],
+        }
+
+    def test_a_structural_word_is_not_a_column_reference(self) -> None:
+        """"제목 **줄**"은 제목이라는 열이 아니라 표의 제목 행이다."""
+        from office_claw_sidecar.services.excel_param_binder import _structural_free_mentions
+
+        assert _structural_free_mentions("제목 줄은 A1부터 G1까지 병합해줘", self.HEADERS) == []
+        # "제목 **열**"이면 진짜 열 지목이다 — 그건 남아야 한다.
+        assert [h["header"] for h in _structural_free_mentions("제목 열만 굵게 해줘", self.HEADERS)] == ["제목"]
+
+    @pytest.mark.parametrize(
+        ("message", "want_sheet"),
+        [
+            ("제목 줄은 A1부터 G1까지 병합해줘", "대시보드"),
+            ("A1에서 G1까지 merge 해줘, 제목 줄이니까", "대시보드"),
+            # 진짜로 그 시트의 열을 부른 문장은 여전히 옮겨 간다.
+            ("제목 열만 굵게 해줘", "콘텐츠 일정"),
+            ("마감 지난 행 빨갛게", "콘텐츠 일정"),
+        ],
+    )
+    def test_retargeting_respects_coordinates_and_structure(self, message: str, want_sheet: str) -> None:
+        from office_claw_sidecar.services.excel_param_binder import _retarget_sheet_by_headers
+
+        digest = self._digest()
+        active = digest["sheets"][1]
+        entry, _prefix = _retarget_sheet_by_headers(message, active, digest, "")
+        assert (entry or {}).get("name") == want_sheet, message
+
+    def test_an_unnamed_sheet_edit_stays_on_the_active_sheet(self) -> None:
+        """계획이 남의 시트를 적어 와도, 원문이 시트를 안 불렀으면 활성 시트로 되돌린다."""
+        from office_claw_sidecar.services.excel_param_binder import _bind_sheet_stays_active
+
+        params = {"sheet_name": "콘텐츠 일정", "target_range": "A1:G1"}
+        changed = _bind_sheet_stays_active(
+            params,
+            action="excel_live.merge_cells",
+            message="제목 줄은 A1부터 G1까지 병합해줘",
+            digest=self._digest(),
+            active=None,  # 요청에 시트가 안 실려 오는 경로 — 다이제스트가 사실이다
+        )
+        assert changed == ["sheet_name=대시보드"]
+        assert params["sheet_name"] == "대시보드"
+
+    @pytest.mark.parametrize(
+        ("action", "sheet"),
+        [("excel_live.create_sheet", "요약"), ("excel_live.rename_sheet", "콘텐츠 일정")],
+    )
+    def test_sheet_naming_actions_are_left_alone(self, action: str, sheet: str) -> None:
+        """`sheet_name`이 **대상**이 아니라 **이름**인 액션은 건드리면 안 된다."""
+        from office_claw_sidecar.services.excel_param_binder import _bind_sheet_stays_active
+
+        params = {"sheet_name": sheet}
+        assert _bind_sheet_stays_active(
+            params, action=action, message="시트 하나 만들어줘", digest=self._digest(), active="대시보드"
+        ) == []
+        assert params["sheet_name"] == sheet
