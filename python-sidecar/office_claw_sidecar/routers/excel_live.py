@@ -8907,6 +8907,16 @@ async def _run_command(
         # 시트 접두 없는 =SUM(F2:F11)이 대시보드에 써지거나(값 0), 문장이 원본 시트의 이름 칸을 덮었다
         # (2026-08-19 결과 워크북 감사: 성적부!B10의 '학생9'가 사라졌다). 그 두 훅은 크로스시트에 양보한다.
         _cross_yieldable = rule_hook in {"aggregate_below", "aggregate_columns", "single_cell_write", "cell_arithmetic"}
+        # **읽기 계획도 양보한다.** "A2 칸에 지역성과 시트 주문건수 전부 합친 숫자 **보여줘**"가
+        # '보여줘' 때문에 `read_range`(A2를 보여 달라)로 잡혀, 크로스시트 빌더가 아예 안 돌았다.
+        # 그 사이 모델이 `=SUM(B:B)+SUM(E:E)`를 써서 0이 나왔다(2026-08-20 624 게이트).
+        # 집계어와 원본 시트를 함께 부른 문장이 '읽기'로 끝날 리 없다 — 훅 이름이 아니라
+        # **계획이 무엇을 하는지**로 판단한다(양보 목록은 늘 새 훅보다 좁아진다).
+        if quick_action_plan and all(
+            str((step or {}).get("action") or "") == "excel_live.read_range"
+            for step in quick_action_plan
+        ):
+            _cross_yieldable = True
         # 훅의 방아쇠 어휘가 빌더(`_AGG_WORD`)보다 좁으면, 빌더가 풀 수 있는 문장이
         # 여기서 걸러진다 — `총계`가 목록에 없어 "A2에다 성적부 결석 **총계** 계산해서
         # 넣어줘"가 통째로 빠졌다(2026-08-20 파괴 게이트).

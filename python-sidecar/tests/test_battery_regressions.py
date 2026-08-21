@@ -2635,3 +2635,134 @@ class TestChartVerificationLooksAtTheSheetItLandedOn:
         assert '(result or {}).get("sheet_name")' in head
         # 계획 값도 여전히 뒤에 남아 있어야 한다 — 결과가 시트를 안 알려주는 엔진 대비.
         assert 'params.get("output_sheet")' in head
+
+
+class TestFormulaSheetRefsMustExist:
+    """없는 시트를 참조하는 수식은 엑셀에서 `#REF!`가 된다 — 쓰기 전에 막는다.
+
+    2026-08-20 624 게이트: "A2 칸에 지역성과 시트 주문건수 전부 합친 숫자 보여줘"가
+    `=SUM(지역성!E:E, 주문건수!E:E)`로 계획됐다. 모델이 "지역성과 시트 주문건수"를
+    **시트 이름 둘**로 쪼갠 것인데, 그대로 써져서 사용자는 나중에 #REF!를 발견한다.
+    """
+
+    NAMES = ["지역성과", "요약", "지연 경고"]
+
+    @pytest.mark.parametrize(
+        ("formula", "want", "missing"),
+        [
+            ("=SUM(지역성과!B2:B6)", "=SUM(지역성과!B2:B6)", []),
+            # 앞부분만 맞는 후보가 **하나뿐**이면 고친다.
+            ("=SUM(지역성!B:B)", "=SUM(지역성과!B:B)", []),
+            # 공백이 든 이름은 따옴표를 유지한다.
+            ("=SUM('지연 경고'!A:A)", "=SUM('지연 경고'!A:A)", []),
+            # 시트 참조가 없는 수식은 손대지 않는다.
+            ("=SUM(B2:B6)", "=SUM(B2:B6)", []),
+            # 열 이름을 시트로 오인한 것은 **못 찾음**으로 남긴다.
+            ("=SUM(지역성!E:E, 주문건수!E:E)", "=SUM(지역성과!E:E, 주문건수!E:E)", ["주문건수"]),
+        ],
+    )
+    def test_refs_are_resolved_or_reported(self, formula: str, want: str, missing: list[str]) -> None:
+        from office_claw_sidecar.services.excel_live_file_service import _resolve_formula_sheet_refs
+
+        fixed, found_missing = _resolve_formula_sheet_refs(formula, self.NAMES)
+        assert fixed == want
+        assert found_missing == missing
+
+    def test_the_executor_refuses_to_write_a_broken_formula(self, tmp_path) -> None:
+        from openpyxl import Workbook, load_workbook
+
+        from office_claw_sidecar.services.excel_live_file_service import FileExcelLiveService
+        from office_claw_sidecar.services.excel_live_service import ExcelLiveError
+
+        path = tmp_path / "f.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "지역성과"
+        for row in [["지역", "주문건수"], ["수도권", 10452], ["충청권", 3892]]:
+            ws.append(row)
+        wb.create_sheet("요약")
+        wb.save(path)
+        service = FileExcelLiveService()
+        service.select_workbook(str(path))
+        service.select_sheet(None, "요약")
+
+        with pytest.raises(ExcelLiveError) as excinfo:
+            service.set_formula(None, "요약", "A2", "=SUM(지역성!E:E, 주문건수!E:E)")
+        assert "주문건수" in str(excinfo.value)
+        assert load_workbook(path)["요약"]["A2"].value is None, "막았는데도 써졌다"
+
+        # 앞부분만 맞는 것은 고쳐서 쓴다.
+        service.set_formula(None, "요약", "A2", "=SUM(지역성!B:B)")
+        assert load_workbook(path)["요약"]["A2"].value == "=SUM(지역성과!B:B)"
+
+
+class TestCrossSheetVocabularyAndYield:
+    """크로스시트 규칙이 못 잡으면 모델이 엉뚱한 수식을 쓴다 — 어휘 구멍 셋과 양보 하나.
+
+    2026-08-20 624 게이트 `cross_sheet_sum` 24문장 중 4문형이 규칙 밖으로 샜고,
+    그 사이 모델이 `=SUM(지역성!E:E, 주문건수!E:E)`(없는 시트)와
+    `=SUM(B:B)+SUM(E:E)`(빈 열 → 0)를 썼다.
+    """
+
+    @pytest.mark.parametrize(
+        ("message", "want_agg"),
+        [
+            # `합`이 `합친 값`보다 앞에 있어 "합친"이 `합`으로 잘렸다 — 긴 것부터 적어야 한다.
+            ("A2 칸에 지역성과 시트 주문건수 전부 합친 숫자 보여줘", "합친 숫자"),
+            ("A2에 지역성과 시트 주문건수 합계 가져와줘", "합계"),
+            # 영어로 부르는 사람도 있다.
+            ("A2 셀에 지역성과 sheet 주문건수 total 넣어 주세요.", "total"),
+        ],
+    )
+    def test_the_aggregate_word_is_matched_whole(self, message: str, want_agg: str) -> None:
+        from office_claw_sidecar.services.excel_aggregate_below import _CROSS_SHEET
+
+        match = _CROSS_SHEET.search(message)
+        assert match is not None, message
+        assert match.group(5) == want_agg, match.groups()
+
+    def test_a_pronoun_after_a_comma_still_finds_the_cell(self) -> None:
+        """"…합계, **그걸** A2에 넣어 주세요" — 대명사가 앞 절의 집계를 그대로 받는다."""
+        from office_claw_sidecar.services.excel_aggregate_below import _CROSS_SHEET_CELL_LAST
+
+        match = _CROSS_SHEET_CELL_LAST.search("지역성과 시트 주문건수 합계, 그걸 A2에 넣어 주세요")
+        assert match is not None
+        assert match.group(4) == "A2", match.groups()
+
+    def test_show_me_is_a_cross_sheet_verb(self) -> None:
+        from office_claw_sidecar.services.excel_aggregate_below import _CROSS_SHEET_VERB
+
+        assert _CROSS_SHEET_VERB.search("합친 숫자 보여줘")
+
+    def test_a_read_plan_yields_to_the_cross_sheet_builder(self) -> None:
+        """'보여줘'가 read_range로 잡혀 크로스시트 빌더가 아예 안 돌았다.
+
+        양보 목록은 **훅 이름**으로 돼 있어 늘 새 훅보다 좁아진다. 계획이 읽기뿐이면
+        훅 이름과 무관하게 양보하게 했다.
+        """
+        import inspect
+
+        from office_claw_sidecar.routers import excel_live
+
+        src = inspect.getsource(excel_live._run_command)
+        assert "_cross_yieldable = True" in src
+        assert 'str((step or {}).get("action") or "") == "excel_live.read_range"' in src
+
+    def test_the_builder_makes_a_sheet_qualified_sum(self) -> None:
+        from office_claw_sidecar.services.excel_aggregate_below import build_cross_sheet_aggregate_plan
+
+        rows = [["지역", "주문건수"], ["수도권", 10452], ["충청권", 3892]]
+
+        def reader(sheet: str):
+            return ("A1:B3", rows) if sheet == "지역성과" else ("A1:A1", [["전체주문건수"]])
+
+        for message in [
+            "A2 칸에 지역성과 시트 주문건수 전부 합친 숫자 보여줘, 나중에도 연동되게",
+            "지역성과 시트 주문건수 합계, 그걸 A2에 넣어 주세요",
+            "A2 셀에 지역성과 sheet 주문건수 total 넣어 주세요.",
+        ]:
+            plan = build_cross_sheet_aggregate_plan(message, reader, ["지역성과", "요약"])
+            assert plan, message
+            formula = plan[0]["params"]["formula_a1"]
+            assert "지역성과" in formula and "SUM" in formula, (message, formula)
+            assert plan[0]["params"]["range_ref"] == "A2", (message, plan[0]["params"])

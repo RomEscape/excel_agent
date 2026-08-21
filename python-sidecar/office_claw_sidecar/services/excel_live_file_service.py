@@ -132,6 +132,40 @@ def _hex_or_none(value: Any) -> str | None:
 _FORMAT_SNAPSHOT_MAX_ROWS = 200
 _FORMAT_SNAPSHOT_MAX_COLS = 60
 
+
+#: 수식 안의 시트 참조. `지역성과!B2` · `'지역 성과'!B:B` 두 형태를 모두 잡는다.
+_FORMULA_SHEET_REF = re.compile(r"(?:'([^']+)'|([A-Za-z0-9가-힣_.]+))\s*!")
+
+
+def _resolve_formula_sheet_refs(formula: str, sheet_names: list[str]) -> tuple[str, list[str]]:
+    """수식의 시트 참조를 실제 이름으로 맞춘다. 못 맞춘 이름들을 함께 돌려준다.
+
+    돌려주는 것: (고친 수식, 못 찾은 이름 목록)
+    앞부분만 맞는 후보가 **정확히 하나**일 때만 고친다 — 둘 이상이면 짐작이 된다.
+    """
+    text = str(formula or "")
+    if not text.startswith("=") or not sheet_names:
+        return text, []
+    by_fold = {name.strip().casefold(): name for name in sheet_names}
+    missing: list[str] = []
+
+    def _fix(match: re.Match[str]) -> str:
+        raw = match.group(1) or match.group(2) or ""
+        name = raw.strip()
+        if not name:
+            return match.group(0)
+        actual = by_fold.get(name.casefold())
+        if actual is None:
+            starts = [n for n in sheet_names if n.casefold().startswith(name.casefold())]
+            actual = starts[0] if len(starts) == 1 else None
+        if actual is None:
+            missing.append(name)
+            return match.group(0)
+        quoted = f"'{actual}'" if re.search(r"[^A-Za-z0-9가-힣_.]", actual) else actual
+        return f"{quoted}!"
+
+    return _FORMULA_SHEET_REF.sub(_fix, text), missing
+
 class FileExcelLiveService(ExcelLiveService):
     """파일 기반(openpyxl) Excel 편집 서비스. Excel 앱이 없어도 동작한다."""
 
@@ -1169,6 +1203,16 @@ class FileExcelLiveService(ExcelLiveService):
             applied = 0
             origin = f"{get_column_letter(min_col)}{min_row}"
             formula_a1 = self._normalize_modern_functions(formula_a1)
+            # 없는 시트를 참조하는 수식은 엑셀에서 #REF!가 된다. 쓰고 나서 알아채느니
+            # 쓰기 전에 막는다(2026-08-20 624 게이트: `=SUM(지역성!E:E, 주문건수!E:E)`
+            # — 모델이 '지역성과 시트 주문건수'를 시트 이름 둘로 쪼갰다).
+            formula_a1, _missing = _resolve_formula_sheet_refs(formula_a1, list(wb.sheetnames))
+            if _missing:
+                raise ExcelLiveError(
+                    f"수식이 없는 시트를 가리킵니다: {', '.join(_missing[:3])}"
+                    + (" 등" if len(_missing) > 3 else "")
+                    + f". 이 통합문서의 시트는 {', '.join(wb.sheetnames[:6])}입니다."
+                )
             is_formula = str(formula_a1 or "").startswith("=")
             # TRANSPOSE 같은 구형 배열 함수는 일반 수식으로 저장하면 레거시
             # 암시적 교차로 해석돼 #VALUE!가 된다(2026-08-18 배터리 실측).
