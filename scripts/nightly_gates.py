@@ -164,6 +164,16 @@ def render(results: dict, baseline: dict, bad: list[str], stamp: str) -> str:
     return "\n".join(lines)
 
 
+def _last_real_report(*, exclude: str) -> Path | None:
+    """가장 최근의 **실제로 돈** 보고서. 건너뜀 쪽지와 LATEST는 뺀다."""
+    reports = [
+        p
+        for p in OUT_DIR.glob("20*.md")
+        if not p.stem.endswith("-skipped") and not p.stem.startswith(exclude)
+    ]
+    return max(reports, key=lambda p: p.stat().st_mtime, default=None)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", choices=["pytest", "guard", "blind"], action="append")
@@ -189,8 +199,15 @@ def main() -> int:
                 ]
             )
             (OUT_DIR / f"{stamp}-skipped.md").write_text(note, encoding="utf-8")
-            (OUT_DIR / "LATEST.md").write_text(note, encoding="utf-8")
-            print(note)
+            # **직전 실제 결과를 아래에 붙인다.** 건너뜀 쪽지로 덮어 버리면 아침에
+            # "게이트가 통과했다"는 사실을 못 본다(2026-08-23 실측: 01:19에 통과한
+            # 보고서를 03:00 건너뜀이 덮었다 — 내가 만든 것에서 바로 나온 결함이다).
+            previous = _last_real_report(exclude=stamp)
+            merged = note if previous is None else (
+                note + "\n---\n\n## 직전 실제 실행\n\n" + previous.read_text(encoding="utf-8")
+            )
+            (OUT_DIR / "LATEST.md").write_text(merged, encoding="utf-8")
+            print(merged)
             return 2
         if not PY.exists():
             print(f"파이썬을 찾을 수 없습니다: {PY}", file=sys.stderr)
