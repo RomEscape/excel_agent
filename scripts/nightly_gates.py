@@ -23,6 +23,9 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _run_lock import RunLock
+
 ROOT = Path(__file__).resolve().parent.parent
 SIDECAR = ROOT / "python-sidecar"
 PY = Path(
@@ -31,9 +34,6 @@ PY = Path(
 )
 BASELINE = ROOT / "config/gate_baseline.json"
 OUT_DIR = ROOT / "logs/nightly"
-#: 배터리와 게이트는 **동시에 돌면 안 된다**(CLAUDE.md §2). 자물쇠로 겹침을 막는다.
-LOCK = OUT_DIR / ".running.lock"
-LOCK_STALE_SECONDS = 6 * 3600
 
 GATES = {
     "guard": {"이름": "파괴 게이트", "cases": "datasets/eval/guard_cases_v1.jsonl"},
@@ -172,11 +172,26 @@ def main() -> int:
     want = set(args.only or ["pytest", "guard", "blind"])
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    if LOCK.exists() and time.time() - LOCK.stat().st_mtime < LOCK_STALE_SECONDS:
-        print(f"이미 도는 중입니다(자물쇠: {LOCK}). 동시 실행은 결과를 뒤섞습니다.", file=sys.stderr)
-        return 2
-    LOCK.write_text(str(os.getpid()), encoding="utf-8")
-    try:
+    with RunLock("nightly-gates") as lock:
+        if not lock.acquired:
+            # 조용히 사라지면 아침에 낡은 보고서를 새 것으로 착각한다. 비켰다는 사실을 남긴다.
+            stamp = datetime.now().strftime("%Y-%m-%d_%H%M")
+            note = "\n".join(
+                [
+                    f"# 야간 게이트 {stamp}",
+                    "",
+                    "## ⏭ 건너뜀 — 다른 긴 실행이 돌고 있었다",
+                    "",
+                    f"- 자물쇠를 쥔 쪽: `{lock.held_by}`",
+                    "- 게이트와 배터리는 동시에 돌면 결과가 뒤섞인다(CLAUDE.md §2).",
+                    r"- 그쪽이 끝난 뒤 손으로 돌리려면: `.\scripts\nightly-gates.ps1`",
+                    "",
+                ]
+            )
+            (OUT_DIR / f"{stamp}-skipped.md").write_text(note, encoding="utf-8")
+            (OUT_DIR / "LATEST.md").write_text(note, encoding="utf-8")
+            print(note)
+            return 2
         if not PY.exists():
             print(f"파이썬을 찾을 수 없습니다: {PY}", file=sys.stderr)
             return 2
@@ -206,8 +221,6 @@ def main() -> int:
             BASELINE.write_text(json.dumps(baseline, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
             print("기준선을 갱신했습니다.")
         return 1 if bad else 0
-    finally:
-        LOCK.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
