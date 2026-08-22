@@ -104,6 +104,26 @@ Ollama를 부르는 긴 작업(평가·진단)의 남은 시간:
 .\scripts\watch-eval.ps1 -Total 154   # 건수 지정
 ```
 
+### 야간 게이트 — **세션을 시작하면 이것부터 본다**
+
+매일 03:00에 pytest·파괴 게이트 72·말투 게이트 624가 자동으로 돈다(약 70분).
+결과는 `logs/nightly/LATEST.md`에 남고, 기준선(`config/gate_baseline.json`)보다
+**나빠지면 맨 위에 ❌와 항목이 뜬다. 그러면 그게 그 세션의 첫 작업이다.**
+
+```powershell
+Get-Content logs\nightly\LATEST.md -TotalCount 20   # 세션 시작 시
+.\scripts\nightly-gates.ps1 -Only guard             # 손으로 하나만
+.\scripts\nightly-gates.ps1 -UpdateBaseline         # 좋아진 값을 기준선으로 승격
+.\scripts\nightly-gates.ps1 -Register / -Unregister # 예약 등록·해제
+```
+
+기준선은 **좋아졌을 때만** 올린다. 나빠진 값을 기준선으로 내리면 이 체계가 통째로
+무용지물이 된다. `silent_max`(조용한 오실행)는 0에서 절대 올리지 않는다.
+
+> 게이트와 대화 배터리는 **동시에 돌면 안 된다**(결과가 뒤섞인다).
+> 야간 게이트는 `logs/nightly/.running.lock`으로 겹침을 막지만, 배터리를 손으로
+> 돌릴 때는 사람이 시간을 피해야 한다.
+
 ### 측정
 
 ```powershell

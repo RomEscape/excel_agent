@@ -71,6 +71,11 @@ logs/*
 !logs/chat_log.jsonl
 # `show_turns.py --follow --out`이 만드는 사람이 읽는 형태. 로그에서 다시 만들 수 있다.
 logs/turns.txt
+# 야간 게이트 요약(.md)은 추세를 보는 근거라 남긴다. 원시 로그(.txt)와 자물쇠는 뺀다.
+!logs/nightly/
+!logs/nightly/*.md
+logs/nightly/*.txt
+logs/nightly/.running.lock
 
 # ── 임시 작업물 ────────────────────────────────────────────────────────────
 # 테스트로 만든 xlsx/pdf, 명령 출력 덤프 등. 메모(.md)는 남긴다.
