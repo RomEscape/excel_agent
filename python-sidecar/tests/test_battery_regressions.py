@@ -3341,3 +3341,62 @@ class TestFontTakesMoreThanColor:
         assert (cell.font.bold, cell.font.size, cell.alignment.horizontal) == (True, 16.0, "center")
         # 데이터 행은 건드리지 않는다.
         assert load_workbook(path)["매출"]["A2"].font.bold is False
+
+
+class TestRetriesSkipTheIntentNormalizer:
+    """재시도가 통째로 헛돌고 있었다 — 같은 계획이 그대로 돌아온다.
+
+    2026-08-23 확인: `excel_live_agent.py:1439`가 `skip_intent_normalizer`를 읽도록
+    만들어져 있는데 **저장소 전체에서 세우는 곳이 0곳**이었다(읽기 1, 쓰기 0).
+    정규화 프롬프트는 {머리글, 원문}만 보고 temperature=0이며 매퍼는 결정적이라,
+    검증에서 반려된 계획을 재시도해도 **글자까지 같은 계획**이 나온다.
+    실패를 아는 것은 플래너 경로뿐이다(`render_execution_failure`).
+    """
+
+    async def _tiers(self, *, allow_strong: bool):
+        from office_claw_sidecar.services.excel_planner_escalation import plan_with_escalation
+
+        seen: list[dict] = []
+
+        async def parse(message, context):  # `_attempt`는 위치 인자로 부른다
+            seen.append(dict(context or {}))
+            return {"action_plan": [{"action": "excel_live.set_font", "params": {}}]}
+
+        def validate(steps):
+            return (False, "일부러 실패")
+
+        await plan_with_escalation(
+            "금액 열 굵게",
+            parse=parse,
+            validate=validate,
+            context={"workbook_digest": {}},
+            allow_strong=allow_strong,
+        )
+        return seen
+
+    def test_the_first_try_still_uses_it(self) -> None:
+        """1티어는 정규화가 본령이다 — 여기까지 막으면 96%짜리 경로를 버리는 것이다."""
+        import asyncio
+
+        seen = asyncio.run(self._tiers(allow_strong=False))
+        assert seen[0].get("skip_intent_normalizer") is None
+
+    def test_retries_skip_it(self) -> None:
+        import asyncio
+
+        seen = asyncio.run(self._tiers(allow_strong=True))
+        assert len(seen) == 3, [s.get("planner_provider") for s in seen]
+        assert seen[1]["skip_intent_normalizer"] is True
+        assert seen[1]["reflection_note"]
+        # 강한 모델을 부르기로 해 놓고 정규화가 가로채면 그 지정이 소비되지도 않는다.
+        assert seen[2]["skip_intent_normalizer"] is True
+        assert seen[2]["planner_provider"] == "strong"
+
+    def test_the_agent_honours_the_flag(self) -> None:
+        """플래그를 읽는 쪽이 사라지면 위 배선이 조용히 무의미해진다."""
+        import inspect
+
+        from office_claw_sidecar.services import excel_live_agent
+
+        src = inspect.getsource(excel_live_agent)
+        assert 'context.get("skip_intent_normalizer")' in src

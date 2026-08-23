@@ -201,6 +201,13 @@ async def plan_with_escalation(
     repair_context = dict(context)
     repair_context["reflection_note"] = _repair_note(attempt.error, [])
     repair_context["forbid_clarify"] = True
+    # 재시도에서는 **의도 정규화를 건너뛴다.** 정규화 프롬프트는 {머리글, 원문}만 보고
+    # temperature=0이며 매퍼는 결정적이라, 같은 문장을 다시 정규화하면 **글자까지 같은
+    # 계획**이 나와 같은 이유로 또 반려된다 — 재시도가 통째로 헛돈다.
+    # 실패를 아는 것은 플래너 경로뿐이다(`render_execution_failure`).
+    # `excel_live_agent.py:1439`가 이 플래그를 읽도록 만들어 뒀는데 **아무도 세우지
+    # 않고 있었다**(2026-08-23 확인: 저장소 전체에서 읽기 1곳, 쓰기 0곳).
+    repair_context["skip_intent_normalizer"] = True
     parsed, best, attempt = await _attempt(
         parse, message, repair_context, validate, tier=TIER_REPAIR, model=local_model or "local"
     )
@@ -218,6 +225,9 @@ async def plan_with_escalation(
         strong_context["planner_provider"] = "strong"
         strong_context["planner_model"] = _strong_model_name()
         strong_context["reflection_note"] = _repair_note(attempt.error, [])
+        # 강한 모델을 부르기로 해 놓고 정규화가 가로채면 그 지정이 소비되지도 않는다
+        # (`planner_provider`·`planner_model`은 플래너 분기에서만 읽힌다).
+        strong_context["skip_intent_normalizer"] = True
         parsed, best, attempt = await _attempt(
             parse,
             message,
