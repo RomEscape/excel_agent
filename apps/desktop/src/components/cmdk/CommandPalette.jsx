@@ -11,7 +11,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Command as CmdIcon,
-  LayoutDashboard,
+  TextSearch,
   FolderOpen,
   MessagesSquare,
   Settings as SettingsIcon,
@@ -83,7 +83,7 @@ async function restartMessenger(kind, notify) {
 const buildCommands = ({ tgConfigured, slackConfigured, discordConfigured } = {}) => [
   // 그룹: 페이지
   { id: "nav.home", group: "페이지", label: "홈", hint: "문서 목록 / 김대리에게 명령", icon: Bot, run: ({ setCurrentPage, close }) => { setCurrentPage("chat"); close(); } },
-  { id: "nav.dashboard", group: "페이지", label: "대시보드", hint: "작업 요약 / 핵심 상태", icon: LayoutDashboard, run: ({ setCurrentPage, close }) => { setCurrentPage("dashboard"); close(); } },
+  { id: "nav.activity", group: "페이지", label: "작업 기록", hint: "작업 요약 / 최근 활동 검색", icon: TextSearch, run: ({ setCurrentPage, close }) => { setCurrentPage("activity"); close(); } },
   { id: "nav.workspace", group: "페이지", label: "워크스페이스", hint: "파일 탐색기", icon: FolderOpen, run: ({ setCurrentPage, close }) => { setCurrentPage("workspace"); close(); } },
   { id: "nav.conversations", group: "페이지", label: "대화", hint: "메신저 모니터링", icon: MessagesSquare, run: ({ setCurrentPage, close }) => { setCurrentPage("conversations"); close(); } },
   { id: "nav.settings", group: "페이지", label: "설정", hint: "통합 설정 허브", icon: SettingsIcon, run: ({ setCurrentPage, close }) => { setCurrentPage("settings"); close(); } },

@@ -1,0 +1,276 @@
+  <FRAME> D3 · 대시보드 — 첫 실행 / 빈 상태 (1600x900) [1466x1561] fill=#FDFEFC
+    <FRAME> 본문 1360 [1466x1561] fill=#F6F7F5
+      <FRAME> Frame 259 [1280x32]
+        <FRAME> tabler:input-search [32x32]
+          <VECTOR> Vector [24x20]
+        TEXT [88x32] "작업 기록"
+      <FRAME> Frame 257 [1146x906]
+        TEXT [1146x32] "환경 설정"
+        <FRAME> Frame 253 [1146x862]
+          <FRAME> KPI · 전체 명령 (305x110) [1146x96] fill=#FDFEFC
+            <FRAME> Frame 256 [1106x64]
+              <FRAME> Frame 254 [1106x20]
+                TEXT [1106x20] "내 요금제"
+              <FRAME> Frame 315 [149x32]
+                <FRAME> Frame 256 [149x32]
+                  TEXT [45x30] "Free"
+                  <INSTANCE> Button [92x32] fill=#2DB400
+                    TEXT [52x16] "업그레이드"
+          <FRAME> KPI · 전체 명령 (305x110) [1146x124] fill=#FDFEFC
+            <FRAME> Frame 256 [1106x92]
+              <FRAME> Frame 254 [1106x20]
+                TEXT [1106x20] "디바이스 추가"
+              <FRAME> Frame 315 [312x60]
+                <FRAME> Frame 256 [312x20]
+                  TEXT [312x20] "디바이스를 추가해 다양한 장소에서 김대리를 사용보세요."
+                <FRAME> Button [80x32] fill=#F9FDF7
+                  <FRAME> tabler:plus [12x12]
+                    <VECTOR> Vector [7x7]
+                  TEXT [21x16] "추가"
+          <FRAME> KPI · 전체 명령 (305x110) [1146x160] fill=#FDFEFC
+            <FRAME> Frame 256 [1106x128]
+              <FRAME> Frame 254 [1106x20]
+                TEXT [1106x20] "연결된 디바이스"
+              <FRAME> Frame 315 [372x42]
+                <FRAME> Frame 255 [372x42]
+                  <FRAME> Frame 322 [227x42]
+                    <FRAME> Frame 320 [42x42] fill=#F6F7F5
+                      <FRAME> tabler:device-mobile [28x28]
+                        <VECTOR> Vector [14x21] fill=#F6F7F5
+                    <FRAME> Frame 321 [177x42]
+                      TEXT [144x22] "임재환의 Iphone 17pro"
+                      TEXT [177x16] "대한민국, 서울특별시, 서초구 • 3일전"
+                  <FRAME> tabler:x [32x32]
+                    <VECTOR> Vector [16x16]
+              <FRAME> Frame 316 [372x42]
+                <FRAME> Frame 255 [372x42]
+                  <FRAME> Frame 322 [227x42]
+                    <FRAME> Frame 320 [42x42] fill=#F6F7F5
+                      <FRAME> tabler:device-mobile [28x28]
+                        <VECTOR> Vector [14x21] fill=#F6F7F5
+                    <FRAME> Frame 321 [177x42]
+                      TEXT [145x22] "임재환의 Iphone 13pro"
+                      TEXT [177x16] "대한민국, 서울특별시, 서초구 • 3일전"
+                  <FRAME> tabler:x [32x32]
+                    <VECTOR> Vector [16x16]
+          <FRAME> KPI · 전체 명령 (305x110) [1146x116] fill=#FDFEFC
+            <FRAME> Frame 256 [1106x84]
+              <FRAME> Frame 254 [1106x24]
+                TEXT [1106x24] "폰트 크기"
+              <FRAME> Frame 318 [247x48] fill=#FDFEFC
+                <FRAME> Frame 316 [126x40] fill=#D0EEC6
+                  <FRAME> Default [24x24]
+                    <VECTOR> Vector [13x14]
+                    <FRAME> tabler:minus [7x7]
+                      <VECTOR> Vector [4x0]
+                  <FRAME> Frame 255 [70x22]
+                    TEXT [70x22] "기본 사이즈"
+                <FRAME> Frame 317 [113x40]
+                  <FRAME> Big [24x24]
+                    <VECTOR> Vector [13x14]
+                    <VECTOR> Vector [4x4]
+                  <FRAME> Frame 255 [57x22]
+                    TEXT [57x22] "큰 사이즈"
+          <FRAME> KPI · 전체 명령 (305x110) [1146x202] fill=#FDFEFC
+            <FRAME> Frame 256 [1106x170]
+              <FRAME> Frame 254 [1106x20]
+                TEXT [1106x20] "시스템 모드"
+              <INSTANCE> Component 12 [65x38]
+                <FRAME> Frame 255 [41x22]
+                  TEXT [41x22] "시스템"
+              <INSTANCE> Component 13 [150x38]
+                <FRAME> Frame 255 [70x22]
+                  TEXT [70x22] "라이트 모드"
+                <FRAME> tabler:check [20x20]
+                  <VECTOR> Vector [12x8]
+              <INSTANCE> Component 14 [81x38]
+                <FRAME> Frame 255 [57x22]
+                  TEXT [57x22] "다크 모드"
+          <FRAME> KPI · 전체 명령 (305x110) [1146x104] fill=#FDFEFC
+            <FRAME> Frame 256 [1106x72]
+              <FRAME> Frame 254 [1106x20]
+                TEXT [1106x20] "사용중인 AI 모델"
+              <FRAME> Frame 99 [441x40] fill=#F6F7F5
+                <FRAME> Frame 112 [417x24]
+                  <FRAME> Frame 110 [100x20]
+                    <FRAME> material-icon-theme:google [16x16]
+                      <GROUP> Group [14x14]
+                        <VECTOR> Vector [11x6] fill=#F44336
+                        <VECTOR> Vector [3x6] fill=#FFC107
+                        <VECTOR> Vector [7x7] fill=#448AFF
+                        <VECTOR> Vector [11x6] fill=#43A047
+                    TEXT [72x20] "Gemma 4.0"
+                  <FRAME> Frame 111 [53x24]
+                    TEXT [21x16] "추천"
+                    <FRAME> tabler:chevron-down [24x24]
+                      <VECTOR> Vector [12x6]
+      <FRAME> Frame 326 [1226x1561] fill=#9AA298
+      <FRAME> Frame 320 [752x814] fill=#FDFEFC
+        <ELLIPSE> Ellipse 1 [938x632] fill=#7FD163
+        <FRAME> Frame 325 [334x516]
+          <FRAME> Frame 324 [334x290]
+            <FRAME> QR Code [160x160] fill=#FFFFFF
+              <VECTOR> Vector [140x140] fill=#000000
+            <FRAME> Frame 323 [334x82]
+              <FRAME> Frame 145 [151x22]
+                TEXT [87x22] "입력 가능 시간"
+                TEXT [32x22] "3:29"
+                <FRAME> stash:arrow-retry-duotone [16x16]
+                  <VECTOR> Vector [10x9] fill=#1B6C00
+              <FRAME> Frame 70 [334x44] fill=#FDFEFC
+                TEXT [223x20] "akjsdbnjjknjjc98us89200cnj023ldsl"
+                <FRAME> tabler:copy [16x16]
+                  <GROUP> Group [12x12]
+                    <VECTOR> Vector [9x9]
+                    <VECTOR> Vector [9x9]
+          <FRAME> Frame 157 [300x120]
+            TEXT [264x40] "아직 김대리 앱이 없으신가요? / 김대리를 다운받고 더 많은 기능을 사용해보세요."
+            <FRAME> Frame 156 [300x48]
+              <FRAME> googleplay [153x48] fill=#FDFEFC
+                <FRAME> Image:margin [30x24]
+                  <FRAME> Image [24x24]
+                TEXT [88x18] "Google Play"
+              <FRAME> appstore [139x48] fill=#FDFEFC
+                <FRAME> Image:margin [30x24]
+                  <FRAME> Image [24x24]
+                TEXT [74x18] "App Store"
+        <FRAME> tabler:x [32x32]
+          <VECTOR> Vector [16x16]
+    <FRAME> Frame 121 [240x1561] fill=#FDFEFC
+      <FRAME> 아트보드 5 2 [126x36]
+        <VECTOR> Vector [126x36]
+        <GROUP> Group [51x18]
+          <VECTOR> Vector [12x7] fill=#2DB400
+          <VECTOR> Vector [11x12] fill=#2DB400
+          <VECTOR> Vector [7x18] fill=#2DB400
+          <VECTOR> Vector [3x18] fill=#2DB400
+          <VECTOR> Vector [9x9] fill=#2DB400
+          <VECTOR> Vector [8x12] fill=#2DB400
+          <VECTOR> Vector [3x10] fill=#2DB400
+        <GROUP> Group [23x23]
+          <VECTOR> Vector [18x7]
+          <GROUP> Group [5x9]
+            <VECTOR> Vector [5x9]
+            <VECTOR> Vector [5x9] fill=#152A0A
+          <VECTOR> Vector [9x5]
+          <VECTOR> Vector [7x18]
+          <VECTOR> Vector [7x8]
+          <VECTOR> Vector [19x7]
+          <VECTOR> Vector [4x5]
+          <GROUP> Group [4x3]
+            <VECTOR> Vector [4x3]
+            <VECTOR> Vector [4x3] fill=#092400
+      <FRAME> tabler:layout-sidebar-left-collapse [20x20]
+        <GROUP> Group [13x13]
+          <VECTOR> Vector [13x13]
+          <VECTOR> Vector [2x3]
+      <FRAME> Frame 148 [240x116]
+        <FRAME> Frame 122 [216x46] fill=#FDFEFC
+          <FRAME> Frame 112 [196x22]
+            <FRAME> Frame 110 [70x22]
+              <FRAME> tabler:help [16x16]
+                <GROUP> Group [12x12]
+                  <VECTOR> Vector [12x12]
+                  <VECTOR> Vector [3x4]
+              TEXT [42x22] "도움말"
+        <FRAME> Frame 124 [216x46] fill=#ECF8E8
+          <FRAME> Frame 112 [196x22]
+            <FRAME> Frame 110 [88x22]
+              <FRAME> tabler:settings [16x16]
+                <GROUP> Group [12x12]
+                  <VECTOR> Vector [12x12]
+                  <VECTOR> Vector [4x4]
+              TEXT [60x22] "환경 설정"
+      <FRAME> Frame 152 [240x416] fill=#FDFEFC
+        <FRAME> Frame 121 [240x46] fill=#FDFEFC
+          <FRAME> Frame 112 [216x38] fill=#FDFEFC
+            <FRAME> Frame 110 [115x22]
+              <FRAME> tabler:subtitles-edit [20x20]
+                <VECTOR> Vector [16x14]
+              TEXT [83x22] "워크스페이스"
+        <FRAME> Frame 123 [240x46] fill=#FDFEFC
+          <FRAME> Frame 112 [216x38]
+            <FRAME> Frame 110 [92x22]
+              <FRAME> tabler:input-search [20x20]
+                <VECTOR> Vector [15x12]
+              TEXT [60x22] "작업 기록"
+        <FRAME> Frame 122 [240x46] fill=#FDFEFC
+          <FRAME> Frame 112 [216x38] fill=#FDFEFC
+            <FRAME> Frame 110 [88x22]
+              <FRAME> tabler:message-circle [20x20]
+                <VECTOR> Vector [15x13]
+              TEXT [56x22] "대화목록"
+        <FRAME> Frame 124 [240x278] fill=#FDFEFC
+          <FRAME> Frame 112 [216x38] fill=#FDFEFC
+            <FRAME> Frame 110 [92x22]
+              <FRAME> tabler:file [20x20]
+                <GROUP> Group [12x15]
+                  <VECTOR> Vector [4x4]
+                  <VECTOR> Vector [12x15]
+              TEXT [60x22] "파일 목록"
+            <FRAME> tabler:chevron-down [20x20]
+              <VECTOR> Vector [10x5]
+          <FRAME> Frame 303 [216x228]
+            <FRAME> Frame 113 [216x38] fill=#FDFEFC
+              <FRAME> Frame 110 [132x22]
+                <FRAME> tabler:arrow-back [16x16]
+                  <VECTOR> Vector [10x9]
+                TEXT [104x22] "8월_매출표.xlsx"
+              <FRAME> Frame 299 [72x18]
+                TEXT [31x18] "1시간"
+                TEXT [13x18] "전"
+            <FRAME> Frame 114 [216x38] fill=#FDFEFC
+              <FRAME> Frame 110 [131x22]
+                <FRAME> tabler:arrow-back [16x16]
+                  <VECTOR> Vector [10x9]
+                TEXT [103x22] "7월_매출표.xlsx"
+              <FRAME> Frame 299 [73x18]
+                TEXT [33x18] "2시간"
+                TEXT [13x18] "전"
+            <FRAME> Frame 115 [216x38] fill=#FDFEFC
+              <FRAME> Frame 110 [132x22]
+                <FRAME> tabler:arrow-back [16x16]
+                  <VECTOR> Vector [10x9]
+                TEXT [104x22] "6월_매출표.xlsx"
+              <FRAME> Frame 299 [72x18]
+                TEXT [33x18] "2주일"
+                TEXT [13x18] "전"
+            <FRAME> Frame 116 [216x38] fill=#FDFEFC
+              <FRAME> Frame 110 [132x22]
+                <FRAME> tabler:arrow-back [16x16]
+                  <VECTOR> Vector [10x9]
+                TEXT [104x22] "5월_매출표.xlsx"
+              <FRAME> Frame 299 [72x18]
+                TEXT [19x18] "1달"
+                TEXT [13x18] "전"
+            <FRAME> Frame 117 [216x38] fill=#FDFEFC
+              <FRAME> Frame 110 [132x22]
+                <FRAME> tabler:arrow-back [16x16]
+                  <VECTOR> Vector [10x9]
+                TEXT [104x22] "4월_매출표.xlsx"
+              <FRAME> Frame 299 [72x18]
+                TEXT [21x18] "2달"
+                TEXT [13x18] "전"
+            <FRAME> Frame 118 [216x38] fill=#FDFEFC
+              <FRAME> Frame 110 [132x22]
+                <FRAME> tabler:arrow-back [16x16]
+                  <VECTOR> Vector [10x9]
+                TEXT [104x22] "3월_매출표.xlsx"
+              <FRAME> Frame 299 [72x18]
+                TEXT [21x18] "3달"
+                TEXT [13x18] "전"
+    <FRAME> Frame 320 [414x300] fill=#FDFEFC
+      <FRAME> Frame 325 [334x110]
+        <FRAME> Frame 324 [334x110]
+          <FRAME> tabler:circle-check [64x64]
+            <GROUP> Group [48x48]
+              <VECTOR> Vector [48x48] fill=#56C331
+              <VECTOR> Vector [16x11] fill=#56C331
+          <FRAME> Frame 323 [334x22]
+            <FRAME> Frame 145 [334x22]
+              TEXT [334x22] "임재환의 Iphone 17 Pro이(가) 연결이 완료되었습니다!"
+      <FRAME> tabler:x [20x20]
+        <VECTOR> Vector [10x10]
+      <FRAME> Frame 327 [334x42]
+        <INSTANCE> Button [334x42] fill=#2DB400
+          TEXT [28x22] "확인"

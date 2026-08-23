@@ -1,0 +1,212 @@
+  <FRAME> D3 · 대시보드 — 첫 실행 / 빈 상태 (1600x900) [1600x995] fill=#FDFEFC
+    <FRAME> 본문 1360 [1600x995] fill=#F6F7F5
+      <FRAME> Frame 259 [1280x32]
+        <FRAME> tabler:input-search [32x32]
+          <VECTOR> Vector [24x20]
+        TEXT [81x30] "작업 기록"
+      <FRAME> Frame 257 [1280x150]
+        TEXT [1280x30] "작업 요약"
+        <FRAME> Frame 253 [1280x108]
+          <FRAME> KPI · 전체 명령 (305x110) [306x108] fill=#FDFEFC
+            <FRAME> Frame 256 [266x84]
+              <FRAME> Frame 254 [266x42]
+                TEXT [266x22] "전체 명령"
+                TEXT [266x16] "누적 처리 건수"
+              <FRAME> Frame 255 [78x30]
+                TEXT [54x30] "1,270"
+                TEXT [20x30] "개"
+          <FRAME> KPI · 전체 명령 (305x110) [306x108] fill=#FDFEFC
+            <FRAME> Frame 256 [266x84]
+              <FRAME> Frame 254 [266x42]
+                TEXT [266x22] "완료된 명령"
+                TEXT [266x16] "자동 실행 + 승인"
+              <FRAME> Frame 255 [75x30]
+                TEXT [51x30] "1,165"
+                TEXT [20x30] "개"
+          <FRAME> KPI · 전체 명령 (305x110) [306x108] fill=#FDFEFC
+            <FRAME> Frame 256 [266x84]
+              <FRAME> Frame 254 [266x42]
+                TEXT [266x22] "차단된 명령"
+                TEXT [266x16] "보안 정책 위반"
+              <FRAME> Frame 255 [62x30]
+                TEXT [38x30] "105"
+                TEXT [20x30] "개"
+          <FRAME> KPI · 전체 명령 (305x110) [306x108] fill=#FDFEFC
+            <FRAME> Frame 256 [266x84]
+              <FRAME> Frame 254 [266x42]
+                TEXT [266x22] "자동 마스킹"
+                TEXT [266x16] "민감정보는 AI에 전달되기 전에 자동 마스킹됩니다."
+              <FRAME> Frame 255 [63x30]
+                TEXT [39x30] "276"
+                TEXT [20x30] "개"
+      <FRAME> Frame 302 [1280x712]
+        <FRAME> Frame 258 [1280x712]
+          <FRAME> Frame 289 [1280x36]
+            TEXT [81x30] "최근 활동"
+            <FRAME> Frame 70 [358x36] fill=#FDFEFC
+              TEXT [129x20] "검색어를 입력해주세요."
+              <FRAME> Frame 163 [205x20]
+                <FRAME> tabler:search [20x20]
+                  <VECTOR> Vector [15x15]
+          <FRAME> 빈 상태 + 첫 명령 가이드 860x420 [1280x664] fill=#FDFEFC
+            <FRAME> Frame 264 [1280x40] fill=#FDFEFC
+              <FRAME> Frame 263 [104x40]
+                TEXT [42x16] "디바이스"
+                <VECTOR> Vector [10x5] fill=#6B7468
+              <FRAME> Frame 262 [976x40]
+                TEXT [21x16] "명령"
+                <VECTOR> Vector [10x5] fill=#6B7468
+              <FRAME> Frame 261 [100x40]
+                TEXT [21x16] "상태"
+                <VECTOR> Vector [10x5] fill=#6B7468
+              <FRAME> Frame 260 [100x40]
+                TEXT [21x16] "시간"
+                <VECTOR> Vector [10x5] fill=#6B7468
+            <FRAME> Frame 279 [1280x624]
+              TEXT [860x22] "아직 활동 기록이 없습니다"
+              TEXT [860x16] "김대리에게 첫 명령을 내리면 여기에 모든 작업이 기록됩니다."
+        <FRAME> Frame 298 [344x80]
+          <FRAME> tabler:chevron-down [32x32]
+            <VECTOR> Vector [8x16]
+          <FRAME> Frame 297 [224x32]
+            <FRAME> Frame 291 [32x32]
+              TEXT [12x20] "1"
+            <FRAME> Frame 292 [32x32]
+              TEXT [12x20] "2"
+            <FRAME> Frame 293 [32x32]
+              TEXT [12x20] "3"
+            <FRAME> Frame 294 [32x32]
+              TEXT [12x20] "4"
+            <FRAME> Frame 295 [32x32]
+              TEXT [12x20] "5"
+            <FRAME> Frame 290 [32x32]
+              <ELLIPSE> Ellipse 8 [4x4] fill=#CACFC7
+              <ELLIPSE> Ellipse 9 [4x4] fill=#CACFC7
+              <ELLIPSE> Ellipse 10 [4x4] fill=#CACFC7
+            <FRAME> Frame 296 [32x32]
+              TEXT [19x20] "30"
+          <FRAME> tabler:chevron-down [32x32]
+            <VECTOR> Vector [8x16]
+    <FRAME> Frame 121 [240x986] fill=#FDFEFC
+      <FRAME> 아트보드 5 2 [126x36]
+        <VECTOR> Vector [126x36]
+        <GROUP> Group [51x18]
+          <VECTOR> Vector [12x7] fill=#2DB400
+          <VECTOR> Vector [11x12] fill=#2DB400
+          <VECTOR> Vector [7x18] fill=#2DB400
+          <VECTOR> Vector [3x18] fill=#2DB400
+          <VECTOR> Vector [9x9] fill=#2DB400
+          <VECTOR> Vector [8x12] fill=#2DB400
+          <VECTOR> Vector [3x10] fill=#2DB400
+        <GROUP> Group [23x23]
+          <VECTOR> Vector [18x7]
+          <GROUP> Group [5x9]
+            <VECTOR> Vector [5x9]
+            <VECTOR> Vector [5x9] fill=#152A0A
+          <VECTOR> Vector [9x5]
+          <VECTOR> Vector [7x18]
+          <VECTOR> Vector [7x8]
+          <VECTOR> Vector [19x7]
+          <VECTOR> Vector [4x5]
+          <GROUP> Group [4x3]
+            <VECTOR> Vector [4x3]
+            <VECTOR> Vector [4x3] fill=#092400
+      <FRAME> tabler:layout-sidebar-left-collapse [20x20]
+        <GROUP> Group [13x13]
+          <VECTOR> Vector [13x13]
+          <VECTOR> Vector [2x3]
+      <FRAME> Frame 148 [240x112]
+        <FRAME> Frame 122 [216x44] fill=#FDFEFC
+          <FRAME> Frame 112 [196x20]
+            <FRAME> Frame 110 [65x20]
+              <FRAME> tabler:help [16x16]
+                <GROUP> Group [12x12]
+                  <VECTOR> Vector [12x12]
+                  <VECTOR> Vector [3x4]
+              TEXT [37x20] "도움말"
+        <FRAME> Frame 124 [216x44] fill=#FDFEFC
+          <FRAME> Frame 112 [196x20]
+            <FRAME> Frame 110 [80x20]
+              <FRAME> tabler:settings [16x16]
+                <GROUP> Group [12x12]
+                  <VECTOR> Vector [12x12]
+                  <VECTOR> Vector [4x4]
+              TEXT [52x20] "환경 설정"
+      <FRAME> Frame 152 [240x396] fill=#FDFEFC
+        <FRAME> Frame 121 [240x44] fill=#FDFEFC
+          <FRAME> Frame 112 [216x36] fill=#FDFEFC
+            <FRAME> Frame 110 [101x20]
+              <FRAME> tabler:subtitles-edit [16x16]
+                <VECTOR> Vector [13x11]
+              TEXT [73x20] "워크스페이스"
+        <FRAME> Frame 123 [240x44] fill=#FDFEFC
+          <FRAME> Frame 112 [216x36] fill=#ECF8E8
+            <FRAME> Frame 110 [80x20]
+              <FRAME> tabler:input-search [16x16]
+                <VECTOR> Vector [12x10]
+              TEXT [52x20] "작업 기록"
+        <FRAME> Frame 122 [240x44] fill=#FDFEFC
+          <FRAME> Frame 112 [216x36] fill=#FDFEFC
+            <FRAME> Frame 110 [77x20]
+              <FRAME> tabler:message-circle [16x16]
+                <VECTOR> Vector [12x11]
+              TEXT [49x20] "대화목록"
+        <FRAME> Frame 124 [240x264] fill=#FDFEFC
+          <FRAME> Frame 112 [216x36] fill=#FDFEFC
+            <FRAME> Frame 110 [80x20]
+              <FRAME> tabler:file [16x16]
+                <GROUP> Group [9x12]
+                  <VECTOR> Vector [3x3]
+                  <VECTOR> Vector [9x12]
+              TEXT [52x20] "파일 목록"
+            <FRAME> tabler:chevron-down [20x20]
+              <VECTOR> Vector [10x5]
+          <FRAME> Frame 303 [216x216]
+            <FRAME> Frame 113 [216x36] fill=#FDFEFC
+              <FRAME> Frame 110 [119x20]
+                <FRAME> tabler:arrow-back [16x16]
+                  <VECTOR> Vector [10x9]
+                TEXT [91x20] "8월_매출표.xlsx"
+              <FRAME> Frame 299 [85x16]
+                TEXT [27x16] "1시간"
+                TEXT [14x16] " 전"
+            <FRAME> Frame 114 [216x36] fill=#FDFEFC
+              <FRAME> Frame 110 [118x20]
+                <FRAME> tabler:arrow-back [16x16]
+                  <VECTOR> Vector [10x9]
+                TEXT [90x20] "7월_매출표.xlsx"
+              <FRAME> Frame 299 [86x16]
+                TEXT [28x16] "2시간"
+                TEXT [14x16] " 전"
+            <FRAME> Frame 115 [216x36] fill=#FDFEFC
+              <FRAME> Frame 110 [119x20]
+                <FRAME> tabler:arrow-back [16x16]
+                  <VECTOR> Vector [10x9]
+                TEXT [91x20] "6월_매출표.xlsx"
+              <FRAME> Frame 299 [85x16]
+                TEXT [27x16] "1주일"
+                TEXT [11x16] "전"
+            <FRAME> Frame 116 [216x36] fill=#FDFEFC
+              <FRAME> Frame 110 [119x20]
+                <FRAME> tabler:arrow-back [16x16]
+                  <VECTOR> Vector [10x9]
+                TEXT [91x20] "5월_매출표.xlsx"
+              <FRAME> Frame 299 [85x16]
+                TEXT [16x16] "1달"
+                TEXT [11x16] "전"
+            <FRAME> Frame 117 [216x36] fill=#FDFEFC
+              <FRAME> Frame 110 [119x20]
+                <FRAME> tabler:arrow-back [16x16]
+                  <VECTOR> Vector [10x9]
+                TEXT [91x20] "4월_매출표.xlsx"
+              <FRAME> Frame 299 [85x16]
+                TEXT [18x16] "2달"
+                TEXT [11x16] "전"
+            <FRAME> Frame 118 [216x36] fill=#FDFEFC
+              <FRAME> Frame 110 [119x20]
+                <FRAME> tabler:arrow-back [16x16]
+                  <VECTOR> Vector [10x9]
+                TEXT [91x20] "3월_매출표.xlsx"
+              <FRAME> Frame 299 [85x16]
+                TEXT [18x16] "3달"
+                TEXT [11x16] "전"
