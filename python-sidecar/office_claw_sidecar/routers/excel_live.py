@@ -4599,6 +4599,16 @@ def _score_command_complexity(
     return score
 
 
+def _intent_first_enabled() -> bool:
+    """통역 AI를 규칙표보다 앞에 세우는 실험 스위치().
+
+    로드맵 2단계의 가설을 **재기 위한** 것이다. 기본은 꺼짐 — 제품 동작은 안 바뀐다.
+    환경변수를 매번 읽는다(캐시하지 않는다): 한 프로세스 안에서 켜고 끄며
+    A/B를 돌릴 수 있어야 하고, 이 판정은 턴당 한 번이라 비용이 문제가 되지 않는다.
+    """
+    return str(os.environ.get("OFFICECLAW_INTENT_FIRST", "")).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _select_reasoning_mode(*, should_parse_with_llm: bool, complexity_score: int) -> str:
     if not should_parse_with_llm:
         return "rule"
@@ -9062,6 +9072,17 @@ async def _run_command(
         # 규칙이 표현하지 못하는 요청은 플래너에게 넘긴다.
         should_parse_with_llm = True
         llm_decision_reason = "underfit:" + _underfit_reason(quick_first_action, req.message)
+    # ── 실험 스위치: 통역 AI를 규칙표보다 **앞**에 세운다(로드맵 2단계) ──────
+    # 기본은 꺼짐 — 켜지 않으면 이 블록은 아무것도 하지 않는다.
+    #
+    # 로드맵의 목표 그림은 "AI가 먼저 뜻을 이해하고, 규칙표는 확실한 것만 빠른길"이다.
+    # 그런데 지금 624 게이트 96.3% 중 **규칙 경로가 492건**이고, 통역의 사용자체
+    # 정확도는 79%다(2026-08-23 실측, 프로덕션 프롬프트 기준). 뒤집으면 그 492건이
+    # 79%짜리 판단을 먼저 거친다 — 좋아질지 나빠질지는 **재야 안다.**
+    # 켜고 끄고 각각 624를 돌려 비교하려고 스위치로 뺐다.
+    if _intent_first_enabled() and not should_parse_with_llm and quick_plan_for_parse:
+        should_parse_with_llm = True
+        llm_decision_reason = "intent_first_experiment"
     if should_parse_with_llm and not llm_decision_reason:
         if pending_slot is not None or pending_operation is not None:
             llm_decision_reason = "pending_slot"
