@@ -50,6 +50,8 @@ export default {
           faint: "hsl(var(--ink-faint))",
           disabled: "hsl(var(--ink-disabled))",
         },
+        // #D0EEC6 — 검색창 테두리처럼 연한 브랜드 지면
+        "brand-soft": "hsl(var(--brand-soft))",
         // 작업 기록 상태 배지
         status: {
           done: "hsl(var(--status-done))",

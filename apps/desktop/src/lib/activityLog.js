@@ -24,9 +24,15 @@ export const ACTIVITY_PAGE_SIZE = 20;
  * `대기`는 프레임에 없는 상태라 중립 토큰을 쓴다.
  */
 export const ACTIVITY_STATUS = Object.freeze({
-  done: { label: "완료", className: "bg-status-done-bg text-status-done" },
-  blocked: { label: "차단", className: "bg-status-blocked-bg text-status-blocked" },
-  pending: { label: "대기", className: "bg-muted text-muted-foreground" },
+  done: {
+    label: "완료",
+    className: "bg-status-done-bg text-status-done border-status-done",
+  },
+  blocked: {
+    label: "차단",
+    className: "bg-status-blocked-bg text-status-blocked border-status-blocked",
+  },
+  pending: { label: "대기", className: "bg-muted text-muted-foreground border-border" },
 });
 
 /** 감사 로그의 source 값 → 와이어프레임의 디바이스 라벨. */

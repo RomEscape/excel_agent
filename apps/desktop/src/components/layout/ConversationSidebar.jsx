@@ -141,23 +141,29 @@ function NavButton({ icon: Icon, label, active, collapsed, expanded, expandable,
         aria-current={active ? "page" : undefined}
         aria-expanded={expandable ? expanded : undefined}
         aria-label={collapsed ? label : undefined}
-        className={cn(
-          // 프레임: 내비 16px w400. 활성 초록 글자 + 연초록 지면, 비활성 #3D443C.
-          "flex h-11 w-full items-center rounded-lg text-base font-normal transition-colors",
-          collapsed ? "justify-center px-0" : "gap-3 px-3",
+        style={
           active
-            ? "bg-accent font-medium text-primary"
-            : "text-ink-body hover:bg-accent/60 hover:text-foreground"
+            ? { filter: "drop-shadow(0px 0px 3px rgba(101, 193, 15, 0.5))" }
+            : undefined
+        }
+        className={cn(
+          // Figma: 바깥 py4 / 안쪽 p8, radius 4, 아이콘 20, 글자 16px Regular #3D443C.
+          // 활성은 #ECF8E8 지면 + 0.5px #F9FDF7 테두리 + 초록 글로우, 글자 #249000.
+          "my-1 flex w-full items-center rounded border-[0.5px] p-2 text-base font-normal leading-[22px] transition-colors",
+          collapsed ? "justify-center" : "gap-3",
+          active
+            ? "border-secondary bg-status-done-bg text-primary"
+            : "border-transparent text-ink-body hover:bg-accent/60 hover:text-foreground"
         )}
       >
-        <Icon className="h-4 w-4 shrink-0" />
+        <Icon className="h-5 w-5 shrink-0" />
         {!collapsed && (
           <>
             <span className="flex-1 truncate text-left">{label}</span>
             {expandable && (
               <ChevronDown
                 className={cn(
-                  "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                  "h-5 w-5 shrink-0 text-ink-body transition-transform",
                   expanded && "rotate-180"
                 )}
               />
@@ -373,12 +379,12 @@ export default function ConversationSidebar() {
                         type="button"
                         onClick={() => openDocument(file.path)}
                         title={file.name}
-                        // 프레임: 파일명 16px #6B7468 · 시간 14px #9AA298
-                        className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-base text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                        // Figma: pl8 pr4 py8, 화살표 16, 파일명 16px #6B7468, 시간 14px #9AA298
+                        className="flex items-center gap-3 py-2 pl-2 pr-1 text-left text-base leading-[22px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                       >
                         <CornerDownRight className="h-4 w-4 shrink-0 text-ink-subtle" />
                         <span className="min-w-0 flex-1 truncate">{file.name}</span>
-                        <span className="shrink-0 text-sm text-ink-subtle">
+                        <span className="shrink-0 text-sm leading-[18px] text-ink-subtle">
                           {relativeDay(file.modified)}
                         </span>
                       </button>

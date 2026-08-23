@@ -12,13 +12,18 @@
  *   - `승인 대기` KPI — 모바일은 조회 전용이라 승인 큐가 쌓이지 않는다는 리뷰 결론
  *   - AI 엔진 상태 배너 / 첫 명령 가이드 — 온보딩과 환경 설정으로 자리를 옮겼다
  *
+ * 치수는 Figma export에서 그대로 옮겼다. 특히 헷갈리기 쉬운 두 가지:
+ *   - **섹션 제목(`작업 요약`·`최근 활동`)은 24px w600**이고, 18px w500은
+ *     KPI 카드 라벨(`전체 명령`)이다. 둘을 같은 스타일로 두면 위계가 무너진다.
+ *   - **명령문과 파일명은 한 줄에 나란히**(gap 16) 놓인다. 2줄로 쌓으면 행 높이가
+ *     늘어 표가 프레임과 어긋난다.
+ *
  * 상태는 갖되 도메인 로직은 갖지 않는다 — 표시 모델 변환은 전부
  * `lib/activityLog.js`(순수)가, 수집은 `lib/api.js`가 맡는다.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, Search, TextSearch } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, TextSearch } from "lucide-react";
 
-import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import {
   ACTIVITY_PAGE_SIZE,
@@ -35,7 +40,7 @@ import {
   securityStats,
 } from "@/lib/api";
 
-/** 표 컬럼 폭 — 와이어프레임 1280 기준 104 / 976 / 100 / 100. */
+/** 표 컬럼 폭 — Figma 기준 104 / flex / 100 / 100. */
 const COLUMNS = [
   { id: "device", label: "디바이스", className: "w-[104px] shrink-0" },
   { id: "command", label: "명령", className: "flex-1 min-w-0" },
@@ -43,38 +48,49 @@ const COLUMNS = [
   { id: "time", label: "시간", className: "w-[100px] shrink-0" },
 ];
 
-/** KPI 카드 한 장 — 와이어프레임 306×132. */
-function SummaryCard({ label, hint, value, loading }) {
+/** 헤더의 정렬 표시 — Figma는 아이콘이 아니라 10×5 납작한 사각형이다. */
+function SortMark({ active, desc }) {
   return (
-    <Card>
-      <CardContent className="flex h-[132px] flex-col justify-between p-5">
-        <div className="min-w-0">
-          {/* 프레임: 라벨 18px w500 #3D443C · 보조 14px w400 #B2B9B0 */}
-          <p className="truncate text-lg font-medium text-ink-body">{label}</p>
-          <p className="mt-1 line-clamp-2 text-sm text-ink-faint">{hint}</p>
-        </div>
-        {loading ? (
-          <div className="h-8 w-20 animate-pulse rounded bg-muted" />
-        ) : (
-          /* 프레임: 값 24px w600 #0C1909 */
-          <p className="text-2xl font-semibold tabular-nums text-foreground">
-            {value.toLocaleString()}
-            <span className="ml-1 text-base font-normal text-ink-faint">개</span>
-          </p>
-        )}
-      </CardContent>
-    </Card>
+    <span
+      aria-hidden="true"
+      className={cn(
+        "h-[5px] w-[10px] shrink-0 rounded-[1px] transition-transform",
+        active ? "bg-foreground" : "bg-ink-subtle",
+        active && desc && "rotate-180"
+      )}
+    />
   );
 }
 
-/** 상태 배지 — 완료(연초록) / 차단(연분홍) / 대기(연노랑). */
+/** KPI 카드 — Figma: padding 20/12, radius 12, 1px #E1E6DF. */
+function SummaryCard({ label, hint, value, loading }) {
+  return (
+    <div className="flex min-h-[110px] flex-1 flex-col justify-between rounded-xl border border-border bg-card px-5 py-3">
+      <div className="flex flex-col gap-1">
+        {/* 18px w500 #3D443C / 14px w400 #B2B9B0 */}
+        <p className="truncate text-lg font-medium leading-6 text-ink-body">{label}</p>
+        <p className="line-clamp-2 text-sm leading-[18px] text-ink-faint">{hint}</p>
+      </div>
+      {loading ? (
+        <div className="mt-3 h-8 w-24 animate-pulse rounded bg-muted" />
+      ) : (
+        /* 숫자와 단위가 같은 스타일이다 — 24px w600 #0C1909 */
+        <p className="mt-3 flex items-center gap-1 text-2xl font-semibold leading-8 text-foreground">
+          <span className="tabular-nums">{value.toLocaleString()}</span>
+          <span>개</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** 상태 배지 — Figma: minWidth 80, padding 20/8, radius 16(알약), 0.5px 테두리. */
 function StatusBadge({ status }) {
   const token = ACTIVITY_STATUS[status] ?? ACTIVITY_STATUS.pending;
   return (
     <span
       className={cn(
-        // 프레임: 80×32, 글자 12px w400
-        "inline-flex h-8 w-20 items-center justify-center rounded-md text-xs font-normal",
+        "inline-flex min-w-[80px] items-center justify-center rounded-2xl border-[0.5px] px-5 py-2 text-xs leading-4",
         token.className
       )}
     >
@@ -83,50 +99,59 @@ function StatusBadge({ status }) {
   );
 }
 
-/** 표 헤더 — 각 칸에 정렬 방향 표시가 붙는다. */
+/** 표 헤더 — 칸마다 세로 구분선이 있고 아래에 연한 초록 그림자가 깔린다. */
 function TableHeader({ sort, onSort }) {
   return (
-    <div className="flex items-center gap-4 border-b border-border px-4 py-3">
-      {COLUMNS.map((col) => (
+    <div
+      className="flex items-center border-b border-border bg-card"
+      style={{ boxShadow: "0px 4px 4px rgba(167, 224, 148, 0.10)" }}
+    >
+      {COLUMNS.map((col, i) => (
         <button
           key={col.id}
           type="button"
           onClick={() => onSort(col.id)}
+          aria-label={`${col.label} 기준 정렬`}
           className={cn(
-            // 프레임: 헤더 14px w400 #0C1909 (굵게 아님)
-            "flex items-center gap-1 text-left text-sm font-normal text-foreground transition-colors hover:text-primary",
+            "flex items-center justify-between gap-3 px-5 py-3 text-left text-sm font-normal leading-[18px] text-foreground transition-colors hover:text-primary",
+            i < COLUMNS.length - 1 && "border-r border-border",
             col.className
           )}
-          aria-label={`${col.label} 기준 정렬`}
         >
           {col.label}
-          <ChevronDown
-            className={cn(
-              "h-3.5 w-3.5 shrink-0 text-ink-subtle transition-transform",
-              sort.key === col.id ? "text-foreground" : "opacity-70",
-              sort.key === col.id && sort.desc && "rotate-180"
-            )}
-          />
+          <SortMark active={sort.key === col.id} desc={sort.desc} />
         </button>
       ))}
     </div>
   );
 }
 
-/** 표 한 행 — 와이어프레임 1280×54. `명령` 칸만 2줄이다. */
+/**
+ * 표 한 행 — Figma: 위아래 padding 8, 행 사이 구분선 없음.
+ * 디바이스·시간은 가운데 정렬, 명령 칸만 왼쪽에서 시작한다.
+ */
 function ActivityRow({ row }) {
   return (
-    <div className="flex items-center gap-4 border-b border-border/60 px-4 py-2.5 transition-colors last:border-b-0 hover:bg-accent/40">
-      {/* 프레임: 본문 16px w400 #0C1909 · 둘째 줄 14px #9AA298 · 시간 14px #9AA298 */}
-      <div className="w-[104px] shrink-0 truncate text-base text-foreground">{row.device}</div>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-base text-foreground">{row.command}</p>
-        {row.file && <p className="truncate text-sm text-ink-subtle">{row.file}</p>}
+    <div className="flex items-start py-2 transition-colors hover:bg-accent/40">
+      <div className="flex w-[104px] shrink-0 items-center justify-center px-2.5 py-2">
+        <span className="truncate text-base leading-[22px] text-foreground">{row.device}</span>
       </div>
-      <div className="w-[100px] shrink-0">
+
+      {/* 명령문과 파일명은 한 줄에 나란히 (gap 16) */}
+      <div className="flex min-w-0 flex-1 items-center gap-4 px-5 py-2">
+        <span className="truncate text-base leading-[22px] text-foreground">{row.command}</span>
+        {row.file && (
+          <span className="shrink-0 text-sm leading-[18px] text-ink-subtle">{row.file}</span>
+        )}
+      </div>
+
+      <div className="flex h-9 w-[100px] shrink-0 items-center justify-center px-3">
         <StatusBadge status={row.status} />
       </div>
-      <div className="w-[100px] shrink-0 text-sm text-ink-subtle">{row.time}</div>
+
+      <div className="flex w-[100px] shrink-0 items-center justify-center py-2 text-sm leading-[18px] text-ink-subtle">
+        {row.time}
+      </div>
     </div>
   );
 }
@@ -142,7 +167,7 @@ function Pagination({ page, total, onChange }) {
         type="button"
         onClick={() => onChange(page - 1)}
         disabled={page <= 1}
-        className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+        className="flex h-8 w-8 items-center justify-center rounded-md text-ink-disabled transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
         aria-label="이전 페이지"
       >
         <ChevronLeft className="h-4 w-4" />
@@ -152,7 +177,7 @@ function Pagination({ page, total, onChange }) {
         item === "gap" ? (
           <span
             key={`gap-${i}`}
-            className="flex h-8 w-8 items-center justify-center text-muted-foreground"
+            className="flex h-8 w-8 items-center justify-center text-ink-disabled"
             aria-hidden="true"
           >
             &hellip;
@@ -165,7 +190,6 @@ function Pagination({ page, total, onChange }) {
             aria-current={item === page ? "page" : undefined}
             className={cn(
               "flex h-8 w-8 items-center justify-center rounded-md text-sm transition-colors",
-              // 프레임: 비활성 번호 14px #CACFC7
               item === page
                 ? "bg-accent font-semibold text-accent-foreground"
                 : "text-ink-disabled hover:bg-accent/60 hover:text-foreground"
@@ -180,7 +204,7 @@ function Pagination({ page, total, onChange }) {
         type="button"
         onClick={() => onChange(page + 1)}
         disabled={page >= total}
-        className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+        className="flex h-8 w-8 items-center justify-center rounded-md text-ink-disabled transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
         aria-label="다음 페이지"
       >
         <ChevronRight className="h-4 w-4" />
@@ -237,58 +261,53 @@ export default function ActivityPage() {
     setSort((prev) => ({ key, desc: prev.key === key ? !prev.desc : true }));
 
   return (
-    <div className="mx-auto max-w-[1280px] space-y-6">
-      {/* 헤더 — 와이어프레임의 tabler:input-search + 타이틀 */}
-      <div className="flex items-center gap-2">
-        <TextSearch className="h-6 w-6 text-foreground" />
-        {/* 프레임: 타이틀 24px w600 #0C1909 */}
-        <h1 className="text-2xl font-semibold">작업 기록</h1>
-      </div>
-
-      {/* 작업 요약 — KPI 4장 */}
-      <section>
-        <h2 className="mb-3 text-lg font-medium text-ink-body">작업 요약</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    /* Figma: 본문 폭 1280, 섹션 간 gap 40 (좌우 여백은 Layout이 준다) */
+    <div className="mx-auto flex max-w-[1280px] flex-col gap-10 pb-6 pt-3">
+      {/* 작업 요약 — 제목 24px w600, 카드 4장 gap 19 */}
+      <section className="flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <TextSearch className="h-6 w-6 text-foreground" />
+          <h2 className="text-2xl font-semibold leading-8 text-foreground">작업 요약</h2>
+        </div>
+        <div className="flex flex-col gap-[19px] sm:flex-row">
           {summary.map((card) => (
             <SummaryCard key={card.id} {...card} loading={loading} />
           ))}
         </div>
       </section>
 
-      {/* 최근 활동 — 검색 + 표 + 페이지네이션 */}
-      <section>
-        <div className="mb-3 flex items-center justify-between gap-4">
-          <h2 className="text-lg font-medium text-ink-body">최근 활동</h2>
-          {/* 프레임: 검색 358×38, 글자 16px, placeholder #9AA298 */}
+      {/* 최근 활동 — 제목 24px w600 + 검색 358×38 */}
+      <section className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-2xl font-semibold leading-8 text-foreground">최근 활동</h2>
           <div className="relative w-[358px] max-w-full">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="검색어를 입력해주세요."
               aria-label="작업 기록 검색"
-              className="h-[38px] w-full rounded-md border border-border bg-card pl-3 pr-9 text-base text-foreground placeholder:text-ink-subtle focus:border-primary focus:outline-none"
+              className="h-[38px] w-full rounded border border-brand-soft bg-card pl-3 pr-9 text-base leading-[22px] text-foreground placeholder:text-ink-subtle focus:border-primary focus:outline-none"
             />
             <Search className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-subtle" />
           </div>
         </div>
 
-        <Card className="overflow-hidden">
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
           <TableHeader sort={sort} onSort={handleSort} />
 
           {loading ? (
-            <div className="divide-y divide-border/60">
+            <div>
               {[0, 1, 2, 3, 4].map((n) => (
-                <div key={n} className="flex items-center gap-4 px-4 py-4">
+                <div key={n} className="flex items-center gap-4 px-5 py-4">
                   <div className="h-4 w-16 animate-pulse rounded bg-muted" />
                   <div className="h-4 flex-1 animate-pulse rounded bg-muted" />
-                  <div className="h-8 w-20 animate-pulse rounded bg-muted" />
+                  <div className="h-8 w-20 animate-pulse rounded-2xl bg-muted" />
                   <div className="h-4 w-14 animate-pulse rounded bg-muted" />
                 </div>
               ))}
             </div>
           ) : rows.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-1.5 py-24 text-center">
-              {/* 프레임(229:4527): 제목 16px · 설명 12px */}
               <p className="text-base text-foreground">
                 {query.trim() ? "검색 결과가 없습니다" : "아직 활동 기록이 없습니다"}
               </p>
@@ -305,7 +324,7 @@ export default function ActivityPage() {
               ))}
             </div>
           )}
-        </Card>
+        </div>
 
         <Pagination page={page} total={totalPages} onChange={setPage} />
       </section>
