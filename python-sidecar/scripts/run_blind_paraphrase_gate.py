@@ -399,10 +399,27 @@ def _reply(resp, result, summary):
     return summary or str(getattr(resp, "reason", ""))
 
 
+def _reset_workbook_file() -> None:
+    """게이트용 워크북을 지운다. 잠겨 있으면 잠깐 기다렸다 다시 해 본다.
+
+    2026-08-24: 옆에서 pytest가 돌면서 이 파일을 잡는 순간이 있어 `PermissionError`로
+    **624건짜리 실행이 282에서 통째로 죽었다.** 한 번의 잠금 때문에 4시간을 날리는
+    것보다, 몇 초 기다렸다 이어 가는 편이 낫다. 끝내 못 지우면 그 문장만 실패다.
+    """
+    for attempt in range(6):
+        if not WB.exists():
+            return
+        try:
+            WB.unlink()
+            return
+        except PermissionError:
+            time.sleep(0.5 * (attempt + 1))
+    WB.unlink()  # 여기까지 왔으면 진짜 문제다 — 조용히 넘기지 않는다
+
+
 async def run_one(idx: int, row: dict, llm) -> dict:
     task = TASKS[row["task"]]
-    if WB.exists():
-        WB.unlink()
+    _reset_workbook_file()
     wb = Workbook()
     task["seed"](wb)
     wb.save(WB)

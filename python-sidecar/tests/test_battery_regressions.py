@@ -3724,3 +3724,53 @@ class TestNumberFormatHasOneSource:
 
         assert format_code("지수표기") == ""
         assert format_code_in_text("알 수 없는 말") == ""
+
+
+class TestTheGateSurvivesATransientFileLock:
+    """옆 프로세스가 워크북을 잠깐 잡으면 **624건 실행이 통째로 죽었다.**
+
+    2026-08-24: A/B 측정이 282번째에서 `PermissionError: blind_gate.xlsx`로 끝났다.
+    내가 옆에서 pytest를 돌린 탓이다 — 자물쇠는 게이트-배터리만 막고 pytest는 안 막는다.
+    한 번의 잠금으로 4시간을 날리느니 몇 초 기다렸다 이어 가는 편이 낫다.
+    """
+
+    def _module(self):
+        import pathlib
+
+        src_path = pathlib.Path(__file__).resolve().parent.parent / "scripts/run_blind_paraphrase_gate.py"
+        source = src_path.read_text(encoding="utf-8")
+        source = source[: source.index("asyncio.run(main())")]
+        namespace: dict = {"__name__": "gate_probe"}
+        exec(compile(source, str(src_path), "exec"), namespace)
+        return namespace
+
+    def test_it_waits_for_the_lock_to_clear(self) -> None:
+        import threading
+        import time
+
+        from openpyxl import Workbook
+
+        ns = self._module()
+        wb_path, reset = ns["WB"], ns["_reset_workbook_file"]
+        wb_path.parent.mkdir(parents=True, exist_ok=True)
+        Workbook().save(wb_path)
+        holder = open(wb_path, "rb")
+        threading.Timer(0.8, holder.close).start()
+        try:
+            reset()
+        finally:
+            if not holder.closed:
+                holder.close()
+        assert not wb_path.exists()
+        # 남는 시간이 있어야 다음 문장이 이어진다 — 무한정 기다리지 않는다.
+        started = time.time()
+        reset()
+        assert time.time() - started < 1.0
+
+    def test_a_stuck_lock_still_raises(self) -> None:
+        """끝내 못 지우면 조용히 넘기지 않는다 — 그건 다음 문장을 오염시킨다."""
+        import inspect
+
+        ns = self._module()
+        src = inspect.getsource(ns["_reset_workbook_file"])
+        assert "WB.unlink()" in src.split("for attempt")[1], "마지막 시도가 예외를 올려야 한다"
