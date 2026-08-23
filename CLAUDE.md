@@ -57,6 +57,7 @@
 | 작업 기록 | — | `lib/activityLog.js`(감사로그→표 행·KPI 4장·페이지 번호, 순수) | — | `components/activity/ActivityPage.jsx` (조합만) |
 | 글자 크기 | `store/fontScaleStore.js` | `lib/fontScale.js`(선택→루트 px, 순수) · `lib/fontScaleManager.js`(`<html>` font-size 적용) | — | `components/settings/PreferencesPage.jsx`의 폰트 크기 섹션 |
 | 대화 목록 | chatStore의 `sessions` | `lib/conversationGroups.js`(요일별·파일별 그룹, 순수) | — | `components/conversations/ConversationHistoryPage.jsx` (조합만) |
+| 범용 모달 | — | — | — | `components/ui/modal.jsx` (오버레이·Esc·헤더·footer 슬롯) |
 
 새 기능을 추가할 때 이 표에 한 줄이 더 늘어나야 한다.
 
@@ -97,6 +98,10 @@
 > `ink`와 `status`의 **다크값은 개선안 프레임에 다크 짝이 없어서 라이트의 위계를 뒤집어 만든 추정치**다. 다크 프레임이 그려지면 `index.css`의 `.dark` 블록만 고치면 된다 — 컴포넌트는 손댈 필요 없다.
 >
 > **2026-08 환경 설정 노트**: 사이드바 푸터의 `환경 설정`은 **탭 허브가 아니라 단일 페이지**다(`preferences` → `components/settings/PreferencesPage.jsx`, 와이어프레임 `243:1140`). **`SettingsHub`(`settings`)를 지우지 말 것** — 와이어프레임에 없는 5개 기능(메신저·자격증명·보안·에이전트 허용 범위·실행 기록)이 거기 붙어 있고, 유일한 진입 경로가 `Cmd/Ctrl+K` → 각 탭 키(`messenger_settings` 등)다. 허브를 없애면 그 기능들이 코드에만 남고 갈 길이 사라진다.
+>
+> 모달 껍데기는 **두 종류**다. `ui/dialog.jsx`의 `AlertDialog`는 확인/취소 버튼이 붙박이인 확인 다이얼로그, `ui/modal.jsx`의 `Modal`은 본문이 주인공인 범용 모달(도움말·QR 페어링). 새 모달을 만들 때 버튼이 둘 고정이면 앞의 것, 아니면 뒤의 것.
+>
+> **QR 페어링 모달은 `RelayPairing`을 그대로 감싼다** — QR 생성·TTL 카운트다운·재발급·스토어 배지가 전부 거기 있고 `lib/pairingCountdown.js`와 물려 있다. 모달 안에서 다시 그리면 두 벌이 되고 페어링 프로토콜이 바뀔 때 한쪽만 고쳐진다. 연결 성사 판정은 `relayStore.connected`가 **false→true로 뒤집히는 순간**만 잡는다(이미 연결된 채로 창을 열었을 때 성공 모달이 튀지 않도록).
 >
 > **`내 요금제`와 `회원 정보`는 백엔드가 없는 플레이스홀더**다. 결제·플랜도 계정 시스템도 코드에 존재하지 않는다 — 버튼은 `disabled`이고 화면이 그 사실을 문장으로 밝힌다. 붙이려면 프론트가 아니라 서버부터다.
 >

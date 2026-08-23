@@ -19,10 +19,11 @@
  *   7) 버전 및 업데이트  — 추가
  *   8) 회원 정보        — 추가, 플레이스홀더 (계정 시스템 없음)
  */
-import React, { useState } from "react";
+import React, { Suspense, lazy, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   Check,
+  CheckCircle2,
   ChevronRight,
   Loader2,
   Monitor,
@@ -44,12 +45,20 @@ import { THEME_LABELS, THEME_PREFERENCES } from "@/lib/theme";
 import { setThemePreference } from "@/lib/themeManager";
 import { disconnect as relayDisconnect } from "@/lib/relayManager";
 import AlertDialog from "@/components/ui/dialog";
+import Modal from "@/components/ui/modal";
 import useAppStore from "@/store/appStore";
 import useFontScaleStore from "@/store/fontScaleStore";
 import useRelayStore from "@/store/relayStore";
 import useThemeStore from "@/store/themeStore";
 
 const THEME_ICONS = { system: Monitor, light: Sun, dark: Moon };
+
+/**
+ * QR 페어링 본문은 `RelayPairing`을 그대로 재사용한다 — QR 생성, TTL 카운트다운,
+ * 재발급, 스토어 배지가 전부 거기 있고 `lib/pairingCountdown.js`와 물려 있다.
+ * 여기서 다시 그리면 두 벌이 되고 프로토콜이 바뀔 때 한쪽만 고쳐진다.
+ */
+const RelayPairing = lazy(() => import("@/components/relay/RelayPairing"));
 
 /** 섹션 카드 한 장 — 와이어프레임 1146 폭, 흰 카드 위 라벨 + 본문. */
 function Section({ title, description, children, action }) {
@@ -120,6 +129,20 @@ export default function PreferencesPage() {
   const [update, setUpdate] = useState(null); // null | {status, version?, message?}
   const [checking, setChecking] = useState(false);
   const [confirmUnpair, setConfirmUnpair] = useState(false);
+  const [pairOpen, setPairOpen] = useState(false);
+  const [pairedOpen, setPairedOpen] = useState(false);
+
+  // 페어링 창을 띄워둔 동안 연결이 성사되면 QR을 닫고 성공 모달로 넘긴다
+  // (와이어프레임 244:1599 → 250:6498). 이미 연결된 상태로 창을 열었을 때
+  // 곧바로 성공 모달이 뜨지 않도록, 값이 실제로 뒤집힌 순간만 잡는다.
+  const wasConnected = useRef(relayConnected);
+  useEffect(() => {
+    if (relayConnected && !wasConnected.current && pairOpen) {
+      setPairOpen(false);
+      setPairedOpen(true);
+    }
+    wasConnected.current = relayConnected;
+  }, [relayConnected, pairOpen]);
 
   const handleCheckUpdate = async () => {
     setChecking(true);
@@ -161,7 +184,7 @@ export default function PreferencesPage() {
               variant="outline"
               size="sm"
               className="shrink-0"
-              onClick={() => setCurrentPage("mobile_relay")}
+              onClick={() => setPairOpen(true)}
             >
               <Plus className="mr-1.5 h-3.5 w-3.5" />
               추가
@@ -321,6 +344,47 @@ export default function PreferencesPage() {
           </PlaceholderNote>
         </Section>
       </div>
+
+      {/* 디바이스 추가 — QR 페어링 (와이어프레임 244:1599) */}
+      <Modal
+        open={pairOpen}
+        onClose={() => setPairOpen(false)}
+        title="디바이스 추가"
+        description="폰에서 김대리 앱을 열고 QR을 스캔하세요."
+        size="md"
+        icon={Smartphone}
+      >
+        <Suspense
+          fallback={
+            <div className="flex h-64 items-center justify-center">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          }
+        >
+          <RelayPairing />
+        </Suspense>
+      </Modal>
+
+      {/* 연결 성공 (와이어프레임 250:6498) */}
+      <Modal
+        open={pairedOpen}
+        onClose={() => setPairedOpen(false)}
+        title="기기가 연결됐습니다"
+        size="sm"
+        icon={CheckCircle2}
+        footer={
+          <>
+            <span className="text-xs text-ink-subtle">환경 설정에서 언제든 해제할 수 있어요.</span>
+            <Button size="sm" onClick={() => setPairedOpen(false)}>
+              확인
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm leading-relaxed text-ink-body">
+          이제 밖에서도 폰으로 작업 진행 상황을 보고 승인 요청에 답할 수 있습니다.
+        </p>
+      </Modal>
 
       <AlertDialog
         open={confirmUnpair}
