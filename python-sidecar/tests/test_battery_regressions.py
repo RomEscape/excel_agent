@@ -3060,15 +3060,20 @@ class TestIntentToPlanCoverageIsMeasurable:
         assert not [r for r in rows if r["error"]], [r for r in rows if r["error"]]
 
     def test_the_known_gaps_are_still_gaps(self) -> None:
-        """지금 떨어지는 모양들. **고치면 이 핀이 실패한다** — 그때 핀을 옮긴다."""
+        """지금 떨어지는 모양들. **고치면 이 핀이 실패한다** — 그때 핀을 옮긴다.
+
+        2026-08-23에 `write_value` 둘(범위·열 전체)을 고쳐 여기서 초록으로 옮겼다.
+        """
         rows = {(r["task"], r["note"]): r["mapped"] for r in self._rows()}
-        assert rows[("write_value", "범위 브로드캐스트")] is False
-        assert rows[("write_value", "열 전체")] is False
         assert rows[("font", "굵게 — 색 아니면 매핑 실패")] is False
         assert rows[("highlight", "조건부 강조")] is False
+        assert rows[("sort", "방향 없음")] is False
+        assert rows[("clear_values", "열 비우기")] is False
         # 반대로 이미 되는 것들이 조용히 죽지 않았는지도 본다.
         assert rows[("fill_color", "범위+색")] is True
         assert rows[("write_value", "한 칸 쓰기")] is True
+        assert rows[("write_value", "범위 브로드캐스트")] is True
+        assert rows[("write_value", "열 전체")] is True
         assert rows[("sort", "내림차순")] is True
 
 
@@ -3164,3 +3169,86 @@ class TestOneValueFillsTheWholeRange:
         assert [sheet.cell(row=r, column=3).value for r in range(2, 10)] == ["미정"] * 8
         # 옆 열은 건드리지 않는다.
         assert [sheet.cell(row=r, column=2).value for r in range(2, 10)] == list(range(100, 108))
+
+
+class TestIntentWriteValueHandlesRangesAndColumns:
+    """통역 AI가 "A2:A9에 0 넣어줘"를 맞게 분류해도 **받아 적을 코드가 없었다.**
+
+    2026-08-23: `intent_to_plan`의 write_value 분기가 `_SINGLE_CELL`만 받아, 범위와
+    열 이름은 통째로 플래너로 넘어갔다. 진단서가 "실사용에서 가장 많이 걸린 지점"이라
+    적은 자리다. AI가 못 알아들은 게 아니라 옮겨 적을 코드가 없었던 것이다.
+    """
+
+    DIGEST = {
+        "active_sheet": "매출",
+        "sheets": [
+            {
+                "name": "매출",
+                "used_range": "A1:F9",
+                "columns": [
+                    {"letter": "A", "header": "날짜"},
+                    {"letter": "B", "header": "지역"},
+                    {"letter": "D", "header": "금액"},
+                    {"letter": "F", "header": "비고"},
+                ],
+                "sample_rows": [],
+            }
+        ],
+    }
+
+    def _plan(self, digest=None, **intent):
+        from office_claw_sidecar.services.excel_intent_normalizer import intent_to_plan
+
+        base = {"task": "write_value", "range": None, "column": None, "option": None}
+        return intent_to_plan({**base, **intent}, digest=digest or self.DIGEST, message="")
+
+    @pytest.mark.parametrize(
+        ("intent", "start", "cells"),
+        [
+            ({"range": "A12", "option": "합계"}, "A12", 1),
+            ({"range": "A2:A9", "option": "미정"}, "A2", 8),
+            ({"range": "A1:C1", "option": "가,나,다"}, "A1", 3),
+            # 열 이름만 부른 경우 — 머리글 아래부터 데이터 끝까지.
+            ({"column": "비고", "option": "미정"}, "F2", 8),
+        ],
+    )
+    def test_it_maps(self, intent, start, cells) -> None:
+        plan = self._plan(**intent)
+        assert plan is not None, intent
+        assert plan["action"] == "excel_live.write_range"
+        assert plan["params"]["start_cell"] == start
+        assert sum(len(row) for row in plan["params"]["values_2d"]) == cells
+
+    def test_an_instruction_phrase_stays_one_cell(self) -> None:
+        """모양 맞추기를 바인더와 공유하므로 지시문 제외도 그대로 따라온다."""
+        plan = self._plan(range="F7:G9", option="가장 큰 매출 값")
+        assert sum(len(row) for row in plan["params"]["values_2d"]) == 1
+
+    @pytest.mark.parametrize(
+        "intent",
+        [
+            {"column": "없는열", "option": "미정"},
+            # 스키마 어휘를 값으로 되뇌는 축퇴 — 예전부터 막던 것이 그대로 살아 있나.
+            {"range": "A2:A9", "option": "write_value"},
+        ],
+    )
+    def test_it_backs_off(self, intent) -> None:
+        assert self._plan(**intent) is None, intent
+
+    def test_it_backs_off_when_the_data_end_is_unknown(self) -> None:
+        """`_last_row`는 사용 범위를 못 읽으면 2를 준다. 그 상태로 채우면 "전부"가 한 칸이 된다."""
+        digest = {
+            "active_sheet": "빈",
+            "sheets": [
+                {"name": "빈", "used_range": "A1:B1", "columns": [{"letter": "B", "header": "비고"}]}
+            ],
+        }
+        assert self._plan(digest=digest, column="비고", option="미정") is None
+
+    def test_the_shaping_is_not_duplicated(self) -> None:
+        """모양 맞추기를 두 벌 두면 반드시 갈라진다 — 바인더 것을 빌려 쓴다."""
+        from office_claw_sidecar.services import excel_intent_normalizer as normalizer
+        from office_claw_sidecar.services import excel_param_binder as binder
+
+        assert normalizer._shape_write_values is binder._shape_write_values
+        assert normalizer._range_shape is binder._range_shape

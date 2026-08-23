@@ -27,7 +27,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .excel_param_binder import sheet_entry
+# 범위 모양·값 펴기는 바인더 것을 **빌려 쓴다**. 여기서 또 짜면 "1,000" 처리,
+# 지시문 제외, 브로드캐스트 상한이 두 벌이 되어 반드시 갈라진다.
+from .excel_param_binder import _range_shape, _shape_write_values, sheet_entry
 from .llm_json import extract_json_object
 
 # 정규화 호출 시간 예산. 이해 한 번이면 충분하다 — 플래너처럼 재시도 루프를 돌지 않는다.
@@ -382,13 +384,35 @@ def intent_to_plan(
             # 스키마 강제 실측 퇴행: 모델이 option에 태스크 이름을 되뇌는 축퇴가
             # 있다("write_value"가 셀에 쓰였다). 스키마 어휘는 값이 아니다.
             steps = None
-        elif rng and _SINGLE_CELL.fullmatch(rng) and option_text and len(option_text) <= 40:
-            steps = [{
-                "action": "excel_live.write_range",
+        elif rng and option_text and len(option_text) <= 40:
+            # 한 칸이든 범위든 **모양 맞추기는 바인더 것 하나만 쓴다.** 여기서 또
+            # 짜면 "1,000"·지시문·상한 판정이 두 벌이 되어 반드시 갈라진다
+            # (2026-08-23: 예전엔 여기가 `_SINGLE_CELL`만 받아 "A2:A9에 0 넣어줘"가
+            # 통째로 플래너로 넘어갔다 — 실사용에서 가장 많이 걸린 지점이다).
+            shape = _range_shape(rng)
+            if shape is not None:
+                top_left, row_count, col_count = shape
                 # "120"은 숫자다 — 문자열로 쓰면 SUM이 무시한다(50커맨드 실측).
-                "params": {"start_cell": rng, "values_2d": [[_coerce_literal(option_text)]]},
-                "reason": "의도 정규화: 값 입력",
-            }]
+                values = _shape_write_values(option_text, row_count, col_count)
+                if values:
+                    steps = [{
+                        "action": "excel_live.write_range",
+                        "params": {"start_cell": top_left, "values_2d": values},
+                        "reason": "의도 정규화: 값 입력",
+                    }]
+        elif column and option_text and len(option_text) <= 40:
+            # "비고 열 전부 미정" — 범위 대신 열 이름을 부른 경우.
+            letter, last = _column_letter(entry, column), _last_row(entry)
+            if letter and last > 2:
+                # `_last_row`는 사용 범위를 못 읽으면 2를 돌려준다. 그 상태로 채우면
+                # "전부"가 한 칸이 되므로, 데이터 끝을 모르면 아예 물러난다.
+                values = _shape_write_values(option_text, last - 1, 1)
+                if values:
+                    steps = [{
+                        "action": "excel_live.write_range",
+                        "params": {"start_cell": f"{letter}2", "values_2d": values},
+                        "reason": "의도 정규화: 값 입력(열 전체)",
+                    }]
 
     # dedupe·pivot·chart·create_table·read·other는 매핑하지 않는다 — 슬롯·플래너
     # 경로가 이미 소유하고 있고(배터리 24/24), 여기서 어설프게 겹치면 두 경로가
