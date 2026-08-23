@@ -28,6 +28,7 @@ from office_claw_sidecar.services.chat_routing_guard import (
     classify_off_topic,
     detect_crisis_intent,
 )
+from office_claw_sidecar.services.color_lexicon import COLOR_TOKEN_PATTERN, color_hex
 from office_claw_sidecar.services.decision_trace import (
     Long,
     set_outcome_from_response,
@@ -1301,41 +1302,16 @@ def _macro_snapshot(run: MacroRun) -> dict[str, Any]:
 
 
 def _quick_color_hex(word: str) -> str:
-    token = str(word or "").strip().lower()
-    if re.fullmatch(r"#[0-9a-f]{6}", token):
-        return token.upper()
-    if token in {"노란색", "노랑", "노란", "노랗", "yellow"}:
-        return "#FFFF00"
-    if token in {"빨간색", "빨강", "빨간", "빨갛", "red"}:
-        return "#FF4D4F"
-    if token in {"파란색", "파랑", "파랗", "blue"}:
-        return "#4F8CFF"
-    if token in {"초록색", "초록", "green"}:
-        return "#6AC36A"
-    if token in {"흰색", "하얀색", "하양", "하얗", "white", "화이트", "백색"}:
-        return "#FFFFFF"
-    # 2026-08-18 실측: "남색 배경에 흰 글씨"의 남색이 어휘에 없어 흰색 하나만
-    # 잡혔고, 배경이 글자색(흰색)을 물려받아 흰 바탕에 흰 글씨가 됐다.
-    # 대시보드에서 실제로 부르는 색 이름들을 채운다.
-    if token in {"검정", "검은색", "검은", "까맣", "black", "블랙"}:
-        return "#000000"
-    if token in {"남색", "네이비", "navy", "진파랑", "진한 파랑", "진한파랑"}:
-        return "#002060"
-    if token in {"연회색", "연한 회색", "연한회색"}:
-        return "#D9D9D9"
-    if token in {"회색", "그레이", "gray", "grey"}:
-        return "#808080"
-    if token in {"주황색", "주황", "오렌지", "orange"}:
-        return "#ED7D31"
-    if token in {"보라색", "보라", "퍼플", "purple"}:
-        return "#7030A0"
-    if token in {"분홍색", "분홍", "핑크", "pink"}:
-        return "#FFC0CB"
-    if token in {"하늘색", "하늘"}:
-        return "#9DC3E6"
-    if token in {"갈색", "브라운", "brown"}:
-        return "#843C0C"
-    return "#FFFF00"
+    """색 이름 → 헥사. 사전은 `color_lexicon` **한 곳**뿐이다.
+
+    예전엔 이 함수와 `_QUICK_COLOR_PATTERN`이 각자 목록을 들고 있어, 패턴은 `흰`을
+    잡는데 함수는 몰라 폴백(노란색)으로 떨어졌다 — **"흰 글씨"가 노란 글씨가 됐다**
+    (2026-08-24 실측). 이제 정규식도 같은 사전에서 만든다.
+
+    폴백은 노란색을 유지한다 — 이 함수는 패턴이 이미 색이라고 판정한 낱말만 받으므로
+    여기 닿는 건 사전 누락뿐이고, 호출부들이 빈 문자열을 색 없음으로 읽어 왔다.
+    """
+    return color_hex(word, default="#FFFF00")
 
 
 def _background_fill_hex(lowered: str, font_color: str | None) -> str:
@@ -1377,14 +1353,8 @@ def _background_fill_hex(lowered: str, font_color: str | None) -> str:
 
 # `#1F4E79` 같은 코드도 받는다. 대시보드 배색은 이름으로 부를 수 없는 색이 대부분이라,
 # 코드를 못 읽으면 전부 기본값(노랑)으로 칠해진다(2026-08-16 실측: 남색 제목 바가 노랗게 나왔다).
-_QUICK_COLOR_PATTERN = re.compile(
-    r"(#[0-9a-fA-F]{6}|노란색|노랑|노란|노랗|yellow|빨간색|빨강|빨간|빨갛|red|파란색|파랑|파랗|blue"
-    r"|초록색|초록|green|흰색|하얀색|하양|하얗|white|화이트|백색|흰(?=[\s글바배칸]|$)"
-    r"|검은색|검정|검은|까맣|black|블랙|남색|네이비|navy|연회색|회색|그레이|gray|grey"
-    r"|주황색|주황|오렌지|orange|보라색|보라|퍼플|purple|분홍색|분홍|핑크|pink"
-    r"|하늘색|갈색|브라운|brown)",
-    re.IGNORECASE,
-)
+#: 색 낱말 정규식. **사전에서 만든다** — 목록을 두 곳에 두면 갈라진다.
+_QUICK_COLOR_PATTERN = COLOR_TOKEN_PATTERN
 
 
 def _quick_extract_colors(text: str) -> list[str]:

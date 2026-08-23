@@ -13,6 +13,7 @@ import time
 from typing import Any
 
 from office_claw_sidecar.services import excel_observation
+from office_claw_sidecar.services.color_lexicon import COLOR_TOKEN_PATTERN
 from office_claw_sidecar.services.decision_trace import (
     Long,
 )
@@ -235,13 +236,9 @@ _FONT_SIZE_PATTERN = re.compile(
 _FONT_COLOR_MARKER = re.compile(
     r"(글자\s*색|글씨\s*색|폰트\s*색|글꼴\s*색|텍스트\s*색|font\s*colou?r)", re.IGNORECASE
 )
-_COLOR_TOKEN = re.compile(
-    r"(#[0-9a-fA-F]{6}|노란색|노랑|노란|yellow|빨간색|빨강|빨간|red|파란색|파랑|blue"
-    r"|초록색|초록|green|흰색|하얀색|하양|하얗|white|화이트|백색|검정|검은색|검은|까맣|black"
-    r"|남색|네이비|navy|연회색|회색|gray|grey|주황색|주황|orange|보라색|보라|purple"
-    r"|분홍색|분홍|핑크|pink|하늘색|갈색|brown)",
-    re.IGNORECASE,
-)
+#: 색 토큰. **사전에서 만든다** — 예전엔 여기에도 목록이 따로 있어
+#: 분홍·하늘색·갈색을 규칙표는 알고 통역은 몰랐다(2026-08-24 실측).
+_COLOR_TOKEN = COLOR_TOKEN_PATTERN
 _COLORED_TEXT_PATTERN = re.compile(
     r"(#[0-9a-fA-F]{6}|[가-힣]{1,4}색|[가-힣]{1,3})\s*(?:글씨|글자|텍스트)", re.IGNORECASE
 )

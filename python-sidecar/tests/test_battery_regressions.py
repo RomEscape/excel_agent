@@ -3519,3 +3519,75 @@ class TestClearValuesTakesAColumnName:
         assert [sheet.cell(row=1, column=c).value for c in range(1, 4)] == ["날짜", "금액", "비고"]
         assert [sheet.cell(row=r, column=3).value for r in range(2, 6)] == [None] * 4
         assert [sheet.cell(row=r, column=2).value for r in range(2, 6)] == [100, 101, 102, 103]
+
+
+class TestColorVocabularyHasOneSource:
+    """색 사전이 셋으로 갈라져 값까지 달랐다.
+
+    2026-08-24 실측 — 같은 낱말, 다른 색:
+
+        낱말      규칙표      통역
+        남색      #002060     #1E6B4F  ← **초록이다**
+        회색      #808080     #D9D9D9
+        보라색    #7030A0     #7B61FF
+        주황색    #ED7D31     #FFA500
+
+    게다가 정규식과 변환 함수가 서로 다른 목록을 들고 있어, 패턴은 `흰`을 잡는데
+    함수는 몰라 폴백(노란색)으로 떨어졌다 — **"흰 글씨"가 노란 글씨가 됐다.**
+    """
+
+    @pytest.mark.parametrize(
+        "word", ["남색", "navy", "회색", "보라색", "주황색", "분홍색", "하늘색", "갈색", "흰색", "검정"]
+    )
+    def test_every_path_agrees(self, word: str) -> None:
+        from office_claw_sidecar.routers.excel_live import _quick_color_hex
+        from office_claw_sidecar.services.color_lexicon import color_hex
+        from office_claw_sidecar.services.excel_intent_normalizer import _COLORS
+
+        assert _quick_color_hex(word) == color_hex(word) == _COLORS[word]
+
+    def test_navy_is_navy_not_green(self) -> None:
+        """`남색`이 초록이던 것 — 눈으로 보기 전엔 아무도 몰랐다."""
+        from office_claw_sidecar.services.color_lexicon import color_hex
+
+        assert color_hex("남색") == "#002060"
+        assert color_hex("남색") == color_hex("네이비") == color_hex("navy")
+
+    def test_bare_white_is_white(self) -> None:
+        """정규식이 잡는 낱말은 사전도 알아야 한다 — 아니면 폴백(노란색)으로 샌다."""
+        from office_claw_sidecar.routers.excel_live import _quick_extract_colors
+
+        assert _quick_extract_colors("흰 글씨로 해줘") == ["#FFFFFF"]
+        assert _quick_extract_colors("흰 바탕") == ["#FFFFFF"]
+
+    def test_the_pattern_is_built_from_the_table(self) -> None:
+        """목록을 두 곳에 두면 갈라진다 — 정규식을 사전에서 만든다."""
+        from office_claw_sidecar.routers.excel_live import _QUICK_COLOR_PATTERN
+        from office_claw_sidecar.services.color_lexicon import COLOR_TOKEN_PATTERN
+        from office_claw_sidecar.services.excel_live_agent import _COLOR_TOKEN
+
+        assert _QUICK_COLOR_PATTERN is COLOR_TOKEN_PATTERN
+        assert _COLOR_TOKEN is COLOR_TOKEN_PATTERN
+
+    def test_every_word_the_pattern_matches_is_in_the_table(self) -> None:
+        """패턴이 잡는데 사전이 모르는 낱말이 있으면 그게 곧 폴백 사고다."""
+        from office_claw_sidecar.services.color_lexicon import COLOR_HEX, COLOR_TOKEN_PATTERN, color_hex
+
+        for name in COLOR_HEX:
+            match = COLOR_TOKEN_PATTERN.fullmatch(name)
+            assert match is not None, name
+            assert color_hex(match.group(1)), name
+
+    def test_longer_names_win(self) -> None:
+        """한국어는 낱말 경계가 없다 — "노란색"이 "노란"으로 잘리면 안 된다."""
+        from office_claw_sidecar.services.color_lexicon import COLOR_TOKEN_PATTERN
+
+        assert COLOR_TOKEN_PATTERN.search("노란색으로").group(1) == "노란색"
+        assert COLOR_TOKEN_PATTERN.search("분홍색 배경").group(1) == "분홍색"
+
+    def test_an_unknown_colour_is_not_yellow(self) -> None:
+        """모르는 색을 노란색으로 칠하느니 매핑 실패로 두고 되묻는 편이 낫다."""
+        from office_claw_sidecar.services.color_lexicon import color_hex
+
+        assert color_hex("형광연두") == ""
+        assert color_hex("#1E6B4F") == "#1E6B4F"

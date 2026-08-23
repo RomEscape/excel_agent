@@ -29,6 +29,7 @@ from typing import Any
 
 # 범위 모양·값 펴기는 바인더 것을 **빌려 쓴다**. 여기서 또 짜면 "1,000" 처리,
 # 지시문 제외, 브로드캐스트 상한이 두 벌이 되어 반드시 갈라진다.
+from .color_lexicon import COLOR_HEX
 from .excel_live_service import _ALIGN_WORDS
 from .excel_param_binder import _range_shape, _shape_write_values, sheet_entry
 from .llm_json import extract_json_object
@@ -122,18 +123,10 @@ _CONDITIONAL_MENTION = re.compile(
 _RANGE = re.compile(r"^[A-Za-z]{1,3}\d{1,7}(:[A-Za-z]{1,3}\d{1,7})?$")
 _SINGLE_CELL = re.compile(r"^[A-Za-z]{1,3}\d{1,7}$")
 
-# 모르는 색을 노란색으로 칠하면 안 된다 — 못 알아들은 색은 매핑 실패로 둔다.
-_COLORS = {
-    "노란색": "#FFFF00", "노랑": "#FFFF00", "노란": "#FFFF00", "yellow": "#FFFF00",
-    "빨간색": "#FF4D4F", "빨강": "#FF4D4F", "빨간": "#FF4D4F", "red": "#FF4D4F",
-    "파란색": "#4F8CFF", "파랑": "#4F8CFF", "blue": "#4F8CFF",
-    "초록색": "#6AC36A", "초록": "#6AC36A", "green": "#6AC36A",
-    "흰색": "#FFFFFF", "하얀색": "#FFFFFF", "하양": "#FFFFFF", "white": "#FFFFFF",
-    "검은색": "#000000", "검정": "#000000", "black": "#000000",
-    "회색": "#D9D9D9", "gray": "#D9D9D9", "grey": "#D9D9D9",
-    "주황색": "#FFA500", "주황": "#FFA500", "orange": "#FFA500",
-    "남색": "#1E6B4F", "navy": "#001F5B", "보라색": "#7B61FF", "보라": "#7B61FF",
-}
+# 색 사전은 `color_lexicon` 한 곳이다. 예전엔 여기 따로 적혀 있었고 값이 갈라져
+# **`남색`이 초록(#1E6B4F)이었다**(2026-08-24 실측). 모르는 색은 여기서도
+# 매핑 실패로 둔다 — 조용히 노란색을 칠하느니 되묻는 편이 낫다.
+_COLORS = COLOR_HEX
 
 _AGG_FUNCS = {"SUM", "AVERAGE", "MAX", "MIN", "COUNT", "COUNTA", "MEDIAN"}
 
