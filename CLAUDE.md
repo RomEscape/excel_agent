@@ -55,6 +55,7 @@
 | 페어링 TTL 표시 | relayStore의 `pairingExpiresAt` | `lib/pairingCountdown.js`(남은 시간·`3:29` 포맷, 순수) | — | `components/relay/RelayPairing.jsx` (조합만) |
 | 온보딩 모델 목록 | — | `lib/modelCatalog.js`(모델 ID→제조사·추천, 순수) | — | `components/ui/wizard.jsx`의 `ModelSelectField` |
 | 작업 기록 | — | `lib/activityLog.js`(감사로그→표 행·KPI 4장·페이지 번호, 순수) | — | `components/activity/ActivityPage.jsx` (조합만) |
+| 글자 크기 | `store/fontScaleStore.js` | `lib/fontScale.js`(선택→루트 px, 순수) · `lib/fontScaleManager.js`(`<html>` font-size 적용) | — | `components/settings/PreferencesPage.jsx`의 폰트 크기 섹션 |
 
 새 기능을 추가할 때 이 표에 한 줄이 더 늘어나야 한다.
 
@@ -83,6 +84,14 @@
 > 표 정렬은 **받아온 페이지 안에서만** 한다. 사이드카 감사 로그 API가 정렬 파라미터를 받지 않으므로 전체 정렬인 척하면 페이지를 넘길 때 순서가 어긋난다. 서버 정렬이 생기면 `ActivityPage`의 클라이언트 `sort`를 걷어내고 쿼리로 넘길 것.
 >
 > 상태 배지 색(`완료` 연초록 `#ECF8E8` / `차단` 연분홍 `#F8D1C9`)은 **`TOKENS.md`의 지면 5색에 없던 신규 값**이다. 개선안 프레임에 다크 짝이 없어서 다크 대응값은 `lib/activityLog.js`의 `ACTIVITY_STATUS`가 `dark:` 변형으로 직접 들고 있다 — 나중에 다크 프레임이 그려지면 그 값으로 맞출 것.
+>
+> **2026-08 환경 설정 노트**: 사이드바 푸터의 `환경 설정`은 **탭 허브가 아니라 단일 페이지**다(`preferences` → `components/settings/PreferencesPage.jsx`, 와이어프레임 `243:1140`). **`SettingsHub`(`settings`)를 지우지 말 것** — 와이어프레임에 없는 5개 기능(메신저·자격증명·보안·에이전트 허용 범위·실행 기록)이 거기 붙어 있고, 유일한 진입 경로가 `Cmd/Ctrl+K` → 각 탭 키(`messenger_settings` 등)다. 허브를 없애면 그 기능들이 코드에만 남고 갈 길이 사라진다.
+>
+> **`내 요금제`와 `회원 정보`는 백엔드가 없는 플레이스홀더**다. 결제·플랜도 계정 시스템도 코드에 존재하지 않는다 — 버튼은 `disabled`이고 화면이 그 사실을 문장으로 밝힌다. 붙이려면 프론트가 아니라 서버부터다.
+>
+> `연결된 디바이스`는 **relay가 기기 이름·접속 위치를 주지 않는다**. `relayStore`에 있는 건 단일 연결의 `connected`·`relayUrl`뿐이라, 와이어프레임의 `임재환의 Iphone 17pro / 대한민국, 서울특별시, 서초구 • 3일전`은 목업 문구로 두고 실제로 아는 값만 렌더한다. **없는 데이터를 채워 넣지 말 것** — 기기 메타데이터가 필요하면 페어링 프로토콜(`packages/protocol`)부터 늘려야 한다.
+>
+> 글자 크기는 **루트 `font-size` 하나만** 바꾼다(`lib/fontScaleManager.js`). Tailwind 크기 유틸이 전부 rem이라 이걸로 글자·여백·컨트롤이 함께 커진다. 컴포넌트마다 `large:` 변형을 붙이면 새 화면을 만들 때마다 빠뜨리는 곳이 생긴다. 2단계(16px/18px)인 이유는 1.25배부터 1600×900에서 작업 기록 표의 `명령` 칸이 접히기 시작해서다.
 >
 > 접힘(Cmd/Ctrl+B)은 **통째 숨김이 아니라 64px 아이콘 레일**이다 — 확장 목록만 숨고 내비는 남는다. 접힘 모양은 `ConversationSidebar`가 직접 소유하므로 `Layout`에서 조건부 언마운트하지 않는다. 와이어프레임에 없지만 남긴 것: `대화목록` 확장 안의 `+ 새 대화`(없으면 대화 중 새 주제를 못 꺼낸다).
 >

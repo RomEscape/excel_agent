@@ -10,7 +10,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-/** @typedef {'chat'|'activity'|'telegram'|'workspace'|'conversations'|'credentials'|'audit'|'settings'|'security'|'permissions'|'messenger_settings'|'guide'} Page */
+/** @typedef {'chat'|'activity'|'telegram'|'workspace'|'conversations'|'credentials'|'audit'|'preferences'|'settings'|'security'|'permissions'|'messenger_settings'|'guide'|'mobile_relay'} Page */
 
 /**
  * @typedef {Object} ChatMessage

@@ -79,6 +79,7 @@ const FOOTER_ITEMS = [
 ];
 
 const SETTINGS_PAGES = new Set([
+  "preferences",
   "settings",
   "credentials",
   "audit",
@@ -261,7 +262,8 @@ export default function ConversationSidebar() {
       window.dispatchEvent(new CustomEvent("officeclaw:open-shortcut-help"));
       return;
     }
-    setCurrentPage("settings");
+    // 와이어프레임의 단일 페이지 환경 설정. 탭 허브(`settings`)는 Cmd+K 전용.
+    setCurrentPage("preferences");
   };
 
   // 대화를 열면 채팅 패널이 같이 떠야 한다 — 안 그러면 목록만 바뀌고

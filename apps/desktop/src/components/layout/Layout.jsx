@@ -61,6 +61,7 @@ const ActivityPage = lazy(() => import("@/components/activity/ActivityPage"));
 const WorkspacePage = lazy(() => import("@/components/workspace/WorkspacePage"));
 const ConversationsPage = lazy(() => import("@/components/conversations/ConversationsPage"));
 const SettingsHub = lazy(() => import("@/components/settings/SettingsHub"));
+const PreferencesPage = lazy(() => import("@/components/settings/PreferencesPage"));
 
 /**
  * Map page keys to their lazy components.
@@ -74,6 +75,12 @@ const PAGE_MAP = {
   activity: ActivityPage,
   workspace: WorkspacePage,
   conversations: ConversationsPage,
+
+  // 사이드바 푸터의 `환경 설정` — 와이어프레임의 단일 페이지.
+  preferences: PreferencesPage,
+
+  // 탭 허브는 남는다. 와이어프레임에 없는 5개 기능(메신저·자격증명·보안·
+  // 허용 범위·실행 기록)의 유일한 진입 경로가 Cmd+K → 아래 키들이다.
   settings: SettingsHub,
 
   // ── 설정 허브 내부 탭으로 이동 — 외부에서 이 키로 진입해도 Settings로 라우팅 ──
