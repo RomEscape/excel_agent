@@ -372,6 +372,18 @@ def intent_to_plan(
                 "params": {"target_range": rng},
                 "reason": "의도 정규화: 값 비우기",
             }]
+        elif column:
+            # "비고 열 비워줘" — 범위 대신 열 이름을 부른 경우. **2행부터** 지운다:
+            # 머리글까지 지우면 표가 뭉개진다(파괴 게이트 `clear_only_named`가 지키는 것).
+            letter, last = _column_letter(entry, column), _last_row(entry)
+            if letter and last > 2:
+                # 데이터 끝을 모르면(폴백 2) 물러난다 — 한 칸만 지우고 "비웠다"고
+                # 답하는 건 조용한 부분 실행이다(2026-08-23 쓰기 쪽에서 겪은 그것).
+                steps = [{
+                    "action": "excel_live.clear_range",
+                    "params": {"target_range": f"{letter}2:{letter}{last}"},
+                    "reason": "의도 정규화: 값 비우기(열 전체)",
+                }]
 
     elif task == "reset_all":
         if rng:

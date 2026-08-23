@@ -74,7 +74,9 @@ CASES: list[dict[str, Any]] = [
     case("number_format", column="금액", option="천 단위", note="콤마", message="금액 콤마"),
     case("formula", range="F2", column="금액", option="SUM", note="한 칸 집계", message="F2에 금액 합계"),
     case("sort", column="금액", option="desc", note="내림차순", message="금액 내림차순"),
-    case("sort", column="금액", option=None, note="방향 없음", message="금액 정렬"),
+    # 방향이 없으면 **물러나는 게 옳다** — 짐작하면 행 순서를 통째로 뒤집는 오실행이다.
+    # 이 줄은 "구멍"이 아니라 "올바른 물러남"이다(2026-08-24 판단).
+    case("sort", column="금액", option=None, note="방향 없음(물러나는 게 옳음)", message="금액 정렬"),
     case("filter", column="지역", option="서울", note="값 일치", message="서울만"),
     case("filter", column="금액", option=">=1000", note="비교 — 값 일치만 지원", message="금액 1000 이상만"),
     case("clear_values", range="A2:F9", note="범위 비우기", message="A2:F9 비워줘"),

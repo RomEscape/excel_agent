@@ -3066,8 +3066,8 @@ class TestIntentToPlanCoverageIsMeasurable:
         """
         rows = {(r["task"], r["note"]): r["mapped"] for r in self._rows()}
         assert rows[("highlight", "조건부 강조")] is False
-        assert rows[("sort", "방향 없음")] is False
-        assert rows[("clear_values", "열 비우기")] is False
+        # 방향 없는 정렬은 **물러나는 게 옳다** — 짐작하면 행 순서를 통째로 뒤집는다.
+        assert rows[("sort", "방향 없음(물러나는 게 옳음)")] is False
         # 반대로 이미 되는 것들이 조용히 죽지 않았는지도 본다.
         assert rows[("fill_color", "범위+색")] is True
         assert rows[("write_value", "한 칸 쓰기")] is True
@@ -3078,6 +3078,7 @@ class TestIntentToPlanCoverageIsMeasurable:
         assert rows[("font", "굵게 — 색 아니면 매핑 실패")] is True
         assert rows[("font", "크기")] is True
         assert rows[("font", "가로 맞춤")] is True
+        assert rows[("clear_values", "열 비우기")] is True
 
 
 class TestOneValueFillsTheWholeRange:
@@ -3439,3 +3440,82 @@ class TestIntentFirstIsAnExperimentSwitch:
         assert _intent_first_enabled() is True
         monkeypatch.setenv("OFFICECLAW_INTENT_FIRST", "0")
         assert _intent_first_enabled() is False
+
+
+class TestClearValuesTakesAColumnName:
+    """"비고 열 비워줘"가 범위가 없다는 이유로 통째로 플래너로 넘어갔다.
+
+    2026-08-24: `clear_values` 분기가 `if rng`만 봤다. 열 이름은 모호하지 않다 —
+    **머리글 아래부터** 그 열의 데이터 끝까지다.
+    """
+
+    DIGEST = {
+        "active_sheet": "매출",
+        "sheets": [
+            {
+                "name": "매출",
+                "used_range": "A1:C5",
+                "columns": [
+                    {"letter": "A", "header": "날짜"},
+                    {"letter": "B", "header": "금액"},
+                    {"letter": "C", "header": "비고"},
+                ],
+            }
+        ],
+    }
+
+    def _plan(self, digest=None, **intent):
+        from office_claw_sidecar.services.excel_intent_normalizer import intent_to_plan
+
+        base = {"task": "clear_values", "range": None, "column": None, "option": None}
+        return intent_to_plan({**base, **intent}, digest=digest or self.DIGEST, message="")
+
+    def test_a_column_name_clears_the_data_rows(self) -> None:
+        plan = self._plan(column="비고")
+        assert plan["action"] == "excel_live.clear_range"
+        # 2행부터다 — 머리글까지 지우면 표가 뭉개진다.
+        assert plan["params"]["target_range"] == "C2:C5"
+
+    def test_an_explicit_range_is_unchanged(self) -> None:
+        assert self._plan(range="C2:C5")["params"]["target_range"] == "C2:C5"
+
+    @pytest.mark.parametrize(
+        ("intent", "digest"),
+        [
+            ({"column": "없는열"}, None),
+            # 데이터 끝을 모르면(`_last_row` 폴백 2) 한 칸만 지우고 "비웠다"고 답하게 된다.
+            (
+                {"column": "비고"},
+                {
+                    "active_sheet": "빈",
+                    "sheets": [
+                        {"name": "빈", "used_range": "A1:C1", "columns": [{"letter": "C", "header": "비고"}]}
+                    ],
+                },
+            ),
+        ],
+    )
+    def test_it_backs_off(self, intent, digest) -> None:
+        assert self._plan(digest=digest, **intent) is None
+
+    def test_the_executor_keeps_the_header_and_neighbours(self, tmp_path) -> None:
+        from openpyxl import Workbook, load_workbook
+
+        from office_claw_sidecar.services.excel_live_file_service import FileExcelLiveService
+
+        path = tmp_path / "c.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "매출"
+        ws.append(["날짜", "금액", "비고"])
+        for n in range(4):
+            ws.append([f"1/{n + 1}", 100 + n, f"메모{n}"])
+        wb.save(path)
+        service = FileExcelLiveService()
+        service.select_workbook(str(path))
+        service.select_sheet(None, "매출")
+        service.clear_range(None, "매출", self._plan(column="비고")["params"]["target_range"])
+        sheet = load_workbook(path)["매출"]
+        assert [sheet.cell(row=1, column=c).value for c in range(1, 4)] == ["날짜", "금액", "비고"]
+        assert [sheet.cell(row=r, column=3).value for r in range(2, 6)] == [None] * 4
+        assert [sheet.cell(row=r, column=2).value for r in range(2, 6)] == [100, 101, 102, 103]
