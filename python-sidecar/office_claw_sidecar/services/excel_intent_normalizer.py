@@ -29,6 +29,7 @@ from typing import Any
 
 # 범위 모양·값 펴기는 바인더 것을 **빌려 쓴다**. 여기서 또 짜면 "1,000" 처리,
 # 지시문 제외, 브로드캐스트 상한이 두 벌이 되어 반드시 갈라진다.
+from .excel_live_service import _ALIGN_WORDS
 from .excel_param_binder import _range_shape, _shape_write_values, sheet_entry
 from .llm_json import extract_json_object
 
@@ -163,6 +164,45 @@ async def normalize_intent(
     return intent
 
 
+#: 굵게. **기울임·밑줄은 일부러 없다** — 도구에 파라미터가 없어서, 매핑하면
+#: 조용히 무시되고 "했다"고 보고된다(가짜 성공).
+_BOLD_WORDS = re.compile(r"(굵게|굵은|굵직|진하게|진한|두껍게|볼드|bold)", re.IGNORECASE)
+#: 굵게 **해제**. "굵게 풀어줘"를 굵게로 읽으면 정반대 편집이다.
+_UNBOLD_WORDS = re.compile(r"(굵게\s*(?:해제|풀|빼|없애)|진하게\s*(?:해제|풀)|안\s*굵게|보통\s*굵기)")
+#: 글자 크기. "14", "14pt", "14포인트", "크기 14" 모두 같은 뜻이다.
+_SIZE_WORDS = re.compile(r"(?:크기\s*)?(\d{1,3})\s*(?:pt|포인트|포인|px)?\s*$", re.IGNORECASE)
+
+
+def _font_params_from(option_text: str) -> dict[str, Any]:
+    """글자 서식 옵션 한 덩어리를 `set_font` 파라미터로. 못 알아들으면 빈 dict.
+
+    검증기(`excel_live_plan_validator.py:749`)와 실행기가 이미 색·굵게·크기·맞춤을
+    모두 받는다. 여기 낱말 사전이 없어서 색 말고는 전부 플래너로 넘어가고 있었다.
+    """
+    text = str(option_text or "").strip()
+    if not text:
+        return {}
+    color = _COLORS.get(text.lower())
+    if color:
+        return {"color": color}
+    if _UNBOLD_WORDS.search(text):
+        return {"bold": False}
+    if _BOLD_WORDS.search(text):
+        return {"bold": True}
+    align = _ALIGN_WORDS.get(text.lower()) or _ALIGN_WORDS.get(
+        re.sub(r"\s*(?:정렬|맞춤|으로|로)\s*$", "", text).strip().lower()
+    )
+    if align:
+        return {"align": align}
+    size = _SIZE_WORDS.fullmatch(text)
+    if size:
+        value = int(size.group(1))
+        # 엑셀이 받는 범위 밖이면 매핑하지 않는다 — 1pt·500pt는 사람 뜻이 아니다.
+        if 6 <= value <= 72:
+            return {"size": float(value)}
+    return {}
+
+
 def _column_letter(entry: dict[str, Any], column: Any) -> str:
     """머리글 이름(또는 이미 열 문자)을 열 문자로. 못 찾으면 ""."""
     name = str(column or "").strip()
@@ -268,12 +308,12 @@ def intent_to_plan(
             }]
 
     elif task == "font":
-        color = _COLORS.get(option_text.lower())
-        if color:
+        font_params = _font_params_from(option_text)
+        if font_params:
             steps = [{
                 "action": "excel_live.set_font",
-                "params": {"target_range": rng or "__ACTIVE_SELECTION__", "color": color},
-                "reason": "의도 정규화: 글자색",
+                "params": {"target_range": rng or "__ACTIVE_SELECTION__", **font_params},
+                "reason": f"의도 정규화: 글자 서식({next(iter(font_params))})",
             }]
 
     elif task == "number_format":

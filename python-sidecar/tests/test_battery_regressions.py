@@ -3065,7 +3065,6 @@ class TestIntentToPlanCoverageIsMeasurable:
         2026-08-23에 `write_value` 둘(범위·열 전체)을 고쳐 여기서 초록으로 옮겼다.
         """
         rows = {(r["task"], r["note"]): r["mapped"] for r in self._rows()}
-        assert rows[("font", "굵게 — 색 아니면 매핑 실패")] is False
         assert rows[("highlight", "조건부 강조")] is False
         assert rows[("sort", "방향 없음")] is False
         assert rows[("clear_values", "열 비우기")] is False
@@ -3075,6 +3074,10 @@ class TestIntentToPlanCoverageIsMeasurable:
         assert rows[("write_value", "범위 브로드캐스트")] is True
         assert rows[("write_value", "열 전체")] is True
         assert rows[("sort", "내림차순")] is True
+        # 2026-08-23에 font 셋(굵게·크기·맞춤)을 고쳐 초록으로 옮겼다.
+        assert rows[("font", "굵게 — 색 아니면 매핑 실패")] is True
+        assert rows[("font", "크기")] is True
+        assert rows[("font", "가로 맞춤")] is True
 
 
 class TestOneValueFillsTheWholeRange:
@@ -3252,3 +3255,89 @@ class TestIntentWriteValueHandlesRangesAndColumns:
 
         assert normalizer._shape_write_values is binder._shape_write_values
         assert normalizer._range_shape is binder._range_shape
+
+
+class TestFontTakesMoreThanColor:
+    """`font`가 색만 받아, "머리글 굵게"가 통역에서 플래너로 떨어졌다.
+
+    2026-08-23 확인: 도구(`set_font(bold, name, size, color, align)`)와 검증기
+    (`excel_live_plan_validator.py:749`)는 이미 다섯을 다 받는데,
+    `intent_to_plan`의 font 분기만 `_COLORS.get()`이 맞을 때만 계획을 냈다.
+    낱말 사전이 없었을 뿐이다.
+    """
+
+    @pytest.mark.parametrize(
+        ("option", "want"),
+        [
+            ("흰색", {"color": "#FFFFFF"}),
+            ("굵게", {"bold": True}),
+            ("진하게", {"bold": True}),
+            ("bold", {"bold": True}),
+            # 해제를 굵게로 읽으면 정반대 편집이다.
+            ("굵게 해제", {"bold": False}),
+            ("안 굵게", {"bold": False}),
+            ("가운데", {"align": "center"}),
+            ("가운데 정렬", {"align": "center"}),
+            ("왼쪽 정렬", {"align": "left"}),
+            ("14", {"size": 14.0}),
+            ("14pt", {"size": 14.0}),
+            ("크기 16", {"size": 16.0}),
+        ],
+    )
+    def test_it_reads_the_word(self, option: str, want: dict) -> None:
+        from office_claw_sidecar.services.excel_intent_normalizer import _font_params_from
+
+        assert _font_params_from(option) == want
+
+    @pytest.mark.parametrize("option", ["기울임", "밑줄", "이탤릭", "", "예쁘게", "3", "200", "형광펜"])
+    def test_it_backs_off_on_what_the_tool_cannot_do(self, option: str) -> None:
+        """**기울임·밑줄은 일부러 매핑하지 않는다** — 도구에 파라미터가 없다.
+
+        매핑하면 조용히 무시되고 "했다"고 보고된다. 가짜 성공이 실패보다 나쁘다.
+        크기도 엑셀 범위(6~72) 밖이면 사람 뜻이 아니다.
+        """
+        from office_claw_sidecar.services.excel_intent_normalizer import _font_params_from
+
+        assert _font_params_from(option) == {}
+
+    def test_the_align_table_is_shared(self) -> None:
+        """맞춤 낱말표를 두 벌 두면 갈라진다 — 실행기 것을 빌려 쓴다."""
+        from office_claw_sidecar.services import excel_intent_normalizer as normalizer
+        from office_claw_sidecar.services import excel_live_service as service
+
+        assert normalizer._ALIGN_WORDS is service._ALIGN_WORDS
+
+    def test_the_executor_applies_all_three(self, tmp_path) -> None:
+        from openpyxl import Workbook, load_workbook
+
+        from office_claw_sidecar.services.excel_intent_normalizer import intent_to_plan
+        from office_claw_sidecar.services.excel_live_file_service import FileExcelLiveService
+
+        digest = {
+            "active_sheet": "매출",
+            "sheets": [{"name": "매출", "used_range": "A1:C3", "columns": [{"letter": "A", "header": "날짜"}]}],
+        }
+        path = tmp_path / "f.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "매출"
+        ws.append(["날짜", "금액", "비고"])
+        ws.append(["1/1", 100, ""])
+        wb.save(path)
+        service = FileExcelLiveService()
+        service.select_workbook(str(path))
+        service.select_sheet(None, "매출")
+        for option in ("굵게", "16", "가운데"):
+            plan = intent_to_plan(
+                {"task": "font", "range": "A1:C1", "column": None, "option": option},
+                digest=digest,
+                message="",
+            )
+            assert plan is not None, option
+            params = dict(plan["params"])
+            target = params.pop("target_range")
+            service.set_font(None, "매출", target, **params)
+        cell = load_workbook(path)["매출"]["A1"]
+        assert (cell.font.bold, cell.font.size, cell.alignment.horizontal) == (True, 16.0, "center")
+        # 데이터 행은 건드리지 않는다.
+        assert load_workbook(path)["매출"]["A2"].font.bold is False
