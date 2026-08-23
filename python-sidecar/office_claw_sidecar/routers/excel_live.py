@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from office_claw_sidecar.models.approval import ApprovalRequest, ApprovalResponse
 from office_claw_sidecar.services import excel_observation
 from office_claw_sidecar.services import excel_rank_limit as rank_limit
+from office_claw_sidecar.services.aggregate_lexicon import AGG_FUNC, AGG_WORD_PATTERN
 from office_claw_sidecar.services.audit_service import AuditService
 from office_claw_sidecar.services.chat_routing_guard import (
     CRISIS_REPLY,
@@ -1818,18 +1819,12 @@ def _value_equals_highlight(message: str, digest: dict[str, Any]) -> list[dict[s
 
 
 #: 붙여넣기 직후의 한 마디 집계 — "합계!", "평균 좀".
+#: "합계!" 한 낱말만 온 꼴. 어휘와 변환표는 `aggregate_lexicon` **한 곳**에서 온다 —
+#: 예전엔 정규식과 표가 따로였고 `개수`를 COUNT로 옮겼다(바인더는 COUNTA. 다른 답이다).
 _BARE_AGGREGATE = re.compile(
-    r"^\s*(?:ㅇㅇ\s*)?(합계|총합계|총합|총계|평균|개수|소계)\s*(?:좀|만|도|은|는|을|를)?\s*[!.~…]*\s*$"
+    rf"^\s*(?:ㅇㅇ\s*)?({AGG_WORD_PATTERN.pattern})\s*(?:좀|만|도|은|는|을|를)?\s*[!.~…]*\s*$"
 )
-_BARE_AGGREGATE_FUNC = {
-    "합계": "SUM",
-    "총합계": "SUM",
-    "총합": "SUM",
-    "총계": "SUM",
-    "소계": "SUM",
-    "평균": "AVERAGE",
-    "개수": "COUNT",
-}
+_BARE_AGGREGATE_FUNC = AGG_FUNC
 
 
 def _bare_aggregate_after_paste(message: str, context_range: str | None) -> tuple[str, str] | None:

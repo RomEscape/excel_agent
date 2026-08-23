@@ -3591,3 +3591,74 @@ class TestColorVocabularyHasOneSource:
 
         assert color_hex("형광연두") == ""
         assert color_hex("#1E6B4F") == "#1E6B4F"
+
+
+class TestAggregateVocabularyHasOneSource:
+    """집계 낱말 사전이 갈라져 `개수`가 경로마다 다른 함수였다.
+
+    2026-08-24 실측:
+
+        낱말    라우터   에이전트   바인더/보정
+        개수    COUNT    COUNT      **COUNTA**
+
+    `COUNT`와 `COUNTA`는 **다른 답을 낸다** — COUNT는 숫자만 세므로 글자가 든 열에서
+    0이다. "상태 개수"를 어느 경로가 처리하느냐로 답이 달라졌다.
+    테스트는 일관되게 COUNTA를 기대하므로 그쪽으로 통일했다.
+    """
+
+    @pytest.mark.parametrize("word", ["개수", "건수", "카운트", "count"])
+    def test_counting_words_mean_counta(self, word: str) -> None:
+        from office_claw_sidecar.routers.excel_live import _BARE_AGGREGATE_FUNC
+        from office_claw_sidecar.services.aggregate_lexicon import aggregate_func
+        from office_claw_sidecar.services.excel_live_agent import _build_formula_from_function
+
+        assert aggregate_func(word) == "COUNTA"
+        assert _BARE_AGGREGATE_FUNC.get(word) == "COUNTA"
+        assert _build_formula_from_function(word, "A2:A9") == "=COUNTA(A2:A9)"
+
+    @pytest.mark.parametrize(
+        ("word", "func"),
+        [("합계", "SUM"), ("총합계", "SUM"), ("소계", "SUM"), ("평균", "AVERAGE"),
+         ("최대", "MAX"), ("최솟값", "MIN"), ("avg", "AVERAGE")],
+    )
+    def test_the_table_is_shared(self, word: str, func: str) -> None:
+        from office_claw_sidecar.routers.excel_live import _BARE_AGGREGATE_FUNC
+        from office_claw_sidecar.services.aggregate_lexicon import AGG_FUNC, aggregate_func
+
+        assert aggregate_func(word) == func
+        assert _BARE_AGGREGATE_FUNC is AGG_FUNC
+
+    def test_the_pattern_is_built_from_the_table(self) -> None:
+        """낱말 목록과 변환표가 따로면 어긋난다 — 색 쪽에서 실제 사고가 났다."""
+        from office_claw_sidecar.services.aggregate_lexicon import AGG_FUNC, AGG_WORD_PATTERN, aggregate_func
+
+        for word in AGG_FUNC:
+            match = AGG_WORD_PATTERN.fullmatch(word)
+            assert match is not None, word
+            assert aggregate_func(match.group(0)), word
+
+    def test_longer_words_win(self) -> None:
+        """"총합계"가 "총합"으로 잘리면 안 된다 — 한국어는 낱말 경계가 없다."""
+        from office_claw_sidecar.services.aggregate_lexicon import AGG_WORD_PATTERN
+
+        assert AGG_WORD_PATTERN.search("총합계").group(0) == "총합계"
+        assert AGG_WORD_PATTERN.search("최댓값").group(0) == "최댓값"
+
+    @pytest.mark.parametrize(
+        ("text", "want"),
+        [("합계!", "SUM"), ("평균 좀", "AVERAGE"), ("개수", "COUNTA"),
+         ("소계", "SUM"), ("ㅇㅇ 최대", "MAX")],
+    )
+    def test_bare_aggregate_words_still_route(self, text: str, want: str) -> None:
+        from office_claw_sidecar.routers.excel_live import _bare_aggregate_after_paste
+
+        result = _bare_aggregate_after_paste(text, "A1:F6")
+        assert result is not None, text
+        assert result[0] == want, (text, result)
+
+    def test_an_unknown_word_is_not_sum(self) -> None:
+        """모르는 낱말을 SUM으로 치면 엉뚱한 수식이 조용히 들어간다."""
+        from office_claw_sidecar.services.aggregate_lexicon import aggregate_func
+
+        assert aggregate_func("중앙값") == ""
+        assert aggregate_func("") == ""

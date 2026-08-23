@@ -13,6 +13,7 @@ import time
 from typing import Any
 
 from office_claw_sidecar.services import excel_observation
+from office_claw_sidecar.services.aggregate_lexicon import AGG_WORD_PATTERN, aggregate_func
 from office_claw_sidecar.services.color_lexicon import COLOR_TOKEN_PATTERN
 from office_claw_sidecar.services.decision_trace import (
     Long,
@@ -522,24 +523,13 @@ def _parse_literal_value(raw: str) -> Any:
 
 
 def _build_formula_from_function(func_word: str, source_range: str) -> str:
-    normalized = func_word.strip().lower()
-    func_map = {
-        "합계": "SUM",
-        "합": "SUM",
-        "sum": "SUM",
-        "평균": "AVERAGE",
-        "average": "AVERAGE",
-        "avg": "AVERAGE",
-        "최대": "MAX",
-        "max": "MAX",
-        "최소": "MIN",
-        "min": "MIN",
-        "개수": "COUNT",
-        "카운트": "COUNT",
-        "count": "COUNT",
-    }
-    fn = func_map.get(normalized, "SUM")
-    return f"={fn}({source_range})"
+    """집계 낱말 → 수식. 사전은 `aggregate_lexicon` **한 곳**이다.
+
+    예전엔 여기 표가 따로 있었고 `개수`를 COUNT로 옮겼다 — 바인더·보정 경로는
+    COUNTA였다. 둘은 **다른 답을 낸다**(COUNT는 글자가 든 열에서 0). 2026-08-24 통일.
+    호출 정규식도 같은 사전에서 만들므로 낱말이 어긋날 수 없다.
+    """
+    return f"={aggregate_func(func_word, default='SUM')}({source_range})"
 
 
 def _range_to_empty_payload(range_ref: str) -> tuple[str, list[list[Any]]]:
@@ -812,7 +802,8 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
 
     # 예: "C1에 A1:A10 합계 수식 넣어줘", "set sum formula in C1 from A1:A10"
     formula_template = re.search(
-        r"([a-z]+\d+)\s*에\s*([a-z]+\d+:[a-z]+\d+)\s*(합계|합|평균|average|avg|sum|최대|max|최소|min|개수|카운트|count).*(수식|formula|넣|적용|set)",
+        rf"([a-z]+\d+)\s*에\s*([a-z]+\d+:[a-z]+\d+)\s*"
+        rf"({AGG_WORD_PATTERN.pattern}).*(수식|formula|넣|적용|set)",
         lowered,
     )
     if formula_template:
