@@ -96,6 +96,22 @@ Figma에서는 10개 모두 `D3 · 대시보드 — 첫 실행 / 빈 상태 (160
 > `SettingsHub`에 그대로 남아 있고 `Cmd/Ctrl+K`로 진입한다. 허브를 지우면
 > 그 기능들의 진입 경로가 사라진다.
 
-## 대화목록
+## 대화목록 (`conversations`)
 
-`대화목록`(유형별/파일별 탭) 2프레임은 이번 PR 범위에 넣지 않았다.
+지난 AI 대화를 훑는 히스토리 화면
+([`ConversationHistoryPage.jsx`](../../apps/desktop/src/components/conversations/ConversationHistoryPage.jsx)).
+같은 폴더의 `ConversationsPage`(메신저 채널 모니터링)와 **다른 화면**이니 헷갈리지 말 것.
+
+- 상단 우측 `요일별` / `파일별` 토글 (프레임 Frame 311, 85×44 두 칸)
+- 그룹 머리는 `8월 18일(화)` 형식 — 사이드바의 `오늘/어제/지난 7일`과 규칙이 달라
+  [`lib/conversationGroups.js`](../../apps/desktop/src/lib/conversationGroups.js)가 따로 소유한다
+- 카드를 누르면 그 대화가 채팅 패널로 열린다
+
+> **`파일별` 보기는 안내 상태로 떨어진다.** 사이드카 `list_sessions`는
+> `{session_id, last_message_at, message_count, preview}`만 돌려주고 대화가 어떤
+> 파일을 다뤘는지 기록하지 않는다. 세션에 파일 필드가 생기면 `fileOf()` 하나만
+> 고치면 된다.
+>
+> 같은 이유로 카드에 프레임의 **대상 파일 · 툴 진행 스텝 · 결과 문장**이 없다.
+> 목록 API가 주지 않는 값이라 지어내지 않았다 — 카드를 눌러 대화를 열면 스레드에
+> 그대로 있다.

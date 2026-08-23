@@ -59,6 +59,9 @@ function isImeComposing(e) {
 const HomePage = lazy(() => import("@/components/home/HomePage"));
 const ActivityPage = lazy(() => import("@/components/activity/ActivityPage"));
 const WorkspacePage = lazy(() => import("@/components/workspace/WorkspacePage"));
+const ConversationHistoryPage = lazy(() =>
+  import("@/components/conversations/ConversationHistoryPage")
+);
 const ConversationsPage = lazy(() => import("@/components/conversations/ConversationsPage"));
 const SettingsHub = lazy(() => import("@/components/settings/SettingsHub"));
 const PreferencesPage = lazy(() => import("@/components/settings/PreferencesPage"));
@@ -74,7 +77,11 @@ const PAGE_MAP = {
   chat: HomePage,
   activity: ActivityPage,
   workspace: WorkspacePage,
-  conversations: ConversationsPage,
+  // 사이드바 `대화목록` — 지난 대화를 요일별/파일별로 훑는 화면.
+  conversations: ConversationHistoryPage,
+
+  // 메신저 채널 모니터링. 와이어프레임에 없어 내비에서는 빠졌고 Cmd+K로 들어간다.
+  messenger_monitor: ConversationsPage,
 
   // 사이드바 푸터의 `환경 설정` — 와이어프레임의 단일 페이지.
   preferences: PreferencesPage,

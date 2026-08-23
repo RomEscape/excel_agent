@@ -56,6 +56,7 @@
 | 온보딩 모델 목록 | — | `lib/modelCatalog.js`(모델 ID→제조사·추천, 순수) | — | `components/ui/wizard.jsx`의 `ModelSelectField` |
 | 작업 기록 | — | `lib/activityLog.js`(감사로그→표 행·KPI 4장·페이지 번호, 순수) | — | `components/activity/ActivityPage.jsx` (조합만) |
 | 글자 크기 | `store/fontScaleStore.js` | `lib/fontScale.js`(선택→루트 px, 순수) · `lib/fontScaleManager.js`(`<html>` font-size 적용) | — | `components/settings/PreferencesPage.jsx`의 폰트 크기 섹션 |
+| 대화 목록 | chatStore의 `sessions` | `lib/conversationGroups.js`(요일별·파일별 그룹, 순수) | — | `components/conversations/ConversationHistoryPage.jsx` (조합만) |
 
 새 기능을 추가할 때 이 표에 한 줄이 더 늘어나야 한다.
 
@@ -78,6 +79,12 @@
 > **채팅은 페이지가 아니라 본문 위의 390px 패널**이다(B-2/B-3). `Layout`이 소유하고 어느 페이지 위에든 뜬다. 크기는 도킹(본문을 밀어냄) ↔ 플로팅(본문 위에 겹침) 2단이고 규칙은 `lib/chatPanel.js`가 소유한다 — `reservesLayoutSpace()`가 false인데 본문 폭을 줄이면 오른쪽에 빈 띠가 생긴다.
 >
 > 내비에서 **`채팅` 항목이 빠졌다** — 사이드바는 `워크스페이스 · 작업 기록 · 대화목록 · 파일 목록` + 푸터 `도움말 · 환경 설정`이다. 대신 **패널 재진입 경로를 반드시 남길 것**: 우하단 FAB(패널이 닫혔고 홈이 아닐 때) + `Cmd/Ctrl+J`. 둘 다 지우면 패널을 한 번 닫은 사용자가 보던 대화로 돌아갈 길이 없다.
+>
+> **2026-08 워크스페이스 = 작업면 노트**: 내비 첫 항목 `워크스페이스`는 **새 대화를 열고 홈으로 가는 버튼**이다 — 그래서 항목 id가 라벨과 다르게 `chat`(=`HomePage`)이고, `NAV_ITEMS`의 `newChat` 플래그가 그 동작을 표시한다. 예전 `대화목록` 확장 안에 있던 **`+ 새 대화` 버튼은 없앴다**(그 자리로 올라온 것이니 되살리지 말 것). `대화목록` 확장은 이제 *이전* 대화로 돌아가는 경로만 맡는다.
+>
+> 그 결과 **내비에서 빠졌지만 살아 있는 화면이 셋**이다. 전부 `Cmd/Ctrl+K`가 유일한 진입 경로이므로 팔레트 항목을 지우면 기능이 코드에만 남는다 — `workspace`(`WorkspacePage`, 폴더 탐색·미리보기: `파일 목록`에 없는 기능이라 남겼다) · `messenger_monitor`(`ConversationsPage`, 메신저로 들어온 명령 모니터링) · `settings`(`SettingsHub`, 보안·자격증명·허용 범위·실행 기록).
+>
+> **`대화목록`(`conversations`)은 `ConversationHistoryPage`이지 `ConversationsPage`가 아니다.** 이름이 비슷하지만 전자는 지난 AI 대화를 요일별/파일별로 훑는 화면(와이어프레임 229:3237·229:3678), 후자는 메신저 채널 모니터링이다. **`파일별` 보기는 데이터가 없어 안내 상태로 떨어진다** — 사이드카 `list_sessions`가 `{session_id, last_message_at, message_count, preview}`만 주고 대화-파일 연결을 기록하지 않는다. 세션에 파일 필드가 생기면 `lib/conversationGroups.js`의 `fileOf()` 하나만 고치면 화면은 그대로 동작한다.
 >
 > **2026-08 대시보드 폐기 노트**: `대시보드`와 `작업 검색`은 **`작업 기록` 하나로 병합됐다**(페이지 키 `activity`, 스펙은 `design/desktop-shell/raw/v2/`). 리뷰 근거 두 가지 — (1) "차단과 보안 두 영역이 분리된 이유가 궁금하다. 보안 안에도 차단된 명령이 있어 정보가 중복된다" → 보안 카드를 없애고 `자동 마스킹`을 KPI 4번째 자리로 올렸다. (2) "작업 기록과 작업 검색을 병합" → 검색은 내비 확장이 아니라 표 헤더 입력창이 맡는다. **`승인 대기` KPI도 뺐다** — 모바일은 조회 전용이고 데스크톱 앱으로 명령하면 "자리를 비운 사이"가 성립하지 않아 큐가 쌓이지 않는다는 결론이다. 되살리려면 그 전제부터 다시 확인할 것.
 >

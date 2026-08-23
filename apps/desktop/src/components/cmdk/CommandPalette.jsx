@@ -84,9 +84,12 @@ const buildCommands = ({ tgConfigured, slackConfigured, discordConfigured } = {}
   // 그룹: 페이지
   { id: "nav.home", group: "페이지", label: "홈", hint: "문서 목록 / 김대리에게 명령", icon: Bot, run: ({ setCurrentPage, close }) => { setCurrentPage("chat"); close(); } },
   { id: "nav.activity", group: "페이지", label: "작업 기록", hint: "작업 요약 / 최근 활동 검색", icon: TextSearch, run: ({ setCurrentPage, close }) => { setCurrentPage("activity"); close(); } },
-  { id: "nav.workspace", group: "페이지", label: "워크스페이스", hint: "파일 탐색기", icon: FolderOpen, run: ({ setCurrentPage, close }) => { setCurrentPage("workspace"); close(); } },
-  { id: "nav.conversations", group: "페이지", label: "대화", hint: "메신저 모니터링", icon: MessagesSquare, run: ({ setCurrentPage, close }) => { setCurrentPage("conversations"); close(); } },
-  { id: "nav.settings", group: "페이지", label: "설정", hint: "통합 설정 허브", icon: SettingsIcon, run: ({ setCurrentPage, close }) => { setCurrentPage("settings"); close(); } },
+  { id: "nav.conversations", group: "페이지", label: "대화목록", hint: "지난 대화 요일별 / 파일별", icon: MessagesSquare, run: ({ setCurrentPage, close }) => { setCurrentPage("conversations"); close(); } },
+  { id: "nav.preferences", group: "페이지", label: "환경 설정", hint: "요금제 / 디바이스 / 테마 / 글자 크기", icon: SettingsIcon, run: ({ setCurrentPage, close }) => { setCurrentPage("preferences"); close(); } },
+  // 아래 둘은 최종안 사이드바에서 빠진 화면이다 — 여기가 유일한 진입 경로이므로 지우지 말 것.
+  { id: "nav.workspace", group: "페이지", label: "파일 탐색기", hint: "폴더 탐색 / 미리보기 (내비에 없음)", icon: FolderOpen, run: ({ setCurrentPage, close }) => { setCurrentPage("workspace"); close(); } },
+  { id: "nav.messenger_monitor", group: "페이지", label: "메신저 모니터링", hint: "채널로 들어온 명령 (내비에 없음)", icon: MessagesSquare, run: ({ setCurrentPage, close }) => { setCurrentPage("messenger_monitor"); close(); } },
+  { id: "nav.settings", group: "페이지", label: "설정 허브", hint: "보안 / 자격증명 / 실행 기록", icon: SettingsIcon, run: ({ setCurrentPage, close }) => { setCurrentPage("settings"); close(); } },
 
   // 그룹: 설정
   { id: "settings.guide", group: "설정", label: "로컬 AI 설정", icon: Bot, run: ({ setCurrentPage, close }) => { setCurrentPage("guide"); close(); } },

@@ -17,9 +17,13 @@
  *     패널이라(lib/chatPanel.js) 어느 페이지에서든 떠 있고, 홈 자체가 진입점이다.
  *     "보던 대화로 돌아올 경로"는 그래서 사라지지 않는다.
  *
- * 와이어프레임에 없지만 남긴 것: `대화목록`을 펼쳤을 때의 `+` 새 대화 버튼.
- * 최종안 사이드바에는 새 대화 진입점이 아예 없는데, 홈으로 나가야만 새 대화를
- * 시작할 수 있으면 대화 중에 새 주제를 꺼내는 동선이 끊긴다.
+ * `+ 새 대화` 버튼은 없앴다. 새 대화 진입점은 내비 첫 항목 `워크스페이스`다 —
+ * 누르면 새 세션을 열고 홈으로 간다. 그래서 그 항목의 id는 라벨과 다르게
+ * `chat`(=HomePage)이고, `대화목록` 확장은 *이전* 대화로 돌아가는 경로만 맡는다.
+ *
+ * 파일 탐색기(`WorkspacePage`, 페이지 키 `workspace`)는 내비에서 빠졌다.
+ * 폴더 탐색·텍스트 미리보기가 `파일 목록`에는 없어서 지우지 않고 두었고,
+ * 진입은 `Cmd/Ctrl+K` 명령 팔레트가 맡는다.
  *
  * 접힘(Cmd/Ctrl+B)은 통째 숨김이 아니라 64px 아이콘 레일이다 — 확장 목록만
  * 접히고 내비는 남는다. 통째로 없애면 접는 순간 모든 페이지 진입 경로를 잃는다.
@@ -35,7 +39,6 @@ import {
   MessageCircle,
   PanelLeftClose,
   PanelLeftOpen,
-  Plus,
   Settings as SettingsIcon,
   SquarePen,
   TextSearch,
@@ -67,7 +70,10 @@ import useDocumentStore from "@/store/documentStore";
  * `expandable`인 항목은 클릭 시 페이지 이동이 아니라 아래 패널을 펼친다.
  */
 const NAV_ITEMS = [
-  { id: "workspace", label: "워크스페이스", icon: SquarePen },
+  // `워크스페이스`가 곧 작업면이다 — 누르면 새 대화를 열고 홈(`chat` = HomePage)으로
+  // 간다. 예전 `대화목록` 확장 안에 있던 `+ 새 대화`가 이 자리로 올라온 것이고,
+  // 그래서 항목 id가 라벨과 다르게 `chat`이다.
+  { id: "chat", label: "워크스페이스", icon: SquarePen, newChat: true },
   { id: "activity", label: "작업 기록", icon: TextSearch },
   { id: "conversations", label: "대화목록", icon: MessageCircle, expandable: true },
   { id: "files", label: "파일 목록", icon: FileText, expandable: true },
@@ -255,6 +261,10 @@ export default function ConversationSidebar() {
       toggleSection(item.id);
       return;
     }
+    if (item.newChat) {
+      handleNewChat();
+      return;
+    }
     setCurrentPage(item.id);
   };
 
@@ -380,14 +390,8 @@ export default function ConversationSidebar() {
               {/* 대화목록 확장 — 오늘 / 어제 / 지난 7일 그룹 */}
               {item.id === "conversations" && !collapsed && openSection.conversations && (
                 <div className="flex flex-col gap-1 pb-2 pl-3 pr-1 pt-1.5">
-                  <button
-                    type="button"
-                    onClick={handleNewChat}
-                    className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-accent"
-                  >
-                    <Plus className="h-3.5 w-3.5" />새 대화
-                  </button>
-
+                  {/* `+ 새 대화`는 여기 없다 — 내비의 `워크스페이스`가 그 역할을
+                      가져갔다. 이 목록은 *이전* 대화로 돌아가는 경로만 맡는다. */}
                   {!sessionsAvailable ? (
                     <p className="px-2 py-3 text-xs text-muted-foreground">
                       대화 기록을 사용할 수 없습니다.
