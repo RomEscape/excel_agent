@@ -49,15 +49,17 @@ function SummaryCard({ label, hint, value, loading }) {
     <Card>
       <CardContent className="flex h-[132px] flex-col justify-between p-5">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-foreground">{label}</p>
-          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{hint}</p>
+          {/* 프레임: 라벨 18px w500 #3D443C · 보조 14px w400 #B2B9B0 */}
+          <p className="truncate text-lg font-medium text-ink-body">{label}</p>
+          <p className="mt-1 line-clamp-2 text-sm text-ink-faint">{hint}</p>
         </div>
         {loading ? (
           <div className="h-8 w-20 animate-pulse rounded bg-muted" />
         ) : (
-          <p className="text-2xl font-bold tabular-nums">
+          /* 프레임: 값 24px w600 #0C1909 */
+          <p className="text-2xl font-semibold tabular-nums text-foreground">
             {value.toLocaleString()}
-            <span className="ml-1 text-base font-medium text-muted-foreground">개</span>
+            <span className="ml-1 text-base font-normal text-ink-faint">개</span>
           </p>
         )}
       </CardContent>
@@ -71,7 +73,8 @@ function StatusBadge({ status }) {
   return (
     <span
       className={cn(
-        "inline-flex h-8 w-20 items-center justify-center rounded-md text-xs font-semibold",
+        // 프레임: 80×32, 글자 12px w400
+        "inline-flex h-8 w-20 items-center justify-center rounded-md text-xs font-normal",
         token.className
       )}
     >
@@ -90,7 +93,8 @@ function TableHeader({ sort, onSort }) {
           type="button"
           onClick={() => onSort(col.id)}
           className={cn(
-            "flex items-center gap-1 text-left text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground",
+            // 프레임: 헤더 14px w400 #0C1909 (굵게 아님)
+            "flex items-center gap-1 text-left text-sm font-normal text-foreground transition-colors hover:text-primary",
             col.className
           )}
           aria-label={`${col.label} 기준 정렬`}
@@ -98,8 +102,8 @@ function TableHeader({ sort, onSort }) {
           {col.label}
           <ChevronDown
             className={cn(
-              "h-3.5 w-3.5 shrink-0 transition-transform",
-              sort.key === col.id ? "text-foreground" : "opacity-50",
+              "h-3.5 w-3.5 shrink-0 text-ink-subtle transition-transform",
+              sort.key === col.id ? "text-foreground" : "opacity-70",
               sort.key === col.id && sort.desc && "rotate-180"
             )}
           />
@@ -113,17 +117,16 @@ function TableHeader({ sort, onSort }) {
 function ActivityRow({ row }) {
   return (
     <div className="flex items-center gap-4 border-b border-border/60 px-4 py-2.5 transition-colors last:border-b-0 hover:bg-accent/40">
-      <div className="w-[104px] shrink-0 truncate text-sm text-foreground">{row.device}</div>
+      {/* 프레임: 본문 16px w400 #0C1909 · 둘째 줄 14px #9AA298 · 시간 14px #9AA298 */}
+      <div className="w-[104px] shrink-0 truncate text-base text-foreground">{row.device}</div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-foreground">{row.command}</p>
-        {row.file && (
-          <p className="truncate text-xs text-muted-foreground">{row.file}</p>
-        )}
+        <p className="truncate text-base text-foreground">{row.command}</p>
+        {row.file && <p className="truncate text-sm text-ink-subtle">{row.file}</p>}
       </div>
       <div className="w-[100px] shrink-0">
         <StatusBadge status={row.status} />
       </div>
-      <div className="w-[100px] shrink-0 text-sm text-muted-foreground">{row.time}</div>
+      <div className="w-[100px] shrink-0 text-sm text-ink-subtle">{row.time}</div>
     </div>
   );
 }
@@ -162,9 +165,10 @@ function Pagination({ page, total, onChange }) {
             aria-current={item === page ? "page" : undefined}
             className={cn(
               "flex h-8 w-8 items-center justify-center rounded-md text-sm transition-colors",
+              // 프레임: 비활성 번호 14px #CACFC7
               item === page
                 ? "bg-accent font-semibold text-accent-foreground"
-                : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+                : "text-ink-disabled hover:bg-accent/60 hover:text-foreground"
             )}
           >
             {item}
@@ -237,12 +241,13 @@ export default function ActivityPage() {
       {/* 헤더 — 와이어프레임의 tabler:input-search + 타이틀 */}
       <div className="flex items-center gap-2">
         <TextSearch className="h-6 w-6 text-foreground" />
-        <h1 className="text-xl font-bold">작업 기록</h1>
+        {/* 프레임: 타이틀 24px w600 #0C1909 */}
+        <h1 className="text-2xl font-semibold">작업 기록</h1>
       </div>
 
       {/* 작업 요약 — KPI 4장 */}
       <section>
-        <h2 className="mb-3 text-sm font-semibold text-muted-foreground">작업 요약</h2>
+        <h2 className="mb-3 text-lg font-medium text-ink-body">작업 요약</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {summary.map((card) => (
             <SummaryCard key={card.id} {...card} loading={loading} />
@@ -253,16 +258,17 @@ export default function ActivityPage() {
       {/* 최근 활동 — 검색 + 표 + 페이지네이션 */}
       <section>
         <div className="mb-3 flex items-center justify-between gap-4">
-          <h2 className="text-sm font-semibold text-muted-foreground">최근 활동</h2>
+          <h2 className="text-lg font-medium text-ink-body">최근 활동</h2>
+          {/* 프레임: 검색 358×38, 글자 16px, placeholder #9AA298 */}
           <div className="relative w-[358px] max-w-full">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="검색어를 입력해주세요."
               aria-label="작업 기록 검색"
-              className="h-9 w-full rounded-md border border-border bg-card pl-3 pr-9 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+              className="h-[38px] w-full rounded-md border border-border bg-card pl-3 pr-9 text-base text-foreground placeholder:text-ink-subtle focus:border-primary focus:outline-none"
             />
-            <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-subtle" />
           </div>
         </div>
 
@@ -282,10 +288,11 @@ export default function ActivityPage() {
             </div>
           ) : rows.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-1.5 py-24 text-center">
-              <p className="text-sm font-semibold text-foreground">
+              {/* 프레임(229:4527): 제목 16px · 설명 12px */}
+              <p className="text-base text-foreground">
                 {query.trim() ? "검색 결과가 없습니다" : "아직 활동 기록이 없습니다"}
               </p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-ink-faint">
                 {query.trim()
                   ? "다른 검색어로 찾아보세요."
                   : "김대리에게 첫 명령을 내리면 여기에 모든 작업이 기록됩니다."}

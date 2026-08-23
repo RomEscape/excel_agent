@@ -57,10 +57,11 @@ function Section({ title, description, children, action }) {
     <section className="rounded-xl border border-border bg-card p-5">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-          {description && (
-            <p className="mt-1 text-xs text-muted-foreground">{description}</p>
-          )}
+          {/* 프레임: 섹션 라벨 14px w400 #3D443C · 설명 14px w400 #B2B9B0.
+              (`폰트 크기`만 18px w500인데 프레임 안에서도 이 한 장만 달라
+               작업 흔적으로 보고 나머지에 맞췄다.) */}
+          <h2 className="text-sm font-normal text-ink-body">{title}</h2>
+          {description && <p className="mt-1 text-sm text-ink-faint">{description}</p>}
         </div>
         {action}
       </div>
@@ -81,10 +82,11 @@ function PillOption({ icon: Icon, label, active, onClick }) {
       aria-checked={active}
       onClick={onClick}
       className={cn(
-        "flex items-center gap-2 rounded-lg border px-3.5 py-2 text-sm transition-colors",
+        // 프레임: 16px w500. 선택 #249000(≈--primary) on 연초록, 미선택 #B2B9B0.
+        "flex items-center gap-2 rounded-lg border px-3.5 py-2 text-base font-medium transition-colors",
         active
-          ? "border-primary/40 bg-accent font-semibold text-accent-foreground"
-          : "border-border font-medium text-foreground/75 hover:bg-accent/50 hover:text-foreground"
+          ? "border-primary/40 bg-accent text-primary"
+          : "border-border text-ink-faint hover:bg-accent/50 hover:text-foreground"
       )}
     >
       {Icon && <Icon className="h-4 w-4 shrink-0" />}
@@ -127,7 +129,8 @@ export default function PreferencesPage() {
 
   return (
     <div className="mx-auto max-w-[1146px] space-y-6">
-      <h1 className="text-xl font-bold">환경 설정</h1>
+      {/* 프레임: 타이틀 24px w600 #0C1909 */}
+      <h1 className="text-2xl font-semibold">환경 설정</h1>
 
       <div className="space-y-4">
         {/* 1. 내 요금제 ------------------------------------------------------ */}
@@ -135,7 +138,8 @@ export default function PreferencesPage() {
           title="내 요금제"
           action={
             <div className="flex shrink-0 items-center gap-3">
-              <span className="text-lg font-bold">Free</span>
+              {/* 프레임: 22px w600 */}
+              <span className="text-[1.375rem] font-semibold leading-tight">Free</span>
               <Button size="sm" disabled title="요금제 기능은 준비 중입니다">
                 업그레이드
               </Button>
@@ -174,12 +178,11 @@ export default function PreferencesPage() {
                   <Smartphone className="h-5 w-5 text-muted-foreground" />
                 </div>
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">모바일 기기</p>
+                  {/* 프레임: 기기명 16px w500 #0C1909 · 부제 12px w400 #B2B9B0 */}
+                  <p className="truncate text-base font-medium text-foreground">모바일 기기</p>
                   {/* 기기 이름·접속 위치는 릴레이가 주지 않는다. 지어내지 않고
                       실제로 아는 값(중계 주소)만 보여준다. */}
-                  <p className="truncate text-xs text-muted-foreground">
-                    {relayUrl || "연결됨"}
-                  </p>
+                  <p className="truncate text-xs text-ink-faint">{relayUrl || "연결됨"}</p>
                 </div>
               </div>
               <button

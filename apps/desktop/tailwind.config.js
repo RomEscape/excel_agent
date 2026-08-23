@@ -42,6 +42,21 @@ export default {
           foreground: "hsl(var(--card-foreground))",
         },
         // 브랜드 원값 — 글자를 얹지 않는 자리 전용 (대비 사유는 index.css 주석 참조)
+        // 텍스트 회색 계단 — foreground/muted-foreground 사이를 메운다.
+        // `text-` 유틸과 이름이 겹치지 않도록 ink 네임스페이스를 쓴다.
+        ink: {
+          body: "hsl(var(--ink-body))",
+          subtle: "hsl(var(--ink-subtle))",
+          faint: "hsl(var(--ink-faint))",
+          disabled: "hsl(var(--ink-disabled))",
+        },
+        // 작업 기록 상태 배지
+        status: {
+          done: "hsl(var(--status-done))",
+          "done-bg": "hsl(var(--status-done-bg))",
+          blocked: "hsl(var(--status-blocked))",
+          "blocked-bg": "hsl(var(--status-blocked-bg))",
+        },
         brand: {
           DEFAULT: "hsl(var(--brand))",
           step: "hsl(var(--brand-step))",

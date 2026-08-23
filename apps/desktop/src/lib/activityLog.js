@@ -14,26 +14,19 @@
 export const ACTIVITY_PAGE_SIZE = 20;
 
 /**
- * 상태 토큰 — 와이어프레임의 Button 인스턴스 3종.
+ * 상태 토큰 — 와이어프레임의 Button 인스턴스.
  *
- * 색을 여기에 두는 이유: 배지는 `완료`(연초록) / `차단`(연분홍)처럼 의미가 색에
- * 묶여 있어서 컴포넌트마다 클래스를 다시 쓰면 금방 어긋난다. 다크 대응은
- * `index.css`의 토큰이 아니라 여기 클래스의 `dark:` 변형이 맡는다 —
- * 이 배지 색은 TOKENS.md의 지면 5색에 없던 신규 값이다.
+ * 색을 여기 모아두는 이유: 배지는 `완료`(연초록) / `차단`(연분홍)처럼 의미가
+ * 색에 묶여 있어서 컴포넌트마다 클래스를 다시 쓰면 금방 어긋난다.
+ *
+ * 실제 색값은 `index.css`의 `--status-*` 토큰이 갖는다(라이트/다크 양쪽 정의).
+ * 프레임 값은 완료 `#2DB400` on `#ECF8E8`, 차단 `#D23819` on `#F8D1C9`.
+ * `대기`는 프레임에 없는 상태라 중립 토큰을 쓴다.
  */
 export const ACTIVITY_STATUS = Object.freeze({
-  done: {
-    label: "완료",
-    className: "bg-[#ECF8E8] text-[#1B6C00] dark:bg-[#1B3314] dark:text-[#8FE07A]",
-  },
-  blocked: {
-    label: "차단",
-    className: "bg-[#F8D1C9] text-[#8C2A17] dark:bg-[#3A1810] dark:text-[#F0A08E]",
-  },
-  pending: {
-    label: "대기",
-    className: "bg-[#FBF0D3] text-[#7A5A00] dark:bg-[#33290D] dark:text-[#E8C766]",
-  },
+  done: { label: "완료", className: "bg-status-done-bg text-status-done" },
+  blocked: { label: "차단", className: "bg-status-blocked-bg text-status-blocked" },
+  pending: { label: "대기", className: "bg-muted text-muted-foreground" },
 });
 
 /** 감사 로그의 source 값 → 와이어프레임의 디바이스 라벨. */

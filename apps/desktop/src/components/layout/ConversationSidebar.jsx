@@ -136,11 +136,12 @@ function NavButton({ icon: Icon, label, active, collapsed, expanded, expandable,
         aria-expanded={expandable ? expanded : undefined}
         aria-label={collapsed ? label : undefined}
         className={cn(
-          "flex h-11 w-full items-center rounded-lg text-sm transition-colors",
+          // 프레임: 내비 16px w400. 활성 초록 글자 + 연초록 지면, 비활성 #3D443C.
+          "flex h-11 w-full items-center rounded-lg text-base font-normal transition-colors",
           collapsed ? "justify-center px-0" : "gap-3 px-3",
           active
-            ? "bg-accent font-semibold text-accent-foreground"
-            : "font-medium text-foreground/75 hover:bg-accent/60 hover:text-foreground"
+            ? "bg-accent font-medium text-primary"
+            : "text-ink-body hover:bg-accent/60 hover:text-foreground"
         )}
       >
         <Icon className="h-4 w-4 shrink-0" />
@@ -362,11 +363,12 @@ export default function ConversationSidebar() {
                         type="button"
                         onClick={() => openDocument(file.path)}
                         title={file.name}
-                        className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs text-foreground/75 transition-colors hover:bg-accent hover:text-foreground"
+                        // 프레임: 파일명 16px #6B7468 · 시간 14px #9AA298
+                        className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-base text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                       >
-                        <CornerDownRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <CornerDownRight className="h-4 w-4 shrink-0 text-ink-subtle" />
                         <span className="min-w-0 flex-1 truncate">{file.name}</span>
-                        <span className="shrink-0 text-[11px] text-muted-foreground">
+                        <span className="shrink-0 text-sm text-ink-subtle">
                           {relativeDay(file.modified)}
                         </span>
                       </button>
