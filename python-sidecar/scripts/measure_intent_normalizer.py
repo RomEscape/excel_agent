@@ -26,35 +26,12 @@ from office_claw_sidecar.services.llm_service import get_llm_service
 
 HEADERS = ["날짜", "지역", "담당자", "금액"]
 
-PROMPT = """너는 Excel 명령 해석기다. 사용자 문장을 아래 JSON으로만 번역해라.
-
-시트 머리글: {headers}
-
-JSON 형식:
-{{"task": "<작업>", "range": "<문장에 적힌 범위 그대로, 없으면 null>",
-  "column": "<대상 열의 머리글 이름, 없으면 null>", "option": "<핵심 옵션, 없으면 null>"}}
-
-task 목록: fill_color(배경색), font(글자 서식·색), number_format(표시 형식),
-formula(수식·계산), sort(정렬), filter(필터), dedupe(중복 제거),
-clear_values(값 비우기), reset_all(서식까지 초기화), create_table(표 생성),
-pivot(집계표·피벗), chart(차트), write_value(값 입력), find_replace(찾아 바꾸기),
-read(조회), other(그 외)
-
-규칙:
-- 범위·좌표를 **만들어내지 마라.** 문장에 적힌 것만 옮겨 적는다.
-- 열은 좌표가 아니라 머리글 이름으로 가리킨다.
-- option: 색 이름, asc/desc, 필터 값, SUM/AVERAGE/MAX/MIN/COUNT, 새 값 등 하나.
-
-예시:
-문장: "B2:B9 파란색으로 칠해줘"
-{{"task": "fill_color", "range": "B2:B9", "column": null, "option": "파란색"}}
-문장: "매출 높은 순서로 보여줘"
-{{"task": "sort", "range": null, "column": "금액", "option": "desc"}}
-문장: "G1에 담당자별 평균 수식 넣어줘"
-{{"task": "formula", "range": "G1", "column": "금액", "option": "AVERAGE"}}
-
-문장: "{message}"
-JSON:"""
+# 프롬프트는 **프로덕션 것 하나뿐**이다. 예전에는 여기 복제본이 있었고, 거기엔
+# `highlight`가 통째로 빠져 있었다(16종). 그래서 이 스크립트가 재던 100%/96%는
+# 실제로 배포되는 프롬프트가 아닌 것의 점수였다(2026-08-23 확인).
+from office_claw_sidecar.services.excel_intent_normalizer import (
+    _PROMPT as PROMPT,
+)
 
 
 def _norm(v) -> str:

@@ -2983,3 +2983,90 @@ class TestAWordInAnotherSheetsHeadersDoesNotStealTheTarget:
             params, action=action, message="시트 하나 만들어줘", digest=self._digest(), active="대시보드"
         ) == []
         assert params["sheet_name"] == sheet
+
+
+class TestTheTaskListHasOneSource:
+    """작업 종류 목록이 프롬프트·집합·스키마 셋으로 흩어져 있었다.
+
+    2026-08-23 확인: `scripts/measure_intent_normalizer.py`에 **네 번째 복제본**이
+    있었고 거기엔 `highlight`가 통째로 빠져 있었다(16종). 그래서 로드맵의 근거였던
+    "정규화 100%/96%"는 **배포되는 프롬프트가 아닌 것**의 점수였다.
+    같은 어휘를 두 곳에 두면 반드시 갈라진다 — 목록의 원본은 프롬프트 하나뿐이다.
+    """
+
+    EXPECTED = (
+        "fill_color", "font", "highlight", "number_format", "formula", "sort", "filter",
+        "dedupe", "clear_values", "reset_all", "create_table", "pivot", "chart",
+        "write_value", "find_replace", "read", "other",
+    )
+
+    def test_the_names_come_from_the_prompt(self) -> None:
+        from office_claw_sidecar.services.excel_intent_normalizer import TASK_NAMES
+
+        assert TASK_NAMES == self.EXPECTED, "프롬프트의 task 목록이 바뀌었다"
+
+    def test_the_schema_enum_follows(self) -> None:
+        from office_claw_sidecar.services.excel_intent_normalizer import (
+            INTENT_JSON_SCHEMA,
+            TASK_NAMES,
+        )
+
+        assert INTENT_JSON_SCHEMA["properties"]["task"]["enum"] == sorted(TASK_NAMES)
+
+    def test_a_dropped_task_is_caught(self) -> None:
+        """프롬프트에서 종류가 빠지면 파생 집합도 빠진다 — 조용히 넘어가지 않는다."""
+        from office_claw_sidecar.services.excel_intent_normalizer import (
+            _PROMPT,
+            _tasks_declared_in_prompt,
+        )
+
+        # 이 항목은 줄 끝이라 뒤가 공백이 아니라 개행이다.
+        crippled = _PROMPT.replace("highlight(조건에 맞는 셀만 강조),", "")
+        assert "highlight" not in _tasks_declared_in_prompt(crippled)
+        # 모양이 통째로 바뀌면 빈 집합이 아니라 예외다.
+        with pytest.raises(RuntimeError):
+            _tasks_declared_in_prompt("task 목록 없음")
+
+    def test_the_measure_script_does_not_keep_its_own_copy(self) -> None:
+        """계측이 프로덕션과 다른 프롬프트를 재면 그 숫자는 아무 뜻이 없다."""
+        import pathlib
+
+        src = pathlib.Path(__file__).resolve().parent.parent / "scripts/measure_intent_normalizer.py"
+        text = src.read_text(encoding="utf-8")
+        assert "excel_intent_normalizer import" in text
+        assert 'PROMPT = """' not in text, "프롬프트 복제본이 되살아났다"
+
+
+class TestIntentToPlanCoverageIsMeasurable:
+    """`intent_to_plan`을 호출해 본 스크립트가 **한 건도 없었다**(2026-08-23 grep 0건).
+
+    그래서 "통역이 뜻은 맞게 뽑았는데 계획으로 못 옮긴 비율"을 잰 숫자가 없었고,
+    받아 적기를 넓히는 작업의 전후를 비교할 근거가 없었다. 하네스는 LLM을 안 부른다.
+    """
+
+    def _rows(self):
+        import importlib.util
+        import pathlib
+
+        path = pathlib.Path(__file__).resolve().parent.parent / "scripts/measure_intent_coverage.py"
+        spec = importlib.util.spec_from_file_location("_cov", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.run()
+
+    def test_the_harness_runs_without_an_llm(self) -> None:
+        rows = self._rows()
+        assert len(rows) >= 20
+        assert not [r for r in rows if r["error"]], [r for r in rows if r["error"]]
+
+    def test_the_known_gaps_are_still_gaps(self) -> None:
+        """지금 떨어지는 모양들. **고치면 이 핀이 실패한다** — 그때 핀을 옮긴다."""
+        rows = {(r["task"], r["note"]): r["mapped"] for r in self._rows()}
+        assert rows[("write_value", "범위 브로드캐스트")] is False
+        assert rows[("write_value", "열 전체")] is False
+        assert rows[("font", "굵게 — 색 아니면 매핑 실패")] is False
+        assert rows[("highlight", "조건부 강조")] is False
+        # 반대로 이미 되는 것들이 조용히 죽지 않았는지도 본다.
+        assert rows[("fill_color", "범위+색")] is True
+        assert rows[("write_value", "한 칸 쓰기")] is True
+        assert rows[("sort", "내림차순")] is True

@@ -66,11 +66,25 @@ highlight**다.
 문장: "{message}"
 JSON:"""
 
-_KNOWN_TASKS = {
-    "fill_color", "font", "highlight", "number_format", "formula", "sort", "filter",
-    "dedupe", "clear_values", "reset_all", "create_table", "pivot", "chart",
-    "write_value", "find_replace", "read", "other",
-}
+def _tasks_declared_in_prompt(prompt: str) -> tuple[str, ...]:
+    """프롬프트의 `task 목록:` 줄에서 이름을 뽑는다 — **목록의 원본은 프롬프트 하나뿐**이다.
+
+    같은 어휘를 두 곳에 두면 반드시 갈라진다(2026-08-20에 여러 번 데었다). 실제로
+    `scripts/measure_intent_normalizer.py`에는 프롬프트 복제본이 있었고, 거기엔
+    `highlight`가 통째로 빠져 있었다 — 그래서 계측이 프로덕션과 **다른 프롬프트**를
+    재고 있었다(2026-08-23 확인). 집합을 손으로 또 적지 않고 여기서 파생시킨다.
+
+    프롬프트를 고쳐 종류가 늘거나 줄면 이 집합도 따라 움직이고, 아래 회귀 핀이
+    "17종이 맞는가"를 커밋마다 확인한다.
+    """
+    block = re.search(r"task 목록:(.+?)\n\n", prompt, re.DOTALL)
+    if not block:  # 프롬프트 모양이 바뀌면 조용히 비는 것보다 터지는 편이 낫다
+        raise RuntimeError("프롬프트에서 'task 목록:'을 찾지 못했습니다")
+    return tuple(dict.fromkeys(re.findall(r"([a-z_]+)\s*\(", block.group(1))))
+
+
+TASK_NAMES: tuple[str, ...] = _tasks_declared_in_prompt(_PROMPT)
+_KNOWN_TASKS = set(TASK_NAMES)
 
 # 스키마 강제 디코딩(2026-08-18 로드맵 1-1). task를 enum으로 선언하면 어휘 밖
 # 액션 발명·형식 붕괴가 **토큰 수준에서** 불가능해진다 — 이 머신·ax4-light에서
