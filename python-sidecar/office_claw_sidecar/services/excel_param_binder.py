@@ -886,6 +886,26 @@ def _range_shape(ref: str) -> tuple[str, int, int] | None:
     )
 
 
+#: "1,000"처럼 **천 단위 구분자만** 든 숫자. 값 나열이 아니다.
+_THOUSANDS_ONLY = re.compile(r"-?\d{1,3}(?:,\d{3})+(?:\.\d+)?")
+#: 한 낱말을 이보다 넓게 퍼뜨리지 않는다 — 넓을수록 되돌리기 어렵다.
+_BROADCAST_CELL_LIMIT = 2000
+
+
+def _is_broadcastable(value: Any) -> bool:
+    """이 값을 범위 전체에 채워도 되는가. **띄어쓰기가 있으면 안 된다.**
+
+    2026-08-23 자체 검토에서 잡았다: 처음엔 값 하나면 무조건 퍼뜨리게 했더니
+    "F7:G9에 **가장 큰 매출 값** 넣어줘"의 지시문이 여섯 칸에 통째로 써졌다 —
+    고치려던 것(한 칸만 써짐)보다 나쁜 결과다. 채울 값은 `0`·`미정`·`대기`처럼
+    한 덩어리이고, 지시문은 거의 항상 띄어 쓴다. 여러 낱말이면 예전대로 한 칸만 쓴다.
+    """
+    if isinstance(value, (int, float)):
+        return True
+    text = str(value or "").strip()
+    return bool(text) and not re.search(r"\s", text) and len(text) <= 20
+
+
 def _shape_write_values(raw: str, row_count: int, col_count: int) -> list[list[Any]]:
     """원문의 값 부분을 대상 범위 모양에 맞춘 2차원 배열로 만든다.
 
@@ -897,15 +917,32 @@ def _shape_write_values(raw: str, row_count: int, col_count: int) -> list[list[A
         literal = _coerce_literal(raw)
         return [[literal]] if literal != "" else []
 
-    parts = [_coerce_literal(part) for part in raw.split(",")]
-    parts = [part for part in parts if part != ""]
+    rows = max(int(row_count), 1)
+    cols = max(int(col_count), 1)
+    text = str(raw or "").strip()
+    # "1,000"은 값 둘이 아니라 천 단위 구분자다 — 범위에서도 마찬가지다.
+    # 이걸 쪼개면 A2에 1, A3에 0이 써진다(2026-08-23 확인).
+    if _THOUSANDS_ONLY.fullmatch(text):
+        parts: list[Any] = [_coerce_literal(text)]
+    else:
+        parts = [_coerce_literal(part) for part in text.split(",")]
+        parts = [part for part in parts if part != ""]
     if not parts:
         return []
-    if col_count == 1:
+    # **값이 하나면 범위 전체를 그 값으로 채운다.** 예전에는 첫 칸만 쓰고
+    # 성공이라고 답했다 — "A2:A9에 0 입력해줘"가 A2만 0이 되고 나머지 여덟 칸은
+    # 그대로인데 조용히 넘어갔다(2026-08-23 실측). 값이 둘 이상이면 사람이
+    # 구체적으로 나열한 것이므로 채우지 않는다.
+    if len(parts) == 1 and rows * cols > 1 and _is_broadcastable(parts[0]):
+        if rows * cols > _BROADCAST_CELL_LIMIT:
+            # 너무 넓으면 물러난다 — 한 낱말로 수천 칸을 덮는 건 사고다.
+            return []
+        return [[parts[0]] * cols for _ in range(rows)]
+    if cols == 1:
         return [[part] for part in parts]
-    if row_count == 1:
+    if rows == 1:
         return [parts]
-    return [parts[index : index + col_count] for index in range(0, len(parts), col_count)]
+    return [parts[index : index + cols] for index in range(0, len(parts), cols)]
 
 
 def _coerce_literal(text: str) -> Any:

@@ -3070,3 +3070,97 @@ class TestIntentToPlanCoverageIsMeasurable:
         assert rows[("fill_color", "범위+색")] is True
         assert rows[("write_value", "한 칸 쓰기")] is True
         assert rows[("sort", "내림차순")] is True
+
+
+class TestOneValueFillsTheWholeRange:
+    """"A2:A9에 0 입력해줘"가 **A2 한 칸만** 쓰고 성공이라고 답했다.
+
+    2026-08-23 실측: `_shape_write_values("0", 9, 1)` → `[[0]]`. 나머지 여덟 칸은
+    그대로인데 검증기는 요청된 values_2d(=한 칸)를 기준으로 대조하므로 미달을 못 본다.
+    조용한 부분 실행이다 — 사용자는 다 채워진 줄 안다.
+    """
+
+    @pytest.mark.parametrize(
+        ("raw", "rows", "cols", "want"),
+        [
+            ("0", 9, 1, [[0]] * 9),
+            ("0", 1, 4, [[0, 0, 0, 0]]),
+            ("미정", 2, 2, [["미정", "미정"], ["미정", "미정"]]),
+            # "1,000"은 값 둘이 아니라 천 단위 구분자다 — 범위에서도 마찬가지다.
+            ("1,000", 3, 1, [[1000], [1000], [1000]]),
+        ],
+    )
+    def test_a_single_value_is_broadcast(self, raw, rows, cols, want) -> None:
+        from office_claw_sidecar.services.excel_param_binder import _shape_write_values
+
+        assert _shape_write_values(raw, rows, cols) == want
+
+    @pytest.mark.parametrize(
+        ("raw", "rows", "cols", "want"),
+        [
+            # 값이 둘 이상이면 사람이 구체적으로 나열한 것이다 — 채우지 않는다.
+            ("서울,부산,대구", 9, 1, [["서울"], ["부산"], ["대구"]]),
+            ("가,나,다", 1, 3, [["가", "나", "다"]]),
+            # 단일 셀은 예전 그대로 — 천 단위 구분자를 쪼개면 안 된다.
+            ("1,000", 1, 1, [[1000]]),
+            ("120", 1, 1, [[120]]),
+        ],
+    )
+    def test_the_old_shapes_are_unchanged(self, raw, rows, cols, want) -> None:
+        from office_claw_sidecar.services.excel_param_binder import _shape_write_values
+
+        assert _shape_write_values(raw, rows, cols) == want
+
+    @pytest.mark.parametrize(
+        "raw",
+        ["가장 큰 매출 값", "서울 지역 매출만 더한", "총 임대료 합계"],
+    )
+    def test_an_instruction_phrase_is_never_broadcast(self, raw: str) -> None:
+        """자체 검토에서 잡은 내 실수 — 값 하나면 무조건 퍼뜨리게 했더니
+        "F7:G9에 **가장 큰 매출 값** 넣어줘"의 지시문이 여섯 칸에 통째로 써졌다.
+        고치려던 것(한 칸만 써짐)보다 나쁜 결과다. 띄어 쓴 것은 값이 아니라 말이다."""
+        from office_claw_sidecar.services.excel_param_binder import _shape_write_values
+
+        assert _shape_write_values(raw, 3, 2) == [[raw]]
+
+    def test_it_backs_off_when_the_range_is_huge(self) -> None:
+        """한 낱말로 수천 칸을 덮는 건 사고다. 넓으면 채우지 않고 물러난다."""
+        from office_claw_sidecar.services.excel_param_binder import (
+            _BROADCAST_CELL_LIMIT,
+            _shape_write_values,
+        )
+
+        assert _shape_write_values("0", _BROADCAST_CELL_LIMIT + 1, 1) == []
+        assert len(_shape_write_values("0", _BROADCAST_CELL_LIMIT, 1)) == _BROADCAST_CELL_LIMIT
+
+    def test_the_binder_fills_every_cell(self) -> None:
+        from office_claw_sidecar.services.excel_param_binder import _bind_write_values
+
+        params: dict = {}
+        _bind_write_values(params, message="A2:A9에 0 입력해줘")
+        assert params["start_cell"] == "A2"
+        assert params["values_2d"] == [[0]] * 8, params["values_2d"]
+
+    def test_the_executor_writes_every_cell(self, tmp_path) -> None:
+        from openpyxl import Workbook, load_workbook
+
+        from office_claw_sidecar.services.excel_live_file_service import FileExcelLiveService
+
+        path = tmp_path / "b.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "매출"
+        ws.append(["날짜", "금액"])
+        for n in range(8):
+            ws.append([f"2026-01-{n + 1:02d}", 100 + n])
+        wb.save(path)
+        service = FileExcelLiveService()
+        service.select_workbook(str(path))
+        service.select_sheet(None, "매출")
+        service.write_range(
+            workbook_id=None, sheet_name="매출", start_cell="C2", values_2d=[["미정"]] * 8
+        )
+        sheet = load_workbook(path)["매출"]
+        assert [sheet.cell(row=r, column=3).value for r in range(2, 10)] == ["미정"] * 8
+        # 옆 열은 건드리지 않는다.
+        assert [sheet.cell(row=r, column=2).value for r in range(2, 10)] == list(range(100, 108))

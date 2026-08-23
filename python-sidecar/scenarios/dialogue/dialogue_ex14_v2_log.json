@@ -12,7 +12,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "엑셀 변경 작업을 실행합니다. — 콘텐츠 일정 시트",
-  "secs": 2.3,
+  "secs": 3.5,
   "parts": 1,
   "context_range": ""
  },
@@ -46,7 +46,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A1:G26 · 값 182개 기록",
-  "secs": 4.4,
+  "secs": 6.9,
   "parts": 1,
   "context_range": "A1:G26"
  },
@@ -63,7 +63,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "1. 배경색 변경 — A1:G1 · 7개 셀\n2. 글자 서식 — A1:G1 · 7개 셀",
-  "secs": 4.4,
+  "secs": 7.1,
   "parts": 1,
   "context_range": "A1:G26"
  },
@@ -79,8 +79,8 @@
   "why": "",
   "asked": false,
   "interpretation": false,
-  "reply": "테두리 적용 — A1:G1 · 7개 셀",
-  "secs": 3.3,
+  "reply": "테두리 적용 — A1:G26 · 182개 셀",
+  "secs": 5.2,
   "parts": 1,
   "context_range": "A1:G1"
  },
@@ -97,9 +97,9 @@
   "asked": true,
   "interpretation": false,
   "reply": "어떤 열 기준으로 정렬할까요? 예: 매출 열 기준 내림차순",
-  "secs": 3.9,
+  "secs": 3.6,
   "parts": 1,
-  "context_range": "A1:G1"
+  "context_range": "A1:G26"
  },
  {
   "turn": 7,
@@ -114,9 +114,9 @@
   "asked": false,
   "interpretation": true,
   "reply": "정렬 — A1:G26",
-  "secs": 4.5,
+  "secs": 7.0,
   "parts": 1,
-  "context_range": "A1:G1"
+  "context_range": "A1:G26"
  },
  {
   "turn": 8,
@@ -131,7 +131,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "조건부 강조 — C2:C26 · 0개 셀",
-  "secs": 3.3,
+  "secs": 5.2,
   "parts": 1,
   "context_range": ""
  },
@@ -148,7 +148,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "조건부 강조 — C2:C26 · 2개 셀",
-  "secs": 3.4,
+  "secs": 5.2,
   "parts": 1,
   "context_range": ""
  },
@@ -165,7 +165,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "머리글 행/열을 고정합니다.",
-  "secs": 3.4,
+  "secs": 5.2,
   "parts": 1,
   "context_range": "C2:C26"
  },
@@ -182,7 +182,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "열 너비를 내용에 맞게 자동 조정합니다. — C2:C26",
-  "secs": 3.4,
+  "secs": 5.2,
   "parts": 1,
   "context_range": "C2:C26"
  },
@@ -199,7 +199,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — I1:K7 · 값 21개 기록",
-  "secs": 5.6,
+  "secs": 8.7,
   "parts": 1,
   "context_range": "I1:K7"
  },
@@ -216,7 +216,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "1. 배경색 변경 — I1:K1 · 3개 셀\n2. 글자 서식 — I1:K1 · 3개 셀",
-  "secs": 4.5,
+  "secs": 7.0,
   "parts": 1,
   "context_range": ""
  },
@@ -233,7 +233,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "테두리 적용 — I1:K7 · 21개 셀",
-  "secs": 3.3,
+  "secs": 5.3,
   "parts": 1,
   "context_range": ""
  },
@@ -250,7 +250,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — M1:O6 · 값 18개 기록",
-  "secs": 5.6,
+  "secs": 8.7,
   "parts": 1,
   "context_range": "M1:O6"
  },
@@ -267,7 +267,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "1. 배경색 변경 — M1:O1 · 3개 셀\n2. 글자 서식 — M1:O1 · 3개 셀",
-  "secs": 4.5,
+  "secs": 7.0,
   "parts": 1,
   "context_range": ""
  },
@@ -284,7 +284,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "테두리 적용 — M1:O6 · 18개 셀",
-  "secs": 3.3,
+  "secs": 5.3,
   "parts": 1,
   "context_range": ""
  },
@@ -301,7 +301,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "엑셀 변경 작업을 실행합니다. — 대시보드 시트",
-  "secs": 2.3,
+  "secs": 3.6,
   "parts": 1,
   "context_range": "M1:O6"
  },
@@ -335,7 +335,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "셀 병합 — A1:G1",
-  "secs": 2.3,
+  "secs": 7.0,
   "parts": 1,
   "context_range": ""
  },
@@ -351,10 +351,10 @@
   "why": "",
   "asked": false,
   "interpretation": false,
-  "reply": "글자 서식 — A1:G1 · 7개 셀",
-  "secs": 6.7,
+  "reply": "글자 서식 — A1 · 1개 셀",
+  "secs": 10.5,
   "parts": 2,
-  "context_range": "A1:G1"
+  "context_range": "A1"
  },
  {
   "turn": 22,
@@ -420,7 +420,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A6:A8 · 값 3개 기록",
-  "secs": 5.6,
+  "secs": 8.7,
   "parts": 1,
   "context_range": "A6:A8"
  },
@@ -454,7 +454,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A11:G26 · 값 112개 기록",
-  "secs": 4.5,
+  "secs": 7.0,
   "parts": 1,
   "context_range": "A11:G26"
  },
@@ -471,7 +471,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "1. 배경색 변경 — A11:G11 · 7개 셀\n2. 글자 서식 — A11:G11 · 7개 셀",
-  "secs": 4.6,
+  "secs": 7.2,
   "parts": 1,
   "context_range": ""
  },
@@ -488,7 +488,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "테두리 적용 — A11:G26 · 112개 셀",
-  "secs": 3.5,
+  "secs": 5.4,
   "parts": 1,
   "context_range": ""
  },
@@ -522,7 +522,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A29:B32 · 값 8개 기록",
-  "secs": 5.7,
+  "secs": 8.9,
   "parts": 1,
   "context_range": "A29:B32"
  },
@@ -539,7 +539,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "1. 배경색 변경 — A29:B29 · 2개 셀\n2. 글자 서식 — A29:B29 · 2개 셀",
-  "secs": 4.6,
+  "secs": 7.3,
   "parts": 1,
   "context_range": ""
  },
@@ -556,7 +556,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — D28 · 값 1개 기록",
-  "secs": 0.3,
+  "secs": 0.5,
   "parts": 1,
   "context_range": ""
  },
@@ -573,7 +573,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — D29:E36 · 값 16개 기록",
-  "secs": 5.7,
+  "secs": 8.9,
   "parts": 1,
   "context_range": "D29:E36"
  },
@@ -590,7 +590,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "1. 배경색 변경 — D29:E29 · 2개 셀\n2. 글자 서식 — D29:E29 · 2개 셀",
-  "secs": 4.6,
+  "secs": 7.1,
   "parts": 1,
   "context_range": ""
  },
@@ -607,7 +607,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "조건부 강조 — E30:E36 · 1개 셀",
-  "secs": 3.5,
+  "secs": 5.5,
   "parts": 1,
   "context_range": ""
  },
@@ -624,7 +624,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "조건부 강조 — E30:E36 · 6개 셀",
-  "secs": 3.4,
+  "secs": 5.4,
   "parts": 1,
   "context_range": ""
  },
@@ -641,7 +641,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A38 · 값 1개 기록",
-  "secs": 0.4,
+  "secs": 0.5,
   "parts": 1,
   "context_range": ""
  },
@@ -658,7 +658,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A39:C45 · 값 21개 기록",
-  "secs": 5.6,
+  "secs": 8.9,
   "parts": 1,
   "context_range": "A39:C45"
  },
@@ -675,7 +675,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A46 · 값 1개 기록",
-  "secs": 0.4,
+  "secs": 0.6,
   "parts": 1,
   "context_range": ""
  },
@@ -692,7 +692,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "값 입력 — B46 · 값 1개 기록",
-  "secs": 7.2,
+  "secs": 10.3,
   "parts": 1,
   "context_range": ""
  },
@@ -709,7 +709,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — C46 · 값 1개 기록",
-  "secs": 0.4,
+  "secs": 0.5,
   "parts": 1,
   "context_range": ""
  },
@@ -726,7 +726,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "1. 배경색 변경 — A39:C39 · 3개 셀\n2. 글자 서식 — A39:C39 · 3개 셀",
-  "secs": 4.6,
+  "secs": 7.1,
   "parts": 1,
   "context_range": ""
  },
@@ -743,7 +743,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "테두리 적용 — A39:C46 · 24개 셀",
-  "secs": 3.5,
+  "secs": 5.5,
   "parts": 1,
   "context_range": ""
  },
@@ -760,7 +760,7 @@
   "asked": true,
   "interpretation": false,
   "reply": "차트 종류를 선택해 주세요. 예: 선 그래프 / 막대 그래프 / 원형 차트",
-  "secs": 4.7,
+  "secs": 4.5,
   "parts": 1,
   "context_range": "A39:C46"
  },
@@ -777,7 +777,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "차트를 생성합니다. — B40:B45",
-  "secs": 3.3,
+  "secs": 5.2,
   "parts": 1,
   "context_range": ""
  },
@@ -794,7 +794,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A48 · 값 1개 기록",
-  "secs": 0.4,
+  "secs": 0.5,
   "parts": 1,
   "context_range": ""
  },
@@ -811,7 +811,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A49:C54 · 값 18개 기록",
-  "secs": 5.7,
+  "secs": 8.9,
   "parts": 1,
   "context_range": "A49:C54"
  },
@@ -828,7 +828,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "1. 배경색 변경 — A49:C49 · 3개 셀\n2. 글자 서식 — A49:C49 · 3개 셀",
-  "secs": 4.6,
+  "secs": 7.2,
   "parts": 1,
   "context_range": ""
  },
@@ -845,7 +845,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "차트를 생성합니다. — B50:B54",
-  "secs": 3.5,
+  "secs": 5.5,
   "parts": 1,
   "context_range": ""
  },
@@ -862,7 +862,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A56 · 값 1개 기록",
-  "secs": 0.4,
+  "secs": 0.6,
   "parts": 1,
   "context_range": ""
  },
@@ -879,7 +879,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A57:D61 · 값 20개 기록",
-  "secs": 5.6,
+  "secs": 9.0,
   "parts": 1,
   "context_range": "A57:D61"
  },
@@ -896,7 +896,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "1. 수식 적용 — B62 · 수식 1칸\n2. 수식 적용 — C62 · 수식 1칸\n3. 수식 적용 — D62 · 수식 1칸\n4. 값 입력 — A62 · 값 1개 기록",
-  "secs": 16.8,
+  "secs": 26.4,
   "parts": 1,
   "context_range": ""
  },
@@ -913,7 +913,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — E57:E62 · 값 6개 기록",
-  "secs": 5.6,
+  "secs": 8.9,
   "parts": 1,
   "context_range": "E57:E62"
  },
@@ -930,7 +930,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "1. 배경색 변경 — A57:E57 · 5개 셀\n2. 글자 서식 — A57:E57 · 5개 셀",
-  "secs": 4.6,
+  "secs": 7.2,
   "parts": 1,
   "context_range": ""
  },
@@ -947,7 +947,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "표시 형식 — B58:D62",
-  "secs": 3.5,
+  "secs": 5.4,
   "parts": 1,
   "context_range": ""
  },
@@ -964,7 +964,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — E58:E62",
-  "secs": 3.5,
+  "secs": 5.5,
   "parts": 1,
   "context_range": ""
  },
@@ -981,7 +981,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "테두리 적용 — A57:E62 · 30개 셀",
-  "secs": 3.5,
+  "secs": 5.5,
   "parts": 1,
   "context_range": ""
  },
@@ -998,7 +998,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A64 · 값 1개 기록",
-  "secs": 0.4,
+  "secs": 0.7,
   "parts": 1,
   "context_range": ""
  },
@@ -1015,7 +1015,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A65:B68 · 값 8개 기록",
-  "secs": 5.7,
+  "secs": 9.0,
   "parts": 1,
   "context_range": "A65"
  },
@@ -1032,7 +1032,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "1. 배경색 변경 — A65:B65 · 2개 셀\n2. 글자 서식 — A65:B65 · 2개 셀",
-  "secs": 4.7,
+  "secs": 7.3,
   "parts": 1,
   "context_range": ""
  },
@@ -1049,7 +1049,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "열 너비를 내용에 맞게 자동 조정합니다. — A65:B65",
-  "secs": 3.5,
+  "secs": 5.5,
   "parts": 1,
   "context_range": "A65:B65"
  },
@@ -1083,7 +1083,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "빠른 규칙 기반 실행 계획",
-  "secs": 2.3,
+  "secs": 3.7,
   "parts": 1,
   "context_range": "A65:B65"
  }

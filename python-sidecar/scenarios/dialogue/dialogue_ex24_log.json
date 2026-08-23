@@ -6,13 +6,13 @@
   "paste": "",
   "ui": {},
   "expect": "ok",
-  "action": "excel_live.clarify",
-  "ok": false,
-  "why": "되묻기",
-  "asked": true,
-  "interpretation": false,
-  "reply": "'급여계산' 시트를 찾을 수 없습니다. 어느 시트에 작업할까요? 현재 시트: Sheet",
-  "secs": 6.1,
+  "action": "excel_live.create_sheet",
+  "ok": true,
+  "why": "",
+  "asked": false,
+  "interpretation": true,
+  "reply": "엑셀 변경 작업을 실행합니다. — 급여계산 시트",
+  "secs": 7.0,
   "parts": 1,
   "context_range": ""
  },
@@ -23,13 +23,13 @@
   "paste": "",
   "ui": {},
   "expect": "ok",
-  "action": "excel_live.clarify",
-  "ok": false,
-  "why": "되묻기",
-  "asked": true,
-  "interpretation": false,
-  "reply": "'근태집계' 시트를 찾을 수 없습니다. 어느 시트에 작업할까요? 현재 시트: Sheet",
-  "secs": 6.4,
+  "action": "excel_live.create_sheet",
+  "ok": true,
+  "why": "",
+  "asked": false,
+  "interpretation": true,
+  "reply": "엑셀 변경 작업을 실행합니다. — 근태집계 시트",
+  "secs": 7.2,
   "parts": 1,
   "context_range": ""
  },
@@ -46,7 +46,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "엑셀 변경 작업을 실행합니다. — 사원마스터 시트",
-  "secs": 2.7,
+  "secs": 3.6,
   "parts": 1,
   "context_range": ""
  },
@@ -63,7 +63,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "사용자 요청 실행",
-  "secs": 6.3,
+  "secs": 3.6,
   "parts": 1,
   "context_range": ""
  },
@@ -97,7 +97,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A1:P11 · 값 176개 기록",
-  "secs": 5.1,
+  "secs": 7.2,
   "parts": 1,
   "context_range": "A1:P11"
  },
@@ -114,7 +114,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "1. 배경색 변경 — A1:P1 · 16개 셀\n2. 글자 서식 — A1:P1 · 16개 셀",
-  "secs": 5.0,
+  "secs": 7.3,
   "parts": 1,
   "context_range": "A1:P11"
  },
@@ -131,7 +131,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "1. 표시 형식 — F2:F11\n2. 표시 형식 — M2:M11",
-  "secs": 5.0,
+  "secs": 7.3,
   "parts": 1,
   "context_range": "A1:P1"
  },
@@ -148,7 +148,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "열 너비를 내용에 맞게 자동 조정합니다. — M2:M11",
-  "secs": 3.8,
+  "secs": 5.4,
   "parts": 1,
   "context_range": "M2:M11"
  },
@@ -165,7 +165,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "머리글 행/열을 고정합니다.",
-  "secs": 3.9,
+  "secs": 5.5,
   "parts": 1,
   "context_range": "M2:M11"
  },
@@ -182,7 +182,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "테두리 적용 — M2:M11 · 10개 셀",
-  "secs": 3.9,
+  "secs": 5.5,
   "parts": 1,
   "context_range": "M2:M11"
  },
@@ -199,7 +199,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — Q1 · 값 1개 기록",
-  "secs": 6.2,
+  "secs": 9.1,
   "parts": 1,
   "context_range": ""
  },
@@ -216,7 +216,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — R1 · 값 1개 기록",
-  "secs": 6.3,
+  "secs": 9.1,
   "parts": 1,
   "context_range": ""
  },
@@ -233,7 +233,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "조건부 강조 — J1:J11 · 2개 셀",
-  "secs": 3.8,
+  "secs": 5.5,
   "parts": 1,
   "context_range": "R1"
  },
@@ -250,7 +250,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "조건부 강조 — G1:G11 · 2개 셀",
-  "secs": 8.1,
+  "secs": 9.6,
   "parts": 1,
   "context_range": "J1:J11"
  },
@@ -267,7 +267,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "정렬 — A1:R11",
-  "secs": 6.3,
+  "secs": 8.7,
   "parts": 1,
   "context_range": "G1:G11"
  },
@@ -284,7 +284,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "1. 수식 적용 — A12 · 수식 1칸\n2. 수식 적용 — F12 · 수식 1칸\n3. 수식 적용 — G12 · 수식 1칸\n4. 수식 적용 — H12 · 수식 1칸\n5. 수식 적용 — I12 · 수식 1칸\n6. 수식 적용 — J12 · 수식 1칸\n7. 수식 적용 — K12 · 수식 1칸\n8. 수식 적용 — L12 · 수식 1칸\n9. 수식 적용 — M12 · 수식 1칸\n10. 수식 적용 — N12 · 수식 1칸\n11. 수식 적용 — O12 · 수식 1칸\n12. 수식 적용 — P12 · 수식 1칸\n13. 값 입력 — B12 · 값 1개 기록",
-  "secs": 54.6,
+  "secs": 76.9,
   "parts": 1,
   "context_range": "A1:R11"
  },
@@ -301,7 +301,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "사용자 요청 실행",
-  "secs": 6.4,
+  "secs": 3.6,
   "parts": 1,
   "context_range": "B12"
  },
@@ -318,7 +318,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A1:B7 · 값 14개 기록",
-  "secs": 6.5,
+  "secs": 9.1,
   "parts": 1,
   "context_range": ""
  },
@@ -335,7 +335,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "테두리 적용 — A1:B1 · 2개 셀",
-  "secs": 7.9,
+  "secs": 11.1,
   "parts": 2,
   "context_range": "A1:B1"
  },
@@ -351,8 +351,8 @@
   "why": "",
   "asked": false,
   "interpretation": false,
-  "reply": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B12",
-  "secs": 3.8,
+  "reply": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B7",
+  "secs": 5.5,
   "parts": 1,
   "context_range": "A1:B1"
  },
@@ -368,10 +368,10 @@
   "why": "",
   "asked": false,
   "interpretation": false,
-  "reply": "차트를 생성합니다. — A1:R12",
-  "secs": 4.0,
+  "reply": "차트를 생성합니다. — A1:B7",
+  "secs": 5.6,
   "parts": 1,
-  "context_range": "B2:B12"
+  "context_range": "B2:B7"
  },
  {
   "turn": 23,
@@ -385,10 +385,10 @@
   "why": "",
   "asked": false,
   "interpretation": false,
-  "reply": "1. 표시 형식 — B2:B12\n2. 표시 형식 — Q2:Q12",
-  "secs": 5.2,
+  "reply": "표시 형식 — B2:B7",
+  "secs": 5.6,
   "parts": 1,
-  "context_range": "A1:R12"
+  "context_range": "A1:B7"
  },
  {
   "turn": 24,
@@ -402,10 +402,10 @@
   "why": "",
   "asked": false,
   "interpretation": true,
-  "reply": "정렬 — A1:R12",
-  "secs": 7.1,
+  "reply": "정렬 — A1:B7",
+  "secs": 10.8,
   "parts": 1,
-  "context_range": "Q2:Q12"
+  "context_range": "B2:B7"
  },
  {
   "turn": 25,
@@ -420,7 +420,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — D1 · 값 1개 기록",
-  "secs": 6.6,
+  "secs": 9.2,
   "parts": 1,
   "context_range": ""
  },
@@ -437,7 +437,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — D3:J8 · 값 42개 기록",
-  "secs": 6.3,
+  "secs": 9.2,
   "parts": 1,
   "context_range": "D3:J8"
  },
@@ -454,7 +454,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "배경색 변경 — D3:J8 · 42개 셀",
-  "secs": 8.3,
+  "secs": 9.5,
   "parts": 1,
   "context_range": "D3:J8"
  },
@@ -465,13 +465,13 @@
   "paste": "",
   "ui": {},
   "expect": "ok",
-  "action": "excel_live.sort",
-  "ok": false,
-  "why": "되묻기",
-  "asked": true,
+  "action": "excel_live.set_font",
+  "ok": true,
+  "why": "",
+  "asked": false,
   "interpretation": false,
-  "reply": "어떤 열 기준으로 정렬할까요? 예: 매출 열 기준 내림차순",
-  "secs": 4.2,
+  "reply": "글자 서식 — A1:J8 · 80개 셀",
+  "secs": 5.6,
   "parts": 1,
   "context_range": "D3:J8"
  },
@@ -487,10 +487,10 @@
   "why": "",
   "asked": false,
   "interpretation": false,
-  "reply": "테두리 적용 — D3:J8 · 42개 셀",
-  "secs": 3.9,
+  "reply": "테두리 적용 — A1:J8 · 80개 셀",
+  "secs": 5.6,
   "parts": 1,
-  "context_range": "D3:J8"
+  "context_range": "A1:J8"
  },
  {
   "turn": 30,
@@ -505,9 +505,9 @@
   "asked": false,
   "interpretation": false,
   "reply": "엑셀 변경 작업을 실행합니다. — 급여대시보드 시트",
-  "secs": 2.6,
+  "secs": 3.8,
   "parts": 1,
-  "context_range": "D3:J8"
+  "context_range": "A1:J8"
  },
  {
   "turn": 31,
@@ -522,7 +522,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A1 · 값 1개 기록",
-  "secs": 6.3,
+  "secs": 9.2,
   "parts": 1,
   "context_range": ""
  },
@@ -539,7 +539,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "글자 서식 — A1 · 1개 셀",
-  "secs": 11.3,
+  "secs": 14.6,
   "parts": 2,
   "context_range": "A1"
  },
@@ -556,7 +556,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "셀 병합 — A1:E1",
-  "secs": 5.2,
+  "secs": 7.4,
   "parts": 1,
   "context_range": ""
  },
@@ -573,7 +573,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A2 · 값 1개 기록",
-  "secs": 6.4,
+  "secs": 9.2,
   "parts": 1,
   "context_range": ""
  },
@@ -590,7 +590,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A4:C8 · 값 15개 기록",
-  "secs": 6.3,
+  "secs": 9.2,
   "parts": 1,
   "context_range": ""
  },
@@ -607,7 +607,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "1. 배경색 변경 — A4:C4 · 3개 셀\n2. 글자 서식 — A4:C4 · 3개 셀",
-  "secs": 5.1,
+  "secs": 7.5,
   "parts": 1,
   "context_range": "A4:C8"
  },
@@ -624,7 +624,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "표시 형식 — A4:C4",
-  "secs": 3.8,
+  "secs": 5.7,
   "parts": 1,
   "context_range": "A4:C4"
  },
@@ -641,7 +641,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A11 · 값 1개 기록",
-  "secs": 6.4,
+  "secs": 9.2,
   "parts": 1,
   "context_range": ""
  },
@@ -658,7 +658,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A13:B17 · 값 10개 기록",
-  "secs": 6.3,
+  "secs": 9.2,
   "parts": 1,
   "context_range": "A13:B17"
  },
@@ -675,7 +675,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "표시 형식 — A13:B17",
-  "secs": 3.8,
+  "secs": 5.6,
   "parts": 1,
   "context_range": "A13:B17"
  },
@@ -692,7 +692,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "테두리 적용 — A13:B13 · 2개 셀",
-  "secs": 7.6,
+  "secs": 11.4,
   "parts": 2,
   "context_range": "A13:B13"
  },
@@ -707,9 +707,9 @@
   "ok": true,
   "why": "",
   "asked": false,
-  "interpretation": true,
-  "reply": "조건부 강조 — L1:L17 · 0개 셀",
-  "secs": 8.0,
+  "interpretation": false,
+  "reply": "조건부 강조 — B14:B17 · 1개 셀",
+  "secs": 5.6,
   "parts": 1,
   "context_range": "A13:B13"
  },
@@ -720,13 +720,13 @@
   "paste": "",
   "ui": {},
   "expect": "ok",
-  "action": "excel_live.clarify",
-  "ok": false,
-  "why": "되묻기",
-  "asked": true,
+  "action": "excel_live.set_formula",
+  "ok": true,
+  "why": "",
+  "asked": false,
   "interpretation": false,
-  "reply": "'급여계산' 시트를 찾을 수 없습니다. 어느 시트에 작업할까요? 현재 시트: Sheet, 사원마스터, 급여대시보드",
-  "secs": 6.4,
+  "reply": "수식 적용 — D13 · 수식 1칸",
+  "secs": 7.5,
   "parts": 1,
   "context_range": ""
  },
@@ -737,13 +737,13 @@
   "paste": "",
   "ui": {},
   "expect": "ok",
-  "action": "excel_live.clarify",
-  "ok": false,
-  "why": "되묻기",
-  "asked": true,
+  "action": "excel_live.set_formula",
+  "ok": true,
+  "why": "",
+  "asked": false,
   "interpretation": false,
-  "reply": "시트 이름과 집계 낱말이 함께 든 문장은 값이 아니라 수식 요청입니다 — '급여계산 시트 지각횟수 평균' 그 문장을 글자 그대로 넣을까요, 아니면 계산 결과를 넣을까요?",
-  "secs": 2.4,
+  "reply": "수식 적용 — D14 · 수식 1칸",
+  "secs": 7.5,
   "parts": 1,
   "context_range": ""
  },
@@ -760,7 +760,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "표시 형식 — D13",
-  "secs": 3.7,
+  "secs": 5.7,
   "parts": 1,
   "context_range": ""
  },
@@ -777,7 +777,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "시트 이름을 변경합니다. — 급여대시보드 시트",
-  "secs": 0.3,
+  "secs": 0.6,
   "parts": 1,
   "context_range": "D13"
  },
@@ -810,8 +810,8 @@
   "why": "",
   "asked": false,
   "interpretation": true,
-  "reply": "내용 비우기 — I1:I17 · 값 0개 삭제",
-  "secs": 8.9,
+  "reply": "내용 비우기 — I2:I12 · 값 11개 삭제",
+  "secs": 0.6,
   "parts": 1,
   "context_range": "D13"
  },
@@ -828,8 +828,8 @@
   "asked": false,
   "interpretation": false,
   "reply": "빠른 규칙 기반 실행 계획",
-  "secs": 2.6,
+  "secs": 3.8,
   "parts": 1,
-  "context_range": "I1:I17"
+  "context_range": "I2:I12"
  }
 ]
