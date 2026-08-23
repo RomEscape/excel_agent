@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from office_claw_sidecar.services.excel_live_executor import PlanStep
+from office_claw_sidecar.services.number_format_lexicon import FORMAT_CODE
 
 # 플래너만 고를 수 있고 실행기에는 내려가지 않는 액션.
 # 라우터가 실행 직전에 가로채 되묻기 응답으로 바꾼다.
@@ -160,26 +161,10 @@ def _normalize_range_text(value: Any) -> str:
 
 
 # 소형 모델은 Excel 서식 코드 문법(#,##0 등)을 모르고 "퍼센트로", "천단위로" 같은
-# 개념어만 내놓는 경우가 많다. 개념어 → 실제 서식 코드 매핑을 여기서 흡수한다.
-_NUMBER_FORMAT_ALIASES: dict[str, str] = {
-    "percent": "0.00%",
-    "percentage": "0.00%",
-    "퍼센트": "0.00%",
-    "백분율": "0.00%",
-    "comma": "#,##0",
-    "천단위": "#,##0",
-    "천단위구분": "#,##0",
-    "숫자": "#,##0",
-    "currency": "#,##0",
-    "통화": "#,##0",
-    "원": '#,##0"원"',
-    "date": "yyyy-mm-dd",
-    "날짜": "yyyy-mm-dd",
-    "text": "@",
-    "텍스트": "@",
-    "일반": "General",
-    "general": "General",
-}
+# 개념어만 내놓는 경우가 많다. 개념어 → 서식 코드 표는 `number_format_lexicon`
+# **한 곳**이다 — 예전엔 여기 따로 있어 `퍼센트`가 0.00%였고 라우터는 0.0%였다.
+# **같은 문장**이 어느 층에서 풀리느냐로 답이 달랐다(2026-08-24 실측).
+_NUMBER_FORMAT_ALIASES: dict[str, str] = FORMAT_CODE
 # 이미 Excel 서식 코드 문법으로 보이는 문자(#, 0, %, y/m/d, @, General)를 하나라도
 # 포함하면 alias 매핑을 건너뛰고 그대로 사용한다 — 모델이 정확한 코드를 직접 준 경우다.
 _LOOKS_LIKE_FORMAT_CODE = re.compile(r"[#0%@]|yyyy|mm|dd|General", re.IGNORECASE)

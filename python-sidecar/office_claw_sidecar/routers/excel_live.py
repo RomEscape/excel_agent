@@ -183,6 +183,7 @@ from office_claw_sidecar.services.llm_service import (
     get_macro_model_name,
     get_planner_model_name,
 )
+from office_claw_sidecar.services.number_format_lexicon import format_code
 from office_claw_sidecar.services.tool_registry import PermissionLevel, get_tool
 from office_claw_sidecar.services.user_harness_service import (
     build_personalization_prompt,
@@ -3053,10 +3054,10 @@ _NUMBER_FORMAT_HINTS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"소수(?:점)?\s*(?:세|3)\s*자리"), "0.000"),
     (re.compile(r"소수(?:점)?\s*(?:두|2)\s*자리|둘째\s*자리"), "0.00"),
     (re.compile(r"소수(?:점)?\s*(?:한|1)\s*자리|첫째\s*자리"), "0.0"),
-    (re.compile(r"(퍼센트|백분율|%\s*(로|표시|형식))", re.IGNORECASE), "0.0%"),
-    (re.compile(r"(통화|원화|₩|금액\s*기호)", re.IGNORECASE), '"₩"#,##0'),
-    (re.compile(r"(천\s*단위|1,?000\s*단위|세\s*자리|쉼표|콤마|comma)", re.IGNORECASE), "#,##0"),
-    (re.compile(r"(날짜\s*형식|yyyy)", re.IGNORECASE), "yyyy-mm-dd"),
+    (re.compile(r"(퍼센트|백분율|%\s*(로|표시|형식))", re.IGNORECASE), format_code("퍼센트")),
+    (re.compile(r"(통화|원화|₩|금액\s*기호)", re.IGNORECASE), format_code("통화")),
+    (re.compile(r"(천\s*단위|1,?000\s*단위|세\s*자리|쉼표|콤마|comma)", re.IGNORECASE), format_code("천단위")),
+    (re.compile(r"(날짜\s*형식|yyyy)", re.IGNORECASE), format_code("날짜")),
 )
 _EXPLICIT_FORMAT_CODE = re.compile(r"([#0][#0,\.]*(?:%|)|yyyy[-/][mM]{1,2}[-/]dd)")
 

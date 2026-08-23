@@ -3662,3 +3662,65 @@ class TestAggregateVocabularyHasOneSource:
 
         assert aggregate_func("중앙값") == ""
         assert aggregate_func("") == ""
+
+
+class TestNumberFormatHasOneSource:
+    """같은 문장("퍼센트로 보여줘")이 층마다 다른 서식 코드로 풀렸다.
+
+    2026-08-24 실측:
+
+        낱말    라우터       통역        검증기
+        퍼센트  `0.0%`       `0%`        `0.00%`
+        통화    `"₩"#,##0`   `"₩"#,##0`  `#,##0`  ← 기호가 사라진다
+
+    정당한 차이가 아니라 갈라짐이다 — `test_phrasing_robustness.py:55`와
+    `test_excel_live_new_tools.py:205`가 **같은 문장**을 서로 다른 값으로 고정하고 있었다.
+    """
+
+    @pytest.mark.parametrize(
+        ("word", "code"),
+        [("퍼센트", "0.0%"), ("백분율", "0.0%"), ("통화", '"₩"#,##0'),
+         ("천단위", "#,##0"), ("날짜", "yyyy-mm-dd")],
+    )
+    def test_every_layer_agrees(self, word: str, code: str) -> None:
+        from office_claw_sidecar.services.excel_intent_normalizer import _format_code_from
+        from office_claw_sidecar.services.excel_live_plan_validator import _NUMBER_FORMAT_ALIASES
+        from office_claw_sidecar.services.number_format_lexicon import format_code
+
+        assert format_code(word) == code
+        assert _NUMBER_FORMAT_ALIASES.get(word) == code
+        assert _format_code_from(word) == code
+
+    def test_the_router_reads_the_same_table(self) -> None:
+        from office_claw_sidecar.routers.excel_live import _NUMBER_FORMAT_HINTS
+        from office_claw_sidecar.services.number_format_lexicon import format_code
+
+        found = {code for pattern, code in _NUMBER_FORMAT_HINTS if pattern.search("퍼센트")}
+        assert found == {format_code("퍼센트")}
+
+    @pytest.mark.parametrize(
+        ("text", "code"),
+        [("천 단위 콤마", "#,##0"), ("퍼센트로", "0.0%"), ("원화 표시", '"₩"#,##0'),
+         ("통화 형식", '"₩"#,##0')],
+    )
+    def test_it_finds_the_word_inside_a_phrase(self, text: str, code: str) -> None:
+        """모델이 내는 option은 한 낱말이 아니다 — 정확일치만 보면 통째로 미매핑이다.
+
+        2026-08-24에 이걸로 한 번 깼다(`천 단위 콤마` → None).
+        """
+        from office_claw_sidecar.services.number_format_lexicon import format_code_in_text
+
+        assert format_code_in_text(text) == code
+
+    def test_longer_words_win(self) -> None:
+        """`원화`가 `원`으로 잘리면 ₩가 사라진다."""
+        from office_claw_sidecar.services.number_format_lexicon import format_code_in_text
+
+        assert format_code_in_text("원화") == '"₩"#,##0'
+        assert format_code_in_text("원") == '#,##0"원"'
+
+    def test_an_unknown_word_is_not_guessed(self) -> None:
+        from office_claw_sidecar.services.number_format_lexicon import format_code, format_code_in_text
+
+        assert format_code("지수표기") == ""
+        assert format_code_in_text("알 수 없는 말") == ""

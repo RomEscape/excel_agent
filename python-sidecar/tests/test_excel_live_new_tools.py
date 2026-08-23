@@ -202,7 +202,9 @@ def test_set_number_format_applies_code_to_range(tmp_path):
 def test_validate_plan_maps_number_format_alias():
     steps = [PlanStep(action="excel_live.set_number_format", params={"format_code": "퍼센트"})]
     validated = validate_plan(steps, context=ValidationContext(message="퍼센트로 보여줘"))
-    assert validated[0].params["format_code"] == "0.00%"
+    # 같은 문장("퍼센트로 보여줘")을 라우터는 0.0%로 풀었다 — 층마다 답이 다르면
+    # 안 된다. 2026-08-24에  한 곳으로 모으며 0.0%로 통일했다.
+    assert validated[0].params["format_code"] == "0.0%"
 
 
 def test_validate_plan_keeps_raw_number_format_code():

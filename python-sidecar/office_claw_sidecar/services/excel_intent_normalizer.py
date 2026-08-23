@@ -33,6 +33,7 @@ from .color_lexicon import COLOR_HEX
 from .excel_live_service import _ALIGN_WORDS
 from .excel_param_binder import _range_shape, _shape_write_values, sheet_entry
 from .llm_json import extract_json_object
+from .number_format_lexicon import format_code, format_code_in_text
 
 # 정규화 호출 시간 예산. 이해 한 번이면 충분하다 — 플래너처럼 재시도 루프를 돌지 않는다.
 NORMALIZE_TIMEOUT_SECONDS = 45.0
@@ -246,14 +247,18 @@ def _format_code_from(option: str) -> str:
     if text and not re.search(r"[가-힣]", text) and re.search(r"[0#@%.,]", text):
         return text  # 이미 형식 코드다
     lowered = text.lower()
-    if re.search(r"콤마|쉼표|천\s*단위|자릿수|comma|thousand", lowered):
-        return "#,##0"
-    if re.search(r"소수점|decimal", lowered):
-        return "0.00"
-    if re.search(r"퍼센트|percent|%", lowered):
-        return "0%"
-    if re.search(r"통화|원화|₩|krw", lowered):
-        return '"₩"#,##0'
+    # 사전이 먼저다 — 예전엔 여기 사다리가 따로 있어 `퍼센트`가 0%였고
+    # 라우터는 0.0%, 검증기는 0.00%였다(2026-08-24 실측).
+    exact = format_code_in_text(lowered)
+    if exact:
+        return exact
+    # 사전에 없는 표현은 느슨하게 한 번 더 본다("자릿수", "%" 기호만 온 꼴).
+    if re.search(r"자릿수", lowered):
+        return format_code("천단위")
+    if re.search(r"%", lowered):
+        return format_code("퍼센트")
+    if re.search(r"₩", lowered):
+        return format_code("통화")
     return ""
 
 
