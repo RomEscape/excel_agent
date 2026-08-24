@@ -357,6 +357,48 @@ def _criteria_cells(formula: str, target: str) -> list[tuple[str, int]]:
     return out
 
 
+# 수식 자체가 깨졌다는 뜻의 오류만 실패로 본다(감사 B3). #N/A(찾는 값이 없다),
+# #DIV/0!(분모가 0), #VALUE!·#NUM!(데이터 모양)는 데이터에 따라 정당한 결과일 수
+# 있어 오탐이 된다 — 오탐 하나가 정상 결과를 롤백·재계획으로 파괴한다(2026-08-11).
+_STRUCTURAL_FORMULA_ERRORS = ("#NAME?", "#REF!", "#NULL!")
+
+
+def _verify_formula_errors(
+    params: dict[str, Any],
+    result: dict[str, Any],
+    *,
+    service: Any,
+    workbook_id: str | None,
+    sheet_name: str | None,
+) -> tuple[bool, str] | None:
+    """넣은 수식이 구조 오류를 냈는지 결과 셀에서 직접 확인한다. 실패만 돌려준다.
+
+    2026-08-25 실측: xlwings `.value`는 오류 셀을 None으로 돌려줘서, 값 경로만
+    보는 기존 검사로는 #NAME?든 #REF!든 "빈칸"으로 보였다. `formula_applied_cells>0`
+    (자기보고)은 이런 수식도 성공으로 세므로, 전용 오류 판독(count_error_cells)을 쓴다.
+    """
+    target = str(result.get("address") or params.get("range_ref") or "").strip()
+    if not target:
+        return None
+    counter = getattr(service, "count_error_cells", None)
+    if not callable(counter):
+        return None
+    try:
+        found = counter(workbook_id, sheet_name, target) or {}
+    except Exception:
+        return None  # 못 본 것을 실패로 단정하지 않는다
+    structural = {
+        kind: cells for kind, cells in found.items() if kind in _STRUCTURAL_FORMULA_ERRORS and cells
+    }
+    if not structural:
+        return None
+    parts = " · ".join(
+        f"{kind} {', '.join(cells[:3])}{'…' if len(cells) > 3 else ''}"
+        for kind, cells in structural.items()
+    )
+    return False, f"formula_error_cells:수식이 오류를 냈습니다 — {parts}"
+
+
 def _verify_conditional_aggregate(
     params: dict[str, Any],
     result: dict[str, Any],
@@ -752,6 +794,11 @@ def verify_effect(
                 return False, "formula_not_applied:수식이 입력된 셀이 없습니다"
             # applied는 COM 경로에서 대상 범위의 칸 수(row*col)라 늘 참이다. 넣었다는
             # 사실만으로는 "의도한 값이 나왔는가"를 아무것도 말해 주지 않는다.
+            error_failure = _verify_formula_errors(
+                params, result, service=service, workbook_id=workbook_id, sheet_name=sheet_name
+            )
+            if error_failure is not None:
+                return error_failure
             return _verify_conditional_aggregate(
                 params, result, service=service, workbook_id=workbook_id, sheet_name=sheet_name
             )

@@ -4168,3 +4168,179 @@ class TestApprovalDoesNotBypassSafetyChecks:
         src = inspect.getsource(excel_live._plan_approval_gate)
         # 주석에도 'if ctx.approved:'가 등장하므로 실행문 쪽의 고유 문구로 짚는다.
         assert src.index("_assess_plan_sanity") < src.index("검사를 통과한 승인 계획")
+
+
+class TestPivotInjectionRequiresTheExplicitWord:
+    """'집계·요약' 낱말만으로 피벗 단계가 주입되던 것(감사 B4).
+
+    group_by 문형("부서별로 집계해줘")이 옳게 계획돼도, 주입 규칙이 '집계'를 보고
+    시키지 않은 피벗 시트를 얹었다. 시트 이름이 '요약'이기만 해도 걸린다(블라인드
+    624에 그런 문장 27건 — 전부 PASS_RULE이라 주입 코드에 닿지 않아 무사했을 뿐).
+    주입은 원문이 피벗을 명시했을 때만, 근거 게이트는 종전대로 느슨하게.
+    """
+
+    @staticmethod
+    def _step(action: str):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(action=action)
+
+    def test_aggregate_wording_alone_does_not_inject(self) -> None:
+        from office_claw_sidecar.routers.excel_live import _should_inject_pivot_step
+
+        assert not _should_inject_pivot_step("부서별로 집계해서 새 시트에 넣어줘", [])
+        assert not _should_inject_pivot_step("요약 시트에 지역 주문건수 합계 넣어줘", [])
+
+    def test_an_already_planned_aggregate_is_not_doubled(self) -> None:
+        from office_claw_sidecar.routers.excel_live import _should_inject_pivot_step
+
+        plan = [self._step("excel_live.group_by_aggregate")]
+        assert not _should_inject_pivot_step("부서별 합계를 피벗으로 정리해줘", plan)
+
+    def test_an_explicit_pivot_request_still_injects(self) -> None:
+        from office_claw_sidecar.routers.excel_live import _should_inject_pivot_step
+
+        assert _should_inject_pivot_step("담당자별 합계를 피벗으로 만들어줘", [])
+        assert not _should_inject_pivot_step(
+            "담당자별 합계를 피벗으로 만들어줘", [self._step("excel_live.pivot_table")]
+        )
+
+    def test_the_evidence_gate_stays_loose_for_planner_chosen_pivots(self) -> None:
+        """플래너가 '집계해줘'를 피벗으로 푸는 건 정당한 해석 — 근거 게이트가 막으면 안 된다."""
+        from office_claw_sidecar.routers.excel_live import _action_lacks_evidence
+
+        assert not _action_lacks_evidence("excel_live.pivot_table", "지역별로 집계해줘")
+
+
+class TestSetFormulaVerificationSeesErrorCells:
+    """일반 `set_formula` 검증이 자기보고(applied>0)만 보던 것(감사 B3).
+
+    xlwings `.value`는 오류 셀을 None으로 돌려주므로(0825-074210-formula-verify
+    실측) 값 경로만 보면 #NAME?도 빈칸으로 보였다. 전용 판독(count_error_cells)을
+    거쳐 **구조 오류만** 실패로 본다 — #N/A·#DIV/0!는 데이터에 따라 정당하다.
+    """
+
+    @staticmethod
+    def _verify(service):
+        from office_claw_sidecar.services.excel_result_verifier import verify_effect
+
+        return verify_effect(
+            action="excel_live.set_formula",
+            params={"range_ref": "D3", "formula_a1": "=SUMM(B2:B3)"},
+            result={"formula_applied_cells": 1, "address": "D3"},
+            service=service,
+            workbook_id="wb",
+            sheet_name="S",
+        )
+
+    def test_a_structural_error_fails_with_the_cell_named(self) -> None:
+        from types import SimpleNamespace
+
+        service = SimpleNamespace(count_error_cells=lambda *a: {"#NAME?": ["D3"]})
+        ok, detail = self._verify(service)
+        assert not ok and detail.startswith("formula_error_cells:") and "D3" in detail
+
+    def test_data_shaped_errors_are_not_failures(self) -> None:
+        from types import SimpleNamespace
+
+        service = SimpleNamespace(count_error_cells=lambda *a: {"#N/A": ["D3"], "#DIV/0!": ["D4"]})
+        ok, _ = self._verify(service)
+        assert ok
+
+    def test_an_engine_without_the_reader_still_passes(self) -> None:
+        """옛 엔진·판독 실패는 '모름'이다 — 못 본 것을 실패로 단정하지 않는다."""
+        from types import SimpleNamespace
+
+        ok, _ = self._verify(SimpleNamespace())
+        assert ok
+
+        def _boom(*a):
+            raise RuntimeError("판독 실패")
+
+        ok, _ = self._verify(SimpleNamespace(count_error_cells=_boom))
+        assert ok
+
+    def test_the_file_engine_reports_unknown_for_fresh_formulas(self, tmp_path) -> None:
+        """openpyxl은 계산하지 않는다 — 방금 쓴 오타 수식은 캐시가 없어 '모름'({})이다.
+
+        빈 결과를 "오류 없음"으로 읽어 실패시키면 파일 엔진의 모든 수식이 오탐이 된다.
+        """
+        from openpyxl import Workbook
+
+        from office_claw_sidecar.services.excel_live_file_service import FileExcelLiveService
+
+        path = tmp_path / "b3.xlsx"
+        wb = Workbook()
+        wb.active.title = "S"
+        wb.save(path)
+        svc = FileExcelLiveService()
+        svc.select_workbook(str(path))
+        svc.set_formula(str(path), "S", "D3", "=SUMM(B2:B3)")
+        assert svc.count_error_cells(str(path), "S", "D3") == {}
+        ok, _ = verify_effect_for_formula(svc, str(path))
+        assert ok
+
+
+def verify_effect_for_formula(service, workbook_id):
+    from office_claw_sidecar.services.excel_result_verifier import verify_effect
+
+    return verify_effect(
+        action="excel_live.set_formula",
+        params={"range_ref": "D3", "formula_a1": "=SUMM(B2:B3)"},
+        result={"formula_applied_cells": 1, "address": "D3"},
+        service=service,
+        workbook_id=workbook_id,
+        sheet_name="S",
+    )
+
+
+class TestApprovalDoesNotCoverAnInjectedOverwrite:
+    """'승인과 다른 확정 액션' 주입 — 라운드 5 완료 판정의 세 번째 기둥.
+
+    블라스트 반경은 카드 장식에만 쓰였다 — 승인 경로엔 카드가 없어 **계산되고
+    버려졌다.** 매크로 하위 명령·재계획이 지목 밖의 값을 덮어도 무검문 실행
+    (2026-08-19 크로스시트 집계가 학생 이름을 덮은 사고 모양). 이제 승인 경로에서
+    반경 위반은 되묻기로 선다 — 카드는 매크로 단계가 소화하지 못하기 때문이다.
+    """
+
+    def _gate(self, *, start_cell, value, tmp_path):
+        from openpyxl import Workbook
+
+        from office_claw_sidecar.routers.excel_live import (
+            ExcelLiveCommandRequest,
+            PlanExecution,
+            _plan_approval_gate,
+        )
+        from office_claw_sidecar.services.excel_live_executor import PlanStep
+        from office_claw_sidecar.services.excel_live_service import get_excel_live_service
+
+        path = tmp_path / "inject.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "성적부"
+        ws.append(["학생", "점수"])
+        ws.append(["김민준", 88])
+        wb.save(path)
+        service = get_excel_live_service()
+        service.select_workbook(str(path))
+        service.select_sheet(None, "성적부")
+
+        plan = [PlanStep(action="excel_live.write_range",
+                         params={"start_cell": start_cell, "values_2d": [[value]]})]
+        req = ExcelLiveCommandRequest(message="D1에 비고 라고 써줘", session_id="t-inject",
+                                      workbook_id=None, approve=True, context_range=None)
+        ctx = PlanExecution(req=req, plan=plan, session_key="t-inject",
+                            parsed={"plan_source": "planner"}, approved=True)
+        return _plan_approval_gate(ctx, plan)
+
+    def test_an_injected_overwrite_outside_the_pointed_cell_asks(self, tmp_path, monkeypatch) -> None:
+        """지목은 D1인데 계획은 값이 든 A2를 덮는다 — 승인돼 있어도 서야 한다."""
+        monkeypatch.setenv("EXCEL_LIVE_ENGINE", "file")
+        out = self._gate(start_cell="A2", value="비고", tmp_path=tmp_path)
+        assert out is not None and out.action == "excel_live.clarify", out
+        assert out.result.get("sanity_code") == "blast_radius_after_approval"
+
+    def test_the_pointed_cell_itself_still_proceeds(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("EXCEL_LIVE_ENGINE", "file")
+        out = self._gate(start_cell="D1", value="비고", tmp_path=tmp_path)
+        assert out is None, out

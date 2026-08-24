@@ -5510,6 +5510,29 @@ def _chart_step_from_message(message: str, *, default_kind: str = ""):
     }
 
 
+# 피벗 **주입**은 원문이 피벗을 명시했을 때만 한다. '집계·요약'은 group_by·수식으로도
+# 정당하게 풀리는 말이라, 그 낱말만 보고 피벗을 끼워 넣으면 이미 옳게 계획된 group_by
+# 문형에 시키지 않은 피벗 시트가 따라붙는다(감사 B4). 시트 이름이 '요약'이기만 해도
+# 걸린다(블라인드 624에 그런 문장 27건 실측). 근거 게이트(_ACTION_EVIDENCE)는 반대로
+# 느슨한 게 맞다 — 플래너가 '집계해줘'를 피벗으로 푸는 것 자체는 정당한 해석이다.
+_PIVOT_EXPLICIT = re.compile(r"(피벗|pivot)", re.IGNORECASE)
+# 이미 계획에 든 집계 액션 — 있으면 사용자가 말한 집계는 계획에 있는 것이므로 겹쳐 넣지 않는다.
+_AGGREGATE_PLAN_ACTIONS = frozenset(
+    {
+        "excel_live.group_by_aggregate",
+        "excel_live.calculate_column_stat",
+    }
+)
+
+
+def _should_inject_pivot_step(message: str, current_plan: list[Any]) -> bool:
+    """빠진 피벗 단계를 규칙으로 채울지 — 명시된 피벗이 계획에 없을 때만."""
+    actions = {str(getattr(step, "action", "")) for step in current_plan}
+    if "excel_live.pivot_table" in actions or actions & _AGGREGATE_PLAN_ACTIONS:
+        return False
+    return bool(_PIVOT_EXPLICIT.search(str(message or "")))
+
+
 def _chart_accompanies_aggregate(message: str, plan: list[Any] | None) -> bool:
     """집계가 본 작업이고 차트는 그 결과를 그리는 부수 단계인지."""
     if any(getattr(step, "action", "") == "excel_live.pivot_table" for step in plan or []):
@@ -10191,11 +10214,8 @@ async def _run_command(
     }
     # "완료 행만 남기고 담당자별 합계를 피벗으로" — 작은 모델은 이런 연쇄 지시의 첫 단계만 계획한다.
     # 원문이 분명히 요청한 피벗이 빠졌다면 규칙으로 채워 넣는다(기준 열을 확정할 수 있을 때만).
-    if (
-        pending_operation is None
-        and _ACTION_EVIDENCE["excel_live.pivot_table"].search(req.message)
-        and not any(step.action == "excel_live.pivot_table" for step in current_plan)
-    ):
+    # '집계·요약'만으로는 주입하지 않는다 — _should_inject_pivot_step의 주석 참조(감사 B4).
+    if pending_operation is None and _should_inject_pivot_step(req.message, current_plan):
         pivot_raw = _pivot_step_from_message(req.message, workbook_digest, sheet_name=req.sheet_name)
         if pivot_raw:
             extra = _bind_and_validate(_normalize_plan_or_empty([pivot_raw]))
@@ -10405,6 +10425,42 @@ def _plan_approval_gate(ctx: PlanExecution, plan: list[PlanStep]) -> ExcelLiveAc
         )
 
     if ctx.approved:
+        if scope_verdict.is_risky:
+            # 승인은 화면에 보인 계획에 대한 것이다. 매크로 하위 명령·재계획은 사람이
+            # 본 적 없는데 지목 밖의 **값**까지 덮는다면 조용히 진행할 수 없다.
+            # 카드는 못 쓴다 — 매크로 단계 응답은 approval_required를 소화하지 않아
+            # 실행 없이 done으로 넘어가 버린다. 되묻기로 세우면 매크로가 waiting_input
+            # 으로 멈추고 사람이 답한다(2026-08-19 크로스시트 집계가 학생 이름을 덮은
+            # 사고가 정확히 이 모양이었다 — 승인 한 번 뒤의 무검문 실행).
+            question = (
+                f"승인된 작업이 지목하지 않은 칸의 값을 덮습니다 — {scope_verdict.summary()} "
+                "계속할까요, 아니면 대상 범위를 알려주시겠어요?"
+            )
+            trace_note(
+                "blast_radius_after_approval",
+                cells=len(scope_verdict.risky),
+                detail=scope_verdict.summary(limit=8),
+            )
+            previous = _pending_clarifications.get(ctx.session_key)
+            _pending_clarifications[ctx.session_key] = PendingClarification(
+                session_id=ctx.session_key,
+                original_message=previous.original_message if previous else req.message,
+                question=question,
+                ask_count=(previous.ask_count + 1) if previous else 1,
+                created_at_ts=time.time(),
+            )
+            return ExcelLiveActionResponse(
+                ok=True,
+                action="excel_live.clarify",
+                reason=question,
+                result={
+                    "ask_follow_up": True,
+                    "follow_up_question": question,
+                    "operation_intent": "clarify",
+                    "blocked_action": plan[0].action if plan else "",
+                    "sanity_code": "blast_radius_after_approval",
+                },
+            )
         # 검사를 통과한 승인 계획 — 카드를 다시 묻지 않고 실행으로 보낸다.
         # (정상 승인 흐름의 계획은 카드를 만들 때 이미 같은 검사를 통과했으므로
         # 재검사는 결정적으로 같은 결과다. 여기서 새로 잡히는 것은 매크로 하위

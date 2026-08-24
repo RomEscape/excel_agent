@@ -1043,6 +1043,46 @@ class ExcelLiveService:
         """계산된 값 읽기. xlwings는 Excel이 이미 계산한 값을 주므로 일반 읽기와 같다."""
         return self.read_range(workbook_id, sheet_name, range_ref)
 
+    # Excel 셀 오류의 COM 원시값 코드. xlwings `.value`는 오류 셀을 **None으로**
+    # 돌려주므로(2026-08-25 실측) 값 경로에서는 오류가 빈칸과 구분되지 않는다.
+    _CELL_ERROR_CODES = {
+        -2146826288: "#NULL!",
+        -2146826281: "#DIV/0!",
+        -2146826273: "#VALUE!",
+        -2146826265: "#REF!",
+        -2146826259: "#NAME?",
+        -2146826252: "#NUM!",
+        -2146826246: "#N/A",
+    }
+
+    def count_error_cells(self, workbook_id: str | None, sheet_name: str, range_ref: str) -> dict[str, list[str]]:
+        """범위 안의 오류 셀을 {오류 종류: [셀 주소…]}로 보고한다.
+
+        수식 사후 검증용(감사 B3): `formula_applied_cells>0`은 "넣었다"만 말할 뿐
+        "#NAME?이 떴다"는 못 본다. COM 원시값의 오류 코드를 직접 읽는다.
+        """
+        from openpyxl.utils import get_column_letter
+
+        target_id = workbook_id or self._selected_workbook_id
+        if not target_id:
+            return {}
+        wb = self._find_workbook(target_id)
+        sheet = self._find_sheet(wb, sheet_name)
+        rng = sheet.range(range_ref)
+        raw = rng.api.Value
+        if not isinstance(raw, tuple):
+            raw = ((raw,),)
+        top_row = int(getattr(rng, "row", 1) or 1)
+        left_col = int(getattr(rng, "column", 1) or 1)
+        found: dict[str, list[str]] = {}
+        for r, row in enumerate(raw):
+            cells = row if isinstance(row, tuple) else (row,)
+            for c, value in enumerate(cells):
+                kind = self._CELL_ERROR_CODES.get(value) if isinstance(value, int) else None
+                if kind:
+                    found.setdefault(kind, []).append(f"{get_column_letter(left_col + c)}{top_row + r}")
+        return found
+
     def find_duplicates(
         self,
         workbook_id: str | None,

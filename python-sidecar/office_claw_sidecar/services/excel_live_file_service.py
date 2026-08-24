@@ -763,6 +763,32 @@ class FileExcelLiveService(ExcelLiveService):
             wb_data.close()
             wb_formula.close()
 
+    def count_error_cells(self, workbook_id: str | None, sheet_name: str, range_ref: str) -> dict[str, list[str]]:
+        """부모(COM)와 같은 계약의 파일 엔진 판 — Excel이 마지막 저장 때 남긴 캐시만 본다.
+
+        openpyxl은 수식을 계산하지 않으므로 **우리가 방금 쓴** 수식의 오류는 여기서
+        안 보인다(빈 결과 = "오류 없음"이 아니라 "모름"이고, 검증기는 못 본 것을
+        실패로 단정하지 않는다). Excel이 계산해 저장한 파일이면 오류가 문자열
+        캐시('#NAME?' 등)로 남아 있어 잡힌다.
+        """
+        from openpyxl.utils import get_column_letter
+
+        error_kinds = set(self._CELL_ERROR_CODES.values())
+        path = self._resolve_workbook_path(workbook_id)
+        wb = self._load_wb(path, data_only=True)
+        try:
+            ws = self._sheet_or_raise(wb, sheet_name)
+            min_row, min_col, max_row, max_col = self._range_bounds(ws, range_ref)
+            found: dict[str, list[str]] = {}
+            for r in range(min_row, max_row + 1):
+                for c in range(min_col, max_col + 1):
+                    value = ws.cell(row=r, column=c).value
+                    if isinstance(value, str) and value in error_kinds:
+                        found.setdefault(value, []).append(f"{get_column_letter(c)}{r}")
+            return found
+        finally:
+            wb.close()
+
     def describe_sheet_layout(self, workbook_id: str | None, sheet_name: str) -> dict[str, Any]:
         """시트의 수식·서식·병합·표 블록을 요약한다.
 
