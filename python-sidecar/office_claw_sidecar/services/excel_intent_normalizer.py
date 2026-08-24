@@ -52,21 +52,29 @@ dedupe(중복 제거), clear_values(값 비우기), reset_all(서식까지 초�
 create_table(표 생성), pivot(집계표·피벗), chart(차트), write_value(값 입력),
 find_replace(찾아 바꾸기), read(조회), other(그 외)
 
-주의: "50 이상인 셀만 노란색"처럼 **조건이 붙은 색칠은 fill_color가 아니라
-highlight**다.
+주의: 색칠에 조건(이상·이하·넘는·~인 셀만 같은 말)이 붙어 있으면 highlight,
+조건이 없으면 **어떤 색이든 전부 fill_color**다.
+option에는 그 문장에 실제로 나온 값만 적는다.
 
 규칙:
 - 범위·좌표를 **만들어내지 마라.** 문장에 적힌 것만 옮겨 적는다.
-- 열은 좌표가 아니라 머리글 이름으로 가리킨다.
+- 열은 좌표가 아니라 **시트 머리글에 실제로 있는** 이름으로 가리킨다. 문장의 낱말이
+  머리글과 다르면(예: 매출↔금액) 가장 가까운 머리글을 골라라.
 - option: 색 이름, asc/desc, 필터 값, SUM/AVERAGE/MAX/MIN/COUNT, 새 값 등 하나.
+- 셀에 넣으라는 것이 **합계·총합·평균처럼 계산한 결과**면 write_value가 아니라
+  formula다. write_value는 문장에 적힌 글자·숫자를 그대로 넣을 때만이다.
 
 예시:
 문장: "B2:B9 파란색으로 칠해줘"
 {{"task": "fill_color", "range": "B2:B9", "column": null, "option": "파란색"}}
+문장: "여기 C3:C7 좀 빨갛게 해줄래?"
+{{"task": "fill_color", "range": "C3:C7", "column": null, "option": "빨간색"}}
 문장: "매출 높은 순서로 보여줘"
 {{"task": "sort", "range": null, "column": "금액", "option": "desc"}}
 문장: "G1에 담당자별 평균 수식 넣어줘"
 {{"task": "formula", "range": "G1", "column": "금액", "option": "AVERAGE"}}
+문장: "D8에 지연건수 다 더한 값 넣어줘"
+{{"task": "formula", "range": "D8", "column": "지연건수", "option": "SUM"}}
 
 문장: "{message}"
 JSON:"""
