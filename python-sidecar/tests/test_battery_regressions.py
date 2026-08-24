@@ -4299,8 +4299,10 @@ class TestApprovalDoesNotCoverAnInjectedOverwrite:
 
     블라스트 반경은 카드 장식에만 쓰였다 — 승인 경로엔 카드가 없어 **계산되고
     버려졌다.** 매크로 하위 명령·재계획이 지목 밖의 값을 덮어도 무검문 실행
-    (2026-08-19 크로스시트 집계가 학생 이름을 덮은 사고 모양). 이제 승인 경로에서
-    반경 위반은 되묻기로 선다 — 카드는 매크로 단계가 소화하지 못하기 때문이다.
+    (2026-08-19 크로스시트 집계가 학생 이름을 덮은 사고 모양). 이제 **본 적 없는
+    계획**(unseen_plan: 매크로 하위 명령·재계획)의 모델 계획만 되묻기로 선다.
+    카드로 승인된 계획(resume)과 요청 수준 approve=True 계약은 그대로 지나간다 —
+    처음 구현이 이 둘을 구분 못 해 전체 pytest에서 17건이 깨졌다(2026-08-25 실측).
     """
 
     def _gate(self, *, start_cell, value, tmp_path):
@@ -4331,7 +4333,7 @@ class TestApprovalDoesNotCoverAnInjectedOverwrite:
                                       workbook_id=None, approve=True, context_range=None)
         ctx = PlanExecution(req=req, plan=plan, session_key="t-inject",
                             parsed={"plan_source": "planner"}, approved=True)
-        return _plan_approval_gate(ctx, plan)
+        return _plan_approval_gate(ctx, plan, unseen_plan=True)
 
     def test_an_injected_overwrite_outside_the_pointed_cell_asks(self, tmp_path, monkeypatch) -> None:
         """지목은 D1인데 계획은 값이 든 A2를 덮는다 — 승인돼 있어도 서야 한다."""
@@ -4344,3 +4346,35 @@ class TestApprovalDoesNotCoverAnInjectedOverwrite:
         monkeypatch.setenv("EXCEL_LIVE_ENGINE", "file")
         out = self._gate(start_cell="D1", value="비고", tmp_path=tmp_path)
         assert out is None, out
+
+    def test_a_card_approved_or_contract_request_is_not_re_asked(self, tmp_path, monkeypatch) -> None:
+        """카드에서 ⚠ 경고를 보고 승인한 계획(resume 첫 바퀴)과 approve=True 계약은
+        위험해도 다시 세우지 않는다 — unseen_plan이 아닐 때는 통과."""
+        from openpyxl import Workbook
+
+        from office_claw_sidecar.routers.excel_live import (
+            ExcelLiveCommandRequest,
+            PlanExecution,
+            _plan_approval_gate,
+        )
+        from office_claw_sidecar.services.excel_live_executor import PlanStep
+        from office_claw_sidecar.services.excel_live_service import get_excel_live_service
+
+        monkeypatch.setenv("EXCEL_LIVE_ENGINE", "file")
+        path = tmp_path / "seen.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "성적부"
+        ws.append(["학생", "점수"])
+        ws.append(["김민준", 88])
+        wb.save(path)
+        service = get_excel_live_service()
+        service.select_workbook(str(path))
+        service.select_sheet(None, "성적부")
+        plan = [PlanStep(action="excel_live.write_range",
+                         params={"start_cell": "A2", "values_2d": [["비고"]]})]
+        req = ExcelLiveCommandRequest(message="D1에 비고 라고 써줘", session_id="t-seen",
+                                      workbook_id=None, approve=True, context_range=None)
+        ctx = PlanExecution(req=req, plan=plan, session_key="t-seen",
+                            parsed={"plan_source": "planner"}, approved=True)
+        assert _plan_approval_gate(ctx, plan) is None  # unseen_plan=False(기본)

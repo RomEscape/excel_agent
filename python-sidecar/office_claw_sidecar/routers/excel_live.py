@@ -202,6 +202,10 @@ class ExcelLiveCommandRequest(BaseModel):
     session_id: str | None = Field(None, description="채팅 세션 ID (멀티턴 슬롯필링 상태 식별)")
     context_range: str | None = Field(None, description="직전 단계에서 확정된 범위 주소(A1:B2)")
     approve: bool = Field(False, description="CONFIRM 작업 승인 여부")
+    # 매크로 스테퍼 전용(내부) — 승인 한 번이 하위 명령 전체를 덮는 일괄 승인이라,
+    # 이 요청의 **계획**은 사람이 본 적이 없다는 표시다. 게이트가 이 표시를 보고
+    # 지목 밖의 값을 덮는 모델 계획을 되묻기로 세운다(감사 B2). 프론트는 보내지 않는다.
+    unattended_approval: bool = Field(False, description="일괄 승인(매크로 하위 명령) 표시 — 내부 전용")
     # 프론트 쪽 사정 — 사용자가 실제로 친 원문(마크업 포함), 복합문 조각 번호, 붙여넣기
     # 범위, 라우팅 근거, 재시도 번호. 사이드카 판단에는 쓰지 않고 **로그에만** 남긴다.
     client: dict[str, Any] | None = Field(None, description="프론트 문맥(로그 전용)")
@@ -10360,7 +10364,9 @@ async def _run_command(
     )
 
 
-def _plan_approval_gate(ctx: PlanExecution, plan: list[PlanStep]) -> ExcelLiveActionResponse | None:
+def _plan_approval_gate(
+    ctx: PlanExecution, plan: list[PlanStep], *, unseen_plan: bool = False
+) -> ExcelLiveActionResponse | None:
     """계획에 승인이 필요한 단계가 있으면 **계획 전체**를 승인 대기로 돌린다.
 
     예전에는 첫 CONFIRM 단계 하나만 저장하고 나머지를 버렸다. 쓰기 계열 액션이
@@ -10424,10 +10430,20 @@ def _plan_approval_gate(ctx: PlanExecution, plan: list[PlanStep]) -> ExcelLiveAc
             },
         )
 
+    # 확신 3분기보다 먼저 필요하다 — 승인 경로의 반경 차단도 이 구분을 쓴다.
+    plan_from_model = str(ctx.parsed.get("plan_source") or "") != "rule"
+
     if ctx.approved:
-        if scope_verdict.is_risky:
-            # 승인은 화면에 보인 계획에 대한 것이다. 매크로 하위 명령·재계획은 사람이
-            # 본 적 없는데 지목 밖의 **값**까지 덮는다면 조용히 진행할 수 없다.
+        if unseen_plan and plan_from_model and scope_verdict.is_risky:
+            # 세 조건이 모두 참일 때만 선다:
+            # ① unseen_plan — 매크로 하위 명령(일괄 승인)이거나 검증 실패 뒤의
+            #   **재계획**이다. 즉 이 계획은 사람이 본 적이 없다. 카드로 승인된
+            #   계획은 게이트에 재진입해도 여기 안 걸린다(resume 첫 바퀴는 unseen
+            #   아님) — ⚠ 경고를 보고 승인한 사람을 다시 세우면 안 된다. 요청에
+            #   approve=True를 직접 싣는 기존 계약(전체 지우기 등)도 그대로 지나간다.
+            # ② 모델 계획 — 규칙 계획은 카드에 보인 하위 명령 문장의 결정적 해석이라
+            #   "본 적 없는 계획" 위험이 없다.
+            # ③ 반경 위반 — 지목 밖의 **값**을 덮는다.
             # 카드는 못 쓴다 — 매크로 단계 응답은 approval_required를 소화하지 않아
             # 실행 없이 done으로 넘어가 버린다. 되묻기로 세우면 매크로가 waiting_input
             # 으로 멈추고 사람이 답한다(2026-08-19 크로스시트 집계가 학생 이름을 덮은
@@ -10476,7 +10492,6 @@ def _plan_approval_gate(ctx: PlanExecution, plan: list[PlanStep]) -> ExcelLiveAc
     # 해석은 SAFE로 분류된 편집이라도 실행 전에 확인을 받는다 — 커버리지
     # 구멍이 조용한 오답 대신 "이렇게 이해했어요" 질문으로 나타나게 하는
     # 구조적 장치다(2026-08-18, 3개월 반복 루프의 근본 대책).
-    plan_from_model = str(ctx.parsed.get("plan_source") or "") != "rule"
     if not confirm_steps:
         if plan_from_model:
             model_edit_steps = [step for step in plan if step.action in EDIT_ACTIONS]
@@ -10717,7 +10732,12 @@ async def _execute_plan_and_respond(
     queue_wait_total_ms = 0
     snapshot_holder: dict[str, ActionRollbackSnapshot | None] = {"current": None}
     while True:
-        gate = _plan_approval_gate(ctx, current_plan)
+        gate = _plan_approval_gate(
+            ctx,
+            current_plan,
+            # 재계획(replan_count>0)과 매크로 하위 명령은 사람이 본 적 없는 계획이다.
+            unseen_plan=replan_count > 0 or bool(getattr(req, "unattended_approval", False)),
+        )
         if gate is not None:
             return gate
 
@@ -11556,8 +11576,11 @@ async def _post_macro_step_inner(
         workbook_id=run.workbook_id,
         sheet_name=run.sheet_name,
         session_id=run.step_session_id,
-        # 매크로 승인 한 번이 하위 명령 전체의 승인이다.
+        # 매크로 승인 한 번이 하위 명령 전체의 승인이다. 다만 하위 명령의 **계획**은
+        # 사람이 본 적 없으므로 일괄 승인 표시를 함께 보낸다 — 게이트가 지목 밖의
+        # 값을 덮는 모델 계획을 되묻기로 세울 수 있도록(감사 B2).
         approve=True,
+        unattended_approval=True,
     )
     try:
         # 하위 명령의 message는 분해기가 만든 문장이다. 사람이 실제로 요구한 말과
