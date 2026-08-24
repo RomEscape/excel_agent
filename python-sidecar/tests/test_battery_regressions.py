@@ -4107,3 +4107,64 @@ class TestIntentPlansRequireEvidenceInTheMessage:
     def test_corroborated_plans_still_map(self, msg, intent, action) -> None:
         plan = self._plan(msg, **intent)
         assert plan is not None and plan["action"] == action, (msg, plan)
+
+
+class TestApprovalDoesNotBypassSafetyChecks:
+    """`approve=True`가 블라스트 반경·계획 위생 검사를 통째로 건너뛰었다(감사 B2).
+
+    `/macro/step`은 하위 명령 전체를 approve=True로 보낸다(매크로 승인 한 번 =
+    전체 승인). 그런데 하위 명령의 계획은 **사람이 본 적이 없다** — 재계획도 같다.
+    승인이 면제하는 것은 승인 카드 재요청뿐이고, 검사는 항상 수행해야 한다.
+    """
+
+    def _gate(self, *, message, value, approved, tmp_path):
+        from openpyxl import Workbook
+
+        from office_claw_sidecar.routers.excel_live import (
+            ExcelLiveCommandRequest,
+            PlanExecution,
+            _plan_approval_gate,
+        )
+        from office_claw_sidecar.services.excel_live_executor import PlanStep
+        from office_claw_sidecar.services.excel_live_service import get_excel_live_service
+
+        path = tmp_path / "b2.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "성적부"
+        ws.append(["학생", "점수"])
+        wb.save(path)
+        service = get_excel_live_service()
+        service.select_workbook(str(path))
+        service.select_sheet(None, "성적부")
+
+        plan = [PlanStep(action="excel_live.write_range",
+                         params={"start_cell": "D1", "values_2d": [[value]]})]
+        req = ExcelLiveCommandRequest(message=message, session_id="t-b2", workbook_id=None,
+                                      approve=approved, context_range=None)
+        ctx = PlanExecution(req=req, plan=plan, session_key="t-b2",
+                            parsed={"plan_source": "planner"}, approved=approved)
+        return _plan_approval_gate(ctx, plan)
+
+    def test_an_approved_sanity_violation_is_still_blocked(self, tmp_path, monkeypatch) -> None:
+        """매크로 사고 모양: 하위 명령 문장(지시문)을 플래너가 **값으로** 쓴 계획."""
+        monkeypatch.setenv("EXCEL_LIVE_ENGINE", "file")
+        out = self._gate(message="B2에 합계 넣어줘", value="B2에 합계 넣어줘",
+                         approved=True, tmp_path=tmp_path)
+        assert out is not None and out.action == "excel_live.clarify", out
+
+    def test_an_approved_clean_plan_proceeds_without_a_new_card(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("EXCEL_LIVE_ENGINE", "file")
+        out = self._gate(message="D1에 비고 라고 써줘", value="비고",
+                         approved=True, tmp_path=tmp_path)
+        assert out is None, out
+
+    def test_the_early_return_stays_after_the_checks(self) -> None:
+        """조기 반환이 검사 위로 다시 올라가면 이 구멍이 조용히 되살아난다."""
+        import inspect
+
+        from office_claw_sidecar.routers import excel_live
+
+        src = inspect.getsource(excel_live._plan_approval_gate)
+        # 주석에도 'if ctx.approved:'가 등장하므로 실행문 쪽의 고유 문구로 짚는다.
+        assert src.index("_assess_plan_sanity") < src.index("검사를 통과한 승인 계획")

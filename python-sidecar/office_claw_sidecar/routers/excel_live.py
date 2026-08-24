@@ -10358,8 +10358,12 @@ def _plan_approval_gate(ctx: PlanExecution, plan: list[PlanStep]) -> ExcelLiveAc
                 reason="보안 정책에 의해 거부된 작업입니다.",
             )
 
-    if ctx.approved:
-        return None
+    # 주의: 예전에는 여기서 `if ctx.approved: return None`으로 **모든 검사를**
+    # 건너뛰었다. 그런데 /macro/step은 하위 명령 전체를 approve=True로 보내므로
+    # (매크로 승인 한 번 = 전체 승인), 하위 명령의 **틀린 계획**이 블라스트 반경도
+    # 계획 위생도 없이 실행됐다(2026-08-24 감사 B2). 재계획도 같은 구멍이었다 —
+    # 승인 후 검증 실패로 다시 짠 계획은 사람이 본 적이 없는데 approved로 통과했다.
+    # 승인이 면제하는 것은 **승인 카드 재요청뿐**이다. 검사는 항상 수행한다.
 
     # 블라스트 반경 — 사람이 가리키지 않은 자리의 **값**을 덮는가.
     # 계획이 옳은지는 판단하지 않는다. "지목한 자리"와 "건드릴 자리"만 비교하므로
@@ -10399,6 +10403,13 @@ def _plan_approval_gate(ctx: PlanExecution, plan: list[PlanStep]) -> ExcelLiveAc
                 "sanity_code": sanity_issues[0].code,
             },
         )
+
+    if ctx.approved:
+        # 검사를 통과한 승인 계획 — 카드를 다시 묻지 않고 실행으로 보낸다.
+        # (정상 승인 흐름의 계획은 카드를 만들 때 이미 같은 검사를 통과했으므로
+        # 재검사는 결정적으로 같은 결과다. 여기서 새로 잡히는 것은 매크로 하위
+        # 명령과 재계획, 즉 사람이 본 적 없는 계획뿐이다.)
+        return None
 
     confirm_steps = [
         step
