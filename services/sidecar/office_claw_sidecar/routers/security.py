@@ -19,8 +19,6 @@ Phase 2 추가 엔드포인트:
 from __future__ import annotations
 
 import logging
-import uuid
-from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -37,11 +35,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["security"])
 _audit = AuditService()
 
-# ── UI 승인 대기 큐 (텔레그램 미연결 시 앱 UI로 승인 요청) ──────────────────────
-# key: approval_id (str), value: {"command": str, "reason": str, "audit_id": int, "responded": bool, "approved": bool}
-_pending_ui_approvals: dict[str, dict[str, Any]] = {}
-
-
 # ── 요청 모델 ─────────────────────────────────────────────────────────────────
 
 class WhitelistUpdateRequest(BaseModel):
@@ -53,12 +46,6 @@ class MaskingSettingsRequest(BaseModel):
     """마스킹 설정 업데이트 요청."""
     mask_email: bool = False
     mask_phone: bool = False
-
-
-class ApprovalRespondRequest(BaseModel):
-    """UI 승인 응답 요청."""
-    approved: bool
-    rejection_reason: str | None = None  # 거부 시 사용자 입력 사유 (선택, Sprint 3)
 
 
 # ── 엔드포인트 ────────────────────────────────────────────────────────────────
@@ -179,8 +166,7 @@ async def command_audit_stats() -> dict:
     """
     명령 분석 등급별 통계를 반환한다.
 
-    confirm_pending = SQLite DB의 CONFIRM+미결 건수 + UI 승인 대기 큐 건수.
-    Dashboard "승인 대기" 카드와 StatusBar 보안 배지가 동일한 값을 사용한다.
+    confirm_pending = SQLite DB의 CONFIRM + 미결(approved IS NULL) 건수.
 
     Returns::
 
@@ -195,11 +181,7 @@ async def command_audit_stats() -> dict:
         }
     """
     cmd_audit = get_command_audit_logger()
-    # UI 승인 대기 큐의 실제 미처리 건수를 함께 집계
-    ui_pending = sum(
-        1 for e in _pending_ui_approvals.values() if not e["responded"]
-    )
-    return cmd_audit.get_stats(extra_pending=ui_pending)
+    return cmd_audit.get_stats()
 
 
 @router.get("/audit")
@@ -245,111 +227,3 @@ async def command_audit_clear() -> dict:
     )
     logger.info("[security] 명령 감사 로그 초기화: %d건 삭제", deleted)
     return {"ok": True, "deleted": deleted}
-
-
-# ── UI 승인 요청 엔드포인트 (텔레그램 미연결 시 앱 UI 대체 수단) ──────────────────
-
-@router.post("/approval")
-async def create_approval_request(
-    command: str,
-    reason: str,
-    audit_id: int | None = None,
-) -> dict:
-    """
-    앱 UI에서 처리할 승인 요청을 생성한다.
-
-    텔레그램 봇이 연결되지 않은 경우 이 엔드포인트를 통해 UI에 HITL 승인 요청을 전달한다.
-
-    Returns::
-
-        {"approval_id": str, "command": str, "reason": str}
-    """
-    approval_id = uuid.uuid4().hex
-    _pending_ui_approvals[approval_id] = {
-        "command": command,
-        "reason": reason,
-        "audit_id": audit_id,
-        "responded": False,
-        "approved": False,
-    }
-    logger.info("[approval] UI 승인 요청 생성: id=%s reason=%s", approval_id, reason)
-    return {"approval_id": approval_id, "command": command, "reason": reason}
-
-
-@router.get("/approval/pending")
-async def get_pending_approvals() -> dict:
-    """
-    대기 중인 UI 승인 요청 목록을 반환한다 (폴링용).
-
-    Returns::
-
-        {"pending": [{"approval_id": str, "command": str, "reason": str, "audit_id": int|null}]}
-    """
-    pending = [
-        {
-            "approval_id": aid,
-            "command": entry["command"],
-            "reason": entry["reason"],
-            "audit_id": entry.get("audit_id"),
-        }
-        for aid, entry in _pending_ui_approvals.items()
-        if not entry["responded"]
-    ]
-    return {"pending": pending}
-
-
-@router.post("/approval/{approval_id}/respond")
-async def respond_to_approval(
-    approval_id: str,
-    req: ApprovalRespondRequest,
-) -> dict:
-    """
-    앱 UI에서 승인 또는 거부 응답을 전달한다.
-
-    - 승인 시: approved=true, 감사 로그 업데이트
-    - 거부 시: approved=false, 감사 로그 업데이트
-
-    Returns::
-
-        {"ok": bool, "approved": bool, "approval_id": str}
-    """
-    entry = _pending_ui_approvals.get(approval_id)
-    if not entry:
-        raise HTTPException(status_code=404, detail=f"승인 요청 {approval_id}를 찾을 수 없습니다.")
-
-    if entry["responded"]:
-        raise HTTPException(status_code=409, detail="이미 처리된 승인 요청입니다.")
-
-    entry["responded"] = True
-    entry["approved"] = req.approved
-
-    # 감사 로그 업데이트 (거부 시 rejection_reason 함께 저장 — Sprint 3)
-    reason_recorded = False
-    if entry.get("audit_id") is not None:
-        cmd_audit = get_command_audit_logger()
-        cmd_audit.update_approval(entry["audit_id"], req.approved, req.rejection_reason)
-        if not req.approved and req.rejection_reason:
-            reason_recorded = True
-
-    status_label = "승인" if req.approved else "거부"
-    detail = f"approved={req.approved}"
-    if not req.approved and req.rejection_reason:
-        detail += f" reason={req.rejection_reason[:100]}"
-    _audit.log(
-        action=f"ui_approval.{status_label}",
-        target=approval_id,
-        detail=detail,
-    )
-    logger.info("[approval] UI 승인 응답: id=%s approved=%s reason_recorded=%s",
-                approval_id, req.approved, reason_recorded)
-
-    # 메신저 폴백 대기 중인 asyncio.Event가 있으면 깨움
-    resp_event = entry.get("_event")
-    if resp_event is not None:
-        resp_event.set()
-
-    # 처리된 요청은 큐에서 제거 (event가 없는 경우만 — event 있으면 push_ui_approval에서 제거)
-    if resp_event is None:
-        _pending_ui_approvals.pop(approval_id, None)
-
-    return {"ok": True, "approved": req.approved, "approval_id": approval_id, "reason_recorded": reason_recorded}

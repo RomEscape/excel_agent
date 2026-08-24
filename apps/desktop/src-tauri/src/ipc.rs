@@ -162,45 +162,6 @@ pub async fn get_audit_logs(
     .await
 }
 
-#[tauri::command]
-pub async fn telegram_status(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
-    sidecar_request(
-        &state,
-        Method::GET,
-        "/telegram/status",
-        None,
-        None,
-        "Telegram 상태 조회 실패",
-    )
-    .await
-}
-
-#[tauri::command]
-pub async fn telegram_start(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
-    sidecar_request(
-        &state,
-        Method::POST,
-        "/telegram/start",
-        None,
-        None,
-        "Telegram 시작 실패",
-    )
-    .await
-}
-
-#[tauri::command]
-pub async fn telegram_stop(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
-    sidecar_request(
-        &state,
-        Method::POST,
-        "/telegram/stop",
-        None,
-        None,
-        "Telegram 중지 실패",
-    )
-    .await
-}
-
 // ── Excel Live(COM) commands ────────────────────────────────────────────────
 
 #[tauri::command]
@@ -486,131 +447,7 @@ pub async fn security_update_masking_settings(
 
 // ── Phase 3: Slack commands ──────────────────────────────────────────────────
 
-#[tauri::command(rename_all = "snake_case")]
-pub async fn slack_setup(
-    state: State<'_, Mutex<SidecarState>>,
-    bot_token: String,
-    app_token: String,
-    allowed_user_ids: Option<Vec<String>>,
-) -> Result<String, String> {
-    let body = serde_json::json!({
-        "bot_token": bot_token,
-        "app_token": app_token,
-        "allowed_user_ids": allowed_user_ids,
-    });
-    sidecar_request(
-        &state,
-        Method::POST,
-        "/slack/setup",
-        Some(body),
-        Some(Duration::from_secs(15)),
-        "Slack 설정 실패",
-    )
-    .await
-}
-
-#[tauri::command]
-pub async fn slack_status(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
-    sidecar_request(
-        &state,
-        Method::GET,
-        "/slack/status",
-        None,
-        Some(Duration::from_secs(5)),
-        "Slack 상태 조회 실패",
-    )
-    .await
-}
-
-#[tauri::command]
-pub async fn slack_start(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
-    sidecar_request(
-        &state,
-        Method::POST,
-        "/slack/start",
-        None,
-        None,
-        "Slack 시작 실패",
-    )
-    .await
-}
-
-#[tauri::command]
-pub async fn slack_stop(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
-    sidecar_request(
-        &state,
-        Method::POST,
-        "/slack/stop",
-        None,
-        None,
-        "Slack 중지 실패",
-    )
-    .await
-}
-
 // ── Phase 3: Discord commands ────────────────────────────────────────────────
-
-#[tauri::command(rename_all = "snake_case")]
-pub async fn discord_setup(
-    state: State<'_, Mutex<SidecarState>>,
-    token: String,
-    allowed_guild_id: Option<String>,
-    allowed_user_ids: Option<Vec<String>>,
-) -> Result<String, String> {
-    let body = serde_json::json!({
-        "token": token,
-        "allowed_guild_id": allowed_guild_id,
-        "allowed_user_ids": allowed_user_ids,
-    });
-    sidecar_request(
-        &state,
-        Method::POST,
-        "/discord/setup",
-        Some(body),
-        Some(Duration::from_secs(15)),
-        "Discord 설정 실패",
-    )
-    .await
-}
-
-#[tauri::command]
-pub async fn discord_status(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
-    sidecar_request(
-        &state,
-        Method::GET,
-        "/discord/status",
-        None,
-        Some(Duration::from_secs(5)),
-        "Discord 상태 조회 실패",
-    )
-    .await
-}
-
-#[tauri::command]
-pub async fn discord_start(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
-    sidecar_request(
-        &state,
-        Method::POST,
-        "/discord/start",
-        None,
-        None,
-        "Discord 시작 실패",
-    )
-    .await
-}
-
-#[tauri::command]
-pub async fn discord_stop(state: State<'_, Mutex<SidecarState>>) -> Result<String, String> {
-    sidecar_request(
-        &state,
-        Method::POST,
-        "/discord/stop",
-        None,
-        None,
-        "Discord 중지 실패",
-    )
-    .await
-}
 
 // ── Phase 3: Permissions commands ────────────────────────────────────────────
 
@@ -1044,25 +881,6 @@ pub async fn workspace_write_file_binary(
         "size_bytes": bytes.len(),
     });
     Ok(response.to_string())
-}
-
-/// 텔레그램 봇 토큰을 설정하고 연결 테스트를 수행한다.
-#[tauri::command(rename_all = "snake_case")]
-pub async fn telegram_setup(
-    state: State<'_, Mutex<SidecarState>>,
-    token: String,
-    chat_id: Option<String>,
-) -> Result<String, String> {
-    let body = serde_json::json!({ "token": token, "chat_id": chat_id });
-    sidecar_request(
-        &state,
-        Method::POST,
-        "/telegram/setup",
-        Some(body),
-        Some(Duration::from_secs(15)),
-        "텔레그램 설정 요청 실패",
-    )
-    .await
 }
 
 // ── Sprint 5: 자동 업데이트 (Tauri Updater Plugin) ───────────────────────────

@@ -83,11 +83,11 @@
 >
 > **2026-08 워크스페이스 = 작업면 노트**: 내비 첫 항목 `워크스페이스`는 **새 대화를 열고 홈으로 가는 버튼**이다 — 그래서 항목 id가 라벨과 다르게 `chat`(=`HomePage`)이고, `NAV_ITEMS`의 `newChat` 플래그가 그 동작을 표시한다. 예전 `대화목록` 확장 안에 있던 **`+ 새 대화` 버튼은 없앴다**(그 자리로 올라온 것이니 되살리지 말 것). `대화목록` 확장은 이제 *이전* 대화로 돌아가는 경로만 맡는다.
 >
-> 그 결과 **내비에서 빠졌지만 살아 있는 화면이 셋**이다. 전부 `Cmd/Ctrl+K`가 유일한 진입 경로이므로 팔레트 항목을 지우면 기능이 코드에만 남는다 — `workspace`(`WorkspacePage`, 폴더 탐색·미리보기: `파일 목록`에 없는 기능이라 남겼다) · `messenger_monitor`(`ConversationsPage`, 메신저로 들어온 명령 모니터링) · `settings`(`SettingsHub`, 보안·자격증명·허용 범위·실행 기록).
+> 그 결과 **내비에서 빠졌지만 살아 있는 화면이 둘**이다. 전부 `Cmd/Ctrl+K`가 유일한 진입 경로이므로 팔레트 항목을 지우면 기능이 코드에만 남는다 — `workspace`(`WorkspacePage`, 폴더 탐색·미리보기: `파일 목록`에 없는 기능이라 남겼다) · `settings`(`SettingsHub`, 보안·자격증명·허용 범위·실행 기록). 셋째였던 `messenger_monitor`(`ConversationsPage`)는 메신저 봇 제거와 함께 사라졌다.
 >
 > 팔레트에는 **`파일 목록`도 있다.** 이건 페이지가 아니라 사이드바 확장 목록이라 `setCurrentPage`로 갈 수가 없어서, `officeclaw:open-file-list` 커스텀 이벤트를 쏘고 `ConversationSidebar`가 받아 편다(도움말·팔레트가 이미 쓰는 `officeclaw:*` 방식과 같다). 사이드바가 접혀 있으면 먼저 편다 — 64px 레일에는 확장 목록을 그릴 자리가 없다.
 >
-> **`대화목록`(`conversations`)은 `ConversationHistoryPage`이지 `ConversationsPage`가 아니다.** 이름이 비슷하지만 전자는 지난 AI 대화를 요일별/파일별로 훑는 화면(와이어프레임 229:3237·229:3678), 후자는 메신저 채널 모니터링이다. **`파일별` 보기는 데이터가 없어 안내 상태로 떨어진다** — 사이드카 `list_sessions`가 `{session_id, last_message_at, message_count, preview}`만 주고 대화-파일 연결을 기록하지 않는다. 세션에 파일 필드가 생기면 `lib/conversationGroups.js`의 `fileOf()` 하나만 고치면 화면은 그대로 동작한다.
+> **`대화목록`(`conversations`)은 `ConversationHistoryPage`이지 `ConversationsPage`가 아니다.** 이름이 비슷했지만 후자(메신저 채널 모니터링)는 메신저 봇 제거와 함께 삭제됐다. 남은 `ConversationHistoryPage`는 지난 AI 대화를 요일별/파일별로 훑는 화면이다(와이어프레임 229:3237·229:3678). **`파일별` 보기는 데이터가 없어 안내 상태로 떨어진다** — 사이드카 `list_sessions`가 `{session_id, last_message_at, message_count, preview}`만 주고 대화-파일 연결을 기록하지 않는다. 세션에 파일 필드가 생기면 `lib/conversationGroups.js`의 `fileOf()` 하나만 고치면 화면은 그대로 동작한다.
 >
 > **2026-08 대시보드 폐기 노트**: `대시보드`와 `작업 검색`은 **`작업 기록` 하나로 병합됐다**(페이지 키 `activity`, 스펙은 `design/desktop-shell/raw/v2/`). 리뷰 근거 두 가지 — (1) "차단과 보안 두 영역이 분리된 이유가 궁금하다. 보안 안에도 차단된 명령이 있어 정보가 중복된다" → 보안 카드를 없애고 `자동 마스킹`을 KPI 4번째 자리로 올렸다. (2) "작업 기록과 작업 검색을 병합" → 검색은 내비 확장이 아니라 표 헤더 입력창이 맡는다. **`승인 대기` KPI도 뺐다** — 모바일은 조회 전용이고 데스크톱 앱으로 명령하면 "자리를 비운 사이"가 성립하지 않아 큐가 쌓이지 않는다는 결론이다. 되살리려면 그 전제부터 다시 확인할 것.
 >
@@ -102,11 +102,11 @@
 > | SQLite `command_log` | `messenger/base.py` · `routers/security.py` · **`routers/excel_live.py`** | `작업 기록`(`ActivityPage`) | `grade`(SAFE/CONFIRM/DENIED) · `approved` · `source` · `tool_name` |
 > | `audit.jsonl` (`AuditService`) | 거의 모든 라우터 | 설정 허브의 `실행 기록`(`AuditLog`) · `security_stats`의 마스킹 집계 | `{timestamp, action, target, detail}` |
 >
-> 원래 `command_log`에는 메신저 경로만 기록해서 **데스크톱으로만 쓰는 사용자에게는 `작업 기록` 표가 늘 비어 있었다.** 그래서 `excel_live.py`가 `_log_command()`로 여기에도 남긴다 — `/command`는 사용자의 자연어 문장을 `command`에, 실행된 툴을 `tool_name`에 넣는다. **도구를 하나도 안 쓴 턴(잡담)은 기록하지 않는다** — `작업 기록`은 대화록이 아니라 작업 목록이다.
+> 원래 `command_log`에는 메신저 경로만 기록해서 **데스크톱으로만 쓰는 사용자에게는 `작업 기록` 표가 늘 비어 있었다**(그 메신저 경로마저 이후 제거돼, 지금 이 표에 기록을 넣는 곳은 `excel_live.py`와 보안 분석 엔드포인트뿐이다). 그래서 `excel_live.py`가 `_log_command()`로 여기에도 남긴다 — `/command`는 사용자의 자연어 문장을 `command`에, 실행된 툴을 `tool_name`에 넣는다. **도구를 하나도 안 쓴 턴(잡담)은 기록하지 않는다** — `작업 기록`은 대화록이 아니라 작업 목록이다.
 >
 > CONFIRM은 **한 줄로만** 남는다. 승인 대기 시 `audit_id`를 `PendingExcelApproval`에 들고 있다가 `/approval`에서 `update_approval()`로 그 행을 갱신한다. 승인 후 재개 턴이 `_register_and_respond(..., log_safe=False)`인 이유가 이것이다 — True로 두면 같은 명령이 표에 두 줄로 보인다.
 >
-> 프론트는 이 스키마를 그대로 읽는다. 두 가지가 특히 미끄럽다 — **등급 컬럼 이름은 `grade`**이지 `classification`이 아니고, **SQLite에 boolean이 없어 `approved`가 `1`/`0`/`null`로 온다**(`=== true`로만 비교하면 승인·거부가 전부 빠져나가 모든 행이 `대기` 배지가 된다). `source`도 `normalize_source()`가 보장하는 5개 enum(`telegram|slack|discord|agent|webui`)이라 `desktop`·`mobile`은 오지 않는다. 셋 다 `lib/activityLog.test.js`가 고정한다.
+> 프론트는 이 스키마를 그대로 읽는다. 두 가지가 특히 미끄럽다 — **등급 컬럼 이름은 `grade`**이지 `classification`이 아니고, **SQLite에 boolean이 없어 `approved`가 `1`/`0`/`null`로 온다**(`=== true`로만 비교하면 승인·거부가 전부 빠져나가 모든 행이 `대기` 배지가 된다). `source`도 `normalize_source()`가 보장하는 5개 enum(`telegram|slack|discord|agent|webui`)이라 `desktop`·`mobile`은 오지 않는다. 메신저 3값은 **새로 기록되지 않지만 enum과 라벨 매핑에 남겨둔다** — 이미 쌓인 행이 그 값을 갖고 있어 지우면 과거 기록의 디바이스 칸이 깨진다. 셋 다 `lib/activityLog.test.js`가 고정한다.
 >
 > **2026-08 텍스트 회색 계단 노트**: 개선안 프레임은 글자 회색을 **5단계**로 쓰는데(`#0C1909` `#3D443C` `#6B7468` `#9AA298` `#B2B9B0` `#CACFC7`) 코드엔 `--foreground`·`--muted-foreground` **2개뿐**이었다. 둘로 뭉개면 "라벨 / 값 / 부제 / 보조설명 / 비활성"의 위계가 사라진다. 그래서 `index.css`에 `--ink-body`·`--ink-subtle`·`--ink-faint`·`--ink-disabled`를 더했고 Tailwind에 `ink` 네임스페이스로 물렸다(`text-` 유틸과 이름이 겹치지 않게 `text` 대신 `ink`). **새 화면에서 회색을 쓸 때 임의의 `text-foreground/70` 같은 알파를 쓰지 말고 이 계단에서 고를 것** — 알파는 지면 색이 바뀌면 같이 흔들린다.
 >
@@ -114,7 +114,7 @@
 >
 > `ink`와 `status`의 **다크값은 개선안 프레임에 다크 짝이 없어서 라이트의 위계를 뒤집어 만든 추정치**다. 다크 프레임이 그려지면 `index.css`의 `.dark` 블록만 고치면 된다 — 컴포넌트는 손댈 필요 없다.
 >
-> **2026-08 환경 설정 노트**: 사이드바 푸터의 `환경 설정`은 **탭 허브가 아니라 단일 페이지**다(`preferences` → `components/settings/PreferencesPage.jsx`, 와이어프레임 `243:1140`). **`SettingsHub`(`settings`)를 지우지 말 것** — 와이어프레임에 없는 5개 기능(메신저·자격증명·보안·에이전트 허용 범위·실행 기록)이 거기 붙어 있고, 유일한 진입 경로가 `Cmd/Ctrl+K` → 각 탭 키(`messenger_settings` 등)다. 허브를 없애면 그 기능들이 코드에만 남고 갈 길이 사라진다.
+> **2026-08 환경 설정 노트**: 사이드바 푸터의 `환경 설정`은 **탭 허브가 아니라 단일 페이지**다(`preferences` → `components/settings/PreferencesPage.jsx`, 와이어프레임 `243:1140`). **`SettingsHub`(`settings`)를 지우지 말 것** — 와이어프레임에 없는 5개 기능(로컬 AI·자격증명·보안·에이전트 허용 범위·실행 기록)이 거기 붙어 있고, 유일한 진입 경로가 `Cmd/Ctrl+K` → 각 탭 키(`credentials` 등)다. 허브를 없애면 그 기능들이 코드에만 남고 갈 길이 사라진다.
 >
 > 모달 껍데기는 **두 종류**다. `ui/dialog.jsx`의 `AlertDialog`는 확인/취소 버튼이 붙박이인 확인 다이얼로그, `ui/modal.jsx`의 `Modal`은 본문이 주인공인 범용 모달(도움말·QR 페어링). 새 모달을 만들 때 버튼이 둘 고정이면 앞의 것, 아니면 뒤의 것. **오버레이·Esc·바깥 클릭·닫기 버튼을 컴포넌트가 자기 손으로 다시 그리지 않는다** — `ShortcutHelp`가 한동안 그렇게 한 벌 더 갖고 있었고, 그런 자리는 모달 동작을 고칠 때 한쪽만 고쳐진다.
 >
@@ -134,12 +134,20 @@
 >
 > `--primary`가 브랜드 원값 `#2DB400`이 **아닌** 이유: 라이트에서 흰 글자와의 대비가 2.75:1이라 본문 기준 4.5:1에 못 미친다. 글자를 얹는 자리는 `--primary`(라이트에서 명도만 낮춘 값), 글자를 안 얹는 자리(상태 점·장식·아이콘)는 `--brand`를 쓴다.
 >
-> **인라인 결과 카드(`SheetPreviewCard`·`BarChartCard`)는 제거했다** — 최종안 14화면 어디에도 없다. `lib/excelResult.js`는 `formatResultText()` 하나만 남아 문장을 돌려주고, 그 문자열에 말풍선 본문·세션 영속화·메신저 전송이 함께 의존한다. 진행 표현은 대신 **툴 진행 스텝 칩**(`lib/toolSteps.js`)과 **스켈레톤 로딩**이 맡는다. 그 대가로 `read_range`의 `values`는 다시 화면에 안 나온다(행×열 수는 문장에 남는다) — 표를 되살리려면 카드부터 다시 만들어야 한다.
+> **인라인 결과 카드(`SheetPreviewCard`·`BarChartCard`)는 제거했다** — 최종안 14화면 어디에도 없다. `lib/excelResult.js`는 `formatResultText()` 하나만 남아 문장을 돌려주고, 그 문자열에 말풍선 본문과 세션 영속화가 함께 의존한다. 진행 표현은 대신 **툴 진행 스텝 칩**(`lib/toolSteps.js`)과 **스켈레톤 로딩**이 맡는다. 그 대가로 `read_range`의 `values`는 다시 화면에 안 나온다(행×열 수는 문장에 남는다) — 표를 되살리려면 카드부터 다시 만들어야 한다.
 >
 > **채팅 패널 상단 바의 저장 버튼(`saveWorkbook`)은 지우지 말 것.** 라이브 COM 편집은 통합문서를 고치기만 하고 저장하지 않아서, 이 버튼이 없으면 저장 시점을 앱 안에서 잡을 수단이 하나도 없다(사용자가 엑셀 창을 직접 찾아가야 한다). 와이어프레임 재편 때 한 번 사라졌다가 함수·IPC·사이드카 엔드포인트만 살아남은 적이 있다.
 >
-> **엑셀 CONFIRM 승인은 모달이 아니라 말풍선 인라인 버튼**(`네 Y` / `아니오 N`)이다(B-6). 승인·거부는 사용자 말풍선으로 스레드에 남는다(B-7) — 기록을 되짚을 때 "누가 승인했나"가 스레드 안에 있어야 감사 로그를 따로 열지 않는다. 메신저/에이전트 스킬 CONFIRM은 여전히 `ApprovalDialog` 모달이다.
+> **엑셀 CONFIRM 승인은 모달이 아니라 말풍선 인라인 버튼**(`네 Y` / `아니오 N`)이다(B-6). 승인·거부는 사용자 말풍선으로 스레드에 남는다(B-7) — 기록을 되짚을 때 "누가 승인했나"가 스레드 안에 있어야 감사 로그를 따로 열지 않는다. **`ApprovalDialog` 모달은 제거됐다** — 그 큐에 넣는 곳이 메신저 경로뿐이었다(아래 메신저 제거 노트).
 >
+> **2026-08 메신저 봇 제거 노트**: **Telegram·Slack·Discord 봇 기능을 전부 걷어냈다.** 최종 와이어프레임 어디에도 메신저가 없고, 원격 제어는 모바일 앱 + relay(QR 페어링)가 대신한다. 지운 것 — 사이드카 `messenger/` 패키지·`routers/{telegram,slack,discord}.py`·`services/telegram_service.py`(약 2,570줄), 파이썬 의존성 3개(`python-telegram-bot`·`slack-bolt`·`discord.py` → 전이 의존까지 14개, 설치 기준 14MB), Rust IPC 커맨드 12개, 데스크톱의 `MessengerSettings`·`ConversationsPage`·설정 허브 메신저 탭·팔레트 항목 4개·`api.js` 래퍼 12개·`appStore`의 `telegramConnected`/`selectedMessenger`·`StatusBar` 메신저 세그먼트·온보딩 메신저 2단계·`SetupGuide` 탭 2개·`CredentialsManager` 봇 토큰 그룹.
+>
+> **연쇄로 함께 사라진 것이 `ApprovalDialog`다.** 사이드카 `_pending_ui_approvals` 큐에 넣는 곳이 메신저 경로뿐이었다(`POST /security/approval`은 외부용인데 아무도 부르지 않았다). 그래서 큐·엔드포인트 3개·`appStore.pendingApproval`·`App.jsx`의 5초 폴링·`Layout`의 승인 토스트를 함께 걷었다. **지금 남은 승인 경로는 둘뿐이다** — 엑셀 CONFIRM은 채팅 패널 말풍선의 인라인 버튼, 모바일은 relay 자체 승인 프레임(`relay_client._on_approval_response`). 되살리려면 큐부터 다시 만들어야 한다.
+>
+> `StatusBar`의 보안 배지는 남는다 — 엑셀 CONFIRM도 `command_log`에 `approved IS NULL`로 쌓이므로 건수는 여전히 의미가 있다. 다만 클릭이 모달을 열 수 없으니 `작업 기록`으로 보낸다.
+>
+> **남긴 것**: `command_audit.py`의 source enum과 `lib/activityLog.js`의 `telegram|slack|discord → 모바일` 매핑(과거 감사 로그 행 호환), `models/approval.py`의 `ApprovalResponse`(엑셀 승인이 계속 쓴다), `gmail_service.py`·`tool_registry`의 Gmail 스킬. **Gmail은 이제 진입 경로가 없다** — 메신저 봇 명령이 유일한 통로였고 엑셀 tool-calling 스키마(`excel_tool_schemas.py`)에는 Gmail 함수가 없다. 지울지 붙일지는 별도 결정이라 `SetupGuide`의 안내 문구만 사실대로 고쳐뒀다.
+
 > **2026-08 모바일 평문 차단 노트**: 모바일의 TLS 강제는 **매니페스트/plist가 아니라 Dart 코드**(`apps/mobile/lib/transport/relay_url.dart`)가 책임진다. 안드로이드 `usesCleartextTraffic`·네트워크 보안 설정과 iOS ATS는 *플랫폼이 소유한* 소켓에만 걸리는데, 이 앱의 통신은 `package:http`와 `web_socket_channel` 둘 다 Dart 소유 소켓이라 적용되지 않는다(Flutter 공식: "If the socket is owned by Dart/Flutter, no policy will be enforced" — flutter/flutter#106678은 not planned로 닫힘). 그래서 `kAllowInsecureRelayByDefault = !kReleaseMode`로 debug·profile만 평문을 허용하고, relay 주소는 QR·수동입력 어느 경로든 `normalizeRelayBaseUrl`을 통과시킨다. **새 네트워크 경로를 추가하면 이 함수를 반드시 태울 것** — 안 태우면 릴리스에서 평문이 그대로 나간다.
 >
 > 안드로이드 `INTERNET` 권한은 별개다. 이건 플랫폼이 UID 레벨에서 막으므로 Dart 소켓도 걸린다 — Flutter 템플릿이 `src/debug`·`src/profile`에만 넣어주기 때문에 `src/main`에 직접 선언해야 릴리스 APK가 네트워크를 쓴다. iOS는 실기기에서 LAN 주소로 붙을 때 iOS 14+ 로컬 네트워크 권한 팝업이 뜨므로 `NSLocalNetworkUsageDescription`이 필요하다.

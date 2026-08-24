@@ -2,7 +2,7 @@
  * WorkspacePage — 워크스페이스 파일 탐색기.
  *
  *   - 파일 목록 / 탐색 / 업로드 / 새 엑셀 파일 생성 / 텍스트 미리보기
- *   - 파일 row hover 액션: "텔레그램으로 명령 예시 보내기" — 템플릿 클립보드 복사 + 봇 딥링크
+ *   - 파일 row hover 액션: 명령 예시 템플릿 클립보드 복사
  *
  * 에이전트 채팅은 더 이상 여기 붙어 있지 않다. 채팅이 앱의 주 작업면이 되면서
  * 어느 페이지 위에든 뜨는 패널(components/chat/ChatPanel.jsx)이 됐고, 그 로직은
@@ -40,7 +40,6 @@ import {
   workspaceWriteFileBinary,
   openWorkspaceFolder,
   openWorkspaceFile,
-  telegramStatus,
 } from "@/lib/api";
 
 // 텍스트로 안전하게 읽을 수 있는 확장자 (UTF-8 가정).
@@ -214,11 +213,11 @@ function FilePreview({ file, onClose }) {
 
 // ── FileList ──────────────────────────────────────────────────────────────────
 //
-// hover 시 "텔레그램으로 명령 예시 보내기" 버튼 노출.
+// hover 시 명령 예시 복사 버튼 노출.
 // 템플릿: "이 파일 요약해줘 - {name}" → 클립보드 복사 + 봇 딥링크 알림.
 //
 
-function FileList({ files, botUsername, onNavigate, onOpenFile }) {
+function FileList({ files, onNavigate, onOpenFile }) {
   const [copiedPath, setCopiedPath] = useState(null);
 
   const handleCopyTemplate = async (e, entry) => {
@@ -238,7 +237,7 @@ function FileList({ files, botUsername, onNavigate, onOpenFile }) {
       <EmptyState
         icon={FolderOpen}
         title="폴더가 비어있습니다."
-        description="파일을 업로드하거나 텔레그램에서 파일을 추가하세요."
+        description="파일을 업로드하거나 워크스페이스 폴더에 직접 넣어 보세요."
       />
     );
   }
@@ -247,7 +246,6 @@ function FileList({ files, botUsername, onNavigate, onOpenFile }) {
     <div className="divide-y divide-border">
       {files.map((entry) => {
         const isCopied = copiedPath === entry.path;
-        const deepLink = botUsername ? `https://t.me/${botUsername}` : null;
         return (
           <div
             key={entry.path}
@@ -296,19 +294,6 @@ function FileList({ files, botUsername, onNavigate, onOpenFile }) {
                     </>
                   )}
                 </button>
-                {deepLink && (
-                  <a
-                    href={deepLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-0.5 text-[11px] font-medium hover:bg-muted"
-                    title="텔레그램 봇으로 이동"
-                  >
-                    <MessageCircle className="h-3 w-3 text-blue-500" />
-                    봇 열기
-                  </a>
-                )}
                 <Eye className="h-3.5 w-3.5 text-muted-foreground" />
               </div>
             )}
@@ -331,7 +316,6 @@ export default function WorkspacePage() {
   const [uploading, setUploading] = useState(false);
   const [creatingExcel, setCreatingExcel] = useState(false);
   const [uploadMessage, setUploadMessage] = useState("");
-  const [botUsername, setBotUsername] = useState(null);
 
   const loadFiles = useCallback(async (path = "") => {
     setLoading(true);
@@ -351,12 +335,6 @@ export default function WorkspacePage() {
     loadFiles(currentPath);
   }, [currentPath, loadFiles]);
 
-  // bot_username 1회 로드
-  useEffect(() => {
-    telegramStatus()
-      .then((s) => setBotUsername(s?.bot_username ?? s?.username ?? null))
-      .catch(() => {});
-  }, []);
 
   const handleNavigate = useCallback((path) => {
     setCurrentPath(path);
@@ -620,7 +598,6 @@ export default function WorkspacePage() {
               ) : (
                 <FileList
                   files={files}
-                  botUsername={botUsername}
                   onNavigate={handleNavigate}
                   onOpenFile={handleOpenFile}
                 />

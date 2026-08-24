@@ -40,28 +40,6 @@ const CREDENTIAL_GROUPS = [
     ],
   },
   {
-    id: "telegram",
-    icon: MessageCircle,
-    title: "텔레그램 봇",
-    description: "텔레그램 봇을 통해 알림을 받고 명령을 내릴 수 있습니다. BotFather에서 봇을 생성하세요.",
-    fields: [
-      {
-        key: "telegram_bot_token",
-        label: "Bot Token",
-        placeholder: "1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ",
-        sensitive: true,
-        hint: "텔레그램 @BotFather에서 /newbot 명령으로 발급받습니다.",
-      },
-      {
-        key: "telegram_chat_id",
-        label: "Chat ID",
-        placeholder: "123456789",
-        sensitive: false,
-        hint: "@userinfobot 에게 메시지를 보내면 본인의 Chat ID를 알 수 있습니다.",
-      },
-    ],
-  },
-  {
     id: "claude",
     icon: Cpu,
     title: "Claude API",

@@ -91,7 +91,6 @@ const SETTINGS_PAGES = new Set([
   "audit",
   "security",
   "permissions",
-  "messenger_settings",
   "guide",
   "mobile_relay",
 ]);

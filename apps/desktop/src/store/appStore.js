@@ -10,7 +10,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-/** @typedef {'chat'|'activity'|'telegram'|'workspace'|'conversations'|'messenger_monitor'|'credentials'|'audit'|'preferences'|'settings'|'security'|'permissions'|'messenger_settings'|'guide'|'mobile_relay'} Page */
+/** @typedef {'chat'|'activity'|'workspace'|'conversations'|'credentials'|'audit'|'preferences'|'settings'|'security'|'permissions'|'guide'|'mobile_relay'} Page */
 
 /**
  * @typedef {Object} ChatMessage
@@ -79,24 +79,12 @@ const useAppStore = create(
       // ── Phase 1: officeclaw state ────────────────────────────────────────
 
       /**
-       * 텔레그램 봇 연결 상태.
-       * @type {boolean}
-       */
-      telegramConnected: false,
-
-      /**
        * 워크스페이스 경로 (표시용).
        * @type {string}
        */
       workspacePath: "~/officeclaw/Workspace",
 
-      /**
-       * 온보딩에서 선택된 메신저.
-       * @type {'telegram'|'slack'|'discord'}
-       */
-      selectedMessenger: "telegram",
-
-      // ── 채팅 세션 / 승인 state ─────────────────────────────────────────────
+      // ── 채팅 세션 state ────────────────────────────────────────────────────
 
       /**
        * 현재 활성 채팅 세션 ID (chat_history 영속화용).
@@ -105,38 +93,10 @@ const useAppStore = create(
        */
       activeSessionId: null,
 
-      /**
-       * 현재 대기 중인 CONFIRM 승인 요청 (메신저 보안 CONFIRM 봇 오프라인 폴백).
-       * command/reason/audit_id 또는 tool_name/summary 필드가 채워질 수 있다.
-       *
-       * Layout.jsx의 ApprovalDialog가 이 상태를 렌더링한다. null이면 미표시.
-       * @type {{
-       *   approval_id?: string;
-       *   tool_name?: string;
-       *   tool_display_name?: string;
-       *   summary?: string;
-       *   args_preview?: Record<string, unknown>;
-       *   session_id?: string;
-       *   created_at?: string;
-       *   command?: string;
-       *   reason?: string;
-       *   audit_id?: number;
-       * } | null}
-       */
-      pendingApproval: null,
-
       // ── Actions ──────────────────────────────────────────────────────────────
 
       /** Navigate to a page */
       setCurrentPage: (/** @type {Page} */ page) => set({ currentPage: page }),
-
-      /** Update telegram connection status */
-      setTelegramConnected: (/** @type {boolean} */ connected) =>
-        set({ telegramConnected: connected }),
-
-      /** Update selected messenger */
-      setSelectedMessenger: (/** @type {'telegram'|'slack'|'discord'} */ messenger) =>
-        set({ selectedMessenger: messenger }),
 
       /** Update LLM config (partial update supported) */
       setLLMConfig: (/** @type {Partial<LLMConfig>} */ config) =>
@@ -165,9 +125,6 @@ const useAppStore = create(
        */
       agentMessages: [],
 
-      /** 승인 요청 설정 (null이면 다이얼로그 닫힘) */
-      setPendingApproval: (approval) => set({ pendingApproval: approval }),
-
       /** 에이전트 채팅 메시지 추가 */
       addAgentMessage: (/** @type {ChatMessage} */ message) =>
         set((state) => ({ agentMessages: [...state.agentMessages, message] })),
@@ -189,8 +146,6 @@ const useAppStore = create(
       partialize: (state) => ({
         onboardingComplete: state.onboardingComplete,
         llmConfig: state.llmConfig,
-        telegramConnected: state.telegramConnected,
-        selectedMessenger: state.selectedMessenger,
         sidebarCollapsed: state.sidebarCollapsed,
       }),
     }

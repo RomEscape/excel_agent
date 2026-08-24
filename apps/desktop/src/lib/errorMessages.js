@@ -63,15 +63,6 @@ const ERROR_MAPPINGS = [
     message: "Gmail 연동 중 오류가 발생했습니다. Gmail 연결 상태를 확인해 주세요.",
   },
 
-  // Telegram specific
-  {
-    pattern: /telegram.*token|bot.*token/i,
-    message: "텔레그램 봇 토큰이 올바르지 않습니다. 자격증명 관리에서 telegram_bot_token을 확인해 주세요.",
-  },
-  {
-    pattern: /chat.*id|Chat.*ID/i,
-    message: "텔레그램 Chat ID가 설정되지 않았습니다. 자격증명 관리에서 telegram_chat_id를 저장해 주세요.",
-  },
 
   // LLM / AI errors
   {

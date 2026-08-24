@@ -106,105 +106,12 @@ class TestSchemaExtension:
 # ── 작업 3: rejection_reason 영속화 ──────────────────────────────────────────
 
 class TestRejectionReason:
-    """agent_submit_approval 의 rejection_reason 영속화 검증."""
+    """CommandAuditLogger.update_approval 의 rejection_reason 영속화 검증.
 
-    def _create_pending_approval(self, tool_name: str = "gog.gmail.send") -> tuple[str, int]:
-        """
-        테스트용 승인 대기 항목을 생성하고 (approval_id, audit_id) 를 반환한다.
-        """
-        cmd_audit = get_command_audit_logger()
-        audit_id = cmd_audit.log(
-            grade="CONFIRM",
-            command="send_mail(to='boss@company.com', subject='테스트')",
-            reason="민감 작업 확인 필요",
-            tool_name=tool_name,
-        )
-        assert audit_id > 0
-
-        resp = client.post(
-            "/security/approval",
-            params={"command": "send_mail()", "reason": "민감 작업", "audit_id": audit_id},
-            headers=HEADERS,
-        )
-        assert resp.status_code == 200
-        approval_id = resp.json()["approval_id"]
-        return approval_id, audit_id
-
-    def test_rejection_with_reason_records_reason(self):
-        """거부 + rejection_reason → reason_recorded=True, DB에 저장."""
-        approval_id, audit_id = self._create_pending_approval()
-
-        resp = client.post(
-            f"/security/approval/{approval_id}/respond",
-            json={"approved": False, "rejection_reason": "보안 정책 위반입니다."},
-            headers=HEADERS,
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["ok"] is True
-        assert data["approved"] is False
-        assert data["reason_recorded"] is True, "reason_recorded가 True여야 함"
-
-        # DB 직접 확인
-        cmd_audit = get_command_audit_logger()
-        entry = cmd_audit.get_by_id(audit_id)
-        assert entry is not None
-        assert entry["approved"] == 0
-        assert entry["rejection_reason"] == "보안 정책 위반입니다."
-
-    def test_approval_ignores_rejection_reason(self):
-        """승인 시 rejection_reason 을 전달해도 저장하지 않는다."""
-        approval_id, audit_id = self._create_pending_approval()
-
-        resp = client.post(
-            f"/security/approval/{approval_id}/respond",
-            json={"approved": True, "rejection_reason": "이건 무시돼야 함"},
-            headers=HEADERS,
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["ok"] is True
-        assert data["approved"] is True
-        assert data["reason_recorded"] is False, "승인 시 reason_recorded는 False여야 함"
-
-        # DB에서 rejection_reason은 NULL이어야 함
-        cmd_audit = get_command_audit_logger()
-        entry = cmd_audit.get_by_id(audit_id)
-        assert entry is not None
-        assert entry["approved"] == 1
-        assert entry["rejection_reason"] is None
-
-    def test_rejection_without_reason_is_backward_compatible(self):
-        """rejection_reason 없는 거부 요청 → 하위 호환, reason_recorded=False."""
-        approval_id, audit_id = self._create_pending_approval()
-
-        resp = client.post(
-            f"/security/approval/{approval_id}/respond",
-            json={"approved": False},  # reason 미전달
-            headers=HEADERS,
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["ok"] is True
-        assert data["approved"] is False
-        assert data["reason_recorded"] is False
-
-        cmd_audit = get_command_audit_logger()
-        entry = cmd_audit.get_by_id(audit_id)
-        assert entry is not None
-        assert entry["rejection_reason"] is None
-
-    def test_respond_endpoint_has_reason_recorded_field(self):
-        """응답 구조에 reason_recorded 필드가 항상 포함된다."""
-        approval_id, _ = self._create_pending_approval()
-
-        resp = client.post(
-            f"/security/approval/{approval_id}/respond",
-            json={"approved": True},
-            headers=HEADERS,
-        )
-        assert resp.status_code == 200
-        assert "reason_recorded" in resp.json(), "reason_recorded 필드가 응답에 없음"
+    예전에는 `/security/approval/{id}/respond` 엔드포인트를 통해 검증했지만,
+    그 엔드포인트는 메신저 봇 제거와 함께 사라졌다(유일한 생산자였다).
+    저장 로직 자체는 그대로 살아 있으므로 직접 호출로 검증한다.
+    """
 
     def test_update_approval_with_rejection_reason_direct(self):
         """CommandAuditLogger.update_approval() 에 rejection_reason 직접 전달."""

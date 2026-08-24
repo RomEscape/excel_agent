@@ -1,8 +1,6 @@
 import React, { useState } from "react";
 import {
   Mail,
-  MessageCircle,
-  MessagesSquare,
   Cpu,
   Bot,
   ChevronRight,
@@ -20,15 +18,13 @@ import useAppStore from "@/store/appStore";
 /**
  * 탭 순서:
  *   1) Ollama 설치
- *   2) 텔레그램 봇
- *   3) Slack/Discord 봇
- *   4) Gmail 안내
- *   5) Claude API
+ *   2) Gmail 안내
+ *   3) Claude API
+ *
+ * 텔레그램·Slack/Discord 탭은 메신저 봇 기능 제거와 함께 사라졌다.
  */
 const TABS = [
   { id: "ollama",   label: "Ollama 설치",   icon: Cpu },
-  { id: "telegram", label: "텔레그램 봇",   icon: MessageCircle },
-  { id: "slack",    label: "Slack/Discord", icon: MessagesSquare },
   { id: "gmail",    label: "Gmail 안내",    icon: Mail },
   { id: "claude",   label: "Claude API",    icon: Bot },
 ];
@@ -225,87 +221,6 @@ function OllamaGuide() {
   );
 }
 
-// ── 텔레그램 (기존 유지) ────────────────────────────────────────────────────
-
-function TelegramGuide({ onGoToCredentials }) {
-  return (
-    <div>
-      <p className="mb-5 text-sm text-muted-foreground">
-        텔레그램 봇을 만들고 Chat ID를 등록하면 앱에서 알림을 받거나 명령을 내릴 수 있습니다.
-      </p>
-      <div className="divide-y">
-        <Step number={1} title="BotFather에서 봇 생성">
-          <p>텔레그램 앱에서 <CodeBlock>@BotFather</CodeBlock>를 검색해 채팅을 시작합니다.</p>
-          <p><CodeBlock>/newbot</CodeBlock> 명령을 입력하고 안내에 따라 봇 이름과 사용자명을 입력합니다.</p>
-          <p>사용자명은 반드시 <CodeBlock>bot</CodeBlock>으로 끝나야 합니다. (예: <CodeBlock>my_office_bot</CodeBlock>)</p>
-        </Step>
-        <Step number={2} title="Bot Token 저장">
-          <p>봇 생성이 완료되면 BotFather가 <strong>토큰</strong>을 발급해줍니다.</p>
-          <p>형식: <CodeBlock>1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ</CodeBlock></p>
-          <p>이 토큰을 자격증명 관리의 <CodeBlock>telegram_bot_token</CodeBlock>에 저장합니다.</p>
-        </Step>
-        <Step number={3} title="Chat ID 확인">
-          <p>텔레그램에서 <CodeBlock>@userinfobot</CodeBlock>을 검색해 채팅을 시작합니다.</p>
-          <p>아무 메시지나 보내면 본인의 <strong>Chat ID</strong>를 알려줍니다.</p>
-          <p>이 숫자를 자격증명 관리의 <CodeBlock>telegram_chat_id</CodeBlock>에 저장합니다.</p>
-          <div className="mt-2">
-            <NavButton onClick={onGoToCredentials} label="자격증명 관리로 이동" />
-          </div>
-        </Step>
-        <Step number={4} title="봇 시작">
-          <p>설정 > 메신저에서 <strong>봇 시작</strong> 버튼을 누릅니다.</p>
-          <p>텔레그램 앱에서 생성한 봇에게 <CodeBlock>/start</CodeBlock>를 입력하면 연결이 완료됩니다.</p>
-        </Step>
-      </div>
-    </div>
-  );
-}
-
-// ── Slack / Discord 통합 가이드 (간단 안내) ─────────────────────────────────
-
-function SlackDiscordGuide({ onGoToMessenger }) {
-  return (
-    <div>
-      <p className="mb-5 text-sm text-muted-foreground">
-        Slack 또는 Discord 봇을 추가하면 같은 명령을 여러 메신저에서 사용할 수 있습니다.
-        설정값은 모두 <strong>설정 > 메신저</strong>에서 입력합니다.
-      </p>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-md border border-border p-4">
-          <div className="mb-2 flex items-center gap-2">
-            <MessagesSquare className="h-4 w-4 text-[#4A154B]" />
-            <p className="text-sm font-semibold">Slack 봇</p>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Slack 워크스페이스에 봇을 추가하려면 Bot Token + App Token을 준비하세요.
-          </p>
-          <div className="mt-3 flex items-center gap-2">
-            <LinkBadge href="https://api.slack.com/apps">api.slack.com/apps</LinkBadge>
-          </div>
-        </div>
-
-        <div className="rounded-md border border-border p-4">
-          <div className="mb-2 flex items-center gap-2">
-            <MessagesSquare className="h-4 w-4 text-[#5865F2]" />
-            <p className="text-sm font-semibold">Discord 봇</p>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Discord Developer Portal에서 봇을 만들고 Token을 발급받습니다.
-          </p>
-          <div className="mt-3 flex items-center gap-2">
-            <LinkBadge href="https://discord.com/developers/applications">discord.com/developers</LinkBadge>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-5">
-        <NavButton onClick={onGoToMessenger} label="설정 / 메신저로 이동" />
-      </div>
-    </div>
-  );
-}
-
 // ── Gmail 안내 ───────────────────────────────────────────────────────────────
 
 function GmailGuide() {
@@ -316,16 +231,12 @@ function GmailGuide() {
           <Mail className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
           <div className="text-sm">
             <p className="font-semibold text-amber-900 dark:text-amber-100">
-              Gmail 연동은 메신저 봇 명령으로 처리됩니다
+              Gmail 연동은 아직 앱에서 쓸 수 없습니다
             </p>
             <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">
-              김대리 v3.0부터 Gmail 등 외부 연동은 앱이 직접 관리하지 않고
-              메신저 봇 명령으로 처리됩니다. 메신저에서 "메일 확인해줘" 명령을
-              보내면 자동으로 Gmail 작업이 수행됩니다.
-            </p>
-            <p className="mt-2 text-xs text-amber-800 dark:text-amber-200">
-              Gmail을 처음 사용할 때 OAuth 인증 페이지로 안내되며, 앱 내에서
-              별도 자격증명을 등록할 필요가 없습니다.
+              Gmail 등 외부 연동은 메신저 봇 명령으로 처리되던 기능인데, 봇이
+              제거되면서 지금은 진입 경로가 없습니다. 현재 김대리가 실제로
+              다루는 것은 엑셀 작업입니다.
             </p>
           </div>
         </div>
@@ -381,8 +292,6 @@ export default function SetupGuide() {
 
   const content = {
     ollama:   <OllamaGuide />,
-    telegram: <TelegramGuide onGoToCredentials={() => setCurrentPage("credentials")} />,
-    slack:    <SlackDiscordGuide onGoToMessenger={() => setCurrentPage("messenger_settings")} />,
     gmail:    <GmailGuide />,
     claude:   <ClaudeGuide
                 onGoToCredentials={() => setCurrentPage("credentials")}
@@ -395,7 +304,7 @@ export default function SetupGuide() {
       <div>
         <h1 className="text-2xl font-bold">설치 가이드</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Ollama 설치부터 메신저 봇 연결까지 단계별로 안내해요.
+          로컬 AI 엔진 설치와 외부 연동을 단계별로 안내해요.
         </p>
       </div>
 
