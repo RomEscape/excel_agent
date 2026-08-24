@@ -408,8 +408,40 @@ def run() -> None:
     p50 = int(statistics.median([r.elapsed_ms for r in results])) if results else 0
     p95 = int(sorted([r.elapsed_ms for r in results])[max(0, int(total * 0.95) - 1)]) if results else 0
 
+    # 실행 id + 영속 JSON — 없으면 "개선했다"는 주장을 나중에 같은 로그로 재확인할 수
+    # 없다(CLAUDE.md §1: 수치는 실행 id와 함께). 223항목 감사(2026-08-24)에서
+    # 이 스크립트가 수치를 stdout에만 흘려 개선분이 일지에 실리지 못한 것이 확인됐다.
+    run_id = time.strftime("%m%d-%H%M%S") + "-reset-cycle"
+    summary = {
+        "run_id": run_id,
+        "workbook_id": workbook_id,
+        "total_steps": total,
+        "http_200": http_200,
+        "effective_ok": effective_ok,
+        "scenario": {"total": len(scenario_steps), "http_200": scenario_200, "effective_ok": scenario_effective},
+        "reset": {"total": len(reset_steps), "http_200": reset_200, "effective_ok": reset_effective},
+        "ask_follow_up": asks,
+        "approval_required": approvals,
+        "latency_p50_ms": p50,
+        "latency_p95_ms": p95,
+        "steps": [
+            {
+                "scenario": r.scenario, "stage": r.stage, "message": r.message,
+                "status": r.status_code, "ok": r.ok, "action": r.action,
+                "elapsed_ms": r.elapsed_ms, "error": r.error,
+            }
+            for r in results
+        ],
+    }
+    out_dir = Path(__file__).resolve().parent.parent.parent / "logs" / "e2e"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"smoke_reset_cycle_{run_id}.json"
+    out_path.write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
+
     print("")
     print("=== Excel Live Reset-Cycle E2E ===")
+    print(f"run_id={run_id}")
+    print(f"report={out_path}")
     print(f"workbook_id={workbook_id}")
     print(f"total_steps={total}")
     print(f"http_200={http_200}/{total}")
