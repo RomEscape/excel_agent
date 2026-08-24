@@ -3473,7 +3473,10 @@ class TestClearValuesTakesAColumnName:
         from office_claw_sidecar.services.excel_intent_normalizer import intent_to_plan
 
         base = {"task": "clear_values", "range": None, "column": None, "option": None}
-        return intent_to_plan({**base, **intent}, digest=digest or self.DIGEST, message="")
+        # 2026-08-25부터 열 지우기는 열 이름이 문장에 있어야 믿는다(게이트 회귀의 교훈).
+        column = str(intent.get("column") or "")
+        message = f"{column} 열 비워줘" if column else "비워줘"
+        return intent_to_plan({**base, **intent}, digest=digest or self.DIGEST, message=message)
 
     def test_a_column_name_clears_the_data_rows(self) -> None:
         plan = self._plan(column="비고")
@@ -3925,46 +3928,52 @@ class TestBatch1aIntentKindsMapDeterministically:
     종류를 넣으면 최소한 정직한 폴백이 되고, 파라미터가 결정적인 이 4종은 매핑까지 한다.
     """
 
-    def _plan(self, **intent):
+    def _plan(self, message="", **intent):
         from office_claw_sidecar.services.excel_intent_normalizer import intent_to_plan
 
         base = {"task": None, "range": None, "column": None, "option": None}
         digest = {"active_sheet": "매출", "sheets": [{"name": "매출", "used_range": "A1:C5", "columns": []}]}
-        return intent_to_plan({**base, **intent}, digest=digest, message="")
+        return intent_to_plan({**base, **intent}, digest=digest, message=message)
 
+    # 2026-08-25부터 매핑은 **문장 근거**를 요구한다(게이트 회귀 7건의 교훈) —
+    # 핀도 실제 문장을 싣는다. 근거 없는 매핑 거부는 아래 별도 클래스가 굳힌다.
     @pytest.mark.parametrize(
-        ("intent", "action", "params"),
+        ("message", "intent", "action", "params"),
         [
-            ({"task": "create_sheet", "option": "요약"}, "excel_live.create_sheet", {"sheet_name": "요약"}),
+            ("요약 시트 하나 만들어줘", {"task": "create_sheet", "option": "요약"},
+             "excel_live.create_sheet", {"sheet_name": "요약"}),
             # 모델이 이름을 column에 싣는 편차도 받는다.
-            ({"task": "create_sheet", "column": "정산"}, "excel_live.create_sheet", {"sheet_name": "정산"}),
-            ({"task": "delete_charts"}, "excel_live.delete_charts", {}),
-            ({"task": "freeze"}, "excel_live.freeze_panes", {"freeze_at": "A2"}),
-            ({"task": "freeze", "option": "2"}, "excel_live.freeze_panes", {"freeze_at": "A3"}),
-            ({"task": "autofit"}, "excel_live.autofit_columns", {"target_range": "__USED_RANGE__"}),
+            ("정산 시트 새로 만들어줘", {"task": "create_sheet", "column": "정산"},
+             "excel_live.create_sheet", {"sheet_name": "정산"}),
+            ("차트 전부 없애줘", {"task": "delete_charts"}, "excel_live.delete_charts", {}),
+            ("첫 줄 고정해줘", {"task": "freeze"}, "excel_live.freeze_panes", {"freeze_at": "A2"}),
+            ("위 2줄 고정해줘", {"task": "freeze", "option": "2"},
+             "excel_live.freeze_panes", {"freeze_at": "A3"}),
+            ("열 너비 맞춰줘", {"task": "autofit"},
+             "excel_live.autofit_columns", {"target_range": "__USED_RANGE__"}),
         ],
     )
-    def test_it_maps(self, intent, action, params) -> None:
-        plan = self._plan(**intent)
+    def test_it_maps(self, message, intent, action, params) -> None:
+        plan = self._plan(message=message, **intent)
         assert plan is not None, intent
         assert plan["action"] == action
         assert plan["params"] == params
 
     @pytest.mark.parametrize(
-        "intent",
+        ("message", "intent"),
         [
             # 이름을 지어내 시트를 만들면 사용자가 부른 적 없는 시트가 생긴다.
-            {"task": "create_sheet"},
-            {"task": "create_sheet", "option": "시트"},   # 낱말 축퇴
-            {"task": "create_sheet", "option": "가" * 32},  # 엑셀 시트 이름 상한 31자
+            ("시트 만들어줘", {"task": "create_sheet"}),
+            ("시트 만들어줘", {"task": "create_sheet", "option": "시트"}),   # 낱말 축퇴
+            ("가" * 32 + " 시트 만들어줘", {"task": "create_sheet", "option": "가" * 32}),  # 31자 상한
         ],
     )
-    def test_it_backs_off(self, intent) -> None:
-        assert self._plan(**intent) is None, intent
+    def test_it_backs_off(self, message, intent) -> None:
+        assert self._plan(message=message, **intent) is None, intent
 
     def test_an_absurd_freeze_row_falls_back_to_the_header(self) -> None:
         """999행 고정 같은 과대값은 A2(머리글만 고정)로 — 틀 고정은 되돌릴 수 있어 안전한 쪽."""
-        plan = self._plan(task="freeze", option="999")
+        plan = self._plan(message="999줄 고정해줘", task="freeze", option="999")
         assert plan["params"] == {"freeze_at": "A2"}
 
 
@@ -4037,3 +4046,64 @@ class TestXlwingsPathsRejectVendorWorkbooks:
         from office_claw_sidecar.services import excel_live_file_service, excel_live_service
 
         assert excel_live_file_service._SCAN_EXCLUDED_DIRS is excel_live_service._SCAN_EXCLUDED_DIRS
+
+
+class TestIntentPlansRequireEvidenceInTheMessage:
+    """라운드 2-1a가 만든 회귀 7건(2026-08-25 게이트 594/624) — 세 가족의 핀.
+
+    공통 원인: **모델이 낸 종류·파라미터를 문장이 뒷받침하는지 확인하지 않았다.**
+    - "H1부터 M1까지 한 칸으로 붙여줘"(병합)를 autofit으로 분류 → 무조건 실행
+    - "표 내용 싹 지워"(전체)에 column=지역(첫 머리글)을 지어냄 → A열만 지움
+    - 이름 자리에 문자열 "null" → **'null'이라는 시트가 생김**
+    아래 intent들은 게이트에서 모델이 실제로 낸 출력 그대로다.
+    """
+
+    DIGEST = {
+        "active_sheet": "지역성과",
+        "sheets": [
+            {
+                "name": "지역성과",
+                "used_range": "A1:F6",
+                "columns": [{"letter": "A", "header": "지역"}, {"letter": "F", "header": "클레임"}],
+            }
+        ],
+    }
+
+    def _plan(self, msg, **kw):
+        from office_claw_sidecar.services.excel_intent_normalizer import intent_to_plan
+
+        base = {"task": None, "range": None, "column": None, "option": None}
+        return intent_to_plan({**base, **kw}, digest=self.DIGEST, message=msg)
+
+    @pytest.mark.parametrize(
+        ("msg", "intent"),
+        [
+            # 병합 문장인데 autofit 분류 + 스키마 어휘 되뇜("autofit")
+            ("여기 H1부터 M1까지 한 칸으로 붙여줘",
+             {"task": "autofit", "column": "H1:M1", "option": "autofit"}),
+            # 전체 지우기인데 column을 지어냄 + 되뇜("clear_values")
+            ("표 칸들 전부 깨끗하게 지워서 빈칸으로 해줘",
+             {"task": "clear_values", "column": "지역", "option": "clear_values"}),
+            ("이거 내용 싹 지워서 빈칸으로 만들어",
+             {"task": "clear_values", "column": "지역", "option": "clear_values"}),
+            # JSON null 대신 문자열 "null"
+            ("new sheet 추가하고 이름은 요약으로 해 주세요.",
+             {"task": "create_sheet", "column": "null", "option": "null", "range": "null"}),
+        ],
+    )
+    def test_the_gate_regressions_now_back_off(self, msg, intent) -> None:
+        assert self._plan(msg, **intent) is None, (msg, intent)
+
+    @pytest.mark.parametrize(
+        ("msg", "intent", "action"),
+        [
+            ("클레임 열 비워줘", {"task": "clear_values", "column": "클레임"}, "excel_live.clear_range"),
+            ("열 너비 보기 좋게 맞춰줘", {"task": "autofit"}, "excel_live.autofit_columns"),
+            ("요약 시트 하나 만들어줘", {"task": "create_sheet", "option": "요약"}, "excel_live.create_sheet"),
+            ("차트 전부 없애줘", {"task": "delete_charts"}, "excel_live.delete_charts"),
+            ("첫 줄 고정해줘", {"task": "freeze"}, "excel_live.freeze_panes"),
+        ],
+    )
+    def test_corroborated_plans_still_map(self, msg, intent, action) -> None:
+        plan = self._plan(msg, **intent)
+        assert plan is not None and plan["action"] == action, (msg, plan)

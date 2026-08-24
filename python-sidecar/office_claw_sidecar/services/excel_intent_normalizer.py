@@ -296,6 +296,28 @@ def intent_to_plan(
         column = None
     option = intent.get("option")
     option_text = "" if option is None else str(option).strip()
+    # 모델의 축퇴 두 가지를 **모든 분기 전에** 정리한다(2026-08-25 게이트 실측 7건):
+    # ① JSON null 대신 문자열 "null"을 낸다 — 그대로 두면 'null'이라는 시트가 생겼다.
+    # ② option에 태스크 어휘를 되뇐다("autofit"·"clear_values") — 값이 아니다.
+    #    예전엔 write_value 분기에만 이 가드가 있어 다른 분기가 전부 뚫렸다.
+    if option_text.lower() in {"null", "none"} or option_text.lower() in _KNOWN_TASKS:
+        option_text = ""
+    if str(column or "").strip().lower() in {"null", "none"}:
+        column = None
+    if rng.lower() in {"null", "none"}:
+        rng = ""
+
+    plain_message = str(message or "")
+
+    def _worded(*patterns: str) -> bool:
+        """모델이 고른 종류·파라미터를 **문장이 뒷받침하는가.**
+
+        게이트 실측(2026-08-25): "H1부터 M1까지 한 칸으로 붙여줘"(병합)를 autofit으로,
+        "표 내용 싹 지워"(전체)를 지역 열 하나 지우기로 실행했다 — 모델이 지어낸
+        분류·파라미터를 그대로 믿은 탓이다. 근거 없는 계획은 실행하지 않고 플래너로
+        넘긴다. 플래너는 이 문장들을 전부 옳게 처리해 왔다(08-23 게이트 601/624).
+        """
+        return any(__import__("re").search(pat, plain_message, __import__("re").IGNORECASE) for pat in patterns)
 
     # 분류가 fill/font/write로 나왔어도 문장에 조건어가 있으면 조건이 매핑에서
     # 사라진다 — 그 문장은 플래너·규칙 몫이다.
@@ -380,8 +402,10 @@ def intent_to_plan(
                 "params": {"target_range": rng},
                 "reason": "의도 정규화: 값 비우기",
             }]
-        elif column:
+        elif column and str(column).strip() in plain_message:
             # "비고 열 비워줘" — 범위 대신 열 이름을 부른 경우. **2행부터** 지운다:
+            # 열 이름이 **문장에 실제로 있어야** 믿는다 — "표 내용 싹 지워"(전체)에
+            # 모델이 column=지역(첫 머리글)을 지어내 A열만 지웠다(2026-08-25 게이트).
             # 머리글까지 지우면 표가 뭉개진다(파괴 게이트 `clear_only_named`가 지키는 것).
             letter, last = _column_letter(entry, column), _last_row(entry)
             if letter and last > 2:
@@ -478,15 +502,21 @@ def intent_to_plan(
         # 시트 이름은 option 또는 column에 실려 온다. 이름이 없으면 물러난다 —
         # 이름을 지어내 만들면 사용자가 부른 적 없는 시트가 생긴다.
         name = str(option_text or column or "").strip().strip("'\"")
-        # "시트"라는 낱말 자체가 이름으로 오는 축퇴는 거른다.
-        if name and name.lower() not in {"시트", "sheet", "탭", "새 시트"} and len(name) <= 31:
+        # "시트"라는 낱말 자체가 이름으로 오는 축퇴는 거르고, 이름이 **문장에 실제로
+        # 있어야** 만든다 — 모델이 "null"을 이름으로 내 'null' 시트가 생겼다(2026-08-25).
+        if (
+            name
+            and name.lower() not in {"시트", "sheet", "탭", "새 시트"}
+            and len(name) <= 31
+            and name in plain_message
+        ):
             steps = [{
                 "action": "excel_live.create_sheet",
                 "params": {"sheet_name": name},
                 "reason": "의도 정규화: 새 시트",
             }]
 
-    elif task == "delete_charts":
+    elif task == "delete_charts" and _worded(r"차트", r"그래프", r"chart"):
         # 파라미터가 없다 — 시트는 디스패치가 활성 시트로 확정한다. 파괴 액션이지만
         # CONFIRM 승인 게이트를 그대로 지나고, 값 스냅샷 면제 사유는
         # `_ROLLBACK_EXEMPT_ACTIONS`에 있다(차트는 셀 값이 아니다).
@@ -496,7 +526,7 @@ def intent_to_plan(
             "reason": "의도 정규화: 차트 삭제",
         }]
 
-    elif task == "freeze":
+    elif task == "freeze" and _worded(r"고정", r"틀", r"freeze"):
         # "첫 줄 고정" = A2에서 고정. 숫자 N이 오면 N행**까지** 고정 = A{N+1}.
         row = None
         digits = re.search(r"(\d{1,3})", option_text)
@@ -509,7 +539,7 @@ def intent_to_plan(
             "reason": "의도 정규화: 틀 고정",
         }]
 
-    elif task == "autofit":
+    elif task == "autofit" and _worded(r"너비", r"폭", r"맞춰", r"맞춤", r"autofit"):
         steps = [{
             "action": "excel_live.autofit_columns",
             "params": {"target_range": rng or "__USED_RANGE__"},
