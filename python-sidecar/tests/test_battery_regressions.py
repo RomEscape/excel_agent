@@ -2994,10 +2994,15 @@ class TestTheTaskListHasOneSource:
     같은 어휘를 두 곳에 두면 반드시 갈라진다 — 목록의 원본은 프롬프트 하나뿐이다.
     """
 
+    # 2026-08-24 라운드 2 배치 1a: 밀려남이 실측된 4종(create_sheet·delete_charts·
+    # freeze·autofit)을 넣어 17 → 21종. 종류 상한 경고(13~14 + 신규 배치)에 따라
+    # 배치마다 44문장 재측정으로 분류 품질을 확인한다.
     EXPECTED = (
         "fill_color", "font", "highlight", "number_format", "formula", "sort", "filter",
         "dedupe", "clear_values", "reset_all", "create_table", "pivot", "chart",
-        "write_value", "find_replace", "read", "other",
+        "write_value", "find_replace", "read",
+        "create_sheet", "delete_charts", "freeze", "autofit",
+        "other",
     )
 
     def test_the_names_come_from_the_prompt(self) -> None:
@@ -3905,3 +3910,53 @@ class TestSortRowsSnapshotRestoresTheOriginalOrder:
 
         src = inspect.getsource(excel_live._execute_plan_and_respond)
         assert "auto_rollback_FAILED" in src
+
+
+class TestBatch1aIntentKindsMapDeterministically:
+    """어휘에 종류가 없어 **엉뚱한 종류로 밀려나던** 4종(감사 C2, 라운드 2 배치 1a).
+
+    "요약 시트 만들어줘"→create_table, "차트 없애줘"→clear_values로 밀려났었다.
+    종류를 넣으면 최소한 정직한 폴백이 되고, 파라미터가 결정적인 이 4종은 매핑까지 한다.
+    """
+
+    def _plan(self, **intent):
+        from office_claw_sidecar.services.excel_intent_normalizer import intent_to_plan
+
+        base = {"task": None, "range": None, "column": None, "option": None}
+        digest = {"active_sheet": "매출", "sheets": [{"name": "매출", "used_range": "A1:C5", "columns": []}]}
+        return intent_to_plan({**base, **intent}, digest=digest, message="")
+
+    @pytest.mark.parametrize(
+        ("intent", "action", "params"),
+        [
+            ({"task": "create_sheet", "option": "요약"}, "excel_live.create_sheet", {"sheet_name": "요약"}),
+            # 모델이 이름을 column에 싣는 편차도 받는다.
+            ({"task": "create_sheet", "column": "정산"}, "excel_live.create_sheet", {"sheet_name": "정산"}),
+            ({"task": "delete_charts"}, "excel_live.delete_charts", {}),
+            ({"task": "freeze"}, "excel_live.freeze_panes", {"freeze_at": "A2"}),
+            ({"task": "freeze", "option": "2"}, "excel_live.freeze_panes", {"freeze_at": "A3"}),
+            ({"task": "autofit"}, "excel_live.autofit_columns", {"target_range": "__USED_RANGE__"}),
+        ],
+    )
+    def test_it_maps(self, intent, action, params) -> None:
+        plan = self._plan(**intent)
+        assert plan is not None, intent
+        assert plan["action"] == action
+        assert plan["params"] == params
+
+    @pytest.mark.parametrize(
+        "intent",
+        [
+            # 이름을 지어내 시트를 만들면 사용자가 부른 적 없는 시트가 생긴다.
+            {"task": "create_sheet"},
+            {"task": "create_sheet", "option": "시트"},   # 낱말 축퇴
+            {"task": "create_sheet", "option": "가" * 32},  # 엑셀 시트 이름 상한 31자
+        ],
+    )
+    def test_it_backs_off(self, intent) -> None:
+        assert self._plan(**intent) is None, intent
+
+    def test_an_absurd_freeze_row_falls_back_to_the_header(self) -> None:
+        """999행 고정 같은 과대값은 A2(머리글만 고정)로 — 틀 고정은 되돌릴 수 있어 안전한 쪽."""
+        plan = self._plan(task="freeze", option="999")
+        assert plan["params"] == {"freeze_at": "A2"}

@@ -94,6 +94,15 @@ CASES: list[dict[str, Any]] = [
     case("pivot", column="지역", option="SUM", note="피벗", message="지역별 금액 합계"),
     case("create_table", range="A1:F9", note="표 생성", message="A1:F9 표로"),
     case("other", note="폴백 버킷 — 매핑하지 않는 것이 정상", message="이거 어떻게 써?"),
+    # ── 라운드 2 배치 1a: 어휘에 종류가 없어 **엉뚱한 종류로 밀려나던** 4종 ──
+    # (요약 시트→create_table, 차트 없애→clear_values 밀려남이 08-24 실측됨)
+    case("create_sheet", option="요약", note="새 시트", message="요약 시트 하나 만들어줘"),
+    case("delete_charts", note="차트 전부 삭제", message="차트 전부 없애줘"),
+    case("freeze", note="첫 행 고정", message="첫 줄 스크롤해도 보이게 고정해줘"),
+    case("freeze", option="2", note="2행까지 고정", message="위 두 줄 고정"),
+    case("autofit", note="열 너비 자동", message="열 너비 보기 좋게 맞춰줘"),
+    # 함정: 값 속에 '시트'·'차트' 낱말이 들어도 종류를 훔치면 안 된다.
+    case("write_value", range="A1", option="차트 목록", note="값 속 낱말 함정", message="A1에 차트 목록 이라고 써줘"),
 ]
 
 

@@ -50,7 +50,9 @@ task 목록: fill_color(배경색), font(글자 서식·색), highlight(조건�
 number_format(표시 형식), formula(수식·계산), sort(정렬), filter(필터),
 dedupe(중복 제거), clear_values(값 비우기), reset_all(서식까지 초기화),
 create_table(표 생성), pivot(집계표·피벗), chart(차트), write_value(값 입력),
-find_replace(찾아 바꾸기), read(조회), other(그 외)
+find_replace(찾아 바꾸기), read(조회), create_sheet(새 시트 만들기),
+delete_charts(차트 삭제), freeze(행·열 틀 고정), autofit(열 너비 자동 맞춤),
+other(그 외)
 
 주의: 색칠에 조건(이상·이하·넘는·~인 셀만 같은 말)이 붙어 있으면 highlight,
 조건이 없으면 **어떤 색이든 전부 fill_color**다.
@@ -471,6 +473,48 @@ def intent_to_plan(
                         "params": {"start_cell": f"{letter}2", "values_2d": values},
                         "reason": "의도 정규화: 값 입력(열 전체)",
                     }]
+
+    elif task == "create_sheet":
+        # 시트 이름은 option 또는 column에 실려 온다. 이름이 없으면 물러난다 —
+        # 이름을 지어내 만들면 사용자가 부른 적 없는 시트가 생긴다.
+        name = str(option_text or column or "").strip().strip("'\"")
+        # "시트"라는 낱말 자체가 이름으로 오는 축퇴는 거른다.
+        if name and name.lower() not in {"시트", "sheet", "탭", "새 시트"} and len(name) <= 31:
+            steps = [{
+                "action": "excel_live.create_sheet",
+                "params": {"sheet_name": name},
+                "reason": "의도 정규화: 새 시트",
+            }]
+
+    elif task == "delete_charts":
+        # 파라미터가 없다 — 시트는 디스패치가 활성 시트로 확정한다. 파괴 액션이지만
+        # CONFIRM 승인 게이트를 그대로 지나고, 값 스냅샷 면제 사유는
+        # `_ROLLBACK_EXEMPT_ACTIONS`에 있다(차트는 셀 값이 아니다).
+        steps = [{
+            "action": "excel_live.delete_charts",
+            "params": {},
+            "reason": "의도 정규화: 차트 삭제",
+        }]
+
+    elif task == "freeze":
+        # "첫 줄 고정" = A2에서 고정. 숫자 N이 오면 N행**까지** 고정 = A{N+1}.
+        row = None
+        digits = re.search(r"(\d{1,3})", option_text)
+        if digits:
+            row = int(digits.group(1))
+        freeze_at = f"A{row + 1}" if row and 1 <= row <= 100 else "A2"
+        steps = [{
+            "action": "excel_live.freeze_panes",
+            "params": {"freeze_at": freeze_at},
+            "reason": "의도 정규화: 틀 고정",
+        }]
+
+    elif task == "autofit":
+        steps = [{
+            "action": "excel_live.autofit_columns",
+            "params": {"target_range": rng or "__USED_RANGE__"},
+            "reason": "의도 정규화: 열 너비 자동",
+        }]
 
     # dedupe·pivot·chart·create_table·read·other는 매핑하지 않는다 — 슬롯·플래너
     # 경로가 이미 소유하고 있고(배터리 24/24), 여기서 어설프게 겹치면 두 경로가
