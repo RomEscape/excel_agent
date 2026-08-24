@@ -13,6 +13,7 @@ import {
   Command as CmdIcon,
   TextSearch,
   FolderOpen,
+  FileText,
   MessagesSquare,
   Settings as SettingsIcon,
   Bot,
@@ -86,6 +87,9 @@ const buildCommands = ({ tgConfigured, slackConfigured, discordConfigured } = {}
   { id: "nav.activity", group: "페이지", label: "작업 기록", hint: "작업 요약 / 최근 활동 검색", icon: TextSearch, run: ({ setCurrentPage, close }) => { setCurrentPage("activity"); close(); } },
   { id: "nav.conversations", group: "페이지", label: "대화목록", hint: "지난 대화 요일별 / 파일별", icon: MessagesSquare, run: ({ setCurrentPage, close }) => { setCurrentPage("conversations"); close(); } },
   { id: "nav.preferences", group: "페이지", label: "환경 설정", hint: "요금제 / 디바이스 / 테마 / 글자 크기", icon: SettingsIcon, run: ({ setCurrentPage, close }) => { setCurrentPage("preferences"); close(); } },
+  // `파일 목록`은 페이지가 아니라 사이드바 확장 목록이라 setCurrentPage로 못 간다.
+  // 사이드바가 듣는 커스텀 이벤트로 연다 (내비 4개 중 유일하게 빠져 있던 항목).
+  { id: "nav.files", group: "페이지", label: "파일 목록", hint: "워크스페이스 문서 (사이드바 확장)", icon: FileText, run: ({ close }) => { window.dispatchEvent(new CustomEvent("officeclaw:open-file-list")); close(); } },
   // 아래 둘은 최종안 사이드바에서 빠진 화면이다 — 여기가 유일한 진입 경로이므로 지우지 말 것.
   { id: "nav.workspace", group: "페이지", label: "파일 탐색기", hint: "폴더 탐색 / 미리보기 (내비에 없음)", icon: FolderOpen, run: ({ setCurrentPage, close }) => { setCurrentPage("workspace"); close(); } },
   { id: "nav.messenger_monitor", group: "페이지", label: "메신저 모니터링", hint: "채널로 들어온 명령 (내비에 없음)", icon: MessagesSquare, run: ({ setCurrentPage, close }) => { setCurrentPage("messenger_monitor"); close(); } },

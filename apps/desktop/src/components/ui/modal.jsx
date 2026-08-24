@@ -30,6 +30,7 @@ const WIDTHS = {
  *   title: string;
  *   description?: string;
  *   size?: 'sm'|'md'|'lg';
+ *   layer?: 'default'|'top';
  *   icon?: React.ComponentType<{className?: string}>;
  *   footer?: React.ReactNode;
  *   children?: React.ReactNode;
@@ -41,6 +42,7 @@ export default function Modal({
   title,
   description,
   size = "md",
+  layer = "default",
   icon: Icon,
   footer,
   children,
@@ -70,7 +72,12 @@ export default function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-sm"
+      className={cn(
+        "fixed inset-0 overflow-y-auto bg-black/50 backdrop-blur-sm",
+        // 명령 팔레트가 z-[1000]이다. 팔레트를 열어둔 채로 `Cmd/Ctrl+/`를 누를 수
+        // 있으므로, 그 위에 떠야 하는 모달만 `top`을 쓴다.
+        layer === "top" ? "z-[1100]" : "z-50"
+      )}
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"

@@ -9,6 +9,7 @@ import {
   deviceLabel,
   filterRows,
   pageCount,
+  sortRows,
   statusOf,
   toActivityRows,
 } from "./activityLog.js";
@@ -122,4 +123,77 @@ test("buildPageList: 끝쪽에서는 앞에 gap이 붙어 현재 위치가 보�
 test("buildPageList: 범위를 벗어난 현재 페이지도 안전하게 접힌다", () => {
   assert.ok(buildPageList(999, 30).includes(30));
   assert.ok(buildPageList(-5, 30).includes(1));
+});
+
+// ── 사이드카가 실제로 돌려주는 모양 ───────────────────────────────────────────
+//
+// `/security/audit`는 SQLite `command_log` 행을 그대로 흘려보낸다. 즉 등급 컬럼
+// 이름은 `grade`이고, boolean 타입이 없어 `approved`는 1 / 0 / null로 온다.
+// 이 두 가지를 놓쳐서 한동안 모든 행이 `대기` 배지로 떨어졌다.
+
+test("statusOf: SQLite 정수 approved(1/0)를 승인·거부로 읽는다", () => {
+  assert.equal(statusOf({ grade: "CONFIRM", approved: 1 }), "done");
+  assert.equal(statusOf({ grade: "CONFIRM", approved: 0 }), "blocked");
+  assert.equal(statusOf({ grade: "CONFIRM", approved: null }), "pending");
+});
+
+test("statusOf: 등급 컬럼 이름은 grade다 (classification은 옛 이름)", () => {
+  assert.equal(statusOf({ grade: "SAFE", approved: null }), "done");
+  assert.equal(statusOf({ grade: "DENIED", approved: null }), "blocked");
+  // 대소문자와 무관해야 한다 — DB는 대문자로 넣는다.
+  assert.equal(statusOf({ grade: "safe" }), "done");
+});
+
+test("deviceLabel: source enum agent/webui는 데스크탑이다", () => {
+  // normalize_source()가 보장하는 5값 중 데스크톱에서 오는 둘.
+  assert.equal(deviceLabel("agent"), "데스크탑");
+  assert.equal(deviceLabel("webui"), "데스크탑");
+  assert.equal(deviceLabel("discord"), "모바일");
+});
+
+test("toActivityRows: 파일 컬럼이 없으면 툴 이름이 보조 자리에 온다", () => {
+  const rows = toActivityRows([
+    { id: 1, command: "메일 보내줘", tool_name: "gog.gmail.send", grade: "SAFE" },
+  ]);
+  assert.equal(rows[0].file, "gog.gmail.send");
+});
+
+test("sortRows: 시간은 표시 문자열이 아니라 원본 타임스탬프로 정렬한다", () => {
+  const now = new Date("2026-08-23T21:00:00");
+  const rows = toActivityRows(
+    [
+      { id: 1, command: "가", timestamp: "2026-08-17T08:00:00" }, // 6일 전
+      { id: 2, command: "나", timestamp: "2026-08-23T08:00:00" }, // 오늘
+      { id: 3, command: "다", timestamp: "2026-06-23T08:00:00" }, // 2달 전
+    ],
+    now
+  );
+
+  const desc = sortRows(rows, { key: "time", desc: true }).map((r) => r.id);
+  assert.deepEqual(desc, [2, 1, 3]);
+
+  const asc = sortRows(rows, { key: "time", desc: false }).map((r) => r.id);
+  assert.deepEqual(asc, [3, 1, 2]);
+});
+
+test("sortRows: 상태는 완료 → 차단 → 대기 의미 순서다", () => {
+  const rows = toActivityRows([
+    { id: 1, command: "가", grade: "CONFIRM" }, // 대기
+    { id: 2, command: "나", grade: "DENIED" }, // 차단
+    { id: 3, command: "다", grade: "SAFE" }, // 완료
+  ]);
+  assert.deepEqual(
+    sortRows(rows, { key: "status", desc: false }).map((r) => r.id),
+    [3, 2, 1]
+  );
+});
+
+test("sortRows: 값이 같으면 서버가 준 순서를 유지한다", () => {
+  const rows = toActivityRows([
+    { id: 1, command: "가", timestamp: "2026-08-23T08:00:00" },
+    { id: 2, command: "나", timestamp: "2026-08-23T08:00:00" },
+  ]);
+  // 내림차순에서도 동점 처리가 뒤집히면 안 된다.
+  assert.deepEqual(sortRows(rows, { key: "time", desc: true }).map((r) => r.id), [1, 2]);
+  assert.deepEqual(sortRows(rows, { key: "time", desc: false }).map((r) => r.id), [1, 2]);
 });

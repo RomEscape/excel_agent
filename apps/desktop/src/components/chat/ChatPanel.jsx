@@ -17,7 +17,7 @@
  * 상태는 store/chatStore.js + appStore가 소유한다.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PanelRightClose, Plus, Scaling, ShieldCheck, X, Zap } from "lucide-react";
+import { Loader2, PanelRightClose, Plus, Save, Scaling, ShieldCheck, X, Zap } from "lucide-react";
 
 import {
   AttachmentChip,
@@ -41,6 +41,7 @@ import {
   buildSelectedRangeContext,
   startNewSession,
   isChatUnavailable,
+  saveWorkbook,
 } from "@/lib/chatManager";
 import useAppStore from "@/store/appStore";
 import useChatStore from "@/store/chatStore";
@@ -67,6 +68,7 @@ export default function ChatPanel() {
   const pendingExcelApproval = useChatStore((s) => s.pendingExcelApproval);
   const excelApprovalBusy = useChatStore((s) => s.excelApprovalBusy);
   const insertingRange = useChatStore((s) => s.insertingRange);
+  const excelSaving = useChatStore((s) => s.excelSaving);
   const panelMode = useChatStore((s) => s.panelMode);
   const togglePanelMode = useChatStore((s) => s.togglePanelMode);
   const setPanelOpen = useChatStore((s) => s.setPanelOpen);
@@ -160,6 +162,25 @@ export default function ChatPanel() {
       <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
         <BrandWordmark className="h-6 w-auto" />
         <div className="flex items-center gap-0.5">
+          {/*
+            엑셀 저장 — 라이브 COM 편집은 통합문서를 건드리기만 하고 저장은 하지
+            않는다. 저장 시점을 앱 안에서 잡을 수단이 하나도 없으면 사용자가
+            엑셀 창을 직접 찾아가야 한다. 결과(성공/실패)는 스레드에 문장으로 남는다.
+          */}
+          <button
+            type="button"
+            onClick={saveWorkbook}
+            disabled={excelSaving || sending}
+            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+            aria-label="엑셀 저장"
+            title="열려 있는 엑셀 통합문서 저장"
+          >
+            {excelSaving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+          </button>
           <button
             type="button"
             onClick={startNewSession}

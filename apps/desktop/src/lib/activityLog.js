@@ -35,13 +35,24 @@ export const ACTIVITY_STATUS = Object.freeze({
   pending: { label: "대기", className: "bg-muted text-muted-foreground border-border" },
 });
 
-/** 감사 로그의 source 값 → 와이어프레임의 디바이스 라벨. */
+/**
+ * 감사 로그의 source 값 → 와이어프레임의 디바이스 라벨.
+ *
+ * 키는 사이드카 `command_audit.normalize_source()`가 보장하는 5개 enum이다
+ * (`telegram|slack|discord|agent|webui`). 여기 없는 값을 쓰면 표에 `agent` 같은
+ * 내부 문자열이 그대로 노출된다 — 실제로 그랬다.
+ *
+ * `desktop`·`mobile`은 enum에 없지만 남겨둔다. 릴레이가 자기 이름으로 기록하기
+ * 시작하면 그때도 표가 깨지지 않는다.
+ */
 const DEVICE_LABELS = Object.freeze({
+  agent: "데스크탑",
+  webui: "데스크탑",
   desktop: "데스크탑",
-  mobile: "모바일",
   telegram: "모바일",
   slack: "모바일",
   discord: "모바일",
+  mobile: "모바일",
 });
 
 /**
@@ -63,15 +74,29 @@ export function deviceLabel(source) {
  */
 export function statusOf(log) {
   if (!log) return "pending";
-  // approved를 먼저 소진한다. classification과 OR로 묶으면 `approved:false` +
-  // `classification:"safe"` 조합에서 거부된 명령이 완료로 표시된다.
-  if (log.approved === true) return "done";
-  if (log.approved === false) return "blocked";
-  const cls = String(log.classification || "").toLowerCase();
-  if (cls === "safe") return "done";
-  if (cls === "denied") return "blocked";
+
+  // approved를 먼저 소진한다. 등급과 OR로 묶으면 `approved:false` + `grade:"SAFE"`
+  // 조합에서 거부된 명령이 완료로 표시된다.
+  //
+  // ⚠️ SQLite는 boolean 타입이 없어 `approved`가 **1 / 0 / null**로 온다.
+  // `=== true`로만 비교하면 승인·거부가 전부 빠져나가 모든 행이 `대기`가 된다.
+  if (log.approved === true || log.approved === 1) return "done";
+  if (log.approved === false || log.approved === 0) return "blocked";
+
+  // 등급 컬럼 이름은 `grade`다(SAFE|CONFIRM|DENIED). `classification`은 예전
+  // 이름이라 혹시 남아 있는 응답을 위해 뒤에 둔다.
+  const grade = String(log.grade ?? log.classification ?? "").toLowerCase();
+  if (grade === "safe") return "done";
+  if (grade === "denied") return "blocked";
   return "pending";
 }
+
+/**
+ * 타임스탬프 → epoch ms. 못 읽으면 0.
+ *
+ * 표시(`activityTime`)와 정렬(`sortRows`)이 같은 파싱을 써야 한다 — 정렬이 표시
+ * 문자열(`6일 전`)을 비교하면 순서가 뜻 없이 뒤섞인다.
+ */
 
 /**
  * 시간 표시 — 오늘이면 `오후 08:00`, 아니면 `6일 전`.
@@ -80,9 +105,14 @@ export function statusOf(log) {
  * 작업인지 아침에 한 작업인지 구분이 안 되고, 반대로 전부 시각으로 쓰면
  * 며칠 전 기록의 날짜를 알 수 없다.
  */
-export function activityTime(timestamp, now = new Date()) {
+export function toEpochMs(timestamp) {
   const ms = typeof timestamp === "number" ? timestamp * 1000 : Date.parse(timestamp);
-  if (!Number.isFinite(ms) || ms <= 0) return "";
+  return Number.isFinite(ms) && ms > 0 ? ms : 0;
+}
+
+export function activityTime(timestamp, now = new Date()) {
+  const ms = toEpochMs(timestamp);
+  if (!ms) return "";
   const then = new Date(ms);
 
   const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -98,10 +128,21 @@ export function activityTime(timestamp, now = new Date()) {
 }
 
 /**
+ * 상태 정렬 순서 — `완료 → 차단 → 대기`.
+ * 키 문자열(`done`/`blocked`/`pending`)을 그대로 비교하면 알파벳순이라
+ * `blocked`가 `done`보다 앞서서 사용자가 기대하는 순서와 어긋난다.
+ */
+const STATUS_RANK = Object.freeze({ done: 0, blocked: 1, pending: 2 });
+
+/**
  * 감사 로그 → 표 한 행.
  *
- * `명령` 칸은 2줄이다 — 명령문과 대상 파일. 파일이 없는 명령(조회·설정 등)도
- * 있으므로 file은 빈 문자열일 수 있고, 그때는 컴포넌트가 둘째 줄을 안 그린다.
+ * `명령` 칸은 명령문 + 보조 정보 두 조각이다. 보조 자리에는 **툴 이름**
+ * (`command_log.tool_name`)이 온다 — 와이어프레임은 대상 파일명을 그렸지만
+ * 감사 로그에 파일 컬럼이 없다. 없는 값을 지어내는 대신 실제로 아는 값을 넣는다.
+ * (파일 컬럼이 생기면 `log.file_name`이 먼저 잡히도록 순서를 그대로 뒀다.)
+ *
+ * `ts`는 화면에 안 나오지만 정렬이 쓴다 — 표시 문자열로 정렬하면 안 되기 때문.
  */
 export function toActivityRow(log, now = new Date()) {
   if (!log) return null;
@@ -110,9 +151,10 @@ export function toActivityRow(log, now = new Date()) {
     id: log.id ?? `${log.timestamp}-${log.command ?? log.action ?? ""}`,
     device: deviceLabel(log.source),
     command: log.command ?? log.action ?? "-",
-    file: log.file_name ?? log.target ?? "",
+    file: log.file_name ?? log.tool_name ?? "",
     status,
     statusLabel: ACTIVITY_STATUS[status].label,
+    ts: toEpochMs(log.timestamp),
     time: activityTime(log.timestamp, now),
   };
 }
@@ -134,6 +176,40 @@ export function filterRows(rows, query) {
     (r) =>
       r.command.toLowerCase().includes(q) || r.file.toLowerCase().includes(q)
   );
+}
+
+/**
+ * 정렬 — 받아온 페이지 안에서만 한다(서버가 정렬 파라미터를 받지 않는다).
+ *
+ * 칸마다 비교 대상이 다르다:
+ *   - `time`   → 원본 epoch(`ts`). 표시 문자열(`6일 전`·`오후 08:00`)로 비교하면
+ *               "6"과 "오"를 견주는 꼴이라 순서가 무의미해진다.
+ *   - `status` → 의미 순서(`완료 → 차단 → 대기`).
+ *   - 나머지  → 한국어 로케일 문자열 비교.
+ *
+ * 정렬이 안정적이어야 같은 시각의 행이 렌더마다 자리를 바꾸지 않으므로,
+ * 값이 같으면 서버가 준 순서(id 역순 = 최신순)를 유지한다.
+ */
+export function sortRows(rows, sort) {
+  const list = Array.isArray(rows) ? rows : [];
+  const key = sort?.key ?? "time";
+  const dir = sort?.desc ? -1 : 1;
+
+  return list
+    .map((row, i) => ({ row, i }))
+    .sort((a, b) => {
+      let cmp;
+      if (key === "time") {
+        cmp = (a.row.ts ?? 0) - (b.row.ts ?? 0);
+      } else if (key === "status") {
+        cmp = (STATUS_RANK[a.row.status] ?? 9) - (STATUS_RANK[b.row.status] ?? 9);
+      } else {
+        cmp = String(a.row[key] ?? "").localeCompare(String(b.row[key] ?? ""), "ko");
+      }
+      // 동점이면 원래 순서 유지 — 방향을 곱하지 않는다(곱하면 내림차순에서 뒤집힌다).
+      return cmp === 0 ? a.i - b.i : cmp * dir;
+    })
+    .map((x) => x.row);
 }
 
 /**

@@ -121,6 +121,16 @@ export default function ConversationHistoryPage() {
   const setPanelOpen = useChatStore((s) => s.setPanelOpen);
 
   const [view, setView] = useState("day");
+  // 접힌 그룹 키 — 프레임의 그룹 머리 옆 화살표가 이걸 여닫는다.
+  const [collapsed, setCollapsed] = useState(() => new Set());
+
+  const toggleGroup = (key) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   useEffect(() => {
     refreshSessions();
@@ -173,23 +183,42 @@ export default function ConversationHistoryPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-10">
-          {groups.map((group) => (
-            /* Figma: 그룹 안 gap 12 */
-            <section key={group.key || group.label} className="flex flex-col gap-3">
-              <div className="flex items-center gap-3">
-                {/* 그룹 머리 — 16px Medium #0C1909 */}
-                <h2 className="text-base font-medium leading-[22px] tracking-[-0.64px] text-foreground">
-                  {group.label}
-                </h2>
-                <ChevronDown className="h-5 w-5 text-ink-subtle" />
-              </div>
-              <div className="flex flex-col gap-3">
-                {group.items.map((s) => (
-                  <ConversationCard key={s.session_id} session={s} onOpen={handleOpen} />
-                ))}
-              </div>
-            </section>
-          ))}
+          {groups.map((group) => {
+            const groupKey = group.key || group.label;
+            const isOpen = !collapsed.has(groupKey);
+            return (
+              /* Figma: 그룹 안 gap 12 */
+              <section key={groupKey} className="flex flex-col gap-3">
+                {/* 그룹 머리 — 16px Medium #0C1909.
+                    화살표는 장식이 아니라 실제로 그룹을 여닫는다. 누를 수 있게
+                    생긴 것이 아무 일도 안 하면 클릭이 먹지 않은 것으로 읽힌다. */}
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(groupKey)}
+                  aria-expanded={isOpen}
+                  className="flex w-fit items-center gap-3 text-left"
+                >
+                  <h2 className="text-base font-medium leading-[22px] tracking-[-0.64px] text-foreground">
+                    {group.label}
+                  </h2>
+                  <span className="text-xs leading-4 text-ink-faint">{group.items.length}</span>
+                  <ChevronDown
+                    className={cn(
+                      "h-5 w-5 text-ink-subtle transition-transform",
+                      !isOpen && "-rotate-90"
+                    )}
+                  />
+                </button>
+                {isOpen && (
+                  <div className="flex flex-col gap-3">
+                    {group.items.map((s) => (
+                      <ConversationCard key={s.session_id} session={s} onOpen={handleOpen} />
+                    ))}
+                  </div>
+                )}
+              </section>
+            );
+          })}
         </div>
       )}
     </div>

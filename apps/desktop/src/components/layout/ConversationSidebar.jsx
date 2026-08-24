@@ -262,6 +262,18 @@ export default function ConversationSidebar() {
     setOpenSection((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
+  // `파일 목록`·`대화목록`은 페이지가 아니라 이 사이드바 안의 확장 목록이라
+  // `setCurrentPage`로 갈 수가 없다. 명령 팔레트가 여기로 닿는 통로를 열어둔다
+  // (도움말·팔레트가 이미 쓰는 `officeclaw:*` 커스텀 이벤트와 같은 방식).
+  useEffect(() => {
+    const openFiles = () => {
+      if (collapsed) setSidebarCollapsed(false);
+      setOpenSection((prev) => ({ ...prev, files: true }));
+    };
+    window.addEventListener("officeclaw:open-file-list", openFiles);
+    return () => window.removeEventListener("officeclaw:open-file-list", openFiles);
+  }, [collapsed, setSidebarCollapsed]);
+
   const handleNav = (item) => {
     if (item.expandable) {
       toggleSection(item.id);

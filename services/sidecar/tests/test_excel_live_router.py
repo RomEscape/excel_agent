@@ -457,3 +457,151 @@ def test_command_confirm_reject_does_not_resume(monkeypatch):
     body = done.json()
     assert body["result"]["approved"] is False
     assert "거부" in body["reason"]
+
+
+# ── 명령 감사 로그(command_log) 연동 ─────────────────────────────────────────
+#
+# 데스크톱 `작업 기록` 화면이 읽는 쪽은 SQLite `command_log`다. 예전에는 메신저
+# 경로만 여기에 남겨서, 데스크톱으로만 쓰는 사용자에게는 표가 늘 비어 있었다.
+
+
+class _FakeCmdAudit:
+    """command_audit 로거 대역 — 실제 DB를 건드리지 않고 호출만 모은다."""
+
+    def __init__(self):
+        self.logged: list[dict] = []
+        self.updated: list[tuple[int, bool]] = []
+        self._next_id = 100
+
+    def log(self, **kwargs):
+        self._next_id += 1
+        self.logged.append({"id": self._next_id, **kwargs})
+        return self._next_id
+
+    def update_approval(self, row_id, approved, rejection_reason=None):
+        self.updated.append((row_id, approved))
+
+
+def _patch_cmd_audit(monkeypatch) -> _FakeCmdAudit:
+    fake = _FakeCmdAudit()
+    monkeypatch.setattr(excel_live_router, "get_command_audit_logger", lambda: fake)
+    return fake
+
+
+def test_command_safe_tool_is_recorded_in_command_log(monkeypatch):
+    _patch_service(monkeypatch)
+    audit = _patch_cmd_audit(monkeypatch)
+
+    async def _fake_turn(**_kwargs):
+        return {
+            "type": "chat",
+            "assistant_text": "매출 열의 합계는 400입니다.",
+            "executed": [
+                {
+                    "action": "excel_live.calculate_column_stat",
+                    "params": {},
+                    "result": {"value": 400.0},
+                }
+            ],
+        }
+
+    monkeypatch.setattr(excel_live_router, "run_excel_tool_turn", _fake_turn)
+
+    resp = client.post(
+        "/excel-live/command",
+        json={"message": "매출 열 다 더해줘"},
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200
+
+    assert len(audit.logged) == 1
+    entry = audit.logged[0]
+    assert entry["grade"] == "SAFE"
+    # 표의 `명령` 칸에는 도구 이름이 아니라 사용자가 실제로 한 말이 나가야 한다.
+    assert entry["command"] == "매출 열 다 더해줘"
+    assert entry["tool_name"] == "excel_live.calculate_column_stat"
+    # 프론트 activityLog.deviceLabel이 이 값을 `데스크탑`으로 읽는다.
+    assert entry["source"] == "webui"
+
+
+def test_command_plain_chat_is_not_recorded(monkeypatch):
+    """도구를 하나도 안 쓴 턴은 남기지 않는다 — `작업 기록`은 대화록이 아니다."""
+    _patch_service(monkeypatch)
+    audit = _patch_cmd_audit(monkeypatch)
+
+    async def _fake_turn(**_kwargs):
+        return {"type": "chat", "assistant_text": "안녕하세요!", "executed": []}
+
+    monkeypatch.setattr(excel_live_router, "run_excel_tool_turn", _fake_turn)
+
+    resp = client.post("/excel-live/command", json={"message": "안녕"}, headers=HEADERS)
+    assert resp.status_code == 200
+    assert audit.logged == []
+
+
+def test_confirm_flow_logs_once_and_updates_approval(monkeypatch):
+    """CONFIRM은 한 줄로 남고 승인 결과가 그 줄에 새겨진다 (두 줄이 되면 안 된다)."""
+    _patch_service(monkeypatch)
+    audit = _patch_cmd_audit(monkeypatch)
+
+    async def _fake_turn(**_kwargs):
+        return {
+            "type": "approval",
+            "action": "excel_live.highlight_by_condition",
+            "params": {"target_range": "A:A", "operator": ">=", "threshold": 50},
+            "sheet_name": None,
+            "reason": "조건부 강조 작업",
+            "executed": [],
+        }
+
+    monkeypatch.setattr(excel_live_router, "run_excel_tool_turn", _fake_turn)
+
+    resp = client.post(
+        "/excel-live/command",
+        json={"message": "A열 50 이상 노란색으로 칠해줘"},
+        headers=HEADERS,
+    )
+    approval_id = resp.json()["pending_approval"]["approval_id"]
+
+    assert len(audit.logged) == 1
+    confirm_entry = audit.logged[0]
+    assert confirm_entry["grade"] == "CONFIRM"
+    assert confirm_entry["approved"] is None
+
+    done = client.post(
+        "/excel-live/approval",
+        json={"approval_id": approval_id, "approved": True},
+        headers=HEADERS,
+    )
+    assert done.status_code == 200
+
+    # 승인 결과는 새 행이 아니라 기존 행의 갱신이다.
+    assert audit.updated == [(confirm_entry["id"], True)]
+    assert len(audit.logged) == 1
+
+
+def test_rejected_confirm_marks_the_same_row_blocked(monkeypatch):
+    _patch_service(monkeypatch)
+    audit = _patch_cmd_audit(monkeypatch)
+
+    async def _fake_turn(**_kwargs):
+        return {
+            "type": "approval",
+            "action": "excel_live.highlight_by_condition",
+            "params": {},
+            "sheet_name": None,
+            "reason": "조건부 강조 작업",
+            "executed": [],
+        }
+
+    monkeypatch.setattr(excel_live_router, "run_excel_tool_turn", _fake_turn)
+
+    resp = client.post("/excel-live/command", json={"message": "칠해줘"}, headers=HEADERS)
+    approval_id = resp.json()["pending_approval"]["approval_id"]
+
+    client.post(
+        "/excel-live/approval",
+        json={"approval_id": approval_id, "approved": False},
+        headers=HEADERS,
+    )
+    assert audit.updated == [(audit.logged[0]["id"], False)]

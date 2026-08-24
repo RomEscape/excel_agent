@@ -15,13 +15,14 @@
  * 치수는 Figma export에서 그대로 옮겼다. 특히 헷갈리기 쉬운 두 가지:
  *   - **섹션 제목(`작업 요약`·`최근 활동`)은 24px w600**이고, 18px w500은
  *     KPI 카드 라벨(`전체 명령`)이다. 둘을 같은 스타일로 두면 위계가 무너진다.
- *   - **명령문과 파일명은 한 줄에 나란히**(gap 16) 놓인다. 2줄로 쌓으면 행 높이가
- *     늘어 표가 프레임과 어긋난다.
+*   - **명령문과 보조 정보는 한 줄에 나란히**(gap 16) 놓인다. 2줄로 쌓으면 행
+ *     높이가 늘어 표가 프레임과 어긋난다. 보조 자리는 프레임에선 파일명이지만
+ *     감사 로그에 파일 컬럼이 없어 툴 이름이 온다(`lib/activityLog.js` 참고).
  *
  * 상태는 갖되 도메인 로직은 갖지 않는다 — 표시 모델 변환은 전부
  * `lib/activityLog.js`(순수)가, 수집은 `lib/api.js`가 맡는다.
  */
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Search, TextSearch } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -32,6 +33,7 @@ import {
   buildSummary,
   filterRows,
   pageCount,
+  sortRows,
   toActivityRows,
 } from "@/lib/activityLog";
 import {
@@ -39,6 +41,16 @@ import {
   getCommandAuditStats,
   securityStats,
 } from "@/lib/api";
+
+/**
+ * 검색이 훑는 범위.
+ *
+ * 서버가 검색 파라미터를 받지 않아서 클라이언트가 거른다. 그렇다고 현재 페이지
+ * 20건만 훑으면 "검색 결과가 없습니다"가 거짓말이 된다 — 다음 페이지에 있는데도
+ * 없다고 말한다. 그래서 검색을 시작하면 최근 N건을 한 번 더 받아 그 안에서 찾고,
+ * 그 범위를 화면이 문장으로 밝힌다. 500은 사이드카 `/security/audit`의 limit 상한이다.
+ */
+const SEARCH_WINDOW = 500;
 
 /** 표 컬럼 폭 — Figma 기준 104 / flex / 100 / 100. */
 const COLUMNS = [
@@ -137,7 +149,7 @@ function ActivityRow({ row }) {
         <span className="truncate text-base leading-[22px] text-foreground">{row.device}</span>
       </div>
 
-      {/* 명령문과 파일명은 한 줄에 나란히 (gap 16) */}
+      {/* 명령문과 보조 정보(툴 이름)는 한 줄에 나란히 (gap 16) */}
       <div className="flex min-w-0 flex-1 items-center gap-4 px-5 py-2">
         <span className="truncate text-base leading-[22px] text-foreground">{row.command}</span>
         {row.file && (
@@ -222,40 +234,77 @@ export default function ActivityPage() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState({ key: "time", desc: true });
 
-  const loadData = useCallback(async (targetPage) => {
-    setLoading(true);
-    const offset = (targetPage - 1) * ACTIVITY_PAGE_SIZE;
-    const [statsResult, logsResult, secResult] = await Promise.allSettled([
-      getCommandAuditStats(),
-      getCommandAuditLogs(ACTIVITY_PAGE_SIZE, offset),
-      securityStats(),
-    ]);
+  // 검색 중에는 현재 페이지 대신 넓은 창을 훑는다 (SEARCH_WINDOW 주석 참고).
+  const searching = query.trim().length > 0;
+  const [searchLogs, setSearchLogs] = useState(null);
 
-    setStats(statsResult.status === "fulfilled" ? statsResult.value : null);
-    setLogs(logsResult.status === "fulfilled" ? logsResult.value?.logs ?? [] : []);
-    setSecStats(secResult.status === "fulfilled" ? secResult.value : null);
-    setLoading(false);
+  // KPI는 페이지와 무관하다 — 페이지를 넘길 때마다 다시 받을 이유가 없어
+  // 표 로딩과 분리해 마운트 시 한 번만 받는다.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [statsResult, secResult] = await Promise.allSettled([
+        getCommandAuditStats(),
+        securityStats(),
+      ]);
+      if (cancelled) return;
+      setStats(statsResult.status === "fulfilled" ? statsResult.value : null);
+      setSecStats(secResult.status === "fulfilled" ? secResult.value : null);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    loadData(page);
-  }, [loadData, page]);
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      const offset = (page - 1) * ACTIVITY_PAGE_SIZE;
+      try {
+        const res = await getCommandAuditLogs(ACTIVITY_PAGE_SIZE, offset);
+        if (!cancelled) setLogs(res?.logs ?? []);
+      } catch {
+        if (!cancelled) setLogs([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [page]);
+
+  // 검색을 시작할 때 한 번만 넓은 창을 받는다. 타자 한 글자마다 받지 않도록
+  // 의존성은 `searching`(불리언)이지 `query`가 아니다.
+  useEffect(() => {
+    if (!searching) {
+      setSearchLogs(null);
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await getCommandAuditLogs(SEARCH_WINDOW, 0);
+        if (!cancelled) setSearchLogs(res?.logs ?? []);
+      } catch {
+        if (!cancelled) setSearchLogs([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [searching]);
 
   const summary = useMemo(() => buildSummary(stats, secStats), [stats, secStats]);
 
-  // 정렬은 받아온 페이지 안에서만 한다 — 서버가 정렬 파라미터를 받지 않으므로
-  // 전체 정렬인 척하면 페이지를 넘길 때 순서가 어긋난다.
   const rows = useMemo(() => {
-    const base = filterRows(toActivityRows(logs), query);
-    const dir = sort.desc ? -1 : 1;
-    return [...base].sort((a, b) => {
-      const av = String(a[sort.key] ?? "");
-      const bv = String(b[sort.key] ?? "");
-      return av.localeCompare(bv, "ko") * dir;
-    });
-  }, [logs, query, sort]);
+    const source = searching ? searchLogs ?? [] : logs;
+    return sortRows(filterRows(toActivityRows(source), query), sort);
+  }, [logs, searchLogs, searching, query, sort]);
 
   const totalPages = pageCount(stats?.total ?? 0);
+  const tableLoading = searching ? searchLogs === null : loading;
 
   const handleSort = (key) =>
     setSort((prev) => ({ key, desc: prev.key === key ? !prev.desc : true }));
@@ -271,7 +320,7 @@ export default function ActivityPage() {
         </div>
         <div className="flex flex-col gap-[19px] sm:flex-row">
           {summary.map((card) => (
-            <SummaryCard key={card.id} {...card} loading={loading} />
+            <SummaryCard key={card.id} {...card} loading={stats === null} />
           ))}
         </div>
       </section>
@@ -280,22 +329,30 @@ export default function ActivityPage() {
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-4">
           <h2 className="text-2xl font-semibold leading-8 text-foreground">최근 활동</h2>
-          <div className="relative w-[358px] max-w-full">
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="검색어를 입력해주세요."
-              aria-label="작업 기록 검색"
-              className="h-[38px] w-full rounded border border-brand-soft bg-card pl-3 pr-9 text-base leading-[22px] text-foreground placeholder:text-ink-subtle focus:border-primary focus:outline-none"
-            />
-            <Search className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-subtle" />
+          <div className="flex w-[358px] max-w-full flex-col gap-1">
+            <div className="relative">
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="검색어를 입력해주세요."
+                aria-label="작업 기록 검색"
+                className="h-[38px] w-full rounded border border-brand-soft bg-card pl-3 pr-9 text-base leading-[22px] text-foreground placeholder:text-ink-subtle focus:border-primary focus:outline-none"
+              />
+              <Search className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-subtle" />
+            </div>
+            {/* 어디까지 훑었는지 밝힌다 — 안 밝히면 "없다"가 거짓말이 된다. */}
+            {searching && (
+              <p className="text-xs leading-4 text-ink-faint">
+                최근 {SEARCH_WINDOW.toLocaleString()}건에서 찾습니다.
+              </p>
+            )}
           </div>
         </div>
 
         <div className="overflow-hidden rounded-xl border border-border bg-card">
           <TableHeader sort={sort} onSort={handleSort} />
 
-          {loading ? (
+          {tableLoading ? (
             <div>
               {[0, 1, 2, 3, 4].map((n) => (
                 <div key={n} className="flex items-center gap-4 px-5 py-4">
@@ -309,10 +366,10 @@ export default function ActivityPage() {
           ) : rows.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-1.5 py-24 text-center">
               <p className="text-base text-foreground">
-                {query.trim() ? "검색 결과가 없습니다" : "아직 활동 기록이 없습니다"}
+                {searching ? "검색 결과가 없습니다" : "아직 활동 기록이 없습니다"}
               </p>
               <p className="text-xs text-ink-faint">
-                {query.trim()
+                {searching
                   ? "다른 검색어로 찾아보세요."
                   : "김대리에게 첫 명령을 내리면 여기에 모든 작업이 기록됩니다."}
               </p>
@@ -326,7 +383,9 @@ export default function ActivityPage() {
           )}
         </div>
 
-        <Pagination page={page} total={totalPages} onChange={setPage} />
+        {/* 검색 중에는 페이지네이션을 숨긴다 — 검색은 페이지가 아니라 창(window)
+            단위라서, 페이지 번호를 같이 두면 어느 범위를 보는 건지 어긋난다. */}
+        {!searching && <Pagination page={page} total={totalPages} onChange={setPage} />}
       </section>
     </div>
   );

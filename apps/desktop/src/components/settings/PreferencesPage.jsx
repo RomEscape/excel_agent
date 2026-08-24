@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 import { CURRENT_VERSION, checkForUpdate } from "@/lib/appUpdate";
 import { FONT_SCALES, FONT_SCALE_LABELS } from "@/lib/fontScale";
 import { setFontScale } from "@/lib/fontScaleManager";
+import { describeModel } from "@/lib/modelCatalog";
 import { THEME_LABELS, THEME_PREFERENCES } from "@/lib/theme";
 import { setThemePreference } from "@/lib/themeManager";
 import { disconnect as relayDisconnect } from "@/lib/relayManager";
@@ -143,6 +144,9 @@ export default function PreferencesPage() {
     }
     wasConnected.current = relayConnected;
   }, [relayConnected, pairOpen]);
+
+  // 지금 고른 모델이 추천 모델인지 — 배지 표시 판정용.
+  const model = describeModel(llmConfig?.model);
 
   const handleCheckUpdate = async () => {
     setChecking(true);
@@ -289,7 +293,12 @@ export default function PreferencesPage() {
             {llmConfig?.model || "선택된 모델 없음"}
           </span>
           <span className="flex shrink-0 items-center gap-2">
-            <span className="text-xs leading-4 text-brand-step">추천</span>
+            {/* 배지는 실제로 추천 모델일 때만 붙인다 — 어떤 모델을 골라도 `추천`이
+                떠 있으면 배지가 아무 말도 하지 않는 셈이다. 판정은
+                `lib/modelCatalog.js`가 소유한다(온보딩 셀렉트와 같은 규칙). */}
+            {model.recommended && (
+              <span className="text-xs leading-4 text-brand-step">추천</span>
+            )}
             <ChevronDown className="h-6 w-6 text-ink-subtle" />
           </span>
         </button>
