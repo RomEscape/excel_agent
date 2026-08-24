@@ -33,6 +33,9 @@ from office_claw_sidecar.services.excel_intent_normalizer import (
     _PROMPT as PROMPT,
 )
 
+#: (맞았나, 모델이 말한 확신도) — 모델이 자기가 모를 때를 아는지 재려는 것.
+CONF: list[tuple[bool, str]] = []
+
 
 def _norm(v) -> str:
     return str(v or "").strip().lower()
@@ -150,6 +153,7 @@ async def main() -> None:
         for style, msg in phrasings:
             out = await ask(llm, model, msg)
             ok = bool(judge(out))
+            CONF.append((ok, str((out or {}).get('confidence') or '').lower()))
             stats[style][0] += ok
             stats[style][1] += 1
             mark = "OK  " if ok else "FAIL"
@@ -160,6 +164,7 @@ async def main() -> None:
     for msg, judge in INCIDENT_CASES:
         out = await ask(llm, model, msg)
         ok = bool(judge(out))
+        CONF.append((ok, str((out or {}).get('confidence') or '').lower()))
         inc_ok += ok
         mark = "OK  " if ok else "FAIL"
         print(f"{mark} [사고] {msg[:36]:38s} → {json.dumps(out, ensure_ascii=False)[:72]}", flush=True)
@@ -169,6 +174,16 @@ async def main() -> None:
         ok, total = stats[style]
         print(f"{name}: {ok}/{total} ({ok/total*100:.0f}%)   [플래너 실측: 훈련체 67% / 사용자체 58%]")
     print(f"GUI 사고 문장: {inc_ok}/{len(INCIDENT_CASES)}")
+    if CONF:
+        import collections
+
+        tab = collections.Counter((c or "(없음)", ok) for ok, c in CONF)
+        print()
+        print("확신도 대 정답 — 모델이 자기가 모를 때를 아는가")
+        for conf in sorted({c for c, _ in tab}):
+            good, bad = tab[(conf, True)], tab[(conf, False)]
+            total = good + bad
+            print(f"  {conf:8} {total:3d}건 중 맞음 {good:3d} ({100 * good / max(total, 1):.0f}%) · 틀림 {bad}")
 
 
 asyncio.run(main())
