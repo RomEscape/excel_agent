@@ -3966,3 +3966,74 @@ class TestBatch1aIntentKindsMapDeterministically:
         """999행 고정 같은 과대값은 A2(머리글만 고정)로 — 틀 고정은 되돌릴 수 있어 안전한 쪽."""
         plan = self._plan(task="freeze", option="999")
         assert plan["params"] == {"freeze_at": "A2"}
+
+
+class TestXlwingsPathsRejectVendorWorkbooks:
+    """벤더 데모 파일 때문에 xlwings가 골라지고, `books.active`가 그 파일에 실행했다.
+
+    2026-08-04 실측(감사 B1): .venv의 xlwings quickstart가 열려 있다는 이유로 auto가
+    xlwings 엔진을 골랐고, 지목 없는 명령이 그 데모 파일을 편집했다. 가드가 파일
+    엔진(`_is_scannable`)에만 있고 사고가 난 xlwings 경로에는 없었다.
+    """
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            r"C:\proj\.venv\Lib\site-packages\xlwings\quickstart.xlsm",
+            r"C:\ws\officeclaw_backups\백업.xlsx",
+            r"C:\a\node_modules\pkg\demo.xlsx",
+        ],
+    )
+    def test_vendor_paths_are_rejected(self, path: str) -> None:
+        from office_claw_sidecar.services.excel_live_service import _is_user_workbook_path
+
+        assert _is_user_workbook_path(path) is False
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            r"C:\Users\a\AppData\Local\office_claw\Workspace\매출.xlsx",
+            r"C:\Users\a\Documents\재고.xlsx",
+            "통합 문서1",  # 저장 전 새 문서 — 경로가 없다고 거절하면 정상 사용이 막힌다
+            "",
+        ],
+    )
+    def test_user_paths_pass(self, path: str) -> None:
+        from office_claw_sidecar.services.excel_live_service import _is_user_workbook_path
+
+        assert _is_user_workbook_path(path) is True
+
+    def test_the_active_fallback_refuses_a_vendor_workbook(self) -> None:
+        """지목이 없을 때의 `books.active` 폴백 — 벤더 파일이면 실행 대신 거절."""
+        from types import SimpleNamespace
+
+        from office_claw_sidecar.services.excel_live_service import (
+            ExcelLiveService,
+            WorkbookNotFoundError,
+        )
+
+        service = ExcelLiveService.__new__(ExcelLiveService)  # COM 없이 골격만
+        service._selected_workbook_id = None
+        vendor = SimpleNamespace(fullname=r"C:\proj\.venv\xlwings\quickstart.xlsm")
+        service._app = lambda: SimpleNamespace(books=SimpleNamespace(active=vendor))
+        with pytest.raises(WorkbookNotFoundError):
+            service._resolve_workbook(None)
+
+        # 사람 파일이면 그대로 돌려준다.
+        mine = SimpleNamespace(fullname=r"C:\Users\a\Documents\재고.xlsx")
+        service._app = lambda: SimpleNamespace(books=SimpleNamespace(active=mine))
+        assert service._resolve_workbook(None) is mine
+
+    def test_the_engine_probe_ignores_vendor_books(self) -> None:
+        """벤더 파일만 열려 있으면 xlwings를 고를 근거가 아니다."""
+        import inspect
+
+        from office_claw_sidecar.services import excel_live_service
+
+        src = inspect.getsource(excel_live_service._excel_app_has_open_workbook)
+        assert "_is_user_workbook_path" in src
+
+    def test_the_exclusion_list_has_one_source(self) -> None:
+        from office_claw_sidecar.services import excel_live_file_service, excel_live_service
+
+        assert excel_live_file_service._SCAN_EXCLUDED_DIRS is excel_live_service._SCAN_EXCLUDED_DIRS

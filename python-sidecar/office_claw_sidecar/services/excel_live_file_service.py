@@ -49,6 +49,7 @@ from office_claw_sidecar.services.excel_formula_eval import (
 from office_claw_sidecar.services.excel_header_lexicon import resolve_header
 from office_claw_sidecar.services.excel_live_service import (
     _ALIGN_WORDS,
+    _SCAN_EXCLUDED_DIRS,
     AmbiguousWorkbookError,
     ExcelConnectionError,
     ExcelLiveError,
@@ -60,20 +61,8 @@ from office_claw_sidecar.services.excel_live_service import (
 # 워크스페이스를 훑을 때 건너뛸 디렉터리.
 # 가상환경의 샘플 통합문서(xlwings quickstart 등)나 우리가 만든 백업본이
 # "가장 최근 수정된 파일"로 잡혀 편집 대상이 되는 사고를 막는다.
-_SCAN_EXCLUDED_DIRS = frozenset(
-    {
-        ".git",
-        ".venv",
-        "venv",
-        "env",
-        "node_modules",
-        "site-packages",
-        "__pycache__",
-        "officeclaw_backups",
-        "dist",
-        "build",
-    }
-)
+# 제외 목록은 excel_live_service **한 곳**이다 — xlwings 경로와 갈라지면
+# 한쪽만 가드되는 사고(2026-08-04)가 재현된다.
 
 
 def _as_number(value: Any) -> float | None:

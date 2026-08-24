@@ -46,6 +46,43 @@ _ALIGN_WORDS = {
 }
 
 
+
+#: 사용자 작업물로 볼 수 없는 디렉터리 — 벤더 데모(xlwings quickstart 등)·백업이 산다.
+#: 원래 파일 엔진에만 있었는데, **xlwings 경로에는 이 가드가 없어** 벤더 데모 파일이
+#: 열려 있다는 이유로 auto가 xlwings를 골랐고 `books.active`가 그 파일에 실행했다
+#: (2026-08-04 실측, 감사 B1). 목록은 여기 한 곳 — 파일 엔진이 이걸 임포트한다.
+_SCAN_EXCLUDED_DIRS = frozenset(
+    {
+        ".git",
+        ".venv",
+        "venv",
+        "env",
+        "node_modules",
+        "site-packages",
+        "__pycache__",
+        "officeclaw_backups",
+        "dist",
+        "build",
+    }
+)
+
+
+def _is_user_workbook_path(fullname: str) -> bool:
+    """열린 통합문서 경로가 **사람의 작업물**로 보이는가.
+
+    벤더·가상환경·백업 경로면 False — 엔진 선택의 근거로도, `books.active` 폴백의
+    대상으로도 삼지 않는다. 판정 불가(경로 없음·비정상)면 True 쪽으로 둔다:
+    새 통합문서(저장 전, fullname이 "통합 문서1")를 거절하면 정상 사용이 막힌다.
+    """
+    text = str(fullname or "").strip()
+    if not text or ("\\" not in text and "/" not in text):
+        return True  # 저장 전 새 문서 — 경로가 아직 없다
+    from pathlib import PurePath
+
+    parts = PurePath(text).parts[:-1]
+    return not any(part in _SCAN_EXCLUDED_DIRS or str(part).startswith(".") for part in parts if part)
+
+
 class ExcelLiveError(Exception):
     """Excel Live 서비스 기본 예외."""
 
@@ -2627,8 +2664,17 @@ class ExcelLiveService:
         """
         target_id = workbook_id or self._selected_workbook_id
         if target_id:
+            # 사용자가 지목했으면 가드를 거치지 않는다 — 그 파일을 정말 원한 것이다.
             return self._find_workbook(target_id)
-        return self._app().books.active
+        active = self._app().books.active
+        if not _is_user_workbook_path(getattr(active, "fullname", "")):
+            # 활성 통합문서가 벤더·가상환경 파일이다. 여기에 조용히 실행하면
+            # 사용자가 보지도 않는 파일이 바뀐다(2026-08-04 실측, 감사 B1).
+            raise WorkbookNotFoundError(
+                "활성 통합문서가 작업 파일이 아니라 라이브러리 데모 파일입니다. "
+                "작업할 파일을 먼저 선택해 주세요."
+            )
+        return active
 
     def get_active_selection_ref(
         self,
@@ -3272,7 +3318,14 @@ def _excel_app_has_open_workbook() -> bool:
 
     try:
         xw = importlib.import_module("xlwings")
-        found = any(True for app in xw.apps for _ in app.books)
+        # 벤더 데모 파일(.venv의 xlwings quickstart 등)이 열려 있다는 이유로
+        # xlwings를 고르면, 뒤의 books.active 폴백이 그 파일에 실행한다(2026-08-04).
+        # **사람의 작업물이 열려 있을 때만** xlwings 엔진의 근거가 된다.
+        found = any(
+            _is_user_workbook_path(getattr(book, "fullname", ""))
+            for app in xw.apps
+            for book in app.books
+        )
     except Exception:
         found = False
 
