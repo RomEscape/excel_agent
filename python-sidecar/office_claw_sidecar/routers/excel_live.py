@@ -652,6 +652,24 @@ _ROLLBACK_SNAPSHOT_ACTIONS = {
     # 2026-08-17 실측: 무일치 keep 필터가 시트를 통째로 비웠는데, 이 목록에 없어
     # 검증 실패 후에도 복구가 안 됐다. 행을 지우는 액션은 전부 스냅샷을 뜬다.
     "excel_live.filter_rows",
+    # sort_range의 쌍둥이인데 빠져 있었다(2026-08-24 감사 A2). 값 순서를 통째로
+    # 섞는 액션이 복구 그물 없이 돌았다 — filter_rows(08-17)와 같은 "목록 누락" 부류.
+    "excel_live.sort_rows",
+    # 값을 치환하는 액션인데 빠져 있었다(같은 감사에서 육안 발견). 잘못된 치환은
+    # 사용 범위 전체에 번진다.
+    "excel_live.find_replace",
+}
+# 값 스냅샷으로 **복원이 안 되는** 파괴 액션 — 편입하면 가짜 안전감만 생긴다.
+# 구조 핀(test_battery_regressions)이 이 분류를 강제한다: CONFIRM 액션은
+# 스냅샷 목록·이 면제 목록·비파괴 중 하나로 반드시 분류돼야 한다.
+_ROLLBACK_EXEMPT_ACTIONS: dict[str, str] = {
+    "excel_live.delete_charts": "차트는 셀 값이 아니다 — 값 스냅샷으로 복원 불가",
+    "excel_live.delete_sheet": "시트 삭제는 값 복원으로 안 된다 — 승인 게이트가 방어선",
+    "excel_live.merge_cells": "실행기 가드가 값 손실 병합 자체를 거부한다(2026-08-20)",
+    "excel_live.consolidate_sheets": "결과 시트에 쓰므로 원본 파괴가 아니다",
+    "excel_live.drop_column": "열 삭제는 레이아웃 이동 — 값 스냅샷 복원이 어긋난다",
+    "excel_live.add_column": "열 삽입도 레이아웃 이동 — 위와 같다",
+    "excel_live.run_vba_macro": "매크로의 부작용 범위를 알 수 없다",
 }
 _COMPLEX_REASONING_KEYWORDS = {
     "피벗",
@@ -1145,6 +1163,14 @@ def _snapshot_target_range_for_action(
         if not start_cell:
             return None
         range_ref = _range_from_start_shape(start_cell, row_n, col_n)
+    elif action_name == "excel_live.sort_rows":
+        # sort_rows는 target_range 파라미터가 **없고 늘 사용 범위 전체**를 정렬한다
+        # (excel_live_file_service.sort_rows). else 분기로 흘리면 활성 선택 영역을
+        # 스냅샷해, 실제로 섞이는 범위와 어긋난 복원이 된다.
+        try:
+            range_ref = str(service.get_used_range_ref(resolved_wb, resolved_sheet) or "")
+        except Exception:
+            return None
     elif action_name == "excel_live.set_formula":
         range_ref = _resolve_runtime_range_ref(
             service,
@@ -10698,6 +10724,16 @@ async def _execute_plan_and_respond(
                             }
                         )
                         detail = f"{detail};auto_rollback_applied" if detail else "auto_rollback_applied"
+                    elif current_snapshot is not None:
+                        # 스냅샷이 **있는데** 복원이 실패했다 — 조용히 삼키면 사용자는
+                        # "검증 실패 + 원상 복구"로 읽는다. 실제로는 파일이 반쯤 바뀐
+                        # 채다. 실패를 표면화하고 수동 복구 길을 알린다(감사 A1).
+                        detail = (
+                            f"{detail};auto_rollback_FAILED(백업이 있으면 '/복구' 또는 "
+                            f"복구 백업 파일로 되돌리세요)"
+                            if detail
+                            else "auto_rollback_FAILED"
+                        )
                     trace_route(
                         "verify:failed",
                         why=str(detail or "사후조건 불일치"),

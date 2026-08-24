@@ -3774,3 +3774,134 @@ class TestTheGateSurvivesATransientFileLock:
         ns = self._module()
         src = inspect.getsource(ns["_reset_workbook_file"])
         assert "WB.unlink()" in src.split("for attempt")[1], "마지막 시도가 예외를 올려야 한다"
+
+
+class TestEveryConfirmActionIsClassifiedForRollback:
+    """스냅샷 목록 방식 자체가 누락을 만든다 — filter_rows(08-17)·sort_rows(08-24)가
+    하나씩 발견됐다. 목록을 **분류 강제**로 바꾼다: CONFIRM 액션은
+    ① 스냅샷 편입 ② 사유 있는 면제 ③ 비파괴 중 하나여야 하고,
+    새 액션이 분류 없이 레지스트리에 들어오면 이 핀이 커밋을 막는다.
+    """
+
+    #: 셀 값을 바꾸지 않는 CONFIRM 액션들 — 스냅샷이 필요 없는 이유가 자명한 것만.
+    NON_DESTRUCTIVE = {
+        "excel_live.select_workbook", "excel_live.select_sheet", "excel_live.create_sheet",
+        "excel_live.rename_sheet",      # 이름만 바꾼다(수식 참조는 엑셀이 따라 고친다)
+        "excel_live.fill_range",        # 배경색 — 값 무변
+        "excel_live.apply_border", "excel_live.set_font", "excel_live.set_number_format",
+        "excel_live.apply_color_scale", "excel_live.apply_data_bar", "excel_live.apply_formula_cf",
+        "excel_live.highlight_by_condition", "excel_live.freeze_panes", "excel_live.autofit_columns",
+        "excel_live.unmerge_cells",     # 병합 해제는 값을 잃지 않는다
+        "excel_live.define_named_range", "excel_live.set_print_area", "excel_live.add_cell_comment",
+        "excel_live.protect_sheet", "excel_live.set_data_validation", "excel_live.export_pdf",
+        "excel_live.save_workbook", "excel_live.recalculate", "excel_live.refresh_power_query",
+        "excel_live.rename_column",     # 머리글 한 칸 — 검증기가 되읽는다
+        "excel_live.convert_to_excel_table",  # 값 위에 표 서식만 씌운다
+        "excel_live.validate_data", "excel_live.compare_ranges",
+        # 결과를 **새 시트**에 쓰는 집계 계열 — 원본 파괴가 아니다(출력 시트 보호는
+        # `_normalize_output_sheet`가 맡는다).
+        "excel_live.pivot_table", "excel_live.group_by_aggregate", "excel_live.forecast_linear",
+        "excel_live.consolidate_workbooks_from_folder", "excel_live.create_chart",
+        "excel_live.find_duplicates", "excel_live.calculate_column_stat",
+    }
+
+    def test_no_confirm_action_is_unclassified(self) -> None:
+        from office_claw_sidecar.routers.excel_live import (
+            _ROLLBACK_EXEMPT_ACTIONS,
+            _ROLLBACK_SNAPSHOT_ACTIONS,
+        )
+        from office_claw_sidecar.services.tool_registry import TOOL_REGISTRY, PermissionLevel
+
+        unclassified = []
+        for tool in TOOL_REGISTRY:
+            if tool.permission != PermissionLevel.CONFIRM:
+                continue
+            name = tool.name
+            if not name.startswith("excel_live."):
+                continue
+            if (
+                name in _ROLLBACK_SNAPSHOT_ACTIONS
+                or name in _ROLLBACK_EXEMPT_ACTIONS
+                or name in self.NON_DESTRUCTIVE
+            ):
+                continue
+            unclassified.append(name)
+        assert unclassified == [], (
+            f"분류 안 된 CONFIRM 액션 {unclassified} — 스냅샷 편입/사유 있는 면제/"
+            f"비파괴 중 하나로 분류하라(filter_rows·sort_rows가 이 누락으로 사고 났다)"
+        )
+
+    def test_the_twins_are_enrolled(self) -> None:
+        """sort_range만 있고 sort_rows가 빠졌던 그 누락(감사 A2)."""
+        from office_claw_sidecar.routers.excel_live import _ROLLBACK_SNAPSHOT_ACTIONS
+
+        assert "excel_live.sort_rows" in _ROLLBACK_SNAPSHOT_ACTIONS
+        assert "excel_live.find_replace" in _ROLLBACK_SNAPSHOT_ACTIONS
+
+    def test_exemptions_carry_reasons(self) -> None:
+        """면제는 결정이지 누락이 아니다 — 사유 없는 면제는 누락과 같다."""
+        from office_claw_sidecar.routers.excel_live import _ROLLBACK_EXEMPT_ACTIONS
+
+        for action, reason in _ROLLBACK_EXEMPT_ACTIONS.items():
+            assert len(str(reason).strip()) >= 10, action
+        # 값 스냅샷으로 복원이 안 되는 대표: 차트는 셀 값이 아니다.
+        assert "excel_live.delete_charts" in _ROLLBACK_EXEMPT_ACTIONS
+
+
+class TestSortRowsSnapshotRestoresTheOriginalOrder:
+    """sort_rows는 target_range 파라미터가 없고 늘 **사용 범위 전체**를 정렬한다.
+
+    else 분기(활성 선택 영역)로 흘리면 실제로 섞이는 범위와 어긋난 복원이 된다 —
+    전용 분기가 사용 범위를 뜨는지, 그리고 그 스냅샷이 정말 원상 복구되는지를 굳힌다.
+    """
+
+    def test_snapshot_sort_restore_roundtrip(self, tmp_path, monkeypatch) -> None:
+        from openpyxl import Workbook, load_workbook
+
+        from office_claw_sidecar.routers.excel_live import (
+            _restore_action_snapshot,
+            _snapshot_target_range_for_action,
+        )
+        from office_claw_sidecar.services.excel_live_service import get_excel_live_service
+
+        monkeypatch.setenv("EXCEL_LIVE_ENGINE", "file")
+        path = tmp_path / "s.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "성적부"
+        for row in [["학생", "점수"], ["김민준", 88], ["이서연", 94], ["박도윤", 71]]:
+            ws.append(row)
+        wb.save(path)
+        service = get_excel_live_service()
+        service.select_workbook(str(path))
+        service.select_sheet(None, "성적부")
+
+        snapshot = _snapshot_target_range_for_action(
+            action="excel_live.sort_rows",
+            params={"column": "점수", "order": "desc"},
+            workbook_id=None,
+            sheet_name="성적부",
+        )
+        assert snapshot is not None
+        assert snapshot.range_ref == "A1:B4", snapshot.range_ref  # 사용 범위 전체
+
+        service.sort_rows(None, "성적부", column="점수", order="desc")
+        scrambled = [load_workbook(path)["성적부"].cell(row=r, column=1).value for r in range(2, 5)]
+        assert scrambled != ["김민준", "이서연", "박도윤"], "정렬이 실제로 섞였어야 한다"
+
+        assert _restore_action_snapshot(snapshot) is True
+        restored = [load_workbook(path)["성적부"].cell(row=r, column=1).value for r in range(2, 5)]
+        assert restored == ["김민준", "이서연", "박도윤"]
+
+    def test_restore_failure_is_surfaced_not_swallowed(self) -> None:
+        """스냅샷이 있는데 복원이 실패하면 detail에 실패가 표면화돼야 한다(감사 A1).
+
+        조용히 삼키면 사용자는 "검증 실패 + 원상 복구"로 읽는데 실제로는 파일이
+        반쯤 바뀐 채다.
+        """
+        import inspect
+
+        from office_claw_sidecar.routers import excel_live
+
+        src = inspect.getsource(excel_live._execute_plan_and_respond)
+        assert "auto_rollback_FAILED" in src
