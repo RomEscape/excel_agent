@@ -31,7 +31,7 @@ import {
 
 // 페이지 키 → 한국어 라벨 (좌측 breadcrumb용)
 const PAGE_LABELS = {
-  dashboard: "대시보드",
+  activity: "작업 기록",
   workspace: "워크스페이스",
   conversations: "대화",
   settings: "설정",

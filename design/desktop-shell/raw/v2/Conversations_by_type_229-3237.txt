@@ -1,0 +1,441 @@
+  <FRAME> D3 · 대시보드 — 첫 실행 / 빈 상태 (1600x900) [1600x1499] fill=#FDFEFC
+    <FRAME> 본문 1360 [1600x1837] fill=#F6F7F5
+      <FRAME> Frame 259 [1280x32]
+        <FRAME> tabler:input-search [32x32]
+          <VECTOR> Vector [24x20]
+        TEXT [81x30] "작업 기록"
+      <FRAME> Frame 312 [1280x52]
+        TEXT [81x30] "대화 목록"
+        <FRAME> Frame 311 [178x52] fill=#FDFEFC
+          <FRAME> Frame 309 [85x44] fill=#D0EEC6
+            <FRAME> tabler:brand-days-counter [16x16]
+              <GROUP> Group [12x12]
+                <VECTOR> Vector [12x12]
+                <VECTOR> Vector [2x5]
+            TEXT [37x20] "요일별"
+          <FRAME> Frame 310 [85x44]
+            <FRAME> tabler:file [16x16]
+              <GROUP> Group [9x12]
+                <VECTOR> Vector [3x3]
+                <VECTOR> Vector [9x12]
+            TEXT [37x20] "파일별"
+      <FRAME> Frame 257 [1280x524]
+        <FRAME> Frame 305 [1280x22]
+          TEXT [79x22] "8월 18일(화)"
+          <FRAME> tabler:chevron-down [20x20]
+            <VECTOR> Vector [10x5]
+        <FRAME> Frame 253 [1280x206]
+          <FRAME> KPI · 전체 명령 (305x110) [1280x206] fill=#FDFEFC
+            <FRAME> Frame 256 [1240x182]
+              <FRAME> Frame 110 [191x20]
+                <FRAME> vscode-icons:file-type-excel [20x20]
+                  <VECTOR> Vector [13x10] fill=#185C37
+                  <VECTOR> Vector [13x9] fill=#21A366
+                  <VECTOR> Vector [7x4] fill=#107C41
+                  <VECTOR> Vector [6x10] fill=#000000
+                  <VECTOR> Vector [5x10] fill=#000000
+                  <VECTOR> Vector [5x9] fill=#000000
+                  <VECTOR> Vector [5x9] fill=#000000
+                  <VECTOR> Vector [9x9]
+                  <VECTOR> Vector [4x5] fill=#FFFFFF
+                  <VECTOR> Vector [7x4] fill=#33C481
+                  <VECTOR> Vector [7x4] fill=#107C41
+                TEXT [165x20] "8월 매출표.xlsx"
+              <FRAME> Frame 254 [1240x118]
+                TEXT [1240x22] "아시아 주문 현황만 추출해 새로운 시트 생성해줘."
+                <FRAME> Frame 308 [1240x16]
+                  TEXT [205x16] "아시아 주문 현황을 추출한 새로운 시트 생성"
+                  <FRAME> tabler:chevron-down [16x16]
+                    <VECTOR> Vector [8x4]
+                <FRAME> Frame 307 [1240x72]
+                  <FRAME> Frame 306 [12x64]
+                    <FRAME> tabler:clock-check [12x12]
+                      <GROUP> Group [9x9]
+                        <VECTOR> Vector [9x9]
+                        <VECTOR> Vector [4x7]
+                    <RECTANGLE> Rectangle 77 [0x50] fill=#B2B9B0
+                  TEXT [1220x64] "파일 형식 분석 완료 / D열 대륙이 ‘아시아'에 해당하는 데이터 파악 완료 / 현재 파일 형태를 유지한채 새로운 시트 생성 완료 / 새로운 파일 ‘아시아 주문 현황’을 생성했습니다."
+              TEXT [411x20] "D열 대륙이 ‘아시아’에 해당하는 데이터 추출후 새로운 시트를 생성했습니다."
+        <FRAME> KPI · 전체 명령 (305x110) [1280x130] fill=#FDFEFC
+          <FRAME> Frame 256 [1240x106]
+            <FRAME> Frame 110 [191x20]
+              <FRAME> vscode-icons:file-type-excel [20x20]
+                <VECTOR> Vector [13x10] fill=#185C37
+                <VECTOR> Vector [13x9] fill=#21A366
+                <VECTOR> Vector [7x4] fill=#107C41
+                <VECTOR> Vector [6x10] fill=#000000
+                <VECTOR> Vector [5x10] fill=#000000
+                <VECTOR> Vector [5x9] fill=#000000
+                <VECTOR> Vector [5x9] fill=#000000
+                <VECTOR> Vector [9x9]
+                <VECTOR> Vector [4x5] fill=#FFFFFF
+                <VECTOR> Vector [7x4] fill=#33C481
+                <VECTOR> Vector [7x4] fill=#107C41
+              TEXT [165x20] "8월 매출표.xlsx"
+            <FRAME> Frame 254 [1240x42]
+              TEXT [1240x22] "아시아 주문 현황만 추출해 새로운 시트 생성해줘."
+              <FRAME> Frame 308 [1240x16]
+                TEXT [205x16] "아시아 주문 현황을 추출한 새로운 시트 생성"
+                <FRAME> tabler:chevron-down [16x16]
+                  <VECTOR> Vector [4x8]
+              <FRAME> Frame 307 [1240x72]
+                <FRAME> Frame 306 [12x64]
+                  <FRAME> tabler:clock-check [12x12]
+                    <GROUP> Group [9x9]
+                      <VECTOR> Vector [9x9]
+                      <VECTOR> Vector [4x7]
+                  <RECTANGLE> Rectangle 77 [0x50] fill=#B2B9B0
+                TEXT [1220x64] "파일 형식 분석 완료 / D열 대륙이 ‘아시아'에 해당하는 데이터 파악 완료 / 현재 파일 형태를 유지한채 새로운 시트 생성 완료 / 새로운 파일 ‘아시아 주문 현황’을 생성했습니다."
+            TEXT [411x20] "D열 대륙이 ‘아시아’에 해당하는 데이터 추출후 새로운 시트를 생성했습니다."
+        <FRAME> KPI · 전체 명령 (305x110) [1280x130] fill=#FDFEFC
+          <FRAME> Frame 256 [1240x106]
+            <FRAME> Frame 110 [191x20]
+              <FRAME> vscode-icons:file-type-excel [20x20]
+                <VECTOR> Vector [13x10] fill=#185C37
+                <VECTOR> Vector [13x9] fill=#21A366
+                <VECTOR> Vector [7x4] fill=#107C41
+                <VECTOR> Vector [6x10] fill=#000000
+                <VECTOR> Vector [5x10] fill=#000000
+                <VECTOR> Vector [5x9] fill=#000000
+                <VECTOR> Vector [5x9] fill=#000000
+                <VECTOR> Vector [9x9]
+                <VECTOR> Vector [4x5] fill=#FFFFFF
+                <VECTOR> Vector [7x4] fill=#33C481
+                <VECTOR> Vector [7x4] fill=#107C41
+              TEXT [165x20] "마케팅 시장 조사.xlsx"
+            <FRAME> Frame 254 [1240x42]
+              TEXT [1240x22] "마케팅에 사용된 예산 대비 성과가 좋았던 항목만 요약해줘"
+              <FRAME> Frame 308 [1240x16]
+                TEXT [205x16] "아시아 주문 현황을 추출한 새로운 시트 생성"
+                <FRAME> tabler:chevron-down [16x16]
+                  <VECTOR> Vector [4x8]
+              <FRAME> Frame 307 [1240x72]
+                <FRAME> Frame 306 [12x64]
+                  <FRAME> tabler:clock-check [12x12]
+                    <GROUP> Group [9x9]
+                      <VECTOR> Vector [9x9]
+                      <VECTOR> Vector [4x7]
+                  <RECTANGLE> Rectangle 77 [0x50] fill=#B2B9B0
+                TEXT [1220x64] "파일 형식 분석 완료 / D열 대륙이 ‘아시아'에 해당하는 데이터 파악 완료 / 현재 파일 형태를 유지한채 새로운 시트 생성 완료 / 새로운 파일 ‘아시아 주문 현황’을 생성했습니다."
+            TEXT [411x20] "D열 대륙이 ‘아시아’에 해당하는 데이터 추출후 새로운 시트를 생성했습니다."
+      <FRAME> Frame 260 [1280x524]
+        <FRAME> Frame 305 [1280x22]
+          TEXT [78x22] "8월 17일(월)"
+          <FRAME> tabler:chevron-down [20x20]
+            <VECTOR> Vector [10x5]
+        <FRAME> Frame 253 [1280x206]
+          <FRAME> KPI · 전체 명령 (305x110) [1280x206] fill=#FDFEFC
+            <FRAME> Frame 256 [1240x182]
+              <FRAME> Frame 110 [191x20]
+                <FRAME> vscode-icons:file-type-excel [20x20]
+                  <VECTOR> Vector [13x10] fill=#185C37
+                  <VECTOR> Vector [13x9] fill=#21A366
+                  <VECTOR> Vector [7x4] fill=#107C41
+                  <VECTOR> Vector [6x10] fill=#000000
+                  <VECTOR> Vector [5x10] fill=#000000
+                  <VECTOR> Vector [5x9] fill=#000000
+                  <VECTOR> Vector [5x9] fill=#000000
+                  <VECTOR> Vector [9x9]
+                  <VECTOR> Vector [4x5] fill=#FFFFFF
+                  <VECTOR> Vector [7x4] fill=#33C481
+                  <VECTOR> Vector [7x4] fill=#107C41
+                TEXT [165x20] "8월 매출표.xlsx"
+              <FRAME> Frame 254 [1240x118]
+                TEXT [1240x22] "아시아 주문 현황만 추출해 새로운 시트 생성해줘."
+                <FRAME> Frame 308 [1240x16]
+                  TEXT [205x16] "아시아 주문 현황을 추출한 새로운 시트 생성"
+                  <FRAME> tabler:chevron-down [16x16]
+                    <VECTOR> Vector [8x4]
+                <FRAME> Frame 307 [1240x72]
+                  <FRAME> Frame 306 [12x64]
+                    <FRAME> tabler:clock-check [12x12]
+                      <GROUP> Group [9x9]
+                        <VECTOR> Vector [9x9]
+                        <VECTOR> Vector [4x7]
+                    <RECTANGLE> Rectangle 77 [0x50] fill=#B2B9B0
+                  TEXT [1220x64] "파일 형식 분석 완료 / D열 대륙이 ‘아시아'에 해당하는 데이터 파악 완료 / 현재 파일 형태를 유지한채 새로운 시트 생성 완료 / 새로운 파일 ‘아시아 주문 현황’을 생성했습니다."
+              TEXT [411x20] "D열 대륙이 ‘아시아’에 해당하는 데이터 추출후 새로운 시트를 생성했습니다."
+        <FRAME> KPI · 전체 명령 (305x110) [1280x130] fill=#FDFEFC
+          <FRAME> Frame 256 [1240x106]
+            <FRAME> Frame 110 [191x20]
+              <FRAME> vscode-icons:file-type-excel [20x20]
+                <VECTOR> Vector [13x10] fill=#185C37
+                <VECTOR> Vector [13x9] fill=#21A366
+                <VECTOR> Vector [7x4] fill=#107C41
+                <VECTOR> Vector [6x10] fill=#000000
+                <VECTOR> Vector [5x10] fill=#000000
+                <VECTOR> Vector [5x9] fill=#000000
+                <VECTOR> Vector [5x9] fill=#000000
+                <VECTOR> Vector [9x9]
+                <VECTOR> Vector [4x5] fill=#FFFFFF
+                <VECTOR> Vector [7x4] fill=#33C481
+                <VECTOR> Vector [7x4] fill=#107C41
+              TEXT [165x20] "8월 매출표.xlsx"
+            <FRAME> Frame 254 [1240x42]
+              TEXT [1240x22] "아시아 주문 현황만 추출해 새로운 시트 생성해줘."
+              <FRAME> Frame 308 [1240x16]
+                TEXT [205x16] "아시아 주문 현황을 추출한 새로운 시트 생성"
+                <FRAME> tabler:chevron-down [16x16]
+                  <VECTOR> Vector [4x8]
+              <FRAME> Frame 307 [1240x72]
+                <FRAME> Frame 306 [12x64]
+                  <FRAME> tabler:clock-check [12x12]
+                    <GROUP> Group [9x9]
+                      <VECTOR> Vector [9x9]
+                      <VECTOR> Vector [4x7]
+                  <RECTANGLE> Rectangle 77 [0x50] fill=#B2B9B0
+                TEXT [1220x64] "파일 형식 분석 완료 / D열 대륙이 ‘아시아'에 해당하는 데이터 파악 완료 / 현재 파일 형태를 유지한채 새로운 시트 생성 완료 / 새로운 파일 ‘아시아 주문 현황’을 생성했습니다."
+            TEXT [411x20] "D열 대륙이 ‘아시아’에 해당하는 데이터 추출후 새로운 시트를 생성했습니다."
+        <FRAME> KPI · 전체 명령 (305x110) [1280x130] fill=#FDFEFC
+          <FRAME> Frame 256 [1240x106]
+            <FRAME> Frame 110 [191x20]
+              <FRAME> vscode-icons:file-type-excel [20x20]
+                <VECTOR> Vector [13x10] fill=#185C37
+                <VECTOR> Vector [13x9] fill=#21A366
+                <VECTOR> Vector [7x4] fill=#107C41
+                <VECTOR> Vector [6x10] fill=#000000
+                <VECTOR> Vector [5x10] fill=#000000
+                <VECTOR> Vector [5x9] fill=#000000
+                <VECTOR> Vector [5x9] fill=#000000
+                <VECTOR> Vector [9x9]
+                <VECTOR> Vector [4x5] fill=#FFFFFF
+                <VECTOR> Vector [7x4] fill=#33C481
+                <VECTOR> Vector [7x4] fill=#107C41
+              TEXT [165x20] "마케팅 시장 조사.xlsx"
+            <FRAME> Frame 254 [1240x42]
+              TEXT [1240x22] "마케팅에 사용된 예산 대비 성과가 좋았던 항목만 요약해줘"
+              <FRAME> Frame 308 [1240x16]
+                TEXT [205x16] "아시아 주문 현황을 추출한 새로운 시트 생성"
+                <FRAME> tabler:chevron-down [16x16]
+                  <VECTOR> Vector [4x8]
+              <FRAME> Frame 307 [1240x72]
+                <FRAME> Frame 306 [12x64]
+                  <FRAME> tabler:clock-check [12x12]
+                    <GROUP> Group [9x9]
+                      <VECTOR> Vector [9x9]
+                      <VECTOR> Vector [4x7]
+                  <RECTANGLE> Rectangle 77 [0x50] fill=#B2B9B0
+                TEXT [1220x64] "파일 형식 분석 완료 / D열 대륙이 ‘아시아'에 해당하는 데이터 파악 완료 / 현재 파일 형태를 유지한채 새로운 시트 생성 완료 / 새로운 파일 ‘아시아 주문 현황’을 생성했습니다."
+            TEXT [411x20] "D열 대륙이 ‘아시아’에 해당하는 데이터 추출후 새로운 시트를 생성했습니다."
+      <FRAME> Frame 261 [1280x524]
+        <FRAME> Frame 305 [1280x22]
+          TEXT [79x22] "8월 16일(일)"
+          <FRAME> tabler:chevron-down [20x20]
+            <VECTOR> Vector [10x5]
+        <FRAME> Frame 253 [1280x206]
+          <FRAME> KPI · 전체 명령 (305x110) [1280x206] fill=#FDFEFC
+            <FRAME> Frame 256 [1240x182]
+              <FRAME> Frame 110 [191x20]
+                <FRAME> vscode-icons:file-type-excel [20x20]
+                  <VECTOR> Vector [13x10] fill=#185C37
+                  <VECTOR> Vector [13x9] fill=#21A366
+                  <VECTOR> Vector [7x4] fill=#107C41
+                  <VECTOR> Vector [6x10] fill=#000000
+                  <VECTOR> Vector [5x10] fill=#000000
+                  <VECTOR> Vector [5x9] fill=#000000
+                  <VECTOR> Vector [5x9] fill=#000000
+                  <VECTOR> Vector [9x9]
+                  <VECTOR> Vector [4x5] fill=#FFFFFF
+                  <VECTOR> Vector [7x4] fill=#33C481
+                  <VECTOR> Vector [7x4] fill=#107C41
+                TEXT [165x20] "8월 매출표.xlsx"
+              <FRAME> Frame 254 [1240x118]
+                TEXT [1240x22] "아시아 주문 현황만 추출해 새로운 시트 생성해줘."
+                <FRAME> Frame 308 [1240x16]
+                  TEXT [205x16] "아시아 주문 현황을 추출한 새로운 시트 생성"
+                  <FRAME> tabler:chevron-down [16x16]
+                    <VECTOR> Vector [8x4]
+                <FRAME> Frame 307 [1240x72]
+                  <FRAME> Frame 306 [12x64]
+                    <FRAME> tabler:clock-check [12x12]
+                      <GROUP> Group [9x9]
+                        <VECTOR> Vector [9x9]
+                        <VECTOR> Vector [4x7]
+                    <RECTANGLE> Rectangle 77 [0x50] fill=#B2B9B0
+                  TEXT [1220x64] "파일 형식 분석 완료 / D열 대륙이 ‘아시아'에 해당하는 데이터 파악 완료 / 현재 파일 형태를 유지한채 새로운 시트 생성 완료 / 새로운 파일 ‘아시아 주문 현황’을 생성했습니다."
+              TEXT [411x20] "D열 대륙이 ‘아시아’에 해당하는 데이터 추출후 새로운 시트를 생성했습니다."
+        <FRAME> KPI · 전체 명령 (305x110) [1280x130] fill=#FDFEFC
+          <FRAME> Frame 256 [1240x106]
+            <FRAME> Frame 110 [191x20]
+              <FRAME> vscode-icons:file-type-excel [20x20]
+                <VECTOR> Vector [13x10] fill=#185C37
+                <VECTOR> Vector [13x9] fill=#21A366
+                <VECTOR> Vector [7x4] fill=#107C41
+                <VECTOR> Vector [6x10] fill=#000000
+                <VECTOR> Vector [5x10] fill=#000000
+                <VECTOR> Vector [5x9] fill=#000000
+                <VECTOR> Vector [5x9] fill=#000000
+                <VECTOR> Vector [9x9]
+                <VECTOR> Vector [4x5] fill=#FFFFFF
+                <VECTOR> Vector [7x4] fill=#33C481
+                <VECTOR> Vector [7x4] fill=#107C41
+              TEXT [165x20] "8월 매출표.xlsx"
+            <FRAME> Frame 254 [1240x42]
+              TEXT [1240x22] "아시아 주문 현황만 추출해 새로운 시트 생성해줘."
+              <FRAME> Frame 308 [1240x16]
+                TEXT [205x16] "아시아 주문 현황을 추출한 새로운 시트 생성"
+                <FRAME> tabler:chevron-down [16x16]
+                  <VECTOR> Vector [4x8]
+              <FRAME> Frame 307 [1240x72]
+                <FRAME> Frame 306 [12x64]
+                  <FRAME> tabler:clock-check [12x12]
+                    <GROUP> Group [9x9]
+                      <VECTOR> Vector [9x9]
+                      <VECTOR> Vector [4x7]
+                  <RECTANGLE> Rectangle 77 [0x50] fill=#B2B9B0
+                TEXT [1220x64] "파일 형식 분석 완료 / D열 대륙이 ‘아시아'에 해당하는 데이터 파악 완료 / 현재 파일 형태를 유지한채 새로운 시트 생성 완료 / 새로운 파일 ‘아시아 주문 현황’을 생성했습니다."
+            TEXT [411x20] "D열 대륙이 ‘아시아’에 해당하는 데이터 추출후 새로운 시트를 생성했습니다."
+        <FRAME> KPI · 전체 명령 (305x110) [1280x130] fill=#FDFEFC
+          <FRAME> Frame 256 [1240x106]
+            <FRAME> Frame 110 [191x20]
+              <FRAME> vscode-icons:file-type-excel [20x20]
+                <VECTOR> Vector [13x10] fill=#185C37
+                <VECTOR> Vector [13x9] fill=#21A366
+                <VECTOR> Vector [7x4] fill=#107C41
+                <VECTOR> Vector [6x10] fill=#000000
+                <VECTOR> Vector [5x10] fill=#000000
+                <VECTOR> Vector [5x9] fill=#000000
+                <VECTOR> Vector [5x9] fill=#000000
+                <VECTOR> Vector [9x9]
+                <VECTOR> Vector [4x5] fill=#FFFFFF
+                <VECTOR> Vector [7x4] fill=#33C481
+                <VECTOR> Vector [7x4] fill=#107C41
+              TEXT [165x20] "마케팅 시장 조사.xlsx"
+            <FRAME> Frame 254 [1240x42]
+              TEXT [1240x22] "마케팅에 사용된 예산 대비 성과가 좋았던 항목만 요약해줘"
+              <FRAME> Frame 308 [1240x16]
+                TEXT [205x16] "아시아 주문 현황을 추출한 새로운 시트 생성"
+                <FRAME> tabler:chevron-down [16x16]
+                  <VECTOR> Vector [4x8]
+              <FRAME> Frame 307 [1240x72]
+                <FRAME> Frame 306 [12x64]
+                  <FRAME> tabler:clock-check [12x12]
+                    <GROUP> Group [9x9]
+                      <VECTOR> Vector [9x9]
+                      <VECTOR> Vector [4x7]
+                  <RECTANGLE> Rectangle 77 [0x50] fill=#B2B9B0
+                TEXT [1220x64] "파일 형식 분석 완료 / D열 대륙이 ‘아시아'에 해당하는 데이터 파악 완료 / 현재 파일 형태를 유지한채 새로운 시트 생성 완료 / 새로운 파일 ‘아시아 주문 현황’을 생성했습니다."
+            TEXT [411x20] "D열 대륙이 ‘아시아’에 해당하는 데이터 추출후 새로운 시트를 생성했습니다."
+    <FRAME> Frame 121 [240x1499] fill=#FDFEFC
+      <FRAME> 아트보드 5 2 [126x36]
+        <VECTOR> Vector [126x36]
+        <GROUP> Group [51x18]
+          <VECTOR> Vector [12x7] fill=#2DB400
+          <VECTOR> Vector [11x12] fill=#2DB400
+          <VECTOR> Vector [7x18] fill=#2DB400
+          <VECTOR> Vector [3x18] fill=#2DB400
+          <VECTOR> Vector [9x9] fill=#2DB400
+          <VECTOR> Vector [8x12] fill=#2DB400
+          <VECTOR> Vector [3x10] fill=#2DB400
+        <GROUP> Group [23x23]
+          <VECTOR> Vector [18x7]
+          <GROUP> Group [5x9]
+            <VECTOR> Vector [5x9]
+            <VECTOR> Vector [5x9] fill=#152A0A
+          <VECTOR> Vector [9x5]
+          <VECTOR> Vector [7x18]
+          <VECTOR> Vector [7x8]
+          <VECTOR> Vector [19x7]
+          <VECTOR> Vector [4x5]
+          <GROUP> Group [4x3]
+            <VECTOR> Vector [4x3]
+            <VECTOR> Vector [4x3] fill=#092400
+      <FRAME> tabler:layout-sidebar-left-collapse [20x20]
+        <GROUP> Group [13x13]
+          <VECTOR> Vector [13x13]
+          <VECTOR> Vector [2x3]
+      <FRAME> Frame 148 [240x112]
+        <FRAME> Frame 122 [216x44] fill=#FDFEFC
+          <FRAME> Frame 112 [196x20]
+            <FRAME> Frame 110 [65x20]
+              <FRAME> tabler:help [16x16]
+                <GROUP> Group [12x12]
+                  <VECTOR> Vector [12x12]
+                  <VECTOR> Vector [3x4]
+              TEXT [37x20] "도움말"
+        <FRAME> Frame 124 [216x44] fill=#FDFEFC
+          <FRAME> Frame 112 [196x20]
+            <FRAME> Frame 110 [80x20]
+              <FRAME> tabler:settings [16x16]
+                <GROUP> Group [12x12]
+                  <VECTOR> Vector [12x12]
+                  <VECTOR> Vector [4x4]
+              TEXT [52x20] "환경 설정"
+      <FRAME> Frame 152 [240x396] fill=#FDFEFC
+        <FRAME> Frame 121 [240x44] fill=#FDFEFC
+          <FRAME> Frame 112 [216x36] fill=#FDFEFC
+            <FRAME> Frame 110 [101x20]
+              <FRAME> tabler:subtitles-edit [16x16]
+                <VECTOR> Vector [13x11]
+              TEXT [73x20] "워크스페이스"
+        <FRAME> Frame 123 [240x44] fill=#FDFEFC
+          <FRAME> Frame 112 [216x36] fill=#FDFEFC
+            <FRAME> Frame 110 [80x20]
+              <FRAME> tabler:input-search [16x16]
+                <VECTOR> Vector [12x10]
+              TEXT [52x20] "작업 기록"
+        <FRAME> Frame 122 [240x44] fill=#FDFEFC
+          <FRAME> Frame 112 [216x36] fill=#FDFEFC
+            <FRAME> Frame 110 [77x20]
+              <FRAME> tabler:message-circle [16x16]
+                <VECTOR> Vector [12x11]
+              TEXT [49x20] "대화목록"
+        <FRAME> Frame 124 [240x264] fill=#FDFEFC
+          <FRAME> Frame 112 [216x36] fill=#FDFEFC
+            <FRAME> Frame 110 [80x20]
+              <FRAME> tabler:file [16x16]
+                <GROUP> Group [9x12]
+                  <VECTOR> Vector [3x3]
+                  <VECTOR> Vector [9x12]
+              TEXT [52x20] "파일 목록"
+            <FRAME> tabler:chevron-down [20x20]
+              <VECTOR> Vector [10x5]
+          <FRAME> Frame 303 [216x216]
+            <FRAME> Frame 113 [216x36] fill=#FDFEFC
+              <FRAME> Frame 110 [119x20]
+                <FRAME> tabler:arrow-back [16x16]
+                  <VECTOR> Vector [10x9]
+                TEXT [91x20] "8월_매출표.xlsx"
+              <FRAME> Frame 299 [85x16]
+                TEXT [27x16] "1시간"
+                TEXT [14x16] " 전"
+            <FRAME> Frame 114 [216x36] fill=#FDFEFC
+              <FRAME> Frame 110 [118x20]
+                <FRAME> tabler:arrow-back [16x16]
+                  <VECTOR> Vector [10x9]
+                TEXT [90x20] "7월_매출표.xlsx"
+              <FRAME> Frame 299 [86x16]
+                TEXT [28x16] "2시간"
+                TEXT [14x16] " 전"
+            <FRAME> Frame 115 [216x36] fill=#FDFEFC
+              <FRAME> Frame 110 [119x20]
+                <FRAME> tabler:arrow-back [16x16]
+                  <VECTOR> Vector [10x9]
+                TEXT [91x20] "6월_매출표.xlsx"
+              <FRAME> Frame 299 [85x16]
+                TEXT [27x16] "1주일"
+                TEXT [11x16] "전"
+            <FRAME> Frame 116 [216x36] fill=#FDFEFC
+              <FRAME> Frame 110 [119x20]
+                <FRAME> tabler:arrow-back [16x16]
+                  <VECTOR> Vector [10x9]
+                TEXT [91x20] "5월_매출표.xlsx"
+              <FRAME> Frame 299 [85x16]
+                TEXT [16x16] "1달"
+                TEXT [11x16] "전"
+            <FRAME> Frame 117 [216x36] fill=#FDFEFC
+              <FRAME> Frame 110 [119x20]
+                <FRAME> tabler:arrow-back [16x16]
+                  <VECTOR> Vector [10x9]
+                TEXT [91x20] "4월_매출표.xlsx"
+              <FRAME> Frame 299 [85x16]
+                TEXT [18x16] "2달"
+                TEXT [11x16] "전"
+            <FRAME> Frame 118 [216x36] fill=#FDFEFC
+              <FRAME> Frame 110 [119x20]
+                <FRAME> tabler:arrow-back [16x16]
+                  <VECTOR> Vector [10x9]
+                TEXT [91x20] "3월_매출표.xlsx"
+              <FRAME> Frame 299 [85x16]
+                TEXT [18x16] "3달"
+                TEXT [11x16] "전"

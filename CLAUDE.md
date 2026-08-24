@@ -54,6 +54,10 @@
 | 툴 진행 스텝 | chatStore의 `toolSteps` | `lib/toolSteps.js`(executed_actions→칩 문구, 순수) | — | `ui/chat.jsx`의 `ToolStepChip` |
 | 페어링 TTL 표시 | relayStore의 `pairingExpiresAt` | `lib/pairingCountdown.js`(남은 시간·`3:29` 포맷, 순수) | — | `components/relay/RelayPairing.jsx` (조합만) |
 | 온보딩 모델 목록 | — | `lib/modelCatalog.js`(모델 ID→제조사·추천, 순수) | — | `components/ui/wizard.jsx`의 `ModelSelectField` |
+| 작업 기록 | — | `lib/activityLog.js`(감사로그→표 행·KPI 4장·페이지 번호, 순수) | — | `components/activity/ActivityPage.jsx` (조합만) |
+| 글자 크기 | `store/fontScaleStore.js` | `lib/fontScale.js`(선택→루트 px, 순수) · `lib/fontScaleManager.js`(`<html>` font-size 적용) | — | `components/settings/PreferencesPage.jsx`의 폰트 크기 섹션 |
+| 대화 목록 | chatStore의 `sessions` | `lib/conversationGroups.js`(요일별·파일별 그룹, 순수) | — | `components/conversations/ConversationHistoryPage.jsx` (조합만) |
+| 범용 모달 | — | — | — | `components/ui/modal.jsx` (오버레이·Esc·헤더·footer 슬롯) |
 
 새 기능을 추가할 때 이 표에 한 줄이 더 늘어나야 한다.
 
@@ -75,7 +79,35 @@
 >
 > **채팅은 페이지가 아니라 본문 위의 390px 패널**이다(B-2/B-3). `Layout`이 소유하고 어느 페이지 위에든 뜬다. 크기는 도킹(본문을 밀어냄) ↔ 플로팅(본문 위에 겹침) 2단이고 규칙은 `lib/chatPanel.js`가 소유한다 — `reservesLayoutSpace()`가 false인데 본문 폭을 줄이면 오른쪽에 빈 띠가 생긴다.
 >
-> 내비에서 **`채팅` 항목이 빠졌다** — 최종안 사이드바는 `대시보드 · 워크스페이스 · 작업 검색 · 대화목록` + 푸터 `도움말 · 환경 설정`이다. 대신 **패널 재진입 경로를 반드시 남길 것**: 우하단 FAB(패널이 닫혔고 홈이 아닐 때) + `Cmd/Ctrl+J`. 둘 다 지우면 패널을 한 번 닫은 사용자가 보던 대화로 돌아갈 길이 없다.
+> 내비에서 **`채팅` 항목이 빠졌다** — 사이드바는 `워크스페이스 · 작업 기록 · 대화목록 · 파일 목록` + 푸터 `도움말 · 환경 설정`이다. 대신 **패널 재진입 경로를 반드시 남길 것**: 우하단 FAB(패널이 닫혔고 홈이 아닐 때) + `Cmd/Ctrl+J`. 둘 다 지우면 패널을 한 번 닫은 사용자가 보던 대화로 돌아갈 길이 없다.
+>
+> **2026-08 워크스페이스 = 작업면 노트**: 내비 첫 항목 `워크스페이스`는 **새 대화를 열고 홈으로 가는 버튼**이다 — 그래서 항목 id가 라벨과 다르게 `chat`(=`HomePage`)이고, `NAV_ITEMS`의 `newChat` 플래그가 그 동작을 표시한다. 예전 `대화목록` 확장 안에 있던 **`+ 새 대화` 버튼은 없앴다**(그 자리로 올라온 것이니 되살리지 말 것). `대화목록` 확장은 이제 *이전* 대화로 돌아가는 경로만 맡는다.
+>
+> 그 결과 **내비에서 빠졌지만 살아 있는 화면이 셋**이다. 전부 `Cmd/Ctrl+K`가 유일한 진입 경로이므로 팔레트 항목을 지우면 기능이 코드에만 남는다 — `workspace`(`WorkspacePage`, 폴더 탐색·미리보기: `파일 목록`에 없는 기능이라 남겼다) · `messenger_monitor`(`ConversationsPage`, 메신저로 들어온 명령 모니터링) · `settings`(`SettingsHub`, 보안·자격증명·허용 범위·실행 기록).
+>
+> **`대화목록`(`conversations`)은 `ConversationHistoryPage`이지 `ConversationsPage`가 아니다.** 이름이 비슷하지만 전자는 지난 AI 대화를 요일별/파일별로 훑는 화면(와이어프레임 229:3237·229:3678), 후자는 메신저 채널 모니터링이다. **`파일별` 보기는 데이터가 없어 안내 상태로 떨어진다** — 사이드카 `list_sessions`가 `{session_id, last_message_at, message_count, preview}`만 주고 대화-파일 연결을 기록하지 않는다. 세션에 파일 필드가 생기면 `lib/conversationGroups.js`의 `fileOf()` 하나만 고치면 화면은 그대로 동작한다.
+>
+> **2026-08 대시보드 폐기 노트**: `대시보드`와 `작업 검색`은 **`작업 기록` 하나로 병합됐다**(페이지 키 `activity`, 스펙은 `design/desktop-shell/raw/v2/`). 리뷰 근거 두 가지 — (1) "차단과 보안 두 영역이 분리된 이유가 궁금하다. 보안 안에도 차단된 명령이 있어 정보가 중복된다" → 보안 카드를 없애고 `자동 마스킹`을 KPI 4번째 자리로 올렸다. (2) "작업 기록과 작업 검색을 병합" → 검색은 내비 확장이 아니라 표 헤더 입력창이 맡는다. **`승인 대기` KPI도 뺐다** — 모바일은 조회 전용이고 데스크톱 앱으로 명령하면 "자리를 비운 사이"가 성립하지 않아 큐가 쌓이지 않는다는 결론이다. 되살리려면 그 전제부터 다시 확인할 것.
+>
+> 표 정렬은 **받아온 페이지 안에서만** 한다. 사이드카 감사 로그 API가 정렬 파라미터를 받지 않으므로 전체 정렬인 척하면 페이지를 넘길 때 순서가 어긋난다. 서버 정렬이 생기면 `ActivityPage`의 클라이언트 `sort`를 걷어내고 쿼리로 넘길 것.
+>
+> **2026-08 텍스트 회색 계단 노트**: 개선안 프레임은 글자 회색을 **5단계**로 쓰는데(`#0C1909` `#3D443C` `#6B7468` `#9AA298` `#B2B9B0` `#CACFC7`) 코드엔 `--foreground`·`--muted-foreground` **2개뿐**이었다. 둘로 뭉개면 "라벨 / 값 / 부제 / 보조설명 / 비활성"의 위계가 사라진다. 그래서 `index.css`에 `--ink-body`·`--ink-subtle`·`--ink-faint`·`--ink-disabled`를 더했고 Tailwind에 `ink` 네임스페이스로 물렸다(`text-` 유틸과 이름이 겹치지 않게 `text` 대신 `ink`). **새 화면에서 회색을 쓸 때 임의의 `text-foreground/70` 같은 알파를 쓰지 말고 이 계단에서 고를 것** — 알파는 지면 색이 바뀌면 같이 흔들린다.
+>
+> 상태 배지 색(`완료` `#2DB400` on `#ECF8E8` / `차단` `#D23819` on `#F8D1C9`)도 `TOKENS.md`의 지면 5색에 없던 신규 값이라 `--status-done*`·`--status-blocked*` 토큰으로 넣었다. `lib/activityLog.js`의 `ACTIVITY_STATUS`는 이제 색값이 아니라 **토큰 클래스 이름만** 들고 있다.
+>
+> `ink`와 `status`의 **다크값은 개선안 프레임에 다크 짝이 없어서 라이트의 위계를 뒤집어 만든 추정치**다. 다크 프레임이 그려지면 `index.css`의 `.dark` 블록만 고치면 된다 — 컴포넌트는 손댈 필요 없다.
+>
+> **2026-08 환경 설정 노트**: 사이드바 푸터의 `환경 설정`은 **탭 허브가 아니라 단일 페이지**다(`preferences` → `components/settings/PreferencesPage.jsx`, 와이어프레임 `243:1140`). **`SettingsHub`(`settings`)를 지우지 말 것** — 와이어프레임에 없는 5개 기능(메신저·자격증명·보안·에이전트 허용 범위·실행 기록)이 거기 붙어 있고, 유일한 진입 경로가 `Cmd/Ctrl+K` → 각 탭 키(`messenger_settings` 등)다. 허브를 없애면 그 기능들이 코드에만 남고 갈 길이 사라진다.
+>
+> 모달 껍데기는 **두 종류**다. `ui/dialog.jsx`의 `AlertDialog`는 확인/취소 버튼이 붙박이인 확인 다이얼로그, `ui/modal.jsx`의 `Modal`은 본문이 주인공인 범용 모달(도움말·QR 페어링). 새 모달을 만들 때 버튼이 둘 고정이면 앞의 것, 아니면 뒤의 것.
+>
+> **QR 페어링 모달은 `RelayPairing`을 그대로 감싼다** — QR 생성·TTL 카운트다운·재발급·스토어 배지가 전부 거기 있고 `lib/pairingCountdown.js`와 물려 있다. 모달 안에서 다시 그리면 두 벌이 되고 페어링 프로토콜이 바뀔 때 한쪽만 고쳐진다. 연결 성사 판정은 `relayStore.connected`가 **false→true로 뒤집히는 순간**만 잡는다(이미 연결된 채로 창을 열었을 때 성공 모달이 튀지 않도록).
+>
+> **`내 요금제`와 `회원 정보`는 백엔드가 없는 플레이스홀더**다. 결제·플랜도 계정 시스템도 코드에 존재하지 않는다 — 버튼은 `disabled`이고 화면이 그 사실을 문장으로 밝힌다. 붙이려면 프론트가 아니라 서버부터다.
+>
+> `연결된 디바이스`는 **relay가 기기 이름·접속 위치를 주지 않는다**. `relayStore`에 있는 건 단일 연결의 `connected`·`relayUrl`뿐이라, 와이어프레임의 `임재환의 Iphone 17pro / 대한민국, 서울특별시, 서초구 • 3일전`은 목업 문구로 두고 실제로 아는 값만 렌더한다. **없는 데이터를 채워 넣지 말 것** — 기기 메타데이터가 필요하면 페어링 프로토콜(`packages/protocol`)부터 늘려야 한다.
+>
+> 글자 크기는 **루트 `font-size` 하나만** 바꾼다(`lib/fontScaleManager.js`). Tailwind 크기 유틸이 전부 rem이라 이걸로 글자·여백·컨트롤이 함께 커진다. 컴포넌트마다 `large:` 변형을 붙이면 새 화면을 만들 때마다 빠뜨리는 곳이 생긴다. 2단계(16px/18px)인 이유는 1.25배부터 1600×900에서 작업 기록 표의 `명령` 칸이 접히기 시작해서다.
 >
 > 접힘(Cmd/Ctrl+B)은 **통째 숨김이 아니라 64px 아이콘 레일**이다 — 확장 목록만 숨고 내비는 남는다. 접힘 모양은 `ConversationSidebar`가 직접 소유하므로 `Layout`에서 조건부 언마운트하지 않는다. 와이어프레임에 없지만 남긴 것: `대화목록` 확장 안의 `+ 새 대화`(없으면 대화 중 새 주제를 못 꺼낸다).
 >

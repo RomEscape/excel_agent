@@ -57,23 +57,37 @@ function isImeComposing(e) {
 // 시작 화면이 채팅 스레드가 아니라 문서 관리 지면이고, 채팅은 그 위에 뜨는
 // 패널(ChatPanel)이기 때문이다.
 const HomePage = lazy(() => import("@/components/home/HomePage"));
-const Dashboard = lazy(() => import("@/components/dashboard/Dashboard"));
+const ActivityPage = lazy(() => import("@/components/activity/ActivityPage"));
 const WorkspacePage = lazy(() => import("@/components/workspace/WorkspacePage"));
+const ConversationHistoryPage = lazy(() =>
+  import("@/components/conversations/ConversationHistoryPage")
+);
 const ConversationsPage = lazy(() => import("@/components/conversations/ConversationsPage"));
 const SettingsHub = lazy(() => import("@/components/settings/SettingsHub"));
+const PreferencesPage = lazy(() => import("@/components/settings/PreferencesPage"));
 
 /**
  * Map page keys to their lazy components.
  *
- * 5개 핵심 페이지(chat/dashboard/workspace/conversations/settings) 외에는
+ * 5개 핵심 페이지(chat/activity/workspace/conversations/settings) 외에는
  * Settings 허브 안의 탭으로 흡수되었지만, 호환성을 위해 일부 키는
  * Settings 허브로 라우팅(설정 내부에서 자동으로 해당 탭이 열림).
  */
 const PAGE_MAP = {
   chat: HomePage,
-  dashboard: Dashboard,
+  activity: ActivityPage,
   workspace: WorkspacePage,
-  conversations: ConversationsPage,
+  // 사이드바 `대화목록` — 지난 대화를 요일별/파일별로 훑는 화면.
+  conversations: ConversationHistoryPage,
+
+  // 메신저 채널 모니터링. 와이어프레임에 없어 내비에서는 빠졌고 Cmd+K로 들어간다.
+  messenger_monitor: ConversationsPage,
+
+  // 사이드바 푸터의 `환경 설정` — 와이어프레임의 단일 페이지.
+  preferences: PreferencesPage,
+
+  // 탭 허브는 남는다. 와이어프레임에 없는 5개 기능(메신저·자격증명·보안·
+  // 허용 범위·실행 기록)의 유일한 진입 경로가 Cmd+K → 아래 키들이다.
   settings: SettingsHub,
 
   // ── 설정 허브 내부 탭으로 이동 — 외부에서 이 키로 진입해도 Settings로 라우팅 ──

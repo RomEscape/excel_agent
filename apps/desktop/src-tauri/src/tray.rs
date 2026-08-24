@@ -5,7 +5,7 @@ use tauri::{
 };
 
 pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
-    let open = MenuItem::with_id(app, "open", "대시보드 열기", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", "김대리 열기", true, None::<&str>)?;
     let status = MenuItem::with_id(app, "status", "상태: 시작 중...", false, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", "설정", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "종료", true, None::<&str>)?;

@@ -41,6 +41,23 @@
     --brand-file: 118 54% 52%; /* #46C642 — 파일·폴더 아이콘 */
     --brand-glow: 105 54% 60%; /* #7FD163 — 홈 배경 장식 타원 */
 
+    /*
+     * 텍스트 회색 계단 — 개선안 프레임이 쓰는 5단계 중 --foreground(#0C1909)와
+     * --muted-foreground(#6B7468)를 뺀 나머지다. 두 단계만으로는 프레임의
+     * "라벨 / 값 / 부제 / 보조설명 / 비활성" 위계가 한 톤으로 뭉개진다.
+     */
+    --ink-body: 112 6% 25%; /* #3D443C — 섹션 라벨 · 내비 비활성 */
+    --ink-subtle: 108 5% 62%; /* #9AA298 — 표 둘째 줄 · placeholder */
+    --ink-faint: 107 6% 71%; /* #B2B9B0 — KPI 보조 문구 */
+    --ink-disabled: 98 8% 80%; /* #CACFC7 — 비활성 페이지 번호 */
+    --brand-soft: 105 54% 85%; /* #D0EEC6 — 검색창 테두리 · 선택 알약 지면 */
+
+    /* 작업 기록 상태 배지 — TOKENS.md 지면 5색에 없던 신규 값 */
+    --status-done: 105 100% 35%; /* #2DB400 */
+    --status-done-bg: 105 53% 94%; /* #ECF8E8 */
+    --status-blocked: 10 79% 46%; /* #D23819 */
+    --status-blocked-bg: 10 77% 88%; /* #F8D1C9 */
+
     /* AI 말풍선 · 툴 진행 스텝 칩 지면 (라이트 #E1E6DF / 다크 #535D50) */
     --chat-bubble: 103 12% 89%;
     --chat-bubble-foreground: 120 10% 12%;
@@ -101,6 +118,23 @@
      */
     --chat-bubble: 106 8% 34%;
     --chat-bubble-foreground: 100 12% 94%;
+
+    /*
+     * 텍스트 회색 계단의 다크 짝. 개선안 프레임에는 다크가 없어서, 라이트의
+     * 위계(진함→흐림)를 다크 지면(#0C1909) 위에서 뒤집어 만든 값이다.
+     * 다크 프레임이 그려지면 그 값으로 교체할 것.
+     */
+    --ink-body: 105 8% 80%;
+    --ink-subtle: 109 5% 62%;
+    --ink-faint: 108 6% 52%;
+    --ink-disabled: 106 8% 42%;
+    --brand-soft: 105 25% 28%;
+
+    /* 배지도 같은 사정 — 라이트 색상(hue)을 유지하고 명도만 뒤집었다. */
+    --status-done: 105 60% 65%;
+    --status-done-bg: 105 30% 14%;
+    --status-blocked: 10 75% 68%;
+    --status-blocked-bg: 10 40% 16%;
 
     --sidebar-background: 109 47% 7%;
     --sidebar-foreground: 100 12% 94%;
