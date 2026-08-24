@@ -9,9 +9,9 @@
   PASS_RULE  규칙이 확정해 실행, 오라클 참
   PASS_CARD  모델 해석(해석 카드 → 사람이 '맞아요') 뒤 실행, 오라클 참
   ASK        되묻기/카드 없이 실행되지 않음(정당한 질문일 수도, 이해 실패일 수도)
-  WRONG      실행됐는데 오라클 거짓 — 카드 없이 실행됐으면 **조용한 오실행**
+  WRONG      실행됐는데 오라클 거짓 — 카드 없이 실행됐으면 **미검출 오실행**(성공으로 보고돼 검출 층이 못 잡음)
   ERROR      예외·ok=false
-핵심 지표: 정답 실행률(PASS_RULE+PASS_CARD), 조용한 오실행률(WRONG & not card), 되묻기율.
+핵심 지표: 정답 실행률(PASS_RULE+PASS_CARD), 미검출 오실행률(WRONG & not card), 되묻기율.
 
 사용:
   PYTHONUTF8=1 EXCEL_LIVE_ENGINE=file python scripts/run_blind_paraphrase_gate.py --tasks      # 작성자에게 줄 과제표
@@ -508,7 +508,7 @@ async def main() -> None:
     print("\n==== 블라인드 게이트 요약 ====")
     print(f"문장 {n}개 · 정답 실행 {total['PASS_RULE'] + total['PASS_CARD']} ({(total['PASS_RULE'] + total['PASS_CARD']) / max(n, 1):.1%})"
           f" [규칙 {total['PASS_RULE']} · 카드 {total['PASS_CARD']}] · 되묻기 {total['ASK']} ({total['ASK'] / max(n, 1):.1%})"
-          f" · 오실행 {total['WRONG']} (조용한 오실행 {silent}, {silent / max(n, 1):.1%}) · 오류 {total['ERROR']}")
+          f" · 오실행 {total['WRONG']} (미검출 오실행 {silent}, {silent / max(n, 1):.1%}) · 오류 {total['ERROR']}")
     per = defaultdict(Counter)
     for r in out:
         per[r["task"]][r["outcome"]] += 1

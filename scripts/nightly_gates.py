@@ -124,7 +124,7 @@ def judge(results: dict, baseline: dict) -> list[str]:
         if got["wrong"] > base["wrong_max"]:
             bad.append(f"{GATES[key]['이름']} 오실행 {got['wrong']} > 기준 {base['wrong_max']}")
         if got["silent"] > base["silent_max"]:
-            bad.append(f"{GATES[key]['이름']} **조용한 오실행 {got['silent']}건** (기준 0)")
+            bad.append(f"{GATES[key]['이름']} **미검출 오실행 {got['silent']}건** (기준 0)")
     return bad
 
 
@@ -148,8 +148,8 @@ def render(results: dict, baseline: dict, bad: list[str], stamp: str) -> str:
         pct = 100 * got["pass"] / max(got["총문장"], 1)
         lines.append(
             f"| {GATES[key]['이름']} {got['총문장']}문장 | {got['pass']} ({pct:.1f}%) · "
-            f"되묻기 {got['ask']} · 오실행 {got['wrong']} · 조용한 오실행 **{got['silent']}** · 오류 {got['error']} "
-            f"| 정답 {base['pass_min']}↑ · 오실행 {base['wrong_max']}↓ · 조용한 오실행 0 "
+            f"되묻기 {got['ask']} · 오실행 {got['wrong']} · 미검출 오실행 **{got['silent']}** · 오류 {got['error']} "
+            f"| 정답 {base['pass_min']}↑ · 오실행 {base['wrong_max']}↓ · 미검출 오실행 0 "
             f"| {got['초']}초 |"
         )
     for key in ("guard", "blind"):

@@ -258,7 +258,7 @@ async def run_once(round_no: int) -> list[dict]:
         else:
             good = all_executed
             why = "" if good else ("되묻기" if asked else "미지원")
-            # 조용한 오실행 감지 — "합계 줄 넣어줘, 이 표 아래에"가 값 쓰기로 처리돼 머리글이 덮였는데 '성공'으로
+            # 미검출 오실행 감지 — "합계 줄 넣어줘, 이 표 아래에"가 값 쓰기로 처리돼 머리글이 덮였는데 '성공'으로
             # 집계됐다(2026-08-19 ex11 v2 실측). 집계·서식 문장이 값 몇 개짜리 write_range로 끝나면 실패로 센다.
             if good and action == "excel_live.write_range" and not paste:
                 _plain = re.sub(r"\s+", " ", str(raw or ""))
