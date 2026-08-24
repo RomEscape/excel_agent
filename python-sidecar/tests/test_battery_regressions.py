@@ -3749,13 +3749,19 @@ class TestTheGateSurvivesATransientFileLock:
         exec(compile(source, str(src_path), "exec"), namespace)
         return namespace
 
-    def test_it_waits_for_the_lock_to_clear(self) -> None:
+    def test_it_waits_for_the_lock_to_clear(self, tmp_path) -> None:
         import threading
         import time
 
         from openpyxl import Workbook
 
         ns = self._module()
+        # **실제 Workspace 경로를 절대 쓰지 않는다.** 처음엔 ns["WB"]를 그대로 썼는데,
+        # 이 테스트가 커밋 훅·야간 pytest에서 돌 때마다 **살아 있는 게이트의 워크북을
+        # 지워** 03:00 야간(6번째 문장)과 라운드 1 판정(4번째 문장)이 FileNotFoundError로
+        # 죽었다(2026-08-24 실측). 잠금 사고를 고치려던 테스트가 다음 사고를 만든 것.
+        # exec된 함수의 전역이 ns 딕셔너리이므로 여기서 바꾸면 함수도 tmp를 본다.
+        ns["WB"] = tmp_path / "blind_gate.xlsx"
         wb_path, reset = ns["WB"], ns["_reset_workbook_file"]
         wb_path.parent.mkdir(parents=True, exist_ok=True)
         Workbook().save(wb_path)
