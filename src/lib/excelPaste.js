@@ -31,6 +31,25 @@ export function looksLikeExcelPaste(text) {
   return widths.every((w) => w === first);
 }
 
+/**
+ * 붙여넣기가 "Excel 선택 영역"일 가능성이 있어 주소를 물어봐야 하는가.
+ *
+ * 2026-08-25 실측(사용자 스크린샷 "저기 위치의 셀 정보가 입력이 안되는데?"):
+ * Excel은 **빈 범위**를 복사하면 클립보드에 탭 격자가 아니라 `\r\n` 두 글자만 넣는다
+ * (A1에만 값이 있는 A1:D6도 `x\r\n` — 뒤쪽 빈 열·행을 잘라낸다). 탭만 보는
+ * `looksLikeExcelPaste`는 여기서 떨어져 기본 붙여넣기(공백 한 줄)가 되고, "여기에
+ * 입력해줘" 흐름이 시작조차 못 했다. 08-19의 그 흐름은 러너가 붙여넣기를 흉내 낸
+ * 것이라 실제 클립보드의 이 성질을 밟지 않았다.
+ *
+ * 공백만 붙여넣는 데는 다른 뜻이 없으므로, 공백뿐이면 Excel에 "지금 선택이 어디냐"를
+ * 물어 본다. 주소가 없으면 호출부가 안내 문구로 처리한다.
+ */
+export function isExcelSelectionPaste(text) {
+  const raw = String(text ?? "");
+  if (looksLikeExcelPaste(raw)) return true;
+  return raw.length > 0 && raw.trim() === "";
+}
+
 /** 붙여넣은 표의 크기. 미리보기 문구에 쓴다. */
 export function pasteShape(text) {
   const lines = String(text ?? "")

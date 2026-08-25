@@ -1,7 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildPasteBlock, displayMessageText, looksLikeExcelPaste, pasteHasValues, pasteShape, rangeShape } from "./excelPaste.js";
+import {
+  buildPasteBlock,
+  displayMessageText,
+  isExcelSelectionPaste,
+  looksLikeExcelPaste,
+  pasteHasValues,
+  pasteShape,
+  rangeShape,
+} from "./excelPaste.js";
 
 // Excel에서 A1:D3을 복사하면 이런 모양으로 붙는다.
 const EXCEL_TABLE = "날짜\t지역\t담당자\t금액\n2026-01-01\t서울\t김철수\t120000\n2026-01-02\t경기\t이영희\t85000";
@@ -110,4 +118,28 @@ test("값을 살리지 않는 기본 동작은 그대로다", () => {
   const out = buildPasteBlock("지역\t주문건수\n수도권\t10452", "A1:B2");
   assert.equal(out.split("\n").length, 2);
   assert.match(out, /엑셀에서 붙여넣은 2행 × 2열 — A1:B2 범위로 인식했습니다/);
+});
+
+// ---- 2026-08-25 실측: Excel은 빈 범위를 복사하면 클립보드에 탭 격자가 아니라 ----
+// `\r\n`만 넣는다 (A1:D6 빈 범위 → "\r\n", A1에만 값 → "x\r\n"). 탭만 보는 관문은
+// 여기서 떨어져 "저기 위치의 셀 정보가 입력이 안되는데?"가 됐다.
+test("빈 범위 복사(클립보드가 줄바꿈뿐)도 Excel 선택으로 보고 주소를 물어본다", () => {
+  assert.equal(isExcelSelectionPaste("\r\n"), true);
+  assert.equal(isExcelSelectionPaste("\r\n\r\n"), true);
+  assert.equal(isExcelSelectionPaste("   "), true);
+  // 탭 격자는 종전대로.
+  assert.equal(isExcelSelectionPaste(EXCEL_TABLE), true);
+});
+
+test("글자가 든 평범한 붙여넣기는 여전히 건드리지 않는다", () => {
+  assert.equal(isExcelSelectionPaste("매출 시트 정렬해줘"), false);
+  assert.equal(isExcelSelectionPaste("x\r\n"), false); // 한 칸 값 — 문장으로 붙는 게 맞다
+  assert.equal(isExcelSelectionPaste(""), false); // 빈 붙여넣기는 아무것도 아니다
+  assert.equal(isExcelSelectionPaste(null), false);
+});
+
+test("빈 범위 주소로도 안내 블록이 범위 기준으로 만들어진다", () => {
+  const out = buildPasteBlock("\r\n", "A1:D6");
+  assert.match(out, /\[\[EXCEL_RANGE:A1:D6\]\]/);
+  assert.match(out, /엑셀에서 붙여넣은 6행 × 4열 — A1:D6 범위로 인식했습니다/);
 });
