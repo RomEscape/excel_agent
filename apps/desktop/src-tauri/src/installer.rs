@@ -288,6 +288,17 @@ if ($exe) { Start-Process -FilePath $exe } else { Start-Process -FilePath \"olla
 /// Tauri command: Ollama 모델 다운로드 — `ollama pull <model>`
 ///
 /// `model`은 ollama 모델명/태그 — 보안을 위해 `validate_model_name`으로 검사.
+///
+/// ## 탐지와 실행의 기준을 맞춘다
+///
+/// `is_ollama_installed`는 표준 설치 경로의 `ollama.exe`(PATH에 없어도)와 **데몬 응답**을
+/// 근거로 "설치됨"을 판정한다. 반면 여기서 맨 이름 `ollama`를 실행하면 PATH에만 의존하므로
+/// "설치됨으로 보이는데 다운로드는 실패"하는 불일치가 생긴다. 실제로 Windows는 설치 직후
+/// 이미 실행 중인 프로세스에 PATH 갱신이 반영되지 않아 이 상황이 흔하다.
+///
+/// 그래서 (1) 탐지와 같은 경로 목록으로 절대경로 실행을 먼저 시도하고,
+/// (2) 실행 파일이 어디에도 없는데 데몬만 응답하면(WSL·원격 데몬) 셸 오류 대신
+/// 무엇을 해야 하는지 알려주는 결과를 돌려준다.
 #[tauri::command]
 pub async fn pull_ollama_model(
     app: AppHandle,
@@ -297,8 +308,36 @@ pub async fn pull_ollama_model(
     // 모델명에 shell metachar 끼어들어가지 않도록 사전 검증
     crate::ollama::validate_model_name(&model)?;
 
-    let cmd = format!("ollama pull {}", model);
     let manual = format!("ollama pull {}", model);
+
+    #[cfg(target_os = "windows")]
+    let cmd = match crate::ollama::windows_ollama_exe() {
+        // 경로에 공백이 있을 수 있어 따옴표 + 호출 연산자(&)로 실행한다.
+        Some(exe) => format!("& \"{}\" pull {}", exe.display(), model),
+        None => {
+            if crate::ollama::is_ollama_running().await {
+                return serde_json::to_value(InstallResult {
+                    ok: false,
+                    code: None,
+                    stderr_tail: Vec::new(),
+                    eacces: false,
+                    message: format!(
+                        "Ollama 데몬은 응답하지만 이 PC에서 ollama 실행 파일을 찾지 못했어요. \
+                         WSL이나 다른 기기의 데몬을 쓰고 있을 수 있습니다 — 그 환경에서 \
+                         `ollama pull {}`을 직접 실행해 주세요.",
+                        model
+                    ),
+                    manual_command: manual.clone(),
+                })
+                .map_err(|e| e.to_string());
+            }
+            manual.clone()
+        }
+    };
+
+    #[cfg(not(target_os = "windows"))]
+    let cmd = manual.clone();
+
     let result = run_shell_streaming(app, &state, "pull-model", &cmd, &manual)?;
     serde_json::to_value(result).map_err(|e| e.to_string())
 }
