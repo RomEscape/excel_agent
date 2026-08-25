@@ -4701,3 +4701,35 @@ class TestGuiTableInterviewIncident20260825:
         # 기존 표기는 그대로.
         h2 = extract_create_table_slot_hints("4행 3열, 금액, 장소, 날짜로 표 만들어줘")
         assert (h2["rows"], h2["cols"], h2["headers"]) == (4, 3, ["금액", "장소", "날짜"])
+
+
+class TestSelectionProbeReportsEmptiness:
+    """`/excel-live/selection`의 `empty`가 항상 null이던 것(2026-08-25 chat_log 실측).
+
+    `read_range(wb, None, addr)`는 COM 서비스에서 `_find_sheet(None)` 예외 → empty=None.
+    프런트는 이 값으로 "같은 통합문서 참조(주소만)"와 "외부 표 붙여넣기(값 살려 보냄)"를
+    가르므로, null이면 외부 표 경로가 실제 GUI에서 한 번도 켜지지 않는다. 시트를 먼저
+    확정해 읽으면 bool이 나온다 — 파일 엔진으로도 같은 경로를 밟아 굳힌다.
+    """
+
+    def test_empty_is_a_boolean_when_an_address_is_known(self, tmp_path, monkeypatch) -> None:
+        from fastapi.testclient import TestClient
+        from openpyxl import Workbook
+
+        from office_claw_sidecar.main import app
+        from office_claw_sidecar.routers import excel_live as router
+
+        monkeypatch.setenv("EXCEL_LIVE_ENGINE", "file")
+        xlsx = tmp_path / "sel.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "S"
+        ws["A1"] = "값"
+        wb.save(xlsx)
+        svc = router.get_excel_live_service()
+        svc.select_workbook(str(xlsx))
+        svc.select_sheet(None, "S")
+        out = TestClient(app).get("/excel-live/selection", headers={"Authorization": "Bearer dev-token"}).json()
+        assert out.get("available") is True
+        if out.get("address"):
+            assert isinstance(out.get("empty"), bool), out

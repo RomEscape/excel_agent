@@ -7983,7 +7983,12 @@ def get_selection():
     if address:
         try:
             wb_id = _resolve_workbook_id(service, None)
-            read = service.read_range(wb_id, None, address.upper())
+            # 시트를 None으로 넘기면 COM 서비스의 `_find_sheet(None)`이 **항상** 예외를 내
+            # `empty`가 늘 null이었다(2026-08-25 chat_log `selection_empty: null` 실측) —
+            # 외부 표 붙여넣기(keepValues) 경로가 실제 GUI에서 한 번도 켜진 적이 없었다.
+            # 활성 시트명을 먼저 확정한다.
+            sheet_name = _resolve_sheet_name(service, wb_id, None)
+            read = service.read_range(wb_id, sheet_name, address.upper())
             values = read.get("values") if isinstance(read, dict) else None
             if isinstance(values, list):
                 empty = all(
