@@ -4967,3 +4967,44 @@ class TestCoverageV2MisreadsAreSealed:
         assert str(out2.get("action") or "") == "excel_live.fill_range" or any(
             str(s.get("action")) == "excel_live.fill_range" for s in (out2.get("action_plan") or [])
         ), out2
+
+
+class TestAggregateBelowSkipsTrailingBlankRows:
+    """"합계를 표 아래에 한 줄로"가 한 칸 띄워져 들어가던 것(2026-08-25 GUI 실측).
+
+    COM UsedRange는 서식만 있는 빈 행을 표에 포함해 A1:D7로 보고한다. 그러면 집계 줄이
+    end_row+1=8로 놓여 7행이 비고, SUM 범위도 빈 행(B2:B7)을 삼켰다. 배치 기준을 부풀린
+    end_row가 아니라 **마지막 내용 행**으로 바꿔, 꼬리의 빈 행을 뛰어넘게 한다. 단 꼬리의
+    합계·수식 행은 실제 내용이므로 그 아래에 놓고, SUM 범위에서만 뺀다(이중 집계 방지 유지).
+    """
+
+    H = ["카테고리", "매출액", "비중", "전월대비"]
+    D = [["메인", 524, 42, 13], ["사이드", 226, 18, 7], ["음료", 189, 15, 10],
+         ["디저트", 156, 12, 6], ["세트", 151, 12, 14]]
+
+    def _plan(self, target, values):
+        from office_claw_sidecar.services.excel_aggregate_below import build_aggregate_below_plan
+
+        return build_aggregate_below_plan("SUM", "합계", target, values)
+
+    def test_a_trailing_blank_row_does_not_create_a_gap(self):
+        # A1:D7이지만 7행은 서식만 있는 빈 행 — 합계는 B7, SUM은 B2:B6이어야 한다.
+        plan = self._plan("A1:D7", [self.H, *self.D, [None, None, None, None]])
+        cells = {s["params"].get("range_ref") or s["params"].get("start_cell"): s for s in plan}
+        assert "B7" in cells and cells["B7"]["params"]["formula_a1"] == "=SUM(B2:B6)", plan
+        assert "A7" in cells  # 이름표도 7행
+        assert not any((s["params"].get("range_ref") or s["params"].get("start_cell", "")).endswith("8") for s in plan)
+
+    def test_two_trailing_blanks_still_land_right_below_data(self):
+        plan = self._plan("A1:D8", [self.H, *self.D, [None] * 4, [None] * 4])
+        assert any(s["params"].get("range_ref") == "B7" for s in plan), plan
+
+    def test_normal_table_is_unchanged(self):
+        plan = self._plan("A1:D6", [self.H, *self.D])
+        assert any(s["params"].get("range_ref") == "B7" and s["params"]["formula_a1"] == "=SUM(B2:B6)" for s in plan), plan
+
+    def test_second_aggregate_goes_below_existing_total_not_over_it(self):
+        # 합계 행(7)이 이미 있는 A1:D7 — 평균은 8행에 놓고 SUM 범위는 합계를 뺀 B2:B6.
+        total_row = ["합계", "=SUM(B2:B6)", "=SUM(C2:C6)", "=SUM(D2:D6)"]
+        plan = self._plan("A1:D7", [self.H, *self.D, total_row])
+        assert any(s["params"].get("range_ref") == "B8" and s["params"]["formula_a1"] == "=SUM(B2:B6)" for s in plan), plan

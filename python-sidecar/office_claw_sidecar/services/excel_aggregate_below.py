@@ -318,27 +318,37 @@ def build_aggregate_below_plan(
         v is None or isinstance(v, str) for v in first
     ) and any(isinstance(v, str) and v.strip() for v in first)
     data_start = start_row + 1 if has_header else start_row
-    below = end_row + 1
 
-    # 꼬리의 집계 줄(합계·평균…)은 데이터가 아니다. 여기에 넣으면 **이중 집계**가 된다 —
-    # "합계 넣어줘" 다음 턴의 "그 아래 평균도"가 `=AVERAGE(B2:B7)`이 되어 합계까지 평균냈다
-    # (2026-08-20 ex1 결과 워크북 실측: 주문건수 평균이 5,368 대신 8,941로 보였다).
-    # `sort_range`가 쓰는 것과 같은 판정이다.
-    data_end = end_row
-    tail_index = len(rows) - 1
-    while tail_index > 0 and data_end > data_start:
-        tail = rows[tail_index] if tail_index < len(rows) else []
-        if not isinstance(tail, list):
-            break
-        tail_label = tail[0] if tail else None
-        tail_has_formula = any(isinstance(v, str) and str(v).startswith("=") for v in tail)
-        is_agg_label = (
-            isinstance(tail_label, str) and tail_label.strip().lower() in _TOTAL_ROW_LABELS
-        )
-        if not (tail_has_formula or is_agg_label):
-            break
+    def _row_at(abs_row: int) -> list[Any]:
+        i = abs_row - start_row
+        return rows[i] if 0 <= i < len(rows) and isinstance(rows[i], list) else []
+
+    def _is_empty(row: list[Any]) -> bool:
+        return all(v is None or (isinstance(v, str) and not v.strip()) for v in row)
+
+    def _is_total_row(row: list[Any]) -> bool:
+        label = row[0] if row else None
+        has_formula = any(isinstance(v, str) and str(v).startswith("=") for v in row)
+        is_agg_label = isinstance(label, str) and label.strip().lower() in _TOTAL_ROW_LABELS
+        return has_formula or is_agg_label
+
+    # 집계 줄은 **마지막으로 내용이 있는 행 바로 아래**에 놓는다. 꼬리의 빈 행은 뛰어넘는다.
+    # 2026-08-25 GUI 실측: COM UsedRange가 서식만 있는 빈 행을 표에 포함해 A1:D7로 보고하면,
+    # end_row+1(=8)로 놓아 합계가 한 칸 띄워지고 SUM 범위도 빈 행까지 삼켰다. 빈 행이 아니라
+    # **실제 내용의 끝**을 기준으로 삼는다.
+    place_end = end_row
+    while place_end > data_start and _is_empty(_row_at(place_end)):
+        place_end -= 1
+    below = place_end + 1
+
+    # 집계 대상의 끝: 꼬리의 집계 줄(합계·평균…)은 데이터가 아니다. 여기에 넣으면 **이중 집계**가
+    # 된다 — "합계 넣어줘" 다음 턴의 "그 아래 평균도"가 `=AVERAGE(B2:B7)`이 되어 합계까지
+    # 평균냈다(2026-08-20 ex1 결과 워크북 실측: 주문건수 평균이 5,368 대신 8,941로 보였다).
+    # 집계 줄은 place_end에 그대로 있으므로(빈 행이 아님) 그 아래에 새 줄이 놓이고, SUM 범위만
+    # 집계 줄을 뺀다. `sort_range`가 쓰는 것과 같은 판정이다.
+    data_end = place_end
+    while data_end > data_start and _is_total_row(_row_at(data_end)):
         data_end -= 1
-        tail_index -= 1
 
     steps: list[dict[str, Any]] = []
     label_letter: str | None = None
