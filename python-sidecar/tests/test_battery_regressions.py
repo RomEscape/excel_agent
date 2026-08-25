@@ -2999,6 +2999,8 @@ class TestTheTaskListHasOneSource:
     # 배치마다 44문장 재측정으로 분류 품질을 확인한다.
     # 2026-08-25 배치 1b: 명시 어휘 5종(merge·unmerge·data_bar·color_scale·
     # rename_sheet) → 26종. 배치 2: 열 연산 4종 + group_by(읽기 전용 조회) → 31종.
+    # 2026-08-26 AI-우선 배치 2: comment·named_range → 33종(감사 C-03·C-04 —
+    # coverage v2의 남은 오인식이 정확히 이 종류 부재였다).
     # 확장마다 44문장 재측정으로 밀려남 0을 확인한다.
     EXPECTED = (
         "fill_color", "font", "highlight", "number_format", "formula", "sort", "filter",
@@ -3007,6 +3009,7 @@ class TestTheTaskListHasOneSource:
         "create_sheet", "delete_charts", "freeze", "autofit",
         "merge", "unmerge", "data_bar", "color_scale", "rename_sheet",
         "delete_sheet", "drop_column", "add_column", "rename_column", "group_by",
+        "comment", "named_range",
         "other",
     )
 
@@ -5106,3 +5109,89 @@ class TestCreateSheetNamelessAndPossessive:
             "new sheet 추가하고 이름은 요약으로 해 주세요.",
         )
         assert plan is None
+
+
+class TestBatch2VocabAndGuards:
+    """AI-우선 배치 2 핀(2026-08-26 감사 A2·C-02·C-03·C-04·B-guard-02).
+
+    공통 구조: 모델이 맞게 분류했는데 하네스가 조용히 버리던 것을 매핑·완화하되,
+    각 가드가 원래 막던 실측 사고(열 발명·내용 발명·이름 발명)는 그대로 막는다.
+    """
+
+    DIGEST = {
+        "active_sheet": "데이터",
+        "sheets": [
+            {
+                "name": "데이터",
+                "used_range": "A1:C9",
+                "columns": [
+                    {"header": "카테고리", "letter": "A"},
+                    {"header": "금액", "letter": "B"},
+                    {"header": "상태", "letter": "C"},
+                ],
+            }
+        ],
+    }
+
+    def _plan(self, intent, message):
+        from office_claw_sidecar.services.excel_intent_normalizer import intent_to_plan
+
+        base = {"task": "other", "range": None, "column": None, "option": None}
+        return intent_to_plan({**base, **intent}, digest=self.DIGEST, message=message)
+
+    def test_동의어_열_비우기가_머리글_실재로_통과(self):
+        # "매출 열 비워줘" — 프롬프트가 시킨 동의어 매핑(매출→금액)이 축자 가드에 죽던 것.
+        plan = self._plan({"task": "clear_values", "column": "금액"}, "매출 열 비워줘")
+        assert plan is not None
+        assert plan["action"] == "excel_live.clear_range"
+        assert plan["params"]["target_range"].startswith("B2:")
+
+    def test_전체_지우기에_열_발명은_여전히_막힌다(self):
+        # "표 내용 싹 지워"(전체)에 모델이 column=카테고리를 지어낸 사고(2026-08-25 게이트).
+        plan = self._plan({"task": "clear_values", "column": "카테고리"}, "표 내용 싹 지워")
+        assert plan is None
+
+    def test_열_집계_조회가_읽기_전용으로_매핑(self):
+        plan = self._plan({"task": "read", "column": "금액", "option": "합계"}, "금액 합계 알려줘")
+        assert plan is not None
+        assert plan["action"] == "excel_live.calculate_column_stat"
+        assert plan["params"] == {"column": "금액", "stat": "sum"}
+
+    def test_쓰는_집계는_조회로_안_샌다(self):
+        plan = self._plan({"task": "read", "column": "금액", "option": "합계"}, "금액 합계 D8에 넣어줘")
+        assert plan is None
+
+    def test_셀_메모_매핑(self):
+        plan = self._plan(
+            {"task": "comment", "range": "D2", "option": "확인 필요"},
+            "D2에 확인 필요 라고 메모 달아줘",
+        )
+        assert plan is not None
+        assert plan["action"] == "excel_live.add_cell_comment"
+        assert plan["params"] == {"target_range": "D2", "text": "확인 필요"}
+
+    def test_메모_내용_발명은_막힌다(self):
+        plan = self._plan(
+            {"task": "comment", "range": "D2", "option": "검토 완료"},
+            "D2에 확인 필요 라고 메모 달아줘",
+        )
+        assert plan is None
+
+    def test_범위_이름_정의_매핑(self):
+        plan = self._plan(
+            {"task": "named_range", "range": "A1:F9", "option": "매출표라는"},
+            "A1:F9에 매출표라는 이름 정의해줘",
+        )
+        assert plan is not None
+        assert plan["action"] == "excel_live.define_named_range"
+        assert plan["params"] == {"target_range": "A1:F9", "name": "매출표"}
+
+    def test_근거표_신규_4종(self):
+        from office_claw_sidecar.routers.excel_live import _action_lacks_evidence
+
+        assert not _action_lacks_evidence("excel_live.sort_rows", "B열 기준으로 정렬해줘")
+        assert _action_lacks_evidence("excel_live.sort_rows", "노란색으로 칠해줘")
+        assert not _action_lacks_evidence("excel_live.define_named_range", "이 범위 이름 붙여줘")
+        assert not _action_lacks_evidence("excel_live.set_print_area", "인쇄 영역 잡아줘")
+        assert not _action_lacks_evidence("excel_live.add_cell_comment", "여기 메모 달아줘")
+        assert _action_lacks_evidence("excel_live.add_cell_comment", "정렬해줘")

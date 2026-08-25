@@ -51,12 +51,13 @@ task 목록: fill_color(배경색), font(글자 서식·색), highlight(조건�
 number_format(표시 형식), formula(수식·계산), sort(정렬), filter(필터),
 dedupe(중복 제거), clear_values(값 비우기), reset_all(서식까지 초기화),
 create_table(표 생성), pivot(집계표·피벗), chart(차트), write_value(값 입력),
-find_replace(찾아 바꾸기), read(조회), create_sheet(새 시트 만들기),
+find_replace(찾아 바꾸기), read(조회·열 집계 물음), create_sheet(새 시트 만들기),
 delete_charts(차트 삭제), freeze(행·열 틀 고정), autofit(열 너비 자동 맞춤),
 merge(셀 병합), unmerge(병합 해제), data_bar(데이터 막대),
 color_scale(값 크기 따라 색조), rename_sheet(기존 시트 이름 바꾸기),
 delete_sheet(있는 시트 삭제), drop_column(열 삭제), add_column(새 열 추가),
 rename_column(열 이름 바꾸기), group_by(~별 집계 결과 조회),
+comment(셀 메모·코멘트), named_range(범위에 이름 정의),
 other(그 외)
 
 주의: 색칠에 조건(이상·이하·넘는·~인 셀만 같은 말)이 붙어 있으면 highlight,
@@ -417,13 +418,20 @@ def intent_to_plan(
                 "params": {"target_range": rng},
                 "reason": "의도 정규화: 값 비우기",
             }]
-        elif column and str(column).strip() in plain_message:
-            # "비고 열 비워줘" — 범위 대신 열 이름을 부른 경우. **2행부터** 지운다:
-            # 열 이름이 **문장에 실제로 있어야** 믿는다 — "표 내용 싹 지워"(전체)에
-            # 모델이 column=지역(첫 머리글)을 지어내 A열만 지웠다(2026-08-25 게이트).
+        elif column:
+            # "비고 열 비워줘" — 범위 대신 열 이름을 부른 경우. **2행부터** 지운다.
+            # 축자 검사(column in plain_message)는 프롬프트의 동의어 매핑 지시(매출↔금액)와
+            # 정면 모순이라 동의어 문장이 전량 버려졌다(2026-08-26 감사 A2). 머리글 실재
+            # 확인으로 바꾼다 — 의도 계획(plan_source=intent)은 확인 카드를 거치므로
+            # 동의어 매핑은 실행 전에 사용자가 본다.
+            # 단 "표 내용 싹 지워"(전체)에 모델이 column=지역을 지어낸 사고(2026-08-25
+            # 게이트)는 계속 막는다: 전체를 뜻하는 문장에서 원문에 없는 열을 믿지 않는다.
             # 머리글까지 지우면 표가 뭉개진다(파괴 게이트 `clear_only_named`가 지키는 것).
+            whole_table_wording = bool(
+                re.search(r"(전체|전부|싹|모두|몽땅)", plain_message)
+            ) and str(column).strip() not in plain_message
             letter, last = _column_letter(entry, column), _last_row(entry)
-            if letter and last > 2:
+            if letter and last > 2 and not whole_table_wording:
                 # 데이터 끝을 모르면(폴백 2) 물러난다 — 한 칸만 지우고 "비웠다"고
                 # 답하는 건 조용한 부분 실행이다(2026-08-23 쓰기 쪽에서 겪은 그것).
                 steps = [{
@@ -772,7 +780,54 @@ def intent_to_plan(
                     "reason": "의도 정규화: ~별 집계 조회",
                 }]
 
-    # dedupe·pivot·chart·create_table·read·other는 매핑하지 않는다 — 슬롯·플래너
+    elif task == "read" and option_text and column:
+        # 조회 중 "열 집계 물음"만 받는다 — "제일 큰 금액이 뭐야"가 정렬로 오실행됐다
+        # (2026-08-25 커버리지 v2). 넓은 read는 여전히 슬롯·플래너 몫이다(아래 주석).
+        # 읽기 전용(SAFE)이라 오매핑해도 데이터가 바뀌지 않는다.
+        up = str(option_text).strip().upper()
+        func = up if up in _AGG_FUNCS else str(aggregate_func(option_text) or "")
+        stat = {
+            "SUM": "sum",
+            "AVERAGE": "average",
+            "MAX": "max",
+            "MIN": "min",
+            "COUNT": "count",
+            "COUNTA": "count",
+        }.get(func.upper(), "")
+        if stat and _column_letter(entry, column) and not _worded(
+            r"넣어", r"써\s*줘", r"적어", r"입력", r"기록", r"채워"
+        ):
+            steps = [{
+                "action": "excel_live.calculate_column_stat",
+                "params": {"column": str(column).strip(), "stat": stat},
+                "reason": "의도 정규화: 열 집계 조회(읽기 전용)",
+            }]
+
+    elif task == "comment" and rng and _SINGLE_CELL.fullmatch(rng):
+        # 메모는 단일 셀 + 내용이 문장에 실재할 때만 — 내용을 지어내 붙이면 없는 말이
+        # 워크북에 남는다. 범위가 없으면 물러난다(활성 셀 추측 금지).
+        text = str(option_text or "").strip()
+        if text and text in plain_message:
+            steps = [{
+                "action": "excel_live.add_cell_comment",
+                "params": {"target_range": rng, "text": text},
+                "reason": "의도 정규화: 셀 메모",
+            }]
+
+    elif task == "named_range" and rng:
+        # 이름 정의는 범위 명시 + 이름이 문장에 실재할 때만. rename_sheet처럼 조사를
+        # 벗긴다("매출표라는" → 매출표).
+        nr_name = re.sub(
+            r"(?:이?라는|이?라고|이?란|으로|로)$", "", str(option_text or "").strip().strip("'\"")
+        ).strip()
+        if nr_name and nr_name in plain_message:
+            steps = [{
+                "action": "excel_live.define_named_range",
+                "params": {"target_range": rng, "name": nr_name},
+                "reason": "의도 정규화: 범위 이름 정의",
+            }]
+
+    # dedupe·pivot·chart·create_table·넓은 read·other는 매핑하지 않는다 — 슬롯·플래너
     # 경로가 이미 소유하고 있고(배터리 24/24), 여기서 어설프게 겹치면 두 경로가
     # 서로를 되돌리는 부류(2026-08-17에 세 번 겪은)가 또 생긴다.
 

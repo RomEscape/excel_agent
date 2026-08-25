@@ -548,6 +548,14 @@ _ACTION_EVIDENCE: dict[str, re.Pattern[str]] = {
     "excel_live.delete_sheet": re.compile(
         r"(시트|탭|sheet).{0,12}(삭제|제거|없애)", re.IGNORECASE
     ),
+    # 근거표 없는 편집 4종은 deny-default에 걸려 문장 무관 항상 '근거 없음'이었다 —
+    # 플래너가 맞게 골라도 단계가 조용히 지워지는 부류(2026-08-26 감사 B-guard-02).
+    "excel_live.sort_rows": re.compile(r"(정렬|sort|오름|내림|순으로|순서대로)", re.IGNORECASE),
+    "excel_live.define_named_range": re.compile(
+        r"(이름\s*정의|이름\s*붙|이름을\s*지|named\s*range|이름으로\s*정)", re.IGNORECASE
+    ),
+    "excel_live.set_print_area": re.compile(r"(인쇄\s*영역|print\s*area|인쇄\s*범위)", re.IGNORECASE),
+    "excel_live.add_cell_comment": re.compile(r"(메모|코멘트|comment|주석)", re.IGNORECASE),
 }
 
 
