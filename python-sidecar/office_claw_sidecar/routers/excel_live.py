@@ -4228,6 +4228,14 @@ _CS_NOT_NAME = frozenset(
 _CS_QUOTES = "\"'“”‘’"
 
 _CREATE_SHEET_PATTERNS = (
+    # "'sheet 2' 이름의 새로운 시트를 만들어줘" — 이름이 '이름의'(소유격)로 붙는 꼴.
+    # 따옴표 안이면 공백 든 이름("sheet 2")도 통째로 잡는다(2026-08-25 GUI 실측:
+    # 이 문형을 놓쳐 하류가 '시트 2'를 기존 시트로 찾다 되물었다).
+    re.compile(
+        r"[\"'“‘](?P<name>[^\"'”’]+)[\"'”’]\s*(?:이?라는\s*)?(?:이름|명)\s*의"
+        r"[^\n]{0,16}" + _CS_LABEL + r"[^\n]{0,14}" + _CS_MAKE,
+        re.IGNORECASE,
+    ),
     # "'요약' 이름으로 시트 하나 새로 만들어" — 이름이 '이름으로' **앞**에 온다.
     # 이걸 놓쳐 **'요약 이름으로'라는 시트가 만들어졌다**(2026-08-20 게이트).
     re.compile(
@@ -4316,7 +4324,30 @@ def _quick_create_sheet_step(text: str) -> dict[str, Any] | None:
             "params": {"sheet_name": name, "make_active": True},
             "reason": "빠른 규칙 기반 시트 생성",
         }
+    # 무명 생성 — 이름 후보가 전부 지시어("새로운" 등)여도 생성 의도가 분명하면 기본
+    # 이름으로 만든다(sheet_name="" — 디스패처가 채운다). 조용히 물러나면 하류가
+    # '새로운'을 기존 시트로 오인해 되물었다(2026-08-25 GUI 실측). 라벨 **뒤에** 동사가
+    # 와야 한다 — "새로 만든 시트에"(동사가 라벨 앞, 기존 시트 지칭)는 안 잡는다.
+    if re.search(r"(새로운|새로|새|빈)", src) and re.search(
+        _CS_LABEL + r"[^\n]{0,12}" + _CS_MAKE, src, re.IGNORECASE
+    ):
+        return {
+            "action": "excel_live.create_sheet",
+            "params": {"sheet_name": "", "make_active": True},
+            "reason": "빠른 규칙 기반 시트 생성(기본 이름)",
+        }
     return None
+
+
+def _message_wants_new_sheet(text: str) -> bool:
+    """원문이 '시트를 만들라'는 뜻인가 — create 라벨을 못 받은 계획의 되묻기 면제용.
+
+    면제는 되묻기만 막는다(실행 교정은 퀵룰·의도 해석이 담당). 이름 변경·삭제 문형 제외.
+    """
+    src = str(text or "")
+    if re.search(r"(바꿔|바꾸|변경|고쳐|rename|삭제|지워|없애)", src):
+        return False
+    return bool(re.search(_CS_LABEL + r"[^\n]{0,12}" + _CS_MAKE, src, re.IGNORECASE))
 
 
 # "이 시트" · "현재 시트" · "여기 탭" — 이름이 아니라 활성 시트를 가리킨다.
@@ -6736,7 +6767,15 @@ def _dispatch_action(
         resolved_wb = _resolve_workbook_id(service, workbook_id or str(params.get("workbook_id", "")).strip() or None)
         target_sheet = str(params.get("sheet_name") or params.get("name") or "").strip()
         if not target_sheet:
-            raise WorksheetNotFoundError("create_sheet에는 sheet_name이 필요합니다.")
+            # 이름 없는 생성 — 기존 시트와 겹치지 않는 첫 기본 이름을 채운다(Excel 관례).
+            existing = {
+                str(n).strip().casefold()
+                for n in (service.list_sheets(resolved_wb).get("sheets") or [])
+            }
+            seq = 2
+            while f"sheet{seq}" in existing:
+                seq += 1
+            target_sheet = f"Sheet{seq}"
         return service.create_sheet(
             workbook_id=resolved_wb,
             sheet_name=target_sheet,
@@ -10718,9 +10757,22 @@ def _plan_approval_gate(
     # "'급여계산' 시트를 찾을 수 없습니다"로 되묻힌다 — 만들어 달라는 그 시트를 두고
     # 어디에 만들지 되묻는 꼴이다(2026-08-20 ex24 실측: 1·2번째 턴이 이렇게 죽고
     # 그 시트를 쓰는 뒤 턴들이 연쇄로 무너져 44/49가 됐다).
+    # 면제는 head 라벨 하나가 아니라 **계획 전체**를 본다 — create_sheet+write_range
+    # 다단계에서 head(write_range)만 보면 방금 만들기로 한 시트를 "찾을 수 없다"고
+    # 되묻는다. 원문이 생성을 요구하는데 모델이 라벨을 놓친 경우도 면제 — 그때 없는
+    # 이름은 '찾을 대상'이 아니라 '만들 대상'이다(2026-08-25 GUI 실측, 2026-08-26 감사 B-01).
+    plan_creates_target = any(
+        step.action in _SHEET_CREATING_ACTIONS
+        and (
+            not plan_sheet
+            or str(step.params.get("sheet_name") or "").strip().casefold()
+            in {"", plan_sheet.casefold()}
+        )
+        for step in plan
+    )
     target_problem = (
         ""
-        if head.action in _SHEET_CREATING_ACTIONS
+        if plan_creates_target or _message_wants_new_sheet(req.message)
         else _edit_target_problem(
             req.workbook_id,
             plan_sheet or req.sheet_name,

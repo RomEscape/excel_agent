@@ -285,6 +285,7 @@ def intent_to_plan(
     *,
     digest: dict[str, Any] | None,
     message: str = "",
+    drop_log: list[str] | None = None,
 ) -> dict[str, Any] | None:
     """상징 의도 → 실행 계획. 확신이 없으면 None — 플래너 폴백이 낫다.
 
@@ -292,6 +293,8 @@ def intent_to_plan(
     바인더가 좌표를 확정하고, 못 하면 되묻는다.
     """
     if not isinstance(intent, dict):
+        if drop_log is not None:
+            drop_log.append("not_dict")
         return None
     entry = sheet_entry(digest or {}, None)
     task = str(intent.get("task") or "")
@@ -513,21 +516,40 @@ def intent_to_plan(
                     }]
 
     elif task == "create_sheet":
-        # 시트 이름은 option 또는 column에 실려 온다. 이름이 없으면 물러난다 —
-        # 이름을 지어내 만들면 사용자가 부른 적 없는 시트가 생긴다.
+        # 시트 이름은 option 또는 column에 실려 온다. 이름을 지어내지 않는다 —
+        # 모델이 "null"을 이름으로 내 'null' 시트가 생겼다(2026-08-25).
         name = str(option_text or column or "").strip().strip("'\"")
-        # "시트"라는 낱말 자체가 이름으로 오는 축퇴는 거르고, 이름이 **문장에 실제로
-        # 있어야** 만든다 — 모델이 "null"을 이름으로 내 'null' 시트가 생겼다(2026-08-25).
-        if (
-            name
-            and name.lower() not in {"시트", "sheet", "탭", "새 시트"}
-            and len(name) <= 31
-            and name in plain_message
-        ):
+        degenerate = {
+            "시트", "sheet", "탭", "새 시트", "새", "새로운", "새로", "하나", "빈", "임시",
+            "null", "none", "undefined",
+        }
+        usable = bool(name) and name.lower() not in degenerate and len(name) <= 31
+        if usable and name not in plain_message:
+            # 모델이 "sheet 2"를 "시트 2"로 의역하는 부류 — 시트 낱말을 뗀 나머지가
+            # 원문에 있으면 같은 이름으로 본다("2"가 "sheet 2"에 있다).
+            stripped = re.sub(r"(워크시트|시트|sheet|탭|tab)", "", name, flags=re.IGNORECASE).strip()
+            usable = bool(stripped) and stripped.casefold() in plain_message.casefold()
+        if usable:
             steps = [{
                 "action": "excel_live.create_sheet",
                 "params": {"sheet_name": name},
                 "reason": "의도 정규화: 새 시트",
+            }]
+        elif (
+            (not name or name.lower() in degenerate)
+            and not re.search(r"(?:이름|명)\s*(?:은|을|이|으로|로|의)", plain_message)
+            and _worded(r"만들", r"맏드", r"만드", r"생성", r"추가", r"create", r"add")
+        ):
+            # 이름 없는 생성("새로운 시트 만들어줘") — 조용히 버리면 플래너가 미라벨
+            # 계획을 내 "'새로운' 시트를 찾을 수 없습니다"가 됐다(2026-08-25 GUI 실측).
+            # 기본 이름은 디스패처가 채운다(sheet_name="" 계약). 단 두 경우는 물러난다:
+            # ①이름이 주어졌는데 31자 초과·미근거로 못 쓰는 경우 — 기본 이름으로 만들면
+            # 부른 이름과 조용히 달라진다. ②원문에 "이름은/이름의" 지정 구가 있는 경우 —
+            # 이름 추출을 못 한 것이지 이름이 없는 게 아니다(퀵룰·플래너가 잡는다).
+            steps = [{
+                "action": "excel_live.create_sheet",
+                "params": {"sheet_name": ""},
+                "reason": "의도 정규화: 새 시트(기본 이름)",
             }]
 
     elif task == "delete_charts" and _worded(r"차트", r"그래프", r"chart"):
@@ -755,6 +777,9 @@ def intent_to_plan(
     # 서로를 되돌리는 부류(2026-08-17에 세 번 겪은)가 또 생긴다.
 
     if not steps:
+        # 어떤 종류가 왜 버려졌는지 세야 가드 수정의 전/후를 잴 수 있다(2026-08-26 감사 A27).
+        if drop_log is not None:
+            drop_log.append(f"unmapped:{intent.get('task') or ''!s}")
         return None
     return {
         "action_plan": steps,

@@ -3967,9 +3967,9 @@ class TestBatch1aIntentKindsMapDeterministically:
     @pytest.mark.parametrize(
         ("message", "intent"),
         [
-            # 이름을 지어내 시트를 만들면 사용자가 부른 적 없는 시트가 생긴다.
-            ("시트 만들어줘", {"task": "create_sheet"}),
-            ("시트 만들어줘", {"task": "create_sheet", "option": "시트"}),   # 낱말 축퇴
+            # 이름이 **주어졌는데 못 쓰는** 경우는 물러난다 — 기본 이름으로 만들면 부른
+            # 이름과 조용히 달라진다. (이름이 아예 없는 생성은 이제 기본 이름으로 통과 —
+            # TestCreateSheetNamelessAndPossessive가 그 계약을 고정한다. 2026-08-26)
             ("가" * 32 + " 시트 만들어줘", {"task": "create_sheet", "option": "가" * 32}),  # 31자 상한
         ],
     )
@@ -5008,3 +5008,101 @@ class TestAggregateBelowSkipsTrailingBlankRows:
         total_row = ["합계", "=SUM(B2:B6)", "=SUM(C2:C6)", "=SUM(D2:D6)"]
         plan = self._plan("A1:D7", [self.H, *self.D, total_row])
         assert any(s["params"].get("range_ref") == "B8" and s["params"]["formula_a1"] == "=SUM(B2:B6)" for s in plan), plan
+
+
+class TestCreateSheetNamelessAndPossessive:
+    """시트 생성의 두 GUI 실측 실패(2026-08-25)를 고정한다.
+
+    "새로운 시트 만들어줘" → 무명 생성(sheet_name="", 디스패처가 기본 이름을 채움),
+    "'sheet 2' 이름의 새로운 시트를 만들어줘" → 소유격·따옴표 이름 캡처.
+    조용히 물러나면 하류가 '새로운'을 기존 시트로 오인해 되물었다(2026-08-26 감사 A1·B-01).
+    """
+
+    DIGEST = {"sheets": [{"name": "데이터", "headers": ["카테고리", "매출액"], "rows": 6}]}
+
+    def _plan(self, intent, message):
+        from office_claw_sidecar.services.excel_intent_normalizer import intent_to_plan
+
+        base = {"task": "create_sheet", "range": None, "column": None, "option": None}
+        return intent_to_plan({**base, **intent}, digest=self.DIGEST, message=message)
+
+    def test_무명_생성은_빈_이름_계약으로_통과(self):
+        plan = self._plan({"option": ""}, "새로운 시트 만들어줘")
+        assert plan is not None
+        assert plan["params"]["sheet_name"] == ""
+
+    def test_의역된_이름은_번역쌍으로_인정(self):
+        plan = self._plan({"option": "시트 2"}, "'sheet 2' 이름의 새로운 시트를 만들어줘")
+        assert plan is not None
+        assert plan["params"]["sheet_name"] == "시트 2"
+
+    def test_null_이름은_무명_생성으로(self):
+        plan = self._plan({"option": "null"}, "새로운 시트 만들어줘")
+        assert plan is not None
+        assert plan["params"]["sheet_name"] == ""
+
+    def test_실명_생성_회귀(self):
+        plan = self._plan({"option": "보고서"}, "보고서 시트 만들어")
+        assert plan is not None
+        assert plan["params"]["sheet_name"] == "보고서"
+
+    def test_버림_사유가_기록된다(self):
+        from office_claw_sidecar.services.excel_intent_normalizer import intent_to_plan
+
+        drops: list[str] = []
+        base = {"task": "other", "range": None, "column": None, "option": None}
+        assert intent_to_plan(base, digest=self.DIGEST, message="아무거나", drop_log=drops) is None
+        assert drops == ["unmapped:other"]
+
+    def test_퀵룰_무명_생성(self):
+        from office_claw_sidecar.routers.excel_live import _quick_create_sheet_step
+
+        step = _quick_create_sheet_step("새로운 시트 만들어줘")
+        assert step is not None
+        assert step["params"]["sheet_name"] == ""
+
+    def test_퀵룰_소유격_따옴표_이름(self):
+        from office_claw_sidecar.routers.excel_live import _quick_create_sheet_step
+
+        step = _quick_create_sheet_step("'sheet 2' 이름의 새로운 시트를 만들어줘")
+        assert step is not None
+        assert step["params"]["sheet_name"] == "sheet 2"
+
+    def test_퀵룰_실명_회귀(self):
+        from office_claw_sidecar.routers.excel_live import _quick_create_sheet_step
+
+        step = _quick_create_sheet_step("요약 시트 하나 만들어줘")
+        assert step is not None
+        assert step["params"]["sheet_name"] == "요약"
+
+    def test_퀵룰_기존_시트_지칭은_오발화_금지(self):
+        from office_claw_sidecar.routers.excel_live import _quick_create_sheet_step
+
+        assert _quick_create_sheet_step("새로 만든 시트에 넣어줘") is None
+
+    def test_원문_생성_의도_판정(self):
+        from office_claw_sidecar.routers.excel_live import _message_wants_new_sheet
+
+        assert _message_wants_new_sheet("새로운 시트 만들어줘")
+        assert _message_wants_new_sheet("'sheet 2' 이름의 새로운 시트를 만들어줘")
+        assert not _message_wants_new_sheet("매출 시트 이름 바꿔줘")
+
+    def test_맨_시트_만들어줘도_무명_생성(self):
+        # 구계약(물러남)에서 이관: 이름이 아예 없으면 기본 이름으로 만든다.
+        plan = self._plan({}, "시트 만들어줘")
+        assert plan is not None
+        assert plan["params"]["sheet_name"] == ""
+
+    def test_축퇴_낱말_이름도_무명_생성(self):
+        plan = self._plan({"option": "시트"}, "시트 만들어줘")
+        assert plan is not None
+        assert plan["params"]["sheet_name"] == ""
+
+    def test_이름_지정_구가_있으면_무명으로_안_덮는다(self):
+        # "이름은 요약으로"가 있는데 모델이 'null'을 내면 물러난다 — 기본 이름으로
+        # 만들면 부른 이름(요약)과 조용히 달라진다. 퀵룰·플래너가 잡을 자리다.
+        plan = self._plan(
+            {"column": "null", "option": "null", "range": "null"},
+            "new sheet 추가하고 이름은 요약으로 해 주세요.",
+        )
+        assert plan is None

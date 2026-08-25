@@ -3480,6 +3480,17 @@ class FileExcelLiveService(ExcelLiveService):
                 formula1 = str(source or "").strip()
                 if not formula1:
                     raise ExcelLiveError("list 유효성은 source가 필요합니다.")
+                # 인라인 목록(콤마 나열)은 openpyxl에서 따옴표로 감싼 formula1이어야 Excel이
+                # 드롭다운으로 인식한다. 범위/시트 참조(A1:A5, 성적부!A1:A5)나 이미 감싼 값은 둔다.
+                is_range_ref = bool(
+                    re.match(
+                        r"^\s*(?:'[^']+'|[A-Za-z0-9_가-힣]+)?!?\$?[A-Za-z]{1,3}\$?\d{1,7}"
+                        r"(?:\s*:\s*\$?[A-Za-z]{1,3}\$?\d{1,7})?\s*$",
+                        formula1,
+                    )
+                )
+                if not is_range_ref and not (formula1.startswith('"') and formula1.endswith('"')):
+                    formula1 = '"' + formula1 + '"'
                 dv = DataValidation(type="list", formula1=formula1, allow_blank=allow_blank)
             elif vtype in {"whole", "decimal"}:
                 if minimum is None or maximum is None:

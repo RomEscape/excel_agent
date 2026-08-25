@@ -1454,12 +1454,16 @@ async def parse_excel_live_command(
         intent: dict[str, Any] | None = None
         normalized: dict[str, Any] | None = None
         outcome = ""
+        drops: list[str] = []
         try:
             intent = await normalize_intent(
                 message, context.get("workbook_digest"), llm_service
             )
             normalized = intent_to_plan(
-                intent, digest=context.get("workbook_digest"), message=message
+                intent,
+                digest=context.get("workbook_digest"),
+                message=message,
+                drop_log=drops,
             )
             outcome = "mapped" if normalized is not None else "unmapped"
         except Exception as exc:
@@ -1471,6 +1475,7 @@ async def parse_excel_live_command(
             outcome=outcome,
             task=str((intent or {}).get("task") or ""),
             mapped_action=str((normalized or {}).get("action") or ""),
+            drop_reason=";".join(drops),
         )
         if normalized is not None:
             return normalized

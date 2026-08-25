@@ -444,8 +444,9 @@ def _validate_step_body(
 
     if action == "excel_live.create_sheet":
         sheet_name = str(params.get("sheet_name") or params.get("name") or "").strip()
-        if not sheet_name:
-            raise ValueError("create_sheet.sheet_name이 필요합니다.")
+        # 빈 이름은 "이름 없이 새 시트"라는 계약이다 — 디스패처가 기존 시트와 겹치지 않는
+        # 기본 이름(Sheet2, Sheet3…)을 채운다. 여기서 반려하면 "새로운 시트 만들어줘"가
+        # 계획 단계에서 죽고 하류가 '새로운'을 기존 시트로 오인해 되물었다(2026-08-25 GUI 실측).
         workbook = str(params.get("workbook_id") or "").strip() or None
         out_params: dict[str, Any] = {
             "sheet_name": sheet_name,
@@ -979,6 +980,19 @@ def _validate_step_body(
         target_range = _normalize_range_text(params.get("target_range")) or preferred_range or "__ACTIVE_SELECTION__"
         validation_type = str(params.get("validation_type") or "list").strip().lower()
         source = str(params.get("source") or "").strip() or None
+        # 플래너는 목록 값을 source가 아니라 list_values(리스트)로 낸다(학습셋 v3~v6:
+        # {"target_range":"C:C","list_values":["예","아니오"]}). 여기서 버리면 source=None →
+        # 서비스가 "list 유효성은 source가 필요합니다"로 실패한다(2026-08-25 값-미연결 감사,
+        # create_table headers와 동종). source가 비었을 때만 채운다(명시 source를 덮지 않음).
+        # plain 콤마열로 넘긴다 — COM은 이 형식을 그대로 받고, 파일 서비스가 따옴표를 붙인다.
+        if source is None:
+            raw_lv = params.get("list_values")
+            if isinstance(raw_lv, str):
+                raw_lv = raw_lv.split(",")
+            if isinstance(raw_lv, list):
+                items = [str(v).strip() for v in raw_lv if str(v).strip()]
+                if items:
+                    source = ",".join(items)
         minimum = params.get("minimum")
         maximum = params.get("maximum")
         allow_blank = bool(params.get("allow_blank", True))
