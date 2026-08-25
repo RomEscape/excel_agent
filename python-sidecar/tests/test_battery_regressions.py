@@ -4871,3 +4871,64 @@ class TestMergedNoteRowsDoNotCrashRewrites:
         # (자리표시자 범위에서 병합 줄을 데이터에서 빼는 것은 별도 과제.)
         column_a = [ws2.cell(r, 1).value for r in range(1, 9)]
         assert "비고 메모" in column_a, column_a
+
+
+class TestCoverageV2MisreadsAreSealed:
+    """2026-08-25 커버리지 v2 재측정(0825-173422)의 오인식 14건 중 규칙·매핑으로 닫은 부류.
+
+    - "비고 열 지워줘/컬럼 삭제/통째로 없애줘" → 값 비우기 규칙이 잡음(3/4). 열 구조 삭제는
+      drop_column 몫 — 값 어휘 없이 삭제·없애·빼·제거·통째로면 규칙이 물러난다.
+      코퍼스의 "결석 열만 비워줘"·"결석 열 내용 지워줄래?"·"값 전부 삭제해줘"는 그대로.
+    - "색깔 단계로 칠해줘"·"크면 진하게 작으면 연하게 색조로" → 단색·글꼴 규칙이 잡음.
+    - add_column은 이름이 column 슬롯으로 오면 unmapped → 플래너가 조회로 오실행.
+    - "E열은 …선택되도록 제한해줘"(유효성)가 filter로 실행 · "메모 달아줘"가 값 쓰기로 실행.
+    """
+
+    def test_column_deletion_wording_backs_off_from_the_clear_rule(self) -> None:
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+
+        def clears(msg: str) -> bool:
+            plan = _build_quick_action_plan(msg, None) or []
+            return any(str(s.get("action")) == "excel_live.clear_range" for s in plan)
+
+        for m in ("비고 열 지워줘", "비고 컬럼 삭제해줄래?", "비고 열 통째로 없애줘"):
+            assert not clears(m), m
+        # 값 어휘가 있는 코퍼스 문장은 종전대로 값 비우기다(파괴 게이트 clear_only_named).
+        for m in ("결석 열만 비워줘", "결석 열 내용 지워줄래?", "결석 열 값 전부 삭제해줘 (다른 열은 유지)"):
+            plan = _build_quick_action_plan(m, None)
+            # 머리글 확정은 다이제스트가 필요해 여기선 규칙이 None을 낼 수도 있다 — 물러남의 이유가
+            # '구조 삭제' 판정이 아님만 굳힌다: 값 어휘가 있으면 그 판정에 걸리지 않는다.
+            assert plan is None or not any(str(s.get("action")) == "excel_live.drop_column" for s in plan), m
+
+    def test_color_scale_wording_is_not_a_flat_fill_or_a_font_request(self) -> None:
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan, _is_color_format_request
+
+        for m in ("금액 크기에 따라 색깔 단계로 칠해줘", "금액 값 크면 진하게 작으면 연하게 색조로"):
+            assert not _is_color_format_request(m), m
+            plan = _build_quick_action_plan(m, None) or []
+            assert not any(str(s.get("action")) in ("excel_live.fill_range", "excel_live.set_font") for s in plan), (m, plan)
+        assert _is_color_format_request("a1:d1 노란색으로 칠해줘")  # 단색 요청은 종전대로
+
+    def test_intent_mappings_for_the_misread_kinds(self) -> None:
+        from office_claw_sidecar.services.excel_intent_normalizer import intent_to_plan
+
+        digest = {"active_sheet": "매출", "sheets": [{"name": "매출", "used_range": "A1:F9",
+                  "columns": [{"letter": "B", "header": "지역"}, {"letter": "D", "header": "금액"}, {"letter": "E", "header": "상태"}],
+                  "row_count": 9}]}
+        base = {"task": None, "range": None, "column": None, "option": None}
+
+        def plan(msg, **intent):
+            return intent_to_plan({**base, **intent}, digest=digest, message=msg)
+
+        # add_column: 이름이 column 슬롯으로 와도 맵핑된다.
+        out = plan("확인자 열 하나 추가해줘", task="add_column", column="확인자")
+        assert out and out["action_plan"][0]["action"] == "excel_live.add_column", out
+        # color_scale: '단계' 근거.
+        out = plan("금액 크기에 따라 색깔 단계로 칠해줘", task="color_scale", column="금액")
+        assert out and out["action_plan"][0]["action"] == "excel_live.apply_color_scale", out
+        # filter: 필터를 말하지 않은 유효성 문장은 물러난다 / 말한 문장은 맵핑된다.
+        assert plan("E열은 완료/대기/취소 목록에서 선택되도록 제한해줘", task="filter", column="상태", option="완료") is None
+        out = plan("서울 데이터만 남겨줘", task="filter", column="지역", option="서울")
+        assert out and out["action_plan"][0]["action"] == "excel_live.filter_rows", out
+        # write_value: 메모·주석 문장은 셀 값이 아니다.
+        assert plan("D2에 확인 필요 라고 메모 달아줘", task="write_value", range="D2", option="확인 필요") is None

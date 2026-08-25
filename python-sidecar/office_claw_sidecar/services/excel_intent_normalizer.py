@@ -388,9 +388,13 @@ def intent_to_plan(
                 "reason": "의도 정규화: 정렬",
             }]
 
-    elif task == "filter":
+    elif task == "filter" and _worded(
+        # 문장 근거 — "E열은 완료/대기/취소 목록에서 **선택되도록 제한해줘**"(유효성 검사)가
+        # 필터로 분류돼 filter_rows가 실행됐다(2026-08-25 커버리지 v2). 필터를 말한 문장에만.
+        r"필터", r"filter", r"만\s*남", r"만\s*보", r"추려", r"골라", r"걸러", r"만\s*표시", r"만\s*뽑", r"치워", r"아닌\s*(?:데|건|것|거)"
+    ):
         key = str(column or "").strip()
-        if key and option_text:
+        if key and option_text and option_text in plain_message:
             steps = [{
                 "action": "excel_live.filter_rows",
                 "params": {
@@ -461,7 +465,9 @@ def intent_to_plan(
                 "reason": "의도 정규화: 찾아 바꾸기",
             }]
 
-    elif task == "write_value":
+    elif task == "write_value" and not _worded(r"메모", r"주석", r"코멘트", r"comment"):
+        # 메모·주석은 셀 값이 아니다 — "D2에 확인 필요 라고 메모 달아줘"가 값 쓰기로 실행돼
+        # 셀 내용이 바뀌었다(2026-08-25 커버리지 v2). 메모 종류는 어휘에 없으니 물러난다.
         # 집계 옵션이 붙은 write는 사실 수식 요청이다 — 실측에서 유일하게 빗나간
         # 분류("매출 총액이 얼마인지 F2에 넣어놔줘")가 이 형태로 회수된다.
         func = option_text.upper()
@@ -586,7 +592,11 @@ def intent_to_plan(
             "reason": "의도 정규화: 데이터 막대",
         }]
 
-    elif task == "color_scale" and _worded(r"색조", r"컬러\s*스케일", r"color\s*scale"):
+    elif task == "color_scale" and _worded(
+        # "색깔 단계로"·"진하게…연하게"·"그라데이션"도 색조다(2026-08-25 커버리지 v2:
+        # 단색 채우기·글꼴 규칙에 잡혀 오실행 2/4 — 규칙 쪽은 배제했고 여기서 받는다).
+        r"색조", r"컬러\s*스케일", r"color\s*scale", r"단계", r"그라데이션", r"진하게.{0,14}연하게", r"연하게.{0,14}진하게"
+    ):
         letter = _column_letter(entry, column)
         target = rng or (f"{letter}2:{letter}{_last_row(entry)}" if letter else "") or "__ACTIVE_SELECTION__"
         steps = [{
@@ -659,7 +669,10 @@ def intent_to_plan(
         and _worded(r"열", r"컬럼", r"column")
         and _worded(r"추가", r"새", r"만들", r"넣")
     ):
-        name = str(option_text or "").strip().strip("'\"")
+        # 이름은 option 또는 column에 실려 온다 — 모델은 "확인자 열 추가해줘"의 '확인자'를
+        # column 슬롯에 싣는다(2026-08-25 커버리지 v2 outcome 로그: add_column 분류 3/4가
+        # 이름 없음으로 unmapped → 플래너가 조회로 오실행).
+        name = str(option_text or column or "").strip().strip("'\"")
         if (
             name
             and name.lower() not in {"열", "컬럼", "column", "새 열"}

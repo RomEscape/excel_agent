@@ -1779,6 +1779,17 @@ def _scope_clear_to_header_column(
     if column is None:
         return []
     header = str(column.get("header") or "").strip()
+    # "비고 열 지워줘 / 컬럼 삭제 / 통째로 없애줘"는 **열 구조 삭제**(drop_column)지 값 비우기가
+    # 아니다. 값·내용·데이터·비워 같은 값 어휘가 없는데 삭제·없애·빼·제거·통째로가 있으면
+    # 물러난다 — 의도 해석의 drop_column이 받는다(2026-08-25 커버리지 v2: 3/4가 값 비우기로
+    # 오실행). 코퍼스의 "결석 열만 비워줘"·"결석 열 내용 지워줄래?"·"값 전부 삭제해줘"는
+    # 전부 값 어휘가 있어 종전대로 여기서 처리된다.
+    # 판정은 열 낱말 **뒤에** 오는 삭제 동사로 한다 — "점수 **빼고** 결석만 지워줘"의 '빼고'는
+    # 보호(제외)지 삭제가 아니다(자체 검토 핀). `_COLUMN_STRUCTURE_EDIT_PATTERNS`와 같은 모양.
+    if re.search(_COLUMN_STRUCTURE_DELETE_PATTERN, text) and not re.search(
+        r"(값|내용|데이터|기록|수치|비워|비우)", text
+    ):
+        return []
     # "결석 칸 내용**만** 싹 지워줘" — '싹'은 그 열 안에서 남김없이라는 뜻이다.
     # **머리글 + 만**이 있으면 좁히는 쪽이 이긴다(2026-08-20 파괴 게이트 2차).
     scoped_by_name = bool(
@@ -2089,6 +2100,11 @@ def _message_asks_for_more_work(text: str) -> bool:
 
 
 def _is_color_format_request(lowered: str) -> bool:
+    # "색깔 단계로 칠해줘"·"크면 진하게 작으면 연하게 색조로"는 단색 채우기가 아니라 **색조**
+    # (color scale)다 — 색 낱말+칠해 조합이 이 규칙을 켜서 단색/글꼴로 오실행됐다
+    # (2026-08-25 커버리지 v2). 의도 해석의 color_scale이 받도록 물러난다.
+    if re.search(r"(색조|컬러\s*스케일|color\s*scale|단계로|그라데이션|진하게.{0,14}연하게|연하게.{0,14}진하게)", lowered):
+        return False
     has_color = any(
         token in lowered
         for token in [
@@ -2383,6 +2399,16 @@ _COLUMN_STRUCTURE_EDIT_PATTERNS = (
     r"(?:열|칼럼|컬럼)\s*(?:하나|한\s*개|１개|1개)?\s*(?:더|새로)?\s*(?:추가|만들어|넣어|생성)",
     r"(?:새|신규)\s*(?:열|칼럼|컬럼)",
     r"(?:열|칼럼|컬럼)\s*(?:을|를|은|는|도)?\s*(?:통째로\s*)?(?:삭제|제거|없애|지워|빼)",
+)
+
+
+#: 열 **구조 삭제**(drop_column) 문형 — 값 비우기 규칙이 물러날 때 쓴다. 삭제 동사는 열 낱말
+#: 뒤에 와야 한다("점수 빼고 결석만 지워줘"의 '빼고'는 제외지 삭제가 아니다). '통째로'는 어디
+#: 있어도 구조 삭제다(2026-08-25 커버리지 v2: "비고 열 통째로 없애줘"가 시트 전체 비우기로).
+_COLUMN_STRUCTURE_DELETE_PATTERN = re.compile(
+    r"(?:열|칼럼|컬럼)\s*(?:을|를|은|는|도)?\s*(?:통째로\s*)?(?:삭제|제거|없애|지워|빼\s*(?:줘|주|버|자|라|줄))"
+    r"|통째로\s*(?:없애|삭제|제거|지워|빼)",
+    re.IGNORECASE,
 )
 
 
@@ -3649,7 +3675,11 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
         or font_params.get("color")
         or font_params.get("size")
         or font_params.get("align")
-    ) and not re.search(r"(테두리|경계선|border|괘선)", lowered):
+    ) and not re.search(r"(테두리|경계선|border|괘선)", lowered) and not re.search(
+        # "크면 진하게 작으면 연하게 색조로" — '진하게'는 굵게가 아니라 색의 농도다(2026-08-25 커버리지 v2).
+        r"(색조|컬러\s*스케일|color\s*scale|단계로|그라데이션|진하게.{0,14}연하게|연하게.{0,14}진하게)",
+        lowered,
+    ):
         # "첫줄/제목줄"도 1행이다 — 어휘 밖이라 활성 셀에 칠해졌다(2026-08-18
         # 지저분판 실측: 첫줄 남색이 F7 한 칸 배경이 됐다).
         header_font = bool(
@@ -3928,7 +3958,12 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
                     "reason": "빠른 규칙 기반 차트 삭제",
                 }
             ]
-        if not whole_sheet_reset and not explicit_range and _clear_request_targets_a_subset(lowered):
+        # "비고 열 **통째로** 없애줘" — '통째로'가 시트 전체 리셋으로 읽혀 열 하나를 지우라는 말이
+        # 사용범위 전체 비우기가 됐다(2026-08-25 커버리지 v2). 열·행·조건을 지목한 문장은
+        # 전체 리셋 낱말이 있어도 여기 소관이 아니다(열 구조 삭제는 drop_column).
+        if not explicit_range and _clear_request_targets_a_subset(lowered) and (
+            not whole_sheet_reset or _COLUMN_STRUCTURE_DELETE_PATTERN.search(lowered)
+        ):
             # 지울 대상이 따로 지목된 문장. 규칙으로 밀면 시트가 통째로 비워진다.
             return None
         target = normalized_ctx or explicit_range or ("__USED_RANGE__" if whole_sheet_reset else "__ACTIVE_SELECTION__")
