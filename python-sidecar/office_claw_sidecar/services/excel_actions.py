@@ -39,6 +39,16 @@ def resolve_sheet_name(service, workbook_id: str | None, sheet_name: str | None)
         for row in rows:
             if str(row.get("workbook_id", "")).lower() == lowered or str(row.get("name", "")).lower() == lowered:
                 return row.get("active_sheet") or "Sheet1"
+        # 목록에 없는 통합문서(워크스페이스 폴더 밖 파일)면 그 통합문서에 직접 묻는다 —
+        # 여기서 rows[0]으로 떨어지면 남의 파일 시트가 된다(2026-08-25 재측정에서 재발).
+        if hasattr(service, "list_sheets"):
+            try:
+                info = service.list_sheets(target)
+                active = str((info or {}).get("active_sheet") or "").strip()
+                if active:
+                    return active
+            except Exception:
+                pass
     return rows[0].get("active_sheet") or "Sheet1"
 
 

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from openpyxl import load_workbook
+from openpyxl.cell.cell import MergedCell
 from openpyxl.chart import (
     AreaChart,
     BarChart,
@@ -911,7 +912,13 @@ class FileExcelLiveService(ExcelLiveService):
                 for c_idx, value in enumerate(row):
                     # ws.cell(value=None)은 기존 값을 남긴다. None을 쓴다는 것은
                     # 그 칸을 비우라는 뜻이므로 속성에 직접 대입해야 한다.
-                    ws.cell(row=min_row + r_idx, column=min_col + c_idx).value = value
+                    target = ws.cell(row=min_row + r_idx, column=min_col + c_idx)
+                    if isinstance(target, MergedCell):
+                        # 병합 범위의 앵커가 아닌 칸은 읽기 전용이다 — 값을 대입하면 AttributeError로
+                        # 액션 전체가 죽는다(2026-08-25 커버리지 v2: 메모 줄 A11:C11이 병합된 시트에서
+                        # dedupe_rows가 "MergedCell" 예외). 그 칸은 어차피 앵커 값이 대표하므로 건너뛴다.
+                        continue
+                    target.value = value
             max_row = min_row + rows - 1
             max_col = min_col + cols - 1
             self._save_wb(
@@ -959,6 +966,9 @@ class FileExcelLiveService(ExcelLiveService):
             emptied = 0
             for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
                 for cell in row:
+                    if isinstance(cell, MergedCell):
+                        # 병합 비앵커 칸은 읽기 전용 — 대입하면 액션이 통째로 죽는다(write_range와 같은 방어).
+                        continue
                     if cell.value is not None:
                         emptied += 1
                     cell.value = None

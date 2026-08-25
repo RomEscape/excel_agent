@@ -4761,6 +4761,21 @@ class TestSharedDispatchResolvesTheSelectedWorkbooksSheet:
         assert resolve_sheet_name(service, r"C:\ws\_probe_ex14.xlsx", None) == "콘텐츠 일정"
         assert resolve_sheet_name(service, None, "지정시트") == "지정시트"
 
+    def test_a_selected_workbook_outside_the_listing_is_asked_directly(self) -> None:
+        """워크스페이스 폴더 밖 파일(하네스 임시 폴더·사용자가 직접 연 파일)은 목록에 없다 —
+        그때 rows[0]으로 떨어지면 남의 파일 시트가 된다(2026-08-25 재측정에서 재발)."""
+        from types import SimpleNamespace
+
+        from office_claw_sidecar.services.excel_actions import resolve_sheet_name
+
+        rows = [{"workbook_id": r"C:\ws\_probe_ex14.xlsx", "name": "_probe_ex14.xlsx", "active_sheet": "콘텐츠 일정"}]
+        service = SimpleNamespace(
+            list_workbooks=lambda: rows,
+            get_selected_workbook_id=lambda: r"C:\tmp\outside.xlsx",
+            list_sheets=lambda wb: {"sheets": ["매출", "임시"], "count": 2, "active_sheet": "매출"},
+        )
+        assert resolve_sheet_name(service, None, None) == "매출"
+
 
 class TestCreateTableWritesThePlannedHeaders:
     """플래너 계획의 `headers`가 create_table 실행에서 버려지던 것(2026-08-25 커버리지 v2).
@@ -4822,3 +4837,37 @@ class TestHeaderRenameIsNotAFindReplace:
         steps = (plan or {}).get("action_plan") or []
         assert steps and steps[0]["action"] == "excel_live.rename_column", plan
         assert steps[0]["params"] == {"column": "금액", "new_name": "매출액"}
+
+
+class TestMergedNoteRowsDoNotCrashRewrites:
+    """병합 메모 줄이 사용범위 안에 있으면 dedupe_rows가 `MergedCell` 예외로 죽던 것
+    (2026-08-25 커버리지 v2 재측정). 실제 시트엔 병합 제목·메모가 흔하다. 파일 엔진의
+    write_range·clear_range가 병합 비앵커 칸을 건너뛴다."""
+
+    def test_dedupe_survives_a_merged_note_below_the_table(self, tmp_path) -> None:
+        from openpyxl import Workbook, load_workbook
+
+        from office_claw_sidecar.services.excel_live_file_service import FileExcelLiveService
+
+        xlsx = tmp_path / "note.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "매출"
+        for row in [["이름", "금액"], ["김", 1], ["이", 2], ["이", 2], ["박", 3]]:
+            ws.append(row)
+        ws["A7"] = "비고 메모"
+        ws.merge_cells("A7:B7")
+        wb.save(xlsx)
+
+        svc = FileExcelLiveService()
+        svc.select_workbook(str(xlsx))
+        svc.select_sheet(None, "매출")
+        out = svc.dedupe_rows(str(xlsx), "매출", "A1:B7")  # 병합 줄까지 포함한 범위 — 예외 없이 끝나야 한다
+        assert isinstance(out, dict), out
+        ws2 = load_workbook(xlsx)["매출"]
+        names = [ws2.cell(r, 1).value for r in range(2, 6)]
+        assert names.count("이") == 1, names
+        # 메모 줄은 범위 안에 있었으므로 한 줄 위로 당겨지는 게 맞다 — 사라지지만 않으면 된다.
+        # (자리표시자 범위에서 병합 줄을 데이터에서 빼는 것은 별도 과제.)
+        column_a = [ws2.cell(r, 1).value for r in range(1, 9)]
+        assert "비고 메모" in column_a, column_a
