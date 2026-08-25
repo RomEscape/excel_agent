@@ -1,0 +1,68 @@
+{"task": "dedupe", "text": "중복된 행 지워줘", "expect": ["excel_live.dedupe_rows", "excel_live.find_duplicates"]}
+{"task": "dedupe", "text": "똑같은 줄이 두 번 들어간 거 정리해줄래?", "expect": ["excel_live.dedupe_rows", "excel_live.find_duplicates"]}
+{"task": "dedupe", "text": "겹치는 데이터 좀 없애줘", "expect": ["excel_live.dedupe_rows", "excel_live.find_duplicates"]}
+{"task": "dedupe", "text": "이름 기준으로 중복 제거", "expect": ["excel_live.dedupe_rows", "excel_live.find_duplicates"]}
+{"task": "dedupe", "text": "중복 항목만 골라내서 빼줘", "expect": ["excel_live.dedupe_rows", "excel_live.find_duplicates"]}
+{"task": "filter", "text": "지역이 서울인 행만 남겨줘", "expect": ["excel_live.filter_rows"]}
+{"task": "filter", "text": "서울 데이터만 보고 싶은데", "expect": ["excel_live.filter_rows"]}
+{"task": "filter", "text": "부산 거래만 추려줘", "expect": ["excel_live.filter_rows"]}
+{"task": "filter", "text": "서울 아닌 데는 좀 치워줄래?", "expect": ["excel_live.filter_rows"]}
+{"task": "filter", "text": "금액 1000 이상만 필터 걸어줘", "expect": ["excel_live.filter_rows"]}
+{"task": "pivot", "text": "지역별 금액 합계 집계표 만들어줘", "expect": ["excel_live.pivot_table"]}
+{"task": "pivot", "text": "지역 기준으로 피벗 하나 만들어줘 금액 합계로", "expect": ["excel_live.pivot_table"]}
+{"task": "pivot", "text": "담당자별로 금액 얼마씩인지 표로 정리해줘", "expect": ["excel_live.pivot_table", "excel_live.group_by_aggregate"]}
+{"task": "pivot", "text": "지역별 매출 요약표 뽑아줘", "expect": ["excel_live.pivot_table"]}
+{"task": "pivot", "text": "피벗으로 지역별 건수 세줘", "expect": ["excel_live.pivot_table"]}
+{"task": "group_by_read", "text": "지역별 금액 합계 알려줘", "expect": ["excel_live.group_by_aggregate", "excel_live.pivot_table", "excel_live.calculate_column_stat"]}
+{"task": "group_by_read", "text": "담당자별로 몇 건씩인지 보여줘", "expect": ["excel_live.group_by_aggregate", "excel_live.pivot_table"]}
+{"task": "group_by_read", "text": "지역별 평균 금액이 얼마야?", "expect": ["excel_live.group_by_aggregate", "excel_live.pivot_table"]}
+{"task": "read_stat", "text": "금액 합계 얼마야?", "expect": ["excel_live.calculate_column_stat", "excel_live.read_range"]}
+{"task": "read_stat", "text": "금액 평균 좀 알려줘", "expect": ["excel_live.calculate_column_stat", "excel_live.read_range"]}
+{"task": "read_stat", "text": "제일 큰 금액이 뭐야", "expect": ["excel_live.calculate_column_stat", "excel_live.read_range"]}
+{"task": "read_stat", "text": "데이터 몇 줄이야?", "expect": ["excel_live.calculate_column_stat", "excel_live.read_range"]}
+{"task": "delete_sheet", "text": "임시 시트 삭제해줘", "expect": ["excel_live.delete_sheet"]}
+{"task": "delete_sheet", "text": "임시 탭은 지워도 돼", "expect": ["excel_live.delete_sheet"]}
+{"task": "delete_sheet", "text": "임시라는 시트 없애줘", "expect": ["excel_live.delete_sheet"]}
+{"task": "delete_sheet", "text": "임시 시트 제거", "expect": ["excel_live.delete_sheet"]}
+{"task": "drop_column", "text": "비고 열 지워줘", "expect": ["excel_live.drop_column"]}
+{"task": "drop_column", "text": "비고 열은 필요 없으니까 빼줘", "expect": ["excel_live.drop_column"]}
+{"task": "drop_column", "text": "비고 컬럼 삭제해줄래?", "expect": ["excel_live.drop_column"]}
+{"task": "drop_column", "text": "비고 열 통째로 없애줘", "expect": ["excel_live.drop_column"]}
+{"task": "add_column", "text": "확인자 열 하나 추가해줘", "expect": ["excel_live.add_column"]}
+{"task": "add_column", "text": "맨 오른쪽에 확인자 열 새로 만들어줘", "expect": ["excel_live.add_column"]}
+{"task": "add_column", "text": "확인자라는 열 넣어줄래", "expect": ["excel_live.add_column"]}
+{"task": "add_column", "text": "확인자 컬럼 추가", "expect": ["excel_live.add_column"]}
+{"task": "rename_column", "text": "금액 열 이름을 매출액으로 바꿔줘", "expect": ["excel_live.rename_column"]}
+{"task": "rename_column", "text": "금액 컬럼명 매출액으로 변경", "expect": ["excel_live.rename_column"]}
+{"task": "rename_column", "text": "금액이라는 열 제목을 매출액이라고 고쳐줘", "expect": ["excel_live.rename_column"]}
+{"task": "rename_column", "text": "헤더 금액을 매출액으로 바꿔줄래?", "expect": ["excel_live.rename_column", "excel_live.find_replace", "excel_live.write_range"]}
+{"task": "unmerge", "text": "병합된 셀 다 풀어줘", "expect": ["excel_live.unmerge_cells"]}
+{"task": "unmerge", "text": "A1:D1 병합 해제해줘", "expect": ["excel_live.unmerge_cells"]}
+{"task": "unmerge", "text": "합쳐진 칸 원래대로 나눠줘", "expect": ["excel_live.unmerge_cells"]}
+{"task": "unmerge", "text": "제목 병합 취소", "expect": ["excel_live.unmerge_cells"]}
+{"task": "color_scale", "text": "금액 열에 색조 넣어줘", "expect": ["excel_live.apply_color_scale"]}
+{"task": "color_scale", "text": "금액 크기에 따라 색깔 단계로 칠해줘", "expect": ["excel_live.apply_color_scale", "excel_live.apply_data_bar"]}
+{"task": "color_scale", "text": "D2:D9 컬러 스케일 적용", "expect": ["excel_live.apply_color_scale"]}
+{"task": "color_scale", "text": "금액 값 크면 진하게 작으면 연하게 색조로", "expect": ["excel_live.apply_color_scale"]}
+{"task": "reset_all", "text": "A1:F9 서식까지 싹 초기화해줘", "expect": ["excel_live.clear_range"]}
+{"task": "reset_all", "text": "이 표 색이랑 테두리 전부 원래대로 돌려줘", "expect": ["excel_live.clear_range", "excel_live.apply_border"]}
+{"task": "reset_all", "text": "A1:F9 값이랑 서식 다 지워줘", "expect": ["excel_live.clear_range"]}
+{"task": "create_table_oneshot", "text": "A1:D6에 카테고리, 매출액, 비중, 전월대비 헤더로 표 만들어줘", "expect": ["excel_live.create_table", "excel_live.write_range"]}
+{"task": "create_table_oneshot", "text": "이름, 점수, 결석 헤더로 5행짜리 표 하나 만들어줘", "expect": ["excel_live.create_table", "excel_live.write_range"]}
+{"task": "create_table_oneshot", "text": "4행 3열 표 만들어줘 헤더는 날짜, 품목, 수량", "expect": ["excel_live.create_table", "excel_live.write_range"]}
+{"task": "valueless_write", "text": "A1:D6 여기에 입력 좀 해줘", "expect_ask": true}
+{"task": "valueless_write", "text": "여기에 값 좀 넣어줘", "expect_ask": true}
+{"task": "valueless_write", "text": "이거 여기다 붙여줘", "expect_ask": true}
+{"task": "complaint", "text": "아니 내가 표를 만들랬지 차트를 만들게 하지는 않았는데?", "expect_ask": true}
+{"task": "complaint", "text": "그게 아니라 정렬하라고 한 적 없는데", "expect_ask": true}
+{"task": "data_validation", "text": "상태 열에 완료, 대기, 취소 중에서만 고르게 드롭다운 만들어줘", "expect": ["excel_live.set_data_validation"]}
+{"task": "data_validation", "text": "E열은 완료/대기/취소 목록에서 선택되도록 제한해줘", "expect": ["excel_live.set_data_validation"]}
+{"task": "data_validation", "text": "상태 칸에 유효성 검사 걸어줘 완료 대기 취소만", "expect": ["excel_live.set_data_validation"]}
+{"task": "protect", "text": "이 시트 잠가줘 수정 못 하게", "expect": ["excel_live.protect_sheet"]}
+{"task": "protect", "text": "시트 보호 걸어줘", "expect": ["excel_live.protect_sheet"]}
+{"task": "comment", "text": "D2에 확인 필요 라고 메모 달아줘", "expect": ["excel_live.add_cell_comment"]}
+{"task": "comment", "text": "D2 셀에 주석으로 확인 필요 남겨줘", "expect": ["excel_live.add_cell_comment"]}
+{"task": "excel_table", "text": "A1:F9를 엑셀 표로 변환해줘", "expect": ["excel_live.convert_to_excel_table"]}
+{"task": "excel_table", "text": "이 범위 테이블로 바꿔줘 필터 버튼 나오게", "expect": ["excel_live.convert_to_excel_table"]}
+{"task": "named_range", "text": "A1:F9에 매출표라는 이름 정의해줘", "expect": ["excel_live.define_named_range"]}
+{"task": "named_range", "text": "이 범위를 매출표로 이름 붙여줘", "expect": ["excel_live.define_named_range"]}

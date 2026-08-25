@@ -1946,14 +1946,36 @@ _AGGREGATE_SENSITIVE_QUICK_ACTIONS = frozenset(
     }
 )
 # 값 없이 쓰기 동사만 온 문장 — 붙여넣기 뒤 값을 빠뜨린 실수("여기에 입력해줘").
+# "입력 **좀** 해줘", "값 **한번** 넣어봐" — 부사는 값이 아니다. 2026-08-25 GUI 실사고:
+# "A1:D6 여기에 입력 좀 해줘"가 '좀' 한 글자로 이 규칙을 빠져나가 플래너로 갔고, 플래너는
+# 가짜 표(이름/나이/성별…)를 지어냈다(스키마 불일치로만 막힘). 세 자리에 끼어들 수 있다.
+_BARE_WRITE_ADVERB = r"(?:(?:좀|한번|한\s*번|다시|일단|빨리|얼른|그냥|바로)\s*)*"
 _BARE_WRITE_REQUEST = re.compile(
     r"^(?:(?:[A-Za-z]{1,3}\d{1,7}(?::[A-Za-z]{1,3}\d{1,7})?)\s*)?"
     # "이거 넣어줘", "복사한 거 여기에 붙여줘", "방금 거 입력" — 대명사는 값이 아니다(2026-08-19 ex9 v2 실측).
     r"(?:(?:방금|지금|아까)\s*)?(?:복사한|복붙한|붙여넣은|긁어온|선택한)?\s*"
     r"(?:이거|이걸|이것|요거|그거|그걸|그것|저거|얘네|이\s*값|이\s*내용|이\s*표|복사한\s*거|복사본|클립보드|거|것)?\s*(?:을|를|도)?\s*"
-    r"(?:여기(?:에|에다|다가|다)?|요기에?|이\s*(?:곳|쪽|자리|칸|셀|범위|영역)에?)?\s*(?:값\s*(?:을|를)?\s*)?"
-    r"(?:입력|기록|넣어|채워|써|적어|붙여\s*넣어|붙여|붙여넣기)\s*(?:해)?\s*(?:줘요|줘|주세요|주라|줄래|놔|둬|봐)?\s*[~.!?…]*$"
+    r"(?:여기(?:에|에다|다가|다)?|요기에?|이\s*(?:곳|쪽|자리|칸|셀|범위|영역)에?)?\s*"
+    + _BARE_WRITE_ADVERB
+    + r"(?:값\s*(?:을|를)?\s*)?"
+    + _BARE_WRITE_ADVERB
+    + r"(?:입력|기록|넣어|채워|써|적어|붙여\s*넣어|붙여|붙여넣기)\s*"
+    + _BARE_WRITE_ADVERB
+    + r"(?:해)?\s*(?:줘요|줘|주세요|주라|줄래|놔|둬|봐)?\s*[~.!?…]*$"
 )
+# 직전 실행에 대한 **정정·항의** — 명령이 아니다. 2026-08-25 GUI 실사고: "아니 내가 표를
+# 만들랬지 차트를 만들게 하지는 않았는데?"에서 규칙도 플래너도 문장 속 명사 '차트'만 주워
+# "차트 종류를 선택해 주세요"로 되물었다. 시작이 부정 감탄이고 **한 적 없다는 술어**가
+# 있어야 한다 — "아니 부산으로 바꿔줘"(정정 문맥, 술어 없음)는 여기 걸리지 않는다.
+_COMPLAINT_OPENER = re.compile(r"^\s*(?:아니|아뇨|아니요|아니야|아닌데|그게\s*아니|그거\s*말고|잘못)")
+_COMPLAINT_DENIED_DEED = re.compile(r"(않았|안\s*했|한\s*적\s*없|하랬|랬지|라고\s*했|시킨\s*적|시켰|시키지)")
+
+
+def _looks_like_complaint_about_last_action(message: str) -> bool:
+    text = str(message or "")
+    return bool(_COMPLAINT_OPENER.search(text) and _COMPLAINT_DENIED_DEED.search(text))
+
+
 _AGGREGATE_REQUEST_PATTERN = re.compile(
     r"(교차표|피벗|pivot)"
     r"|별\s*(?:로|은|는)?[^\n]{0,20}?(합계|집계|평균|순위|총액|총합|건수|얼마|요약|실적)",
@@ -2377,12 +2399,17 @@ def _detect_operation_intent(message: str) -> str:
         # 열 이름 바꾸기·열 추가·열 삭제. 슬롯 대화로 끌고 가면 되묻기만 하고 끝난다.
         # 플래너에게 넘겨 rename_column/add_column/drop_column을 고르게 한다.
         return ""
-    if _chart_kind_from_message(lowered) and re.search(
-        r"(그려|그러|뽑아|만들|생성|보여|시각화|차트|그래프)", lowered
-    ) and not re.search(r"(지워|삭제|없애|제거|치워)", lowered):
+    if (
+        _chart_kind_from_message(lowered)
+        and _explicit_chart_evidence(lowered)
+        and re.search(r"(그려|그러|뽑아|만들|생성|보여|시각화|차트|그래프)", lowered)
+        and not re.search(r"(지워|삭제|없애|제거|치워)", lowered)
+    ):
         # "지연건수는 막대로 그러줘" — 종류 낱말+그리기 동사는 차트다. 값 낱말
         # ('건수')이 formula/countif로 먼저 잡히면 종류를 말했는데도 되묻는다
         # (2026-08-18 ex5 대화형 각본 정찰).
+        # 단 '비중·추이' 같은 함의어만으로는 차트가 아니다 — 표 인터뷰의 헤더 답을
+        # 차트로 읽어 표 슬롯을 버리게 했다(2026-08-25 GUI 실사고).
         return "chart"
     if _looks_like_named_formula(str(message or "")):
         # "이익률 열에 매출이익 나누기 매출" — 열 이름만으로 계산을 말한 경우.
@@ -2779,12 +2806,17 @@ def _drop_superseded_pending_slots(
     pending_slot: PendingCreateTableSlots | None,
     pending_operation: PendingExcelOperationSlots | None,
     incoming: str,
+    table_answer: bool = False,
 ) -> tuple[PendingCreateTableSlots | None, PendingExcelOperationSlots | None]:
     """새 명령이 대기 슬롯과 다른 일이면 슬롯을 버린다.
 
     차트 종류를 묻던 세션에 "노랗게 칠해줘"가 오면 답이 아니라 다른 작업이다.
     표 크기를 묻던 세션에 "피벗 만들어줘"가 와도 같다. 같은 의도이거나 답이
     짧아 의도를 못 정하면 슬롯을 유지한다.
+
+    `table_answer`: 문장이 표 인터뷰의 답처럼 생겼다(헤더 목록·크기·범위). 헤더 이름은
+    아무 낱말이나 될 수 있어 작업 의도로 오독되기 쉽다 — 그때 슬롯을 버리면 사람이
+    막 준 답이 사라진다(2026-08-25 GUI 실사고: '비중'·'전월대비'가 각각 차트·비교로 읽힘).
     """
     if pending_operation is not None:
         pending_label = str(pending_operation.intent or "").strip()
@@ -2793,6 +2825,8 @@ def _drop_superseded_pending_slots(
     else:
         return pending_slot, pending_operation
     if not incoming or incoming == pending_label:
+        return pending_slot, pending_operation
+    if pending_label == "table" and table_answer:
         return pending_slot, pending_operation
     # "아무거나 알아서 해줘"는 새 명령이 아니라 되묻기에 대한 (모호한) 답이다.
     # general로 분류됐다고 표 슬롯을 버리면, 답을 받고도 대화가 원점으로 돌아간다
@@ -5464,6 +5498,14 @@ _CHART_KIND_WORDS: tuple[tuple[re.Pattern[str], str], ...] = (
     # "비중/비율"만 말했을 때의 부분-전체 그림 기본값이 도넛이다.
     (re.compile(r"(비중|비율|구성비)", re.IGNORECASE), "doughnut"),
 )
+#: 위 표에서 **종류만 함의**하는 낱말들 — 차트를 요청했다는 근거는 되지 않는다.
+#: 2026-08-25 GUI 실사고: 표 인터뷰의 헤더 답 "…카테고리, 매출액, 비중, 전월대비로 만들어줘"에서
+#: '비중'(→도넛)만으로 차트 훅이 켜져 표 대신 **빈 차트**가 만들어졌다. 함의어는 차트가
+#: 다른 낱말로 근거를 얻은 뒤 종류를 고를 때만 쓴다. '추이/트렌드'(→선)도 같은 부류다.
+_IMPLIED_CHART_KIND_PATTERNS: tuple[re.Pattern[str], ...] = (
+    _CHART_KIND_WORDS[-1][0],
+    re.compile(r"(추이|트렌드)", re.IGNORECASE),
+)
 
 
 def _chart_kind_from_message(message: str) -> str:
@@ -5472,6 +5514,29 @@ def _chart_kind_from_message(message: str) -> str:
         if pattern.search(text):
             return kind
     return ""
+
+
+def _explicit_chart_evidence(message: str) -> bool:
+    """문장이 차트를 **말했는가** — 차트 명사(차트·그래프·시각화)나 명시 종류(도넛·막대·원형…).
+
+    함의어(비중·비율·구성비·추이·트렌드)만으로는 참이 아니다. 의도 해석에 적용한 규칙과
+    같다: 문장에 실제로 있는 낱말만 근거로 삼는다.
+    """
+    text = str(message or "")
+    if _ACTION_EVIDENCE["excel_live.create_chart"].search(text):
+        return True
+    for pattern, _kind in _CHART_KIND_WORDS:
+        if pattern in _IMPLIED_CHART_KIND_PATTERNS:
+            continue
+        found = pattern.search(text)
+        if found is None:
+            continue
+        # '추이'는 선 그래프 항목(`선\s*그래프|꺾은|라인|line|추이|트렌드`) 안에 섞여 있어
+        # 그 항목이 걸려도 실제로 걸린 낱말이 함의어면 근거로 치지 않는다.
+        if any(p.fullmatch(found.group(0)) for p in _IMPLIED_CHART_KIND_PATTERNS):
+            continue
+        return True
+    return False
 
 
 def _extract_quoted_chart_title(message: str) -> str:
@@ -8440,6 +8505,28 @@ async def _run_command(
                 reason=CRISIS_REPLY,
                 result={"route_to_chat": False, "safety": True},
             )
+        # 직전 실행에 대한 정정·항의("아니 표를 만들랬지 차트를 만들게 하지는 않았는데")는
+        # 명령이 아니다. 명사만 주워 다른 작업을 계획하지 말고, 되돌리기와 재요청을 안내한다
+        # (2026-08-25 GUI 실사고). 부정 지시 검사보다 앞 — "…하지는 않았는데"가 부정 지시로
+        # 읽히면 "네, 하지 않겠습니다"가 나가 항의에 엉뚱한 답이 된다.
+        if _looks_like_complaint_about_last_action(str(req.message or "")):
+            question = (
+                "방금 실행한 작업이 요청과 달랐군요. 화면의 '되돌리기'로 되돌린 뒤, 원하시는 "
+                "작업을 한 문장으로 다시 말씀해 주세요. 예: 'A1:D6에 이름, 점수 헤더로 표 만들어줘'"
+            )
+            trace_route("quick_rule:hit", why="직전 실행에 대한 정정·항의 — 되돌리기 안내")
+            return ExcelLiveActionResponse(
+                ok=True,
+                action="excel_live.clarify",
+                reason=question,
+                result={
+                    "ask_follow_up": True,
+                    "follow_up_question": question,
+                    "operation_intent": "clarify",
+                    "complaint_about_last_action": True,
+                    "suggest_undo": True,
+                },
+            )
         # 부정 지시("아직 저장하지 마", "지우지 마")는 실행 요청이 아니다. 플래너에
         # 넘기면 부정을 못 보고 그 행동을 계획하고, 해석 카드조차 "저장합니다"로
         # 뜬다(2026-08-18 대화형 러너 실측). 결정적으로 알아듣고 확인만 준다.
@@ -8610,6 +8697,12 @@ async def _run_command(
         pending_slot=pending_slot,
         pending_operation=pending_operation,
         incoming=incoming_intent,
+        # 표 인터뷰의 답(헤더 목록·크기·범위)은 새 명령이 아니다. 헤더 이름이 우연히
+        # 작업 낱말('비중'→차트, '전월대비'→비교)이면 슬롯이 밀려나 답을 잃었다
+        # (2026-08-25 GUI 실사고: 표 대신 빈 차트).
+        table_answer=len(hints.get("headers") or []) >= 2
+        or hints.get("rows") is not None
+        or hints.get("cols") is not None,
     )
     if pending_operation is not None:
         fallback_rule_step = None
@@ -8930,6 +9023,9 @@ async def _run_command(
             chart_kind_hint = _chart_kind_from_message(req.message)
             if (
                 chart_kind_hint
+                # 함의어('비중'→도넛)만으로는 켜지 않는다 — 표 인터뷰의 헤더 답을 차트로
+                # 만들어 버렸다(2026-08-25 GUI 실사고). 차트를 말한 문장에만.
+                and _explicit_chart_evidence(req.message)
                 and re.search(r"(보여|그려|뽑아|만들|생성|시각화)", req.message or "")
                 and not re.search(r"(지워|삭제|없애|제거|치워)", req.message or "")
             ):

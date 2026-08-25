@@ -206,6 +206,23 @@ def _strip_value_fillers(raw: str) -> str:
 COLUMN_LETTER_PATTERN = re.compile(r"(?<![A-Za-z0-9])([A-Za-z])\s*열")
 
 
+def _range_ref_shape(ref: str) -> tuple[int, int] | None:
+    """`A1:D6` → (6행, 4열). 한 칸이나 못 읽는 표기는 None."""
+    match = re.fullmatch(r"\$?([A-Za-z]{1,3})\$?(\d{1,7}):\$?([A-Za-z]{1,3})\$?(\d{1,7})", str(ref or "").strip())
+    if not match:
+        return None
+
+    def _col(letters: str) -> int:
+        n = 0
+        for ch in letters.upper():
+            n = n * 26 + (ord(ch) - 64)
+        return n
+
+    rows = abs(int(match.group(4)) - int(match.group(2))) + 1
+    cols = abs(_col(match.group(3)) - _col(match.group(1))) + 1
+    return (rows, cols) if rows > 0 and cols > 0 else None
+
+
 def _extract_range_ref(text: str) -> str | None:
     match = RANGE_REF_PATTERN.search(str(text or ""))
     if not match:
@@ -2480,6 +2497,18 @@ def _extract_listed_headers(source: str) -> list[str]:
         candidate = without_tail
         # "금액, 장소, 날짜 헤더로 표 만들어줘"의 마지막 토큰에 붙는 꼬리를 뗀다.
         candidate = re.sub(r"\s*(?:헤더|컬럼|열)\s*(?:로|으로|는|은)?\s*$", "", candidate).strip()
+        if index == len(tokens) - 1:
+            # "…비중, 전월대비로 만들어줘" — 표 낱말 없이 '(으)로 + 동사'로 끝나는 꼬리.
+            # 마지막 헤더가 "전월대비로 만들어줘"째로 저장됐다(2026-08-25 GUI 실사고).
+            trimmed = re.sub(
+                r"\s*(?:으로|로)?\s*(?:만들어|생성해|작성해|정해|지정해|잡아|해)\s*"
+                r"(?:줘요|줘|주세요|주라|줄래|봐|놔)?\s*[~.!?…]*$",
+                "",
+                candidate,
+            ).strip()
+            if trimmed and trimmed != candidate:
+                candidate = trimmed
+                had_table_tail = True
         if had_table_tail:
             candidate = _strip_list_particle(candidate)
         if candidate:
@@ -2553,9 +2582,17 @@ def extract_create_table_slot_hints(message: str) -> dict[str, Any]:
         rows = rows if rows is not None else axis_rows
         cols = cols if cols is not None else axis_cols
 
-    start_cell = _extract_range_ref(text)
-    if start_cell and ":" in start_cell:
-        start_cell = start_cell.split(":")[0]
+    range_ref = _extract_range_ref(text)
+    start_cell = range_ref
+    if range_ref and ":" in range_ref:
+        start_cell = range_ref.split(":")[0]
+        # "A1:D6 여기가 표 크기고 …" — 붙여넣은 범위가 곧 크기다. 크기 표기는 "5*5"·"4행 3열"만
+        # 알아들어서 범위로 답한 사람이 같은 질문을 다시 받았다(2026-08-25 GUI 실사고).
+        if rows is None or cols is None:
+            shape = _range_ref_shape(range_ref)
+            if shape is not None:
+                rows = rows if rows is not None else max(1, min(100, shape[0]))
+                cols = cols if cols is not None else max(1, min(50, shape[1]))
 
     # 따옴표로 감싼 목록이 있으면 그게 가장 확실한 헤더다.
     # 쉼표 분해는 "'법인카드, 조교카드 이체 여부'"처럼 항목 안에 쉼표가 있으면 쪼개지고,

@@ -4578,3 +4578,126 @@ class TestIntentAttemptsAreAlwaysLogged:
 
         notes = asyncio.run(self._call(monkeypatch, intent_error=TimeoutError("느림")))
         assert notes and notes[0]["outcome"] == "error:TimeoutError", notes
+
+
+class TestGuiTableInterviewIncident20260825:
+    """2026-08-25 GUI 실사고 — 빈 범위를 붙여넣고 표를 만들려던 다섯 턴이 전부 무너졌다.
+
+    (A) "A1:D6 여기에 입력 좀 해줘" → '좀' 때문에 값 되묻기 규칙을 빠져나가 플래너가
+        가짜 표(김철수/개발자)를 지어냄(스키마 불일치로만 막힘)
+    (D) 표 인터뷰의 헤더 답 "…비중, 전월대비로 만들어줘" → '비중'(→도넛)이 차트 훅을 켜고
+        표 슬롯을 밀어내 **표 대신 빈 차트**가 만들어짐. 고치자 '전월대비'가 compare로 읽혀 또 밀림
+    (E) "아니 표를 만들랬지 차트를 만들게 하지는 않았는데?" → 명사 '차트'만 주워 "차트 종류를…"
+
+    다섯 턴을 LLM 없이(금지 스텁) 끝까지 재생하고 **파일 상태**로 판정한다.
+    """
+
+    @staticmethod
+    def _client(tmp_path, monkeypatch):
+        from types import SimpleNamespace
+
+        from fastapi.testclient import TestClient
+        from openpyxl import Workbook
+
+        from office_claw_sidecar.main import app
+        from office_claw_sidecar.routers import excel_live as router
+        from office_claw_sidecar.services.llm_service import get_llm_service
+
+        monkeypatch.setenv("EXCEL_LIVE_ENGINE", "file")
+        xlsx = tmp_path / "gui.xlsx"
+        wb = Workbook()
+        wb.active.title = "데이터"
+        wb.save(xlsx)
+        svc = router.get_excel_live_service()
+        svc.select_workbook(str(xlsx))
+        svc.select_sheet(None, "데이터")
+
+        class _NoLLM:
+            def __getattr__(self, name):
+                def _refuse(*a, **k):
+                    raise RuntimeError(f"LLM 호출 금지({name})")
+                return _refuse
+
+        # monkeypatch로 걸어야 테스트가 끝나면 **복원**된다 — 직접 대입하면 뒤 테스트가
+        # 진짜 플래너를 못 불러 순서 의존 실패가 난다(2026-08-25 전체 pytest 실측:
+        # test_noop_honesty가 이 클래스 뒤에서만 깨졌다).
+        monkeypatch.setitem(app.dependency_overrides, get_llm_service, lambda: _NoLLM())
+        router._pending_create_table_slots.clear()
+        router._pending_operation_slots.clear()
+        return TestClient(app), xlsx, SimpleNamespace(session="excel-live::ui::pin-0825")
+
+    @staticmethod
+    def _post(client, session, msg, ctx=None):
+        body = {"message": msg, "session_id": session, "approve": False}
+        if ctx:
+            body["context_range"] = ctx
+        r = client.post("/excel-live/command", json=body, headers={"Authorization": "Bearer dev-token"})
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    def test_the_five_turns_end_with_a_table_not_a_chart(self, tmp_path, monkeypatch) -> None:
+        from openpyxl import load_workbook
+
+        client, xlsx, ns = self._client(tmp_path, monkeypatch)
+        headers = {"Authorization": "Bearer dev-token"}
+
+        a = self._post(client, ns.session, "A1:D6 여기에 입력 좀 해줘")
+        assert "어떤 값을 넣을까요" in str(a.get("reason")), a  # (A) 값을 되묻는다 — LLM 없이
+
+        self._post(client, ns.session, "가게 매출 관련해서 표를 작성할거야", "A1:D6")
+        d = self._post(
+            client, ns.session, "A1:D6 여기가 표 크기고 \n헤더는 카테고리, 매출액, 비중, 전월대비로 만들어줘"
+        )
+        assert d.get("action") == "excel_live.create_table", d  # (D) 차트가 아니라 표
+        pend = d.get("pending_approval") or {}
+        assert pend.get("approval_id"), d
+        client.post(
+            "/excel-live/approval", json={"approval_id": pend["approval_id"], "approved": True}, headers=headers
+        )
+
+        ws = load_workbook(xlsx)["데이터"]
+        assert [ws.cell(1, c).value for c in range(1, 5)] == ["카테고리", "매출액", "비중", "전월대비"]
+        assert len(ws._charts) == 0
+
+        e = self._post(client, ns.session, "아니 내가 표를 만들랬지 차트를 만들게 하지는 않았는데?", "A1:D6")
+        assert (e.get("result") or {}).get("complaint_about_last_action") is True, e  # (E) 되돌리기 안내
+
+    def test_adverbs_do_not_break_the_valueless_write_rule(self) -> None:
+        from office_claw_sidecar.routers.excel_live import _BARE_WRITE_REQUEST
+
+        for m in ("A1:D6 여기에 입력 좀 해줘", "여기에 값 좀 입력해줘", "여기에 한번 입력해봐"):
+            assert _BARE_WRITE_REQUEST.match(m), m
+        for m in ("A1:D6에 서울,100; 부산,200 입력해줘", "여기에 합계 라고 써줘", "좀 정렬해줘"):
+            assert not _BARE_WRITE_REQUEST.match(m), m
+
+    def test_implied_chart_words_alone_are_not_chart_requests(self) -> None:
+        from office_claw_sidecar.routers.excel_live import _detect_operation_intent, _explicit_chart_evidence
+
+        for m in ("지연건수는 막대로 그러줘", "클레임 비중 도넛으로 보여줘", "정시배송률 추이를 선 그래프로 그려줘"):
+            assert _explicit_chart_evidence(m) and _detect_operation_intent(m) == "chart", m
+        for m in ("헤더는 카테고리, 매출액, 비중, 전월대비로 만들어줘", "배송추이 시트 만들어줘", "구성비 시트 만들어줘"):
+            assert not _explicit_chart_evidence(m), m
+            assert _detect_operation_intent(m) != "chart", m
+
+    def test_a_complaint_is_not_mistaken_for_a_correction_or_a_negated_order(self) -> None:
+        from office_claw_sidecar.routers.excel_live import (
+            _looks_like_complaint_about_last_action as is_complaint,
+        )
+
+        assert is_complaint("아니 내가 표를 만들랬지 차트를 만들게 하지는 않았는데?")
+        assert is_complaint("아니 정렬하라고 한 적 없는데")
+        # 정정 문맥("아니 부산으로 바꿔줘")과 부정 지시("아직 저장하지 마")는 각자의 길을 지킨다.
+        for m in ("아니 부산으로 바꿔줘", "아직 저장하지 마", "아니 그 아래 칸에는 평균도 넣어줘", "지우지 마"):
+            assert not is_complaint(m), m
+
+    def test_a_pasted_range_answers_the_table_size_and_header_tails_are_clean(self) -> None:
+        from office_claw_sidecar.services.excel_live_agent import extract_create_table_slot_hints
+
+        h = extract_create_table_slot_hints(
+            "A1:D6 여기가 표 크기고 \n헤더는 카테고리, 매출액, 비중, 전월대비로 만들어줘"
+        )
+        assert (h["rows"], h["cols"], h["start_cell"]) == (6, 4, "A1")
+        assert h["headers"] == ["카테고리", "매출액", "비중", "전월대비"]
+        # 기존 표기는 그대로.
+        h2 = extract_create_table_slot_hints("4행 3열, 금액, 장소, 날짜로 표 만들어줘")
+        assert (h2["rows"], h2["cols"], h2["headers"]) == (4, 3, ["금액", "장소", "날짜"])
