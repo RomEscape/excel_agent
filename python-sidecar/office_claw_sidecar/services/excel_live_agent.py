@@ -1425,6 +1425,13 @@ async def parse_excel_live_command(
     # 그 경로에만 존재한다.
     is_replan = bool(str(context.get("failed_error") or "").strip())
     if not context.get("skip_intent_normalizer") and not is_replan:
+        # 성공만 기록하면 "얼마나 자주 시도했고 왜 물러났는가"를 로그로 셀 수 없다
+        # (2026-08-18부터 알려진 공백). 이제 시도마다 outcome을 남긴다:
+        #   mapped(계획으로 옮김) · unmapped(분류는 됐으나 매핑·근거에서 물러남)
+        #   · error:<예외형>(호출 자체가 실패 — 타임아웃 포함)
+        intent: dict[str, Any] | None = None
+        normalized: dict[str, Any] | None = None
+        outcome = ""
         try:
             intent = await normalize_intent(
                 message, context.get("workbook_digest"), llm_service
@@ -1432,15 +1439,18 @@ async def parse_excel_live_command(
             normalized = intent_to_plan(
                 intent, digest=context.get("workbook_digest"), message=message
             )
-        except Exception:
+            outcome = "mapped" if normalized is not None else "unmapped"
+        except Exception as exc:
             normalized = None
+            outcome = f"error:{type(exc).__name__}"
+        trace_note(
+            "llm_call",
+            purpose="intent_normalizer",
+            outcome=outcome,
+            task=str((intent or {}).get("task") or ""),
+            mapped_action=str((normalized or {}).get("action") or ""),
+        )
         if normalized is not None:
-            trace_note(
-                "llm_call",
-                purpose="intent_normalizer",
-                task=str((intent or {}).get("task") or ""),
-                mapped_action=str(normalized.get("action") or ""),
-            )
             return normalized
     # 목록 조회는 어느 모드에서든 편집 요청의 답이 아니다. 관측(read_range·
     # validate_data)만 모드에 따라 허용한다 — 그게 이번 실험의 변수다.

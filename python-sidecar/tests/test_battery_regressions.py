@@ -4520,3 +4520,61 @@ class TestBatch2IntentKindsMapDeterministically:
         """머리글+별 짝이 문장에 없으면 묶음 기준을 지어내지 않는다."""
         assert self._plan("주문건수 합계 알려줘", task="group_by",
                           column="주문건수", option="합계") is None
+
+
+class TestIntentAttemptsAreAlwaysLogged:
+    """의도 해석의 실패 시도가 로그에 안 남던 공백(2026-08-18부터 알려짐).
+
+    성공만 기록하면 "얼마나 자주 시도했고 왜 물러났는가"를 셀 수 없다 — 커버리지
+    확장의 근거 수치가 전부 수동 재측정에 기대게 된다. 이제 시도마다 outcome이
+    남는다: mapped · unmapped · error:<예외형>.
+    """
+
+    @staticmethod
+    async def _call(monkeypatch, *, intent_result=None, intent_error=None):
+        import office_claw_sidecar.services.excel_live_agent as agent
+
+        notes: list[dict] = []
+        monkeypatch.setattr(
+            agent, "trace_note", lambda kind, **kw: notes.append({"kind": kind, **kw})
+        )
+
+        async def _fake_normalize(message, digest, llm):
+            if intent_error is not None:
+                raise intent_error
+            return intent_result
+
+        monkeypatch.setattr(agent, "normalize_intent", _fake_normalize)
+
+        async def _fake_planner(message, llm_service, context=None):
+            return {"action_plan": [], "intent": "unknown"}
+
+        monkeypatch.setattr(agent, "parse_command_plan_with_llm", _fake_planner)
+        try:
+            await agent.parse_excel_live_command("병합 다 풀어줘", None, context={})
+        except Exception:
+            pass  # 뒷단(플래너 흉내)의 모양은 이 핀의 관심사가 아니다
+        return [n for n in notes if n.get("purpose") == "intent_normalizer"]
+
+    def test_a_mapped_attempt_records_mapped(self, monkeypatch) -> None:
+        import asyncio
+
+        notes = asyncio.run(self._call(
+            monkeypatch, intent_result={"task": "unmerge", "range": None, "column": None, "option": None}
+        ))
+        assert notes and notes[0]["outcome"] == "mapped", notes
+        assert notes[0]["mapped_action"] == "excel_live.unmerge_cells"
+
+    def test_an_unmapped_attempt_records_unmapped(self, monkeypatch) -> None:
+        import asyncio
+
+        notes = asyncio.run(self._call(
+            monkeypatch, intent_result={"task": "pivot", "range": None, "column": None, "option": None}
+        ))
+        assert notes and notes[0]["outcome"] == "unmapped", notes
+
+    def test_a_failed_call_records_the_error_kind(self, monkeypatch) -> None:
+        import asyncio
+
+        notes = asyncio.run(self._call(monkeypatch, intent_error=TimeoutError("느림")))
+        assert notes and notes[0]["outcome"] == "error:TimeoutError", notes
