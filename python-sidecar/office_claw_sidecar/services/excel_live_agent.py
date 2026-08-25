@@ -866,6 +866,11 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
         or _COLOR_TOKEN.search(lowered)
         or "배경" in lowered
     ):
+        if re.search(r"(색조|컬러\s*스케일|color\s*scale|단계로|그라데이션|진하게.{0,14}연하게|연하게.{0,14}진하게)", lowered):
+            # "금액 크기에 따라 색깔 단계로 칠해줘"는 색조(color scale)지 단색 칠이 아니다 —
+            # 라우터 규칙은 이미 물러나는데 이 파서가 노란 단색을 냈다(2026-08-25 커버리지 v2
+            # 표적 재측정). 의도 해석의 color_scale이 받는다.
+            return None
         if re.search(r"급증|급감|이상치|임박|근접|평소보다|지난주보다|지난달보다", lowered):
             # 계산할 수 없는 조건("급증한 값")으로 전체를 칠하면 안 된다
             # (2026-08-18 사냥: 통짜 칠 오실행). 물러나면 해석 카드가 받는다.
