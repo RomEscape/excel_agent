@@ -2998,13 +2998,15 @@ class TestTheTaskListHasOneSource:
     # freeze·autofit)을 넣어 17 → 21종. 종류 상한 경고(13~14 + 신규 배치)에 따라
     # 배치마다 44문장 재측정으로 분류 품질을 확인한다.
     # 2026-08-25 배치 1b: 명시 어휘 5종(merge·unmerge·data_bar·color_scale·
-    # rename_sheet) → 26종. 44문장 재측정은 커밋 뒤 게이트와 겹치지 않게 돌린다.
+    # rename_sheet) → 26종. 배치 2: 열 연산 4종 + group_by(읽기 전용 조회) → 31종.
+    # 확장마다 44문장 재측정으로 밀려남 0을 확인한다.
     EXPECTED = (
         "fill_color", "font", "highlight", "number_format", "formula", "sort", "filter",
         "dedupe", "clear_values", "reset_all", "create_table", "pivot", "chart",
         "write_value", "find_replace", "read",
         "create_sheet", "delete_charts", "freeze", "autofit",
         "merge", "unmerge", "data_bar", "color_scale", "rename_sheet",
+        "delete_sheet", "drop_column", "add_column", "rename_column", "group_by",
         "other",
     )
 
@@ -4443,3 +4445,78 @@ class TestBatch1bIntentKindsMapDeterministically:
     def test_an_unmerge_shaped_sentence_cannot_feed_merge(self) -> None:
         """'병합 해제'에서 task=merge로 잘못 와도 해제 낱말이 있으면 물러난다."""
         assert self._plan("병합 해제해줘", task="merge", range="A1:F1") is None
+
+
+class TestBatch2IntentKindsMapDeterministically:
+    """라운드 2 배치 2 — 열 연산 4종 + group_by(읽기 전용 조회).
+
+    파괴 성격(시트·열 삭제)이라 물러남 조건이 매핑 조건만큼 중요하다:
+    이름이 문장에 없거나, 머리글·시트로 확정되지 않으면 절대 맵핑하지 않는다.
+    """
+
+    def _plan(self, message="", **intent):
+        from office_claw_sidecar.services.excel_intent_normalizer import intent_to_plan
+
+        base = {"task": None, "range": None, "column": None, "option": None}
+        digest = {
+            "active_sheet": "지역성과",
+            "sheets": [{
+                "name": "지역성과", "used_range": "A1:F6",
+                "columns": [
+                    {"letter": "A", "header": "지역"},
+                    {"letter": "B", "header": "주문건수"},
+                ],
+                "row_count": 6,
+            }, {"name": "임시"}],
+        }
+        return intent_to_plan({**base, **intent}, digest=digest, message=message)
+
+    @pytest.mark.parametrize(
+        ("message", "intent", "action", "params"),
+        [
+            ("임시 시트 삭제해줘", {"task": "delete_sheet", "option": "임시"},
+             "excel_live.delete_sheet", {"sheet_name": "임시"}),
+            ("주문건수 열 지워줘", {"task": "drop_column", "column": "주문건수"},
+             "excel_live.drop_column", {"column": "주문건수"}),
+            ("비고 열 하나 추가해줘", {"task": "add_column", "option": "비고"},
+             "excel_live.add_column", {"name": "비고"}),
+            ("주문건수 열 이름을 판매건수로 바꿔줘",
+             {"task": "rename_column", "column": "주문건수", "option": "판매건수로"},
+             "excel_live.rename_column", {"column": "주문건수", "new_name": "판매건수"}),
+            ("지역별 주문건수 합계 알려줘", {"task": "group_by", "column": "주문건수", "option": "합계"},
+             "excel_live.group_by_aggregate",
+             {"group_column": "지역", "value_column": "주문건수", "agg": "sum"}),
+            # 모델은 column 슬롯에 묶음 기준을 싣는 일이 잦다(0825 실측) — 값 열은
+            # 문장에 등장하는 다른 머리글에서 찾아야 한다.
+            ("지역별 주문건수 합계 알려줘", {"task": "group_by", "column": "지역", "option": "SUM"},
+             "excel_live.group_by_aggregate",
+             {"group_column": "지역", "value_column": "주문건수", "agg": "sum"}),
+            ("지역별로 몇 건씩인지 알려줘", {"task": "group_by", "option": "건수"},
+             "excel_live.group_by_aggregate", {"group_column": "지역", "agg": "count"}),
+        ],
+    )
+    def test_the_kind_maps_to_its_action(self, message, intent, action, params) -> None:
+        plan = self._plan(message, **intent)
+        steps = (plan or {}).get("action_plan") or []
+        assert steps and steps[0]["action"] == action, plan
+        for key, value in params.items():
+            assert steps[0]["params"].get(key) == value, steps[0]
+
+    def test_deleting_an_absent_sheet_backs_off(self) -> None:
+        """없는 시트 이름·문장에 없는 이름 — 어느 쪽이든 지어내서 지우면 안 된다."""
+        assert self._plan("없는탭 시트 삭제해줘", task="delete_sheet", option="없는탭") is None
+        assert self._plan("시트 삭제해줘", task="delete_sheet", option="임시") is None
+
+    def test_dropping_an_unresolved_column_backs_off(self) -> None:
+        assert self._plan("매출 열 지워줘", task="drop_column", column="매출") is None
+
+    def test_group_by_backs_off_when_writing_is_wanted(self) -> None:
+        """"~별 합계를 넣어줘"는 조회가 아니다 — 읽기 전용 매핑이 가로채면
+        사용자는 결과가 시트에 써졌다고 믿는데 실제로는 아무 데도 안 써진다."""
+        assert self._plan("지역별 주문건수 합계 G열에 넣어줘",
+                          task="group_by", column="주문건수", option="합계") is None
+
+    def test_group_by_without_the_byword_backs_off(self) -> None:
+        """머리글+별 짝이 문장에 없으면 묶음 기준을 지어내지 않는다."""
+        assert self._plan("주문건수 합계 알려줘", task="group_by",
+                          column="주문건수", option="합계") is None

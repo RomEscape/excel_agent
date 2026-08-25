@@ -145,6 +145,19 @@ BATCH_1B_CASES = [
     ("요약 시트 새로 만들어줘", j_task("create_sheet")),
 ]
 
+# 라운드 2 배치 2(2026-08-25) — 열 연산 4종 + group_by + 이웃 함정.
+BATCH_2_CASES = [
+    ("임시 시트는 삭제해줘", j_task("delete_sheet")),
+    ("비고 열 지워줘", j_task("drop_column")),
+    ("확인자 열 하나 추가해줘", j_task("add_column")),
+    ("금액 열 이름을 매출액으로 바꿔줘", j_task("rename_column")),
+    ("지역별 금액 합계 알려줘", j_task("group_by")),
+    ("담당자별로 몇 건씩인지 보여줘", j_task("group_by")),
+    # 함정: 표를 만들어달라는 건 pivot, 값을 비우라는 건 clear_values다.
+    ("지역별 금액 합계 집계표 만들어줘", j_task("pivot")),
+    ("비고 열 비워줘", j_task("clear_values")),
+]
+
 
 async def ask(llm, model: str, message: str) -> dict:
     prompt = PROMPT.format(headers=", ".join(HEADERS), message=message)
@@ -186,7 +199,7 @@ async def main() -> None:
 
     b1b_ok = 0
     print()
-    for msg, judge in BATCH_1B_CASES:
+    for msg, judge in BATCH_1B_CASES + BATCH_2_CASES:
         out = await ask(llm, model, msg)
         ok = bool(judge(out))
         b1b_ok += ok
@@ -198,7 +211,7 @@ async def main() -> None:
         ok, total = stats[style]
         print(f"{name}: {ok}/{total} ({ok/total*100:.0f}%)   [플래너 실측: 훈련체 67% / 사용자체 58%]")
     print(f"GUI 사고 문장: {inc_ok}/{len(INCIDENT_CASES)}")
-    print(f"배치 1b 문장: {b1b_ok}/{len(BATCH_1B_CASES)}")
+    print(f"배치 1b+2 문장: {b1b_ok}/{len(BATCH_1B_CASES) + len(BATCH_2_CASES)}")
     if CONF:
         import collections
 

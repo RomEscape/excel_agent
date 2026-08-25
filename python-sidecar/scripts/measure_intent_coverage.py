@@ -113,6 +113,16 @@ CASES: list[dict[str, Any]] = [
     case("rename_sheet", option="지역별실적", note="시트 이름 변경", message="시트 이름을 지역별실적으로 바꿔줘"),
     # 조사('으로')가 이름에 붙어 와도 어간을 벗겨 확정해야 한다(블라인드 실측 오답 모양).
     case("rename_sheet", option="지역별실적으로", note="조사 붙은 이름", message="시트 이름을 지역별실적으로 바꿔줘"),
+    # ── 라운드 2 배치 2: 열 연산 4종 + group_by ──────────────────
+    case("delete_sheet", option="매출", note="있는 시트 삭제", message="매출 시트 삭제해줘"),
+    # 없는 시트는 지어내서 지우면 안 된다 — 물러나는 게 옳다.
+    case("delete_sheet", option="없는탭", note="없는 시트(물러나는 게 옳음)", message="없는탭 시트 삭제해줘"),
+    case("drop_column", column="비고", note="열 삭제", message="비고 열 지워줘"),
+    case("add_column", option="확인자", note="열 추가", message="확인자 열 하나 추가해줘"),
+    case("rename_column", column="금액", option="매출액으로", note="열 이름 변경(조사)", message="금액 열 이름을 매출액으로 바꿔줘"),
+    case("group_by", column="금액", option="합계", note="~별 집계 조회", message="지역별 금액 합계 알려줘"),
+    # 쓰기 낱말이 보이면 읽기 전용 매핑이 가로채면 안 된다.
+    case("group_by", column="금액", option="합계", note="쓰기 요청(물러나는 게 옳음)", message="지역별 금액 합계 G열에 넣어줘"),
 ]
 
 

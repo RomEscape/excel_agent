@@ -29,6 +29,7 @@ from typing import Any
 
 # 범위 모양·값 펴기는 바인더 것을 **빌려 쓴다**. 여기서 또 짜면 "1,000" 처리,
 # 지시문 제외, 브로드캐스트 상한이 두 벌이 되어 반드시 갈라진다.
+from .aggregate_lexicon import AGG_WORD_PATTERN, aggregate_func
 from .color_lexicon import COLOR_HEX
 from .excel_live_service import _ALIGN_WORDS
 from .excel_param_binder import _range_shape, _shape_write_values, sheet_entry
@@ -54,11 +55,15 @@ find_replace(찾아 바꾸기), read(조회), create_sheet(새 시트 만들기)
 delete_charts(차트 삭제), freeze(행·열 틀 고정), autofit(열 너비 자동 맞춤),
 merge(셀 병합), unmerge(병합 해제), data_bar(데이터 막대),
 color_scale(값 크기 따라 색조), rename_sheet(기존 시트 이름 바꾸기),
+delete_sheet(있는 시트 삭제), drop_column(열 삭제), add_column(새 열 추가),
+rename_column(열 이름 바꾸기), group_by(~별 집계 결과 조회),
 other(그 외)
 
 주의: 색칠에 조건(이상·이하·넘는·~인 셀만 같은 말)이 붙어 있으면 highlight,
 조건이 없으면 **어떤 색이든 전부 fill_color**다.
 시트를 **새로** 만들면 create_sheet, **있는** 시트의 이름을 바꾸면 rename_sheet다.
+~별로 묶은 집계 **결과를 알려달라**는 요청이 group_by이고, 집계 **표를 만들어달라**는
+요청은 pivot이다.
 option에는 그 문장에 실제로 나온 값만 적는다.
 
 규칙:
@@ -618,6 +623,117 @@ def intent_to_plan(
                 "params": params,
                 "reason": "의도 정규화: 시트 이름 변경",
             }]
+
+    elif (
+        task == "delete_sheet"
+        and _worded(r"시트", r"탭", r"sheet")
+        and _worded(r"삭제", r"지워", r"없애", r"제거")
+    ):
+        # 파괴 액션 — 이름이 문장에 있고 **실제로 존재하는 시트**일 때만. CONFIRM 카드와
+        # 롤백 면제 사유(_ROLLBACK_EXEMPT_ACTIONS)는 기존 경로가 그대로 적용된다.
+        name = str(option_text or column or "").strip().strip("'\"")
+        sheet_names = {str(x.get("name") or "") for x in ((digest or {}).get("sheets") or [])}
+        if name and name in plain_message and name in sheet_names:
+            steps = [{
+                "action": "excel_live.delete_sheet",
+                "params": {"sheet_name": name},
+                "reason": "의도 정규화: 시트 삭제",
+            }]
+
+    elif (
+        task == "drop_column"
+        and _worded(r"열", r"컬럼", r"column")
+        and _worded(r"삭제", r"지워", r"없애", r"제거", r"빼")
+    ):
+        # 열 이름이 문장에 있고 머리글로 확정될 때만 — 짐작한 열을 지우면 그게 파괴다.
+        header_name = str(column or "").strip()
+        if header_name and header_name in plain_message and _column_letter(entry, header_name):
+            steps = [{
+                "action": "excel_live.drop_column",
+                "params": {"column": header_name},
+                "reason": "의도 정규화: 열 삭제",
+            }]
+
+    elif (
+        task == "add_column"
+        and _worded(r"열", r"컬럼", r"column")
+        and _worded(r"추가", r"새", r"만들", r"넣")
+    ):
+        name = str(option_text or "").strip().strip("'\"")
+        if (
+            name
+            and name.lower() not in {"열", "컬럼", "column", "새 열"}
+            and len(name) <= 40
+            and name in plain_message
+        ):
+            steps = [{
+                "action": "excel_live.add_column",
+                "params": {"name": name},
+                "reason": "의도 정규화: 열 추가",
+            }]
+
+    elif (
+        task == "rename_column"
+        and _worded(r"열", r"컬럼", r"column")
+        and _worded(r"이름", r"바꿔", r"변경", r"rename")
+    ):
+        old = new = ""
+        if isinstance(option, dict):
+            old = str(option.get("from") or option.get("old") or option.get("find") or "").strip()
+            new = str(option.get("to") or option.get("new") or option.get("replace") or "").strip()
+        if not new:
+            old = old or str(column or "").strip()
+            raw_new = option_text.strip().strip("'\"")
+            candidates = [raw_new]
+            for particle in ("으로", "로"):
+                if raw_new.endswith(particle) and len(raw_new) > len(particle):
+                    candidates.append(raw_new[: -len(particle)])
+            new = next(
+                (c for c in sorted(candidates, key=len) if c and c in plain_message), ""
+            )
+        if new and old and old != new and _column_letter(entry, old):
+            steps = [{
+                "action": "excel_live.rename_column",
+                "params": {"column": old, "new_name": new},
+                "reason": "의도 정규화: 열 이름 변경",
+            }]
+
+    elif task == "group_by":
+        # 읽기 전용 조회(group_by_aggregate는 시트를 바꾸지 않는다). 쓰기 낱말이
+        # 보이면 물러난다 — "지역별 합계를 G열에 넣어줘"는 이 매핑의 일이 아니다.
+        if not _worded(r"넣어", r"써\s*줘", r"입력", r"기록", r"채워", r"표로", r"시트에"):
+            headers = [str(c.get("header") or "") for c in (entry.get("columns") or [])]
+            group_header = next(
+                (h for h in headers if h and f"{h}별" in plain_message), ""
+            )
+            found_agg = AGG_WORD_PATTERN.search(plain_message)
+            agg_word = option_text or (found_agg.group(0) if found_agg else "")
+            func = aggregate_func(agg_word)
+            agg_param = {"SUM": "sum", "AVERAGE": "average", "COUNTA": "count",
+                         "MAX": "max", "MIN": "min"}.get(func, "")
+            # 값 열: 모델은 column 슬롯에 **묶음 기준**("지역")을 싣는 일이 잦다
+            # (0825 실측: "지역별 금액 합계" → column=지역). 슬롯을 믿지 말고
+            # 문장에 실제로 등장하는 다른 머리글에서 찾되, 후보가 둘 이상이면
+            # 지어내지 않고 물러난다.
+            value_header = str(column or "").strip()
+            if not value_header or value_header == group_header or not _column_letter(entry, value_header):
+                in_message = [
+                    h for h in headers
+                    if h and h != group_header and h in plain_message
+                ]
+                value_header = in_message[0] if len(in_message) == 1 else ""
+            value_ok = bool(value_header) and value_header != group_header and bool(
+                _column_letter(entry, value_header)
+            )
+            if group_header and agg_param and (value_ok or agg_param == "count"):
+                params: dict[str, Any] = {"group_column": group_header, "agg": agg_param}
+                if value_ok:
+                    params["value_column"] = value_header
+                steps = [{
+                    "action": "excel_live.group_by_aggregate",
+                    "params": params,
+                    "reason": "의도 정규화: ~별 집계 조회",
+                }]
 
     # dedupe·pivot·chart·create_table·read·other는 매핑하지 않는다 — 슬롯·플래너
     # 경로가 이미 소유하고 있고(배터리 24/24), 여기서 어설프게 겹치면 두 경로가
