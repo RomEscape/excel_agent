@@ -2266,7 +2266,12 @@ _CLEAR_COLUMN_TARGET = re.compile(
     r"(?:[A-Za-z0-9_]{2,24}|[가-힣]{2,12})\s*(?:열|칼럼|컬럼|column)(?=[\s을를은는도만과와,.]|$)",
     re.IGNORECASE,
 )
-_CLEAR_ROW_TARGET = re.compile(r"(중복|빈\s*(?:행|줄|칸)|\d+\s*(?:번째\s*)?(?:행|줄))")
+# '겹치는 데이터'·'똑같은 줄'도 중복 행을 겨냥한 말이다 — 값 비우기 규칙이 "겹치는 데이터 좀
+# 없애줘"를 시트 비우기로 실행했다(2026-08-25 커버리지 v2). 중복 처리 경로에 양보한다.
+_CLEAR_ROW_TARGET = re.compile(
+    r"(중복|겹치|똑같은\s*(?:행|줄|내용|데이터)|같은\s*(?:행|줄|내용)\s*(?:이|가)?\s*(?:두|여러|반복)"
+    r"|빈\s*(?:행|줄|칸)|\d+\s*(?:번째\s*)?(?:행|줄))"
+)
 _CLEAR_CONDITION_TARGET = re.compile(
     # "이상"만으로 잡으면 "뭔가 이상한 명령"이 조건절로 읽힌다. 비교어 앞에 수량이 있어야 한다.
     r"(?:된|인|한|일)\s*(?:것|건|행|줄|항목|데이터|주문|고객|제품)"
@@ -3252,9 +3257,21 @@ def _title_row_merge_plan(message: str, digest: dict[str, Any]) -> list[dict[str
     return []
 
 
+#: 색조(color scale)를 가리키는 말 — 단색 채우기·글꼴 규칙이 이 문장을 가로채면 안 된다.
+_COLOR_SCALE_WORDING = re.compile(
+    r"(색조|컬러\s*스케일|color\s*scale|색깔?\s*단계|단계로\s*(?:칠|채)|그라데이션|진하게.{0,14}연하게|연하게.{0,14}진하게)",
+    re.IGNORECASE,
+)
+
+
 def _build_quick_action_plan(message: str, context_range: str | None) -> list[dict[str, Any]] | None:
     text = str(message or "").strip()
     lowered = text.lower()
+    # 색조 요청은 어떤 빠른 규칙(단색 채우기·조건 강조·글꼴)도 받지 않는다 — 열 이름+"칠해"가
+    # 노란 단색을 내던 걸 한 곳에서 막는다(2026-08-25 커버리지 v2 표적 재측정). 의도 해석의
+    # apply_color_scale이 받는다. 명시 종류가 함께 오면("색조를 빨강~초록으로") 그건 파라미터다.
+    if _COLOR_SCALE_WORDING.search(lowered):
+        return None
     range_match = RANGE_REF_PATTERN.search(text)
     range_ref = str(range_match.group(1)).upper() if range_match else ""
     col_match = COLUMN_LETTER_PATTERN.search(text)
@@ -3340,6 +3357,9 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
     )
     if delete_sheet_match:
         sheet_name = str(delete_sheet_match.group(1)).strip().strip("\"'")
+        # "임시**라는** 시트 없애줘" — 조사가 이름에 붙어 '임시라는' 시트를 찾다 되물었다
+        # (2026-08-25 커버리지 v2). 이름 뒤 인용 조사는 뗀다.
+        sheet_name = re.sub(r"(?:이라는|라는|이란|란)$", "", sheet_name).strip()
         if sheet_name:
             return [
                 {
@@ -3916,9 +3936,11 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
         # 실행돼 데이터가 조용히 사라졌다(2026-08-18 5렌즈 사냥, 조용한 파괴
         # 4건). 여기서 물러나면 해석 카드/되묻기가 받는다 — 안 하고 묻는 쪽이
         # 항상 싸다.
-        if re.search(r"[^\s,]+\s*시트\s*(?:을|를)?\s*(?:지워|삭제|없애|제거|치워)", lowered) and not re.search(
-            r"시트\s*(?:의|에\s*있|내용|값|안)", lowered
-        ):
+        # '탭'도 시트고, "탭**은** 지워도 돼"처럼 조사가 달라도 시트 삭제다(2026-08-25 커버리지 v2:
+        # "임시 탭은 지워도 돼"가 내용 비우기로 실행).
+        if re.search(
+            r"[^\s,]+\s*(?:시트|탭|워크시트|sheet)\s*(?:을|를|은|는|도|이|가)?\s*(?:지워|삭제|없애|제거|치워)", lowered
+        ) and not re.search(r"(?:시트|탭)\s*(?:의|에\s*있|내용|값|안)", lowered):
             # "임시 시트 지워줘"가 선택 영역 내용 삭제로 실행됐다(2026-08-18
             # 사냥). 시트를 지목한 삭제는 여기(내용 비우기) 소관이 아니다.
             return None
