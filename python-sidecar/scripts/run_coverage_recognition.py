@@ -58,14 +58,21 @@ SEED = [
 ]
 
 
-def _seed(path: Path) -> None:
+def _seed(path: Path, task: str = "") -> None:
     wb = Workbook()
     ws = wb.active
     ws.title = "매출"
     for row in SEED:
         ws.append(row)
-    ws.merge_cells("H1:K1")  # unmerge 과제용
-    wb.create_sheet("임시")   # delete_sheet 과제용
+    if task == "unmerge" or task.endswith("_with_note"):
+        # unmerge 과제용 — **사용 범위 안**에 심는다. 첫 판(0825-170320)은 H1:K1에 심어
+        # `__USED_RANGE__`(A1:F9) 밖이라 4문장 전부 "병합 1건 남음"으로 나왔다 — 제품이 아니라
+        # 하네스 결함이었다. 데이터 아래 11행에 메모 줄을 병합해 둔다(값 손실 없음).
+        # **과제별로만** 심는다 — 모든 과제에 심었더니 dedupe가 MergedCell 예외로 죽었다
+        # (두 번째 판). 그 결함 자체는 `*_with_note` 과제가 따로 잰다.
+        ws["A11"] = "비고 메모"
+        ws.merge_cells("A11:C11")
+    wb.create_sheet("임시")  # delete_sheet 과제용
     wb.save(path)
 
 
@@ -84,7 +91,7 @@ def _oracle(task: str, path: Path) -> str:
         return "" if ("매출액" in header and "금액" not in header) else f"머리글 {header}"
     if task == "unmerge":
         return "" if len(ws.merged_cells.ranges) == 0 else f"병합 {len(ws.merged_cells.ranges)}건 남음"
-    if task == "dedupe":
+    if task.startswith("dedupe"):
         rows = [tuple(ws.cell(r, c).value for c in range(1, 7)) for r in range(2, ws.max_row + 1)]
         rows = [r for r in rows if any(v not in (None, "") for v in r)]
         return "" if len(rows) == len(set(rows)) else "중복 행이 남아 있음"
@@ -96,7 +103,7 @@ def _oracle(task: str, path: Path) -> str:
 async def _run_one(row: dict, work: Path, llm) -> dict:
     task = str(row["task"])
     xlsx = work / f"{task}.xlsx"
-    _seed(xlsx)
+    _seed(xlsx, task)
     svc = router.get_excel_live_service()
     svc.select_workbook(str(xlsx))
     svc.select_sheet(None, "매출")

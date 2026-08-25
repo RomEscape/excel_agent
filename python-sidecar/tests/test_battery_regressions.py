@@ -4733,3 +4733,92 @@ class TestSelectionProbeReportsEmptiness:
         assert out.get("available") is True
         if out.get("address"):
             assert isinstance(out.get("empty"), bool), out
+
+
+class TestSharedDispatchResolvesTheSelectedWorkbooksSheet:
+    """공용 디스패치(열 삭제·추가·이름 변경·집계 조회)가 시트를 **목록의 첫 파일**에서 가져오던 것.
+
+    2026-08-25 커버리지 v2: GUI는 workbook_id를 항상 null로 보내는데 `resolve_sheet_name`이
+    rows[0](이름순 첫 파일 `_probe_ex14.xlsx`)의 활성 시트 '콘텐츠 일정'을 돌려줘 "비고 열
+    빼줘"가 "시트를 찾을 수 없습니다: 콘텐츠 일정"으로 죽었다. 이름이 우연히 겹치면 엉뚱한
+    시트에 조용히 실행되는 부류 — 선택된 통합문서를 먼저 본다.
+    """
+
+    def test_the_selected_workbook_wins_over_the_first_listed_one(self) -> None:
+        from types import SimpleNamespace
+
+        from office_claw_sidecar.services.excel_actions import resolve_sheet_name
+
+        rows = [
+            {"workbook_id": r"C:\ws\_probe_ex14.xlsx", "name": "_probe_ex14.xlsx", "active_sheet": "콘텐츠 일정"},
+            {"workbook_id": r"C:\ws\test.xlsx", "name": "test.xlsx", "active_sheet": "매출"},
+        ]
+        service = SimpleNamespace(
+            list_workbooks=lambda: rows, get_selected_workbook_id=lambda: r"C:\ws\test.xlsx"
+        )
+        assert resolve_sheet_name(service, None, None) == "매출"
+        # 명시 지목은 종전대로.
+        assert resolve_sheet_name(service, r"C:\ws\_probe_ex14.xlsx", None) == "콘텐츠 일정"
+        assert resolve_sheet_name(service, None, "지정시트") == "지정시트"
+
+
+class TestCreateTableWritesThePlannedHeaders:
+    """플래너 계획의 `headers`가 create_table 실행에서 버려지던 것(2026-08-25 커버리지 v2).
+
+    서비스 `create_table`에는 headers 인자가 없어 빈 격자만 그려졌다 — "A1:D6에 카테고리,
+    매출액, 비중, 전월대비 헤더로 표 만들어줘"가 A1 빈칸으로 끝났다. 이제 디스패치가
+    격자 다음에 머리글 행을 받아 적는다.
+    """
+
+    def test_headers_land_on_the_first_row(self, tmp_path, monkeypatch) -> None:
+        from openpyxl import Workbook, load_workbook
+
+        from office_claw_sidecar.routers.excel_live import _execute_action
+        from office_claw_sidecar.services.excel_live_service import get_excel_live_service
+
+        monkeypatch.setenv("EXCEL_LIVE_ENGINE", "file")
+        xlsx = tmp_path / "t.xlsx"
+        wb = Workbook()
+        wb.active.title = "S"
+        wb.save(xlsx)
+        svc = get_excel_live_service()
+        svc.select_workbook(str(xlsx))
+        svc.select_sheet(None, "S")
+        out = _execute_action(
+            action="excel_live.create_table",
+            params={"start_cell": "A1", "rows": 6, "cols": 4, "headers": ["카테고리", "매출액", "비중", "전월대비"]},
+            workbook_id=str(xlsx),
+            sheet_name="S",
+        )
+        assert out.get("header_cells") == 4, out
+        ws = load_workbook(xlsx)["S"]
+        assert [ws.cell(1, c).value for c in range(1, 5)] == ["카테고리", "매출액", "비중", "전월대비"]
+
+
+class TestHeaderRenameIsNotAFindReplace:
+    """"헤더 금액을 매출액으로 바꿔줄래?"가 치환 규칙에 잡혀 find_text='헤더 금액' → 0건 치환
+    (2026-08-25 커버리지 v2). 머리글 이름 바꾸기는 rename_column 몫 — 치환 규칙은 물러나고
+    의도 해석이 '헤더' 낱말을 근거로 받는다.
+    """
+
+    def test_the_quick_rule_backs_off_for_header_wording(self) -> None:
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+
+        plan = _build_quick_action_plan("헤더 금액을 매출액으로 바꿔줄래?", None) or []
+        assert not any(str(s.get("action")) == "excel_live.find_replace" for s in plan), plan
+        # 평범한 치환은 종전대로.
+        plan2 = _build_quick_action_plan("서울을 전부 SEOUL로 바꿔줘", None) or []
+        assert any(str(s.get("action")) == "excel_live.find_replace" for s in plan2), plan2
+
+    def test_intent_maps_header_wording_to_rename_column(self) -> None:
+        from office_claw_sidecar.services.excel_intent_normalizer import intent_to_plan
+
+        digest = {"active_sheet": "매출", "sheets": [{"name": "매출", "used_range": "A1:F9",
+                  "columns": [{"letter": "D", "header": "금액"}], "row_count": 9}]}
+        plan = intent_to_plan(
+            {"task": "rename_column", "range": None, "column": "금액", "option": "매출액으로"},
+            digest=digest, message="헤더 금액을 매출액으로 바꿔줄래?",
+        )
+        steps = (plan or {}).get("action_plan") or []
+        assert steps and steps[0]["action"] == "excel_live.rename_column", plan
+        assert steps[0]["params"] == {"column": "금액", "new_name": "매출액"}

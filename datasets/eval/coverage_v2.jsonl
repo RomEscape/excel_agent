@@ -3,6 +3,8 @@
 {"task": "dedupe", "text": "겹치는 데이터 좀 없애줘", "expect": ["excel_live.dedupe_rows", "excel_live.find_duplicates"]}
 {"task": "dedupe", "text": "이름 기준으로 중복 제거", "expect": ["excel_live.dedupe_rows", "excel_live.find_duplicates"]}
 {"task": "dedupe", "text": "중복 항목만 골라내서 빼줘", "expect": ["excel_live.dedupe_rows", "excel_live.find_duplicates"]}
+{"task": "dedupe_with_note", "text": "중복된 행 지워줘", "expect": ["excel_live.dedupe_rows", "excel_live.find_duplicates"]}
+{"task": "dedupe_with_note", "text": "겹치는 줄 정리해줘", "expect": ["excel_live.dedupe_rows", "excel_live.find_duplicates"]}
 {"task": "filter", "text": "지역이 서울인 행만 남겨줘", "expect": ["excel_live.filter_rows"]}
 {"task": "filter", "text": "서울 데이터만 보고 싶은데", "expect": ["excel_live.filter_rows"]}
 {"task": "filter", "text": "부산 거래만 추려줘", "expect": ["excel_live.filter_rows"]}
@@ -37,7 +39,7 @@
 {"task": "rename_column", "text": "금액이라는 열 제목을 매출액이라고 고쳐줘", "expect": ["excel_live.rename_column"]}
 {"task": "rename_column", "text": "헤더 금액을 매출액으로 바꿔줄래?", "expect": ["excel_live.rename_column", "excel_live.find_replace", "excel_live.write_range"]}
 {"task": "unmerge", "text": "병합된 셀 다 풀어줘", "expect": ["excel_live.unmerge_cells"]}
-{"task": "unmerge", "text": "A1:D1 병합 해제해줘", "expect": ["excel_live.unmerge_cells"]}
+{"task": "unmerge", "text": "A11:C11 병합 해제해줘", "expect": ["excel_live.unmerge_cells"]}
 {"task": "unmerge", "text": "합쳐진 칸 원래대로 나눠줘", "expect": ["excel_live.unmerge_cells"]}
 {"task": "unmerge", "text": "제목 병합 취소", "expect": ["excel_live.unmerge_cells"]}
 {"task": "color_scale", "text": "금액 열에 색조 넣어줘", "expect": ["excel_live.apply_color_scale"]}

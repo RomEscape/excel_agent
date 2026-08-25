@@ -33,6 +33,10 @@ DESTRUCTIVE_ACTIONS: frozenset[str] = frozenset(
         "excel_live.write_range",
         "excel_live.set_formula",
         "excel_live.clear_range",
+        # 표 생성은 start_cell부터 rows×cols를 **빈칸으로** 그린다 — 값이 있던 칸을 덮는다.
+        # 2026-08-25 커버리지 v2: 데이터 A1:F9 위에 5×5 격자가 그려져 A1:E5가 지워졌는데
+        # 승인 카드에 ⚠ 하나 없었다.
+        "excel_live.create_table",
     }
 )
 
@@ -230,6 +234,18 @@ def _step_targets(
             return []
         rows = len(values) if isinstance(values, list) and values else 1
         cols = max((len(r) for r in values if isinstance(r, list)), default=1) if isinstance(values, list) else 1
+        out.append(Rect(base.sheet, base.r1, base.c1, base.r1 + max(1, rows) - 1, base.c1 + max(1, cols) - 1))
+        return out
+    if action == "excel_live.create_table":
+        # start_cell부터 rows×cols 격자 — write_range와 같은 직사각형 계산.
+        base = parse_ref(_resolve(params.get("start_cell")), sheet)
+        if base is None:
+            return []
+        try:
+            rows = int(params.get("rows") or 5)
+            cols = int(params.get("cols") or 5)
+        except (TypeError, ValueError):
+            rows, cols = 5, 5
         out.append(Rect(base.sheet, base.r1, base.c1, base.r1 + max(1, rows) - 1, base.c1 + max(1, cols) - 1))
         return out
     for key in ("range_ref", "target_range", "output_range"):

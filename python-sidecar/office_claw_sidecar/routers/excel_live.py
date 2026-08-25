@@ -2653,7 +2653,13 @@ def _detect_operation_intent(message: str) -> str:
         lowered, [r"(대시보드|수식|시트|데이터).{0,10}(갱신|업데이트|최신)"]
     ):
         return "recalc"
-    if _contains_any_keyword(lowered, compact, ["비교", "차이", "diff", "다른 값", "바뀐", "지난달", "전월", "전년"]):
+    if _contains_any_keyword(lowered, compact, ["비교", "차이", "diff", "다른 값", "바뀐"]) or (
+        # '전월·전년·지난달'은 헤더 이름("전월대비")으로도 흔하다 — 비교를 **말한** 문장에만.
+        # 2026-08-25 커버리지 v2: "…비중, 전월대비 헤더로 표 만들어줘"가 compare로 읽혀
+        # 표 경로가 죽고 플래너가 5×5 기본표를 만들었다.
+        _contains_any_keyword(lowered, compact, ["지난달", "전월", "전년"])
+        and re.search(r"(비교|차이|증감|얼마나|대비\s*(?:해|하|로|한)|vs)", lowered)
+    ):
         return "compare"
     if _contains_any_keyword(lowered, compact, ["예측", "추세", "시뮬레이션", "다음 달", "연말", "forecast", "앞으로"]):
         return "forecast"
@@ -4070,6 +4076,9 @@ _FIND_REPLACE_EVIDENCE = re.compile(
 _FIND_REPLACE_OTHER_INTENT = re.compile(
     r"(?:순으로|순서대로|오름차순|내림차순|정렬|높은\s*순|낮은\s*순|많은\s*순|적은\s*순"
     r"|시트\s*이름|탭\s*이름|시트명|이름\s*(?:을|를)?\s*(?:바꿔|변경)"
+    # "헤더 금액을 매출액으로" — 머리글 이름 바꾸기는 치환이 아니라 rename_column이다.
+    # 치환 규칙이 find_text="헤더 금액"으로 잡아 0건 치환으로 끝났다(2026-08-25 커버리지 v2).
+    r"|헤더|머리글|컬럼명|열\s*이름|열\s*제목|필드명"
     r"|배경|글꼴|폰트|테두리|병합|차트|그래프|서식|형식|퍼센트|콤마|소수)"
 )
 
@@ -6741,6 +6750,25 @@ def _dispatch_action(
         rows = int(params.get("rows", 5))
         cols = int(params.get("cols", 5))
         with_border = bool(params.get("with_border", True))
+        # 플래너 계획은 `headers`를 create_table 파라미터에 실어 보내는데, 서비스에는 그 인자가
+        # 없어 **버려졌다** — 빈 격자만 그려지고 머리글은 안 써졌다(2026-08-25 커버리지 v2:
+        # "A1:D6에 카테고리, 매출액, 비중, 전월대비 헤더로 표 만들어줘" → A1 빈칸). 슬롯 경로는
+        # 헤더를 별도 쓰기 단계로 넣지만 플래너 경로는 여기서 받아 적는다.
+        headers = [str(h).strip() for h in (params.get("headers") or []) if h is not None]
+        if any(headers):
+            created = service.create_table(
+                workbook_id=resolved_wb,
+                sheet_name=resolved_sheet,
+                start_cell=start_cell,
+                rows=rows,
+                cols=cols,
+                with_border=with_border,
+            )
+            row_values = headers[:cols] + [""] * max(0, cols - len(headers[:cols]))
+            written = service.write_range(resolved_wb, resolved_sheet, start_cell, [row_values])
+            if isinstance(created, dict):
+                created["header_cells"] = int((written or {}).get("written_cells", 0) or 0)
+            return created
         return service.create_table(
             workbook_id=resolved_wb,
             sheet_name=resolved_sheet,

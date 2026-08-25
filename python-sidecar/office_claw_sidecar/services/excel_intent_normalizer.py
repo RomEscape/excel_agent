@@ -674,8 +674,10 @@ def intent_to_plan(
 
     elif (
         task == "rename_column"
-        and _worded(r"열", r"컬럼", r"column")
-        and _worded(r"이름", r"바꿔", r"변경", r"rename")
+        # '헤더·머리글·제목·필드'도 열 이름을 가리키는 말이다 — "헤더 금액을 매출액으로"가
+        # 치환 규칙에서 물러난 뒤 여기서 받아야 한다(2026-08-25 커버리지 v2).
+        and _worded(r"열", r"컬럼", r"column", r"헤더", r"머리글", r"제목", r"필드")
+        and _worded(r"이름", r"바꿔", r"변경", r"rename", r"고쳐")
     ):
         old = new = ""
         if isinstance(option, dict):

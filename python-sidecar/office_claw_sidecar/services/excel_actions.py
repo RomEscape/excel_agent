@@ -28,10 +28,16 @@ def resolve_sheet_name(service, workbook_id: str | None, sheet_name: str | None)
     rows = service.list_workbooks()
     if not rows:
         raise ExcelConnectionError("열린 통합문서가 없습니다.")
-    if workbook_id:
-        lowered = workbook_id.lower()
+    # workbook_id가 비면 **선택된 통합문서**의 활성 시트다 — 목록의 첫 파일이 아니다.
+    # 2026-08-25 실측(커버리지 v2): GUI는 workbook_id를 항상 null로 보내는데, 이 함수가
+    # rows[0](워크스페이스에서 이름순 첫 파일 `_probe_ex14.xlsx`)의 활성 시트 '콘텐츠 일정'을
+    # 돌려줘 "비고 열 빼줘"가 "시트를 찾을 수 없습니다: 콘텐츠 일정"으로 죽었다. 이름이
+    # 우연히 겹치면(Sheet1 등) 엉뚱한 시트에 조용히 실행되는 부류다.
+    target = workbook_id or (service.get_selected_workbook_id() if hasattr(service, "get_selected_workbook_id") else None)
+    if target:
+        lowered = str(target).lower()
         for row in rows:
-            if row["workbook_id"].lower() == lowered or row["name"].lower() == lowered:
+            if str(row.get("workbook_id", "")).lower() == lowered or str(row.get("name", "")).lower() == lowered:
                 return row.get("active_sheet") or "Sheet1"
     return rows[0].get("active_sheet") or "Sheet1"
 

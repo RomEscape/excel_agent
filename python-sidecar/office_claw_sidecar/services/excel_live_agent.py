@@ -2483,6 +2483,13 @@ def _extract_listed_headers(source: str) -> list[str]:
             verb_split = re.split(r"(?:만들어\s*줘|만들어|넣어\s*줘|넣어|해\s*줘|주고)\s+", candidate)
             if len(verb_split) > 1 and verb_split[-1].strip():
                 candidate = verb_split[-1].strip()
+            # "A1:D6에 카테고리, 매출액…" — 앞에 붙은 범위와 조사는 헤더가 아니다
+            # (2026-08-25 커버리지 v2: 첫 헤더가 "A1:D6에 카테고리"째로 잡혔다).
+            candidate = re.sub(
+                r"^\s*\$?[A-Za-z]{1,3}\$?\d{1,7}(?::\$?[A-Za-z]{1,3}\$?\d{1,7})?\s*(?:에는|에다|에|부터|의)?\s*",
+                "",
+                candidate,
+            ).strip()
         # "…비고 이렇게 헤더를 만들어줘"의 마지막 토큰 꼬리.
         candidate = re.sub(r"\s*이렇게\b.*$", "", candidate).strip()
         candidate = re.sub(r"\s*(?:헤더|컬럼|열)\s*(?:를|을)?\s*(?:만들|넣|해|지정).*$", "", candidate).strip()
