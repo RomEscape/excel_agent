@@ -3267,17 +3267,24 @@ _COLOR_SCALE_WORDING = re.compile(
 def _build_quick_action_plan(message: str, context_range: str | None) -> list[dict[str, Any]] | None:
     text = str(message or "").strip()
     lowered = text.lower()
-    # 색조 요청은 어떤 빠른 규칙(단색 채우기·조건 강조·글꼴)도 받지 않는다 — 열 이름+"칠해"가
-    # 노란 단색을 내던 걸 한 곳에서 막는다(2026-08-25 커버리지 v2 표적 재측정). 의도 해석의
-    # apply_color_scale이 받는다. 명시 종류가 함께 오면("색조를 빨강~초록으로") 그건 파라미터다.
-    if _COLOR_SCALE_WORDING.search(lowered):
-        return None
     range_match = RANGE_REF_PATTERN.search(text)
     range_ref = str(range_match.group(1)).upper() if range_match else ""
     col_match = COLUMN_LETTER_PATTERN.search(text)
     col_range_ref = f"{str(col_match.group(1)).upper()}:{str(col_match.group(1)).upper()}" if col_match else ""
     normalized_ctx = _normalize_range_text(context_range)
     explicit_range = range_ref or col_range_ref
+    # 색조(color scale) 요청은 **여기서 먼저** 잡는다 — 뒤의 단색 채우기·조건 강조·글꼴 분기가
+    # "금액 크기에 따라 색깔 단계로 칠해줘"를 노란 단색으로 내던 걸 한 곳에서 막는다(2026-08-25
+    # 커버리지 v2 표적 재측정). 명시 범위가 없으면 열은 다이제스트가 확정한다(__ACTIVE_SELECTION__).
+    # 아래 색조 전용 규칙(색조·컬러스케일)과 같은 계획이지만, '색깔 단계'·'진하게…연하게'까지 받는다.
+    if _COLOR_SCALE_WORDING.search(lowered):
+        return [
+            {
+                "action": "excel_live.apply_color_scale",
+                "params": {"target_range": normalized_ctx or explicit_range or "__ACTIVE_SELECTION__"},
+                "reason": "빠른 규칙 기반 색조 조건부 서식",
+            }
+        ]
 
     header_step = _quick_header_write_step(text, explicit_range or normalized_ctx)
     if header_step is not None:

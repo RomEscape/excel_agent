@@ -4906,8 +4906,12 @@ class TestCoverageV2MisreadsAreSealed:
         for m in ("금액 크기에 따라 색깔 단계로 칠해줘", "금액 값 크면 진하게 작으면 연하게 색조로"):
             assert not _is_color_format_request(m), m
             plan = _build_quick_action_plan(m, None) or []
-            assert not any(str(s.get("action")) in ("excel_live.fill_range", "excel_live.set_font") for s in plan), (m, plan)
+            # 단색·글꼴이 아니라 색조로 잡혀야 한다(노란 단색 오실행 방지 + 정상 매핑).
+            assert plan and plan[0]["action"] == "excel_live.apply_color_scale", (m, plan)
         assert _is_color_format_request("a1:d1 노란색으로 칠해줘")  # 단색 요청은 종전대로
+        # 명시 '색조' 문장과 데이터 막대는 종전대로 잡힌다(routing_gates 회귀 방지).
+        assert (_build_quick_action_plan("O2:O181에 색조 조건부서식 적용해줘", None) or [{}])[0].get("action") == "excel_live.apply_color_scale"
+        assert (_build_quick_action_plan("K2:K181에 데이터 막대 넣어줘", None) or [{}])[0].get("action") == "excel_live.apply_data_bar"
 
     def test_intent_mappings_for_the_misread_kinds(self) -> None:
         from office_claw_sidecar.services.excel_intent_normalizer import intent_to_plan
@@ -4932,3 +4936,34 @@ class TestCoverageV2MisreadsAreSealed:
         assert out and out["action_plan"][0]["action"] == "excel_live.filter_rows", out
         # write_value: 메모·주석 문장은 셀 값이 아니다.
         assert plan("D2에 확인 필요 라고 메모 달아줘", task="write_value", range="D2", option="확인 필요") is None
+
+    def test_duplicate_and_sheet_deletion_wordings_do_not_clear_contents(self) -> None:
+        """"겹치는 데이터 좀 없애줘"가 시트 비우기로, "임시 탭은 지워도 돼"가 내용 비우기로 실행됐고
+        "임시**라는** 시트 없애줘"는 '임시라는' 시트를 찾다 되물었다(2026-08-25 커버리지 v2)."""
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+
+        def actions(msg: str) -> list[str]:
+            return [str(s.get("action")) for s in (_build_quick_action_plan(msg, None) or [])]
+
+        assert "excel_live.clear_range" not in actions("겹치는 데이터 좀 없애줘")
+        assert "excel_live.clear_range" not in actions("임시 탭은 지워도 돼")
+        plan = _build_quick_action_plan("임시라는 시트 없애줘", None) or []
+        assert plan and plan[0]["action"] == "excel_live.delete_sheet" and plan[0]["params"]["sheet_name"] == "임시", plan
+        # 범위를 지목한 내용 지우기는 종전대로.
+        assert actions("A1:F6 내용 다 지워줘") == ["excel_live.clear_range"]
+
+    def test_the_agent_rule_parser_does_not_flat_fill_a_color_scale_request(self) -> None:
+        """라우터 규칙은 물러났는데 에이전트 쪽 규칙 파서가 노란 단색을 냈다(표적 재측정 0825-175406)."""
+        from office_claw_sidecar.services.excel_live_agent import parse_command_rule_based
+
+        out = parse_command_rule_based("금액 크기에 따라 색깔 단계로 칠해줘")
+        action = str((out or {}).get("action") or "")
+        steps = (out or {}).get("action_plan") or []
+        assert action != "excel_live.fill_range" and not any(
+            str(s.get("action")) == "excel_live.fill_range" for s in steps
+        ), out
+        # 단색 요청은 종전대로.
+        out2 = parse_command_rule_based("A1:D1 노란색으로 칠해줘") or {}
+        assert str(out2.get("action") or "") == "excel_live.fill_range" or any(
+            str(s.get("action")) == "excel_live.fill_range" for s in (out2.get("action_plan") or [])
+        ), out2
