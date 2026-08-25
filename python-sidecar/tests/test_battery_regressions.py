@@ -2997,11 +2997,14 @@ class TestTheTaskListHasOneSource:
     # 2026-08-24 라운드 2 배치 1a: 밀려남이 실측된 4종(create_sheet·delete_charts·
     # freeze·autofit)을 넣어 17 → 21종. 종류 상한 경고(13~14 + 신규 배치)에 따라
     # 배치마다 44문장 재측정으로 분류 품질을 확인한다.
+    # 2026-08-25 배치 1b: 명시 어휘 5종(merge·unmerge·data_bar·color_scale·
+    # rename_sheet) → 26종. 44문장 재측정은 커밋 뒤 게이트와 겹치지 않게 돌린다.
     EXPECTED = (
         "fill_color", "font", "highlight", "number_format", "formula", "sort", "filter",
         "dedupe", "clear_values", "reset_all", "create_table", "pivot", "chart",
         "write_value", "find_replace", "read",
         "create_sheet", "delete_charts", "freeze", "autofit",
+        "merge", "unmerge", "data_bar", "color_scale", "rename_sheet",
         "other",
     )
 
@@ -4378,3 +4381,65 @@ class TestApprovalDoesNotCoverAnInjectedOverwrite:
         ctx = PlanExecution(req=req, plan=plan, session_key="t-seen",
                             parsed={"plan_source": "planner"}, approved=True)
         assert _plan_approval_gate(ctx, plan) is None  # unseen_plan=False(기본)
+
+
+class TestBatch1bIntentKindsMapDeterministically:
+    """라운드 2 배치 1b — 명시 어휘가 있는 5종(merge·unmerge·data_bar·color_scale·
+    rename_sheet)의 결정적 매핑. 전부 문장 근거를 요구하고, 불확실하면 물러난다.
+    """
+
+    def _plan(self, message="", **intent):
+        from office_claw_sidecar.services.excel_intent_normalizer import intent_to_plan
+
+        base = {"task": None, "range": None, "column": None, "option": None}
+        digest = {
+            "active_sheet": "지역성과",
+            "sheets": [{
+                "name": "지역성과", "used_range": "A1:F6",
+                "columns": [{"letter": "B", "header": "주문건수"}],
+                "row_count": 6,
+            }],
+        }
+        return intent_to_plan({**base, **intent}, digest=digest, message=message)
+
+    @pytest.mark.parametrize(
+        ("message", "intent", "action", "params"),
+        [
+            ("A1:F1 병합해줘", {"task": "merge", "range": "A1:F1"},
+             "excel_live.merge_cells", {"target_range": "A1:F1"}),
+            ("병합 다 풀어줘", {"task": "unmerge"},
+             "excel_live.unmerge_cells", {"target_range": "__USED_RANGE__"}),
+            ("주문건수 열에 데이터 막대 넣어줘", {"task": "data_bar", "column": "주문건수"},
+             "excel_live.apply_data_bar", {"target_range": "B2:B6"}),
+            ("B2:B6 색조 넣어줘", {"task": "color_scale", "range": "B2:B6"},
+             "excel_live.apply_color_scale", {"target_range": "B2:B6"}),
+            ("시트 이름을 지역별실적으로 바꿔줘", {"task": "rename_sheet", "option": "지역별실적"},
+             "excel_live.rename_sheet", {"new_name": "지역별실적"}),
+        ],
+    )
+    def test_the_kind_maps_to_its_action(self, message, intent, action, params) -> None:
+        plan = self._plan(message, **intent)
+        steps = (plan or {}).get("action_plan") or []
+        assert steps and steps[0]["action"] == action, plan
+        for key, value in params.items():
+            assert steps[0]["params"].get(key) == value, steps[0]
+
+    def test_merge_without_a_range_backs_off(self) -> None:
+        """병합은 왼쪽 위 칸만 남긴다 — 범위를 지어내면 값이 사라진다."""
+        assert self._plan("제목 병합해줘", task="merge") is None
+
+    def test_a_particle_suffixed_new_name_is_stemmed(self) -> None:
+        """모델이 '지역별실적으로'를 통째로 이름에 실어도 어간을 벗긴다 — 조사째
+        시트 이름이 되면 블라인드 실측 오답과 같은 모양이 된다."""
+        plan = self._plan("시트 이름을 지역별실적으로 바꿔줘",
+                          task="rename_sheet", option="지역별실적으로")
+        steps = (plan or {}).get("action_plan") or []
+        assert steps and steps[0]["params"]["new_name"] == "지역별실적", plan
+
+    def test_a_bare_bar_word_does_not_feed_data_bar(self) -> None:
+        """'막대 그래프'는 차트다 — data_bar 오분류가 낱말 '막대'로 근거를 얻으면 안 된다."""
+        assert self._plan("주문건수 막대 그래프 그려줘", task="data_bar", column="주문건수") is None
+
+    def test_an_unmerge_shaped_sentence_cannot_feed_merge(self) -> None:
+        """'병합 해제'에서 task=merge로 잘못 와도 해제 낱말이 있으면 물러난다."""
+        assert self._plan("병합 해제해줘", task="merge", range="A1:F1") is None

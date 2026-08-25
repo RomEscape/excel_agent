@@ -103,6 +103,16 @@ CASES: list[dict[str, Any]] = [
     case("autofit", note="열 너비 자동", message="열 너비 보기 좋게 맞춰줘"),
     # 함정: 값 속에 '시트'·'차트' 낱말이 들어도 종류를 훔치면 안 된다.
     case("write_value", range="A1", option="차트 목록", note="값 속 낱말 함정", message="A1에 차트 목록 이라고 써줘"),
+    # ── 라운드 2 배치 1b: 명시 어휘가 있는 5종 ──────────────────────
+    case("merge", range="A1:F1", note="셀 병합(범위 명시)", message="A1:F1 병합해줘"),
+    # 범위가 없으면 물러나는 게 옳다 — 병합은 왼쪽 위 칸만 남긴다.
+    case("merge", note="범위 없음(물러나는 게 옳음)", message="제목 병합해줘"),
+    case("unmerge", note="병합 해제(전체)", message="병합 다 풀어줘"),
+    case("data_bar", column="금액", note="데이터 막대(열)", message="금액 열에 데이터 막대 넣어줘"),
+    case("color_scale", range="B2:B9", note="색조(범위)", message="B2:B9 색조 넣어줘"),
+    case("rename_sheet", option="지역별실적", note="시트 이름 변경", message="시트 이름을 지역별실적으로 바꿔줘"),
+    # 조사('으로')가 이름에 붙어 와도 어간을 벗겨 확정해야 한다(블라인드 실측 오답 모양).
+    case("rename_sheet", option="지역별실적으로", note="조사 붙은 이름", message="시트 이름을 지역별실적으로 바꿔줘"),
 ]
 
 

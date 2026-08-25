@@ -130,6 +130,21 @@ INCIDENT_CASES = [
     ("A1:D13 여기에 출석부를 본격적으로 만들기 시작하자", j_task("create_table")),
 ]
 
+# 라운드 2 배치 1b(2026-08-25) — 새 5종의 분류 확인 + 이웃 종류 함정 2문장.
+# 44문장 본편과 따로 세어 이전 수치와의 비교 가능성을 지킨다.
+BATCH_1B_CASES = [
+    ("A1:F1 하나로 합쳐줘", j_task("merge")),
+    ("제목 칸 병합해줘", j_task("merge")),
+    ("병합된 셀 다 풀어줘", j_task("unmerge")),
+    ("주문건수 열에 데이터 막대 넣어줘", j_task("data_bar")),
+    ("실적 크기에 따라 색조 넣어줘", j_task("color_scale")),
+    ("시트 이름을 지역별실적으로 바꿔줘", j_task("rename_sheet")),
+    ("탭 이름 정산으로 변경해줘", j_task("rename_sheet")),
+    # 함정: 이웃 종류를 훔치면 안 된다.
+    ("주문건수 막대 그래프 그려줘", j_task("chart")),
+    ("요약 시트 새로 만들어줘", j_task("create_sheet")),
+]
+
 
 async def ask(llm, model: str, message: str) -> dict:
     prompt = PROMPT.format(headers=", ".join(HEADERS), message=message)
@@ -169,11 +184,21 @@ async def main() -> None:
         mark = "OK  " if ok else "FAIL"
         print(f"{mark} [사고] {msg[:36]:38s} → {json.dumps(out, ensure_ascii=False)[:72]}", flush=True)
 
+    b1b_ok = 0
+    print()
+    for msg, judge in BATCH_1B_CASES:
+        out = await ask(llm, model, msg)
+        ok = bool(judge(out))
+        b1b_ok += ok
+        mark = "OK  " if ok else "FAIL"
+        print(f"{mark} [1b] {msg[:36]:38s} → {json.dumps(out, ensure_ascii=False)[:72]}", flush=True)
+
     print("\n" + "=" * 78)
     for style, name in (("T", "훈련체"), ("U", "사용자체")):
         ok, total = stats[style]
         print(f"{name}: {ok}/{total} ({ok/total*100:.0f}%)   [플래너 실측: 훈련체 67% / 사용자체 58%]")
     print(f"GUI 사고 문장: {inc_ok}/{len(INCIDENT_CASES)}")
+    print(f"배치 1b 문장: {b1b_ok}/{len(BATCH_1B_CASES)}")
     if CONF:
         import collections
 

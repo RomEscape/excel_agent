@@ -52,10 +52,13 @@ dedupe(중복 제거), clear_values(값 비우기), reset_all(서식까지 초�
 create_table(표 생성), pivot(집계표·피벗), chart(차트), write_value(값 입력),
 find_replace(찾아 바꾸기), read(조회), create_sheet(새 시트 만들기),
 delete_charts(차트 삭제), freeze(행·열 틀 고정), autofit(열 너비 자동 맞춤),
+merge(셀 병합), unmerge(병합 해제), data_bar(데이터 막대),
+color_scale(값 크기 따라 색조), rename_sheet(기존 시트 이름 바꾸기),
 other(그 외)
 
 주의: 색칠에 조건(이상·이하·넘는·~인 셀만 같은 말)이 붙어 있으면 highlight,
 조건이 없으면 **어떤 색이든 전부 fill_color**다.
+시트를 **새로** 만들면 create_sheet, **있는** 시트의 이름을 바꾸면 rename_sheet다.
 option에는 그 문장에 실제로 나온 값만 적는다.
 
 규칙:
@@ -545,6 +548,76 @@ def intent_to_plan(
             "params": {"target_range": rng or "__USED_RANGE__"},
             "reason": "의도 정규화: 열 너비 자동",
         }]
+
+    elif (
+        task == "merge"
+        and _worded(r"병합", r"merge", r"하나로\s*합", r"셀\s*합")
+        and not _worded(r"해제", r"풀", r"취소")
+    ):
+        # 병합은 왼쪽 위 칸만 남긴다 — 범위를 지어내면 값이 사라진다. 명시 범위가
+        # 있을 때만 맵핑하고 없으면 물러난다(실행기 가드가 값 손실 병합을 한 번 더 막는다).
+        if rng:
+            steps = [{
+                "action": "excel_live.merge_cells",
+                "params": {"target_range": rng},
+                "reason": "의도 정규화: 셀 병합",
+            }]
+
+    elif task == "unmerge" and _worded(r"해제", r"풀", r"취소", r"unmerge"):
+        # 해제는 값을 만들지도 지우지도 않는다 — 범위가 없으면 사용 범위 전체.
+        steps = [{
+            "action": "excel_live.unmerge_cells",
+            "params": {"target_range": rng or "__USED_RANGE__"},
+            "reason": "의도 정규화: 병합 해제",
+        }]
+
+    elif task == "data_bar" and _worded(r"데이터\s*막대", r"data\s*bar"):
+        # 낱말 '막대'만으로는 안 된다 — '막대 그래프'(차트)를 빨아들인다.
+        letter = _column_letter(entry, column)
+        target = rng or (f"{letter}2:{letter}{_last_row(entry)}" if letter else "") or "__ACTIVE_SELECTION__"
+        steps = [{
+            "action": "excel_live.apply_data_bar",
+            "params": {"target_range": target},
+            "reason": "의도 정규화: 데이터 막대",
+        }]
+
+    elif task == "color_scale" and _worded(r"색조", r"컬러\s*스케일", r"color\s*scale"):
+        letter = _column_letter(entry, column)
+        target = rng or (f"{letter}2:{letter}{_last_row(entry)}" if letter else "") or "__ACTIVE_SELECTION__"
+        steps = [{
+            "action": "excel_live.apply_color_scale",
+            "params": {"target_range": target},
+            "reason": "의도 정규화: 색조",
+        }]
+
+    elif task == "rename_sheet" and _worded(r"이름", r"rename", r"바꿔", r"변경"):
+        # 새 이름은 option(또는 column)에 실려 온다 — create_sheet와 같은 규약.
+        # "지역별실적으로 바꿔줘"처럼 조사가 붙어 오면 어간이 문장에 있는지로 벗긴다.
+        raw_name = str(option_text or column or "").strip().strip("'\"")
+        candidates = [raw_name]
+        for particle in ("으로", "로"):
+            if raw_name.endswith(particle) and len(raw_name) > len(particle):
+                candidates.append(raw_name[: -len(particle)])
+        new_name = next(
+            (
+                c
+                for c in sorted(candidates, key=len)  # 조사 벗긴 쪽(짧은 쪽)을 먼저 본다
+                if c and c.lower() not in {"시트", "sheet", "탭"} and len(c) <= 31 and c in plain_message
+            ),
+            "",
+        )
+        if new_name:
+            params: dict[str, Any] = {"new_name": new_name}
+            # 바꿀 대상 시트가 문장·슬롯에 지목됐고 실제로 있으면 함께 확정한다.
+            sheet_names = {str(s.get("name") or "") for s in ((digest or {}).get("sheets") or [])}
+            old = str(column or "").strip()
+            if old and old != new_name and old in sheet_names:
+                params["sheet_name"] = old
+            steps = [{
+                "action": "excel_live.rename_sheet",
+                "params": params,
+                "reason": "의도 정규화: 시트 이름 변경",
+            }]
 
     # dedupe·pivot·chart·create_table·read·other는 매핑하지 않는다 — 슬롯·플래너
     # 경로가 이미 소유하고 있고(배터리 24/24), 여기서 어설프게 겹치면 두 경로가
