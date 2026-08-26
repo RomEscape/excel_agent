@@ -53,6 +53,7 @@
 | 워크스페이스 문서 | `store/documentStore.js` | `lib/documents.js`(카드 모델·`3일 전`, 순수) · `lib/documentManager.js`(목록·생성·업로드·삭제) | `ipc.rs`의 `workspace_delete_file` | `components/ui/document-card.jsx` |
 | 툴 진행 스텝 | chatStore의 `toolSteps` | `lib/toolSteps.js`(executed_actions→칩 문구, 순수) | — | `ui/chat.jsx`의 `ToolStepChip` |
 | 페어링 TTL 표시 | relayStore의 `pairingExpiresAt` | `lib/pairingCountdown.js`(남은 시간·`3:29` 포맷, 순수) | — | `components/relay/RelayPairing.jsx` (조합만) |
+| 모바일 승인 왕복 | (mobile) `ChatState.pendingApproval` | (mobile) `store/chat_controller.dart`의 `respondApproval` | — | (mobile) `main.dart`의 `_approvalBar` (조합만) |
 | 온보딩 모델 목록 | — | `lib/modelCatalog.js`(모델 ID→제조사·추천, 순수) | — | `components/ui/wizard.jsx`의 `ModelSelectField` |
 | 작업 기록 | — | `lib/activityLog.js`(감사로그→표 행·KPI 4장·페이지 번호, 순수) | — | `components/activity/ActivityPage.jsx` (조합만) |
 | 글자 크기 | `store/fontScaleStore.js` | `lib/fontScale.js`(선택→루트 px, 순수) · `lib/fontScaleManager.js`(`<html>` font-size 적용) | — | `components/settings/PreferencesPage.jsx`의 폰트 크기 섹션 |
@@ -72,6 +73,8 @@
 > **2026-08 페어링 code 방어 노트**: 페어링 code의 방어는 **TTL(120초) · rate-limit(IP당 10회/60초) · 엔트로피(8 hex = 2^32)** 세 가지가 곱해져야 성립한다. 하나씩은 부족하다 — TTL만 있으면 초당 1만 회 공격에 창당 약 7% 확률로 뚫리고, rate-limit만 있으면 미소비 code가 쌓여 "아무거나 하나만 맞히면 되는" 상태가 된다. **셋 중 하나를 줄이려면 나머지를 키워야 한다.** rate-limit 키는 클라이언트 IP이고, `X-Forwarded-For`는 위조 가능하므로 기본 비신뢰다 — 리버스 프록시가 들어오는 XFF를 **덮어쓰도록** 설정한 경우에만 `RELAY_TRUST_PROXY=1`로 켠다. 전역 잠금(전체 실패 N회 → 엔드포인트 차단)은 공격자가 정상 사용자의 페어링을 막는 DoS 수단이 되므로 의도적으로 넣지 않았다.
 >
 > TTL 도입으로 QR은 120초 후 만료된다. `/pair/start`가 `expires_in`을 주고, 사이드카 `/relay/pair`가 그 값을 **그대로 흘려보내야** 한다 — 데스크톱이 TTL을 하드코딩해 추측하면 relay 설정이 바뀔 때 카운트다운이 실제 만료와 어긋나서 "아직 남았다"고 표시된 QR이 이미 죽어 있게 된다. 계산은 `lib/pairingCountdown.js`, 표시는 `RelayPairing.jsx`(카운트다운·재발급·스토어 배지)가 맡는다. `expires_in`이 0/없음이면 **만료 개념 없음**으로 다뤄 카운트다운을 숨긴다(구버전 relay 호환) — 0초 만료로 치면 QR을 띄우자마자 만료로 보인다.
+>
+> **QR을 못 쓰는 환경**(iOS 시뮬레이터·안드로이드 에뮬레이터)이 있으므로 `RelayPairing.jsx`는 `relay_url`·`pairing_id`·`code` 세 값을 수동 입력용으로 함께 노출한다. **셋 중 `pairing_id`가 빠지면 수동 페어링 자체가 불가능하다** — 예전에는 이 값이 UI에 없어 `relay_config.json`을 직접 열어야 했다. 만료 뒤에는 감춘다(죽은 값을 복사 가능한 모습으로 두면 흐려 놓은 QR과 같은 함정이 된다).
 >
 > **2026-08 데스크톱 최종 와이어프레임 노트** (구 "채팅 우선 레이아웃 노트"를 대체): 스펙 원본은 `design/desktop-shell/`(`SCREENS.md`·`TOKENS.md`·`raw/{light,dark}/Frame_*.txt`)이고, Figma는 `김대리_기획안`의 라이트 `Frame 159~172` / 다크 `Frame 145~158`이다. PR #28이 따르던 `8a6513e`의 `DesktopAppShell.jsx`는 **채택되지 않은 안**이었다 — 그 구조를 근거로 삼지 말 것.
 >
