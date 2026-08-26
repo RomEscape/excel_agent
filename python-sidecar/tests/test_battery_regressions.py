@@ -5697,3 +5697,17 @@ class TestFilterRefusesUnknownColumn:
         service, _ = self._svc(tmp_path)
         out = service.filter_rows(None, "매출", "A1:C3", column="담당", value="김", mode="keep")
         assert out is not None
+
+    def test_중복_어휘가_두_액션에서_일치한다(self):
+        # find_duplicates는 '겹치'를 인정하는데 dedupe_rows만 좁아서, 같은 문장이
+        # 한쪽에선 근거 있음·다른 쪽에선 근거 없음이 됐다(2026-08-26 통과 3건의 원인).
+        from office_claw_sidecar.routers.excel_live import _action_lacks_evidence
+
+        for msg in ("겹치는 줄 정리해줘", "똑같은 줄이 두 번 들어간 거 정리해줄래?", "중복된 행 지워줘"):
+            assert not _action_lacks_evidence("excel_live.dedupe_rows", msg), msg
+            assert not _action_lacks_evidence("excel_live.find_duplicates", msg), msg
+
+    def test_무관한_문장은_여전히_근거_없음(self):
+        from office_claw_sidecar.routers.excel_live import _action_lacks_evidence
+
+        assert _action_lacks_evidence("excel_live.dedupe_rows", "노란색으로 칠해줘")

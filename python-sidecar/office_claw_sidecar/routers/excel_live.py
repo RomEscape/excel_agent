@@ -504,7 +504,11 @@ _ACTION_EVIDENCE: dict[str, re.Pattern[str]] = {
     ),
     "excel_live.apply_border": re.compile(r"(테두리|괘선|border|윤곽|선을|선 )", re.IGNORECASE),
     "excel_live.protect_sheet": re.compile(r"(보호|잠금|잠가|protect|수정 ?못)", re.IGNORECASE),
-    "excel_live.find_duplicates": re.compile(r"(중복|duplicate|겹치)", re.IGNORECASE),
+    # dedupe_rows(:520)와 **같은 어휘**여야 한다 — 한쪽만 넓으면 같은 문장이 액션에 따라
+    # 근거 있음/없음으로 갈린다(2026-08-26). 이쪽은 읽기 전용(SAFE)이다.
+    "excel_live.find_duplicates": re.compile(
+        r"(중복|duplicate|겹치|똑같은\s*(?:행|줄))", re.IGNORECASE
+    ),
     "excel_live.export_pdf": re.compile(r"(pdf|인쇄|출력물)", re.IGNORECASE),
     "excel_live.recalculate": re.compile(r"(갱신|새로고침|재계산|업데이트|refresh|recalc)", re.IGNORECASE),
     "excel_live.run_vba_macro": re.compile(r"(매크로|vba|macro)", re.IGNORECASE),
@@ -517,7 +521,13 @@ _ACTION_EVIDENCE: dict[str, re.Pattern[str]] = {
     "excel_live.create_chart": re.compile(r"(차트|그래프|chart|graph|시각화)", re.IGNORECASE),
     "excel_live.sort_range": re.compile(r"(정렬|sort|오름|내림|순으로|순서대로)", re.IGNORECASE),
     "excel_live.filter_rows": re.compile(r"(필터|filter|만 남|만 보|추출|골라)", re.IGNORECASE),
-    "excel_live.dedupe_rows": re.compile(r"(중복|dedupe|duplicate)", re.IGNORECASE),
+    # 같은 개념의 어휘가 세 벌로 갈라져 있었다 — find_duplicates(:507)는 '겹치'를 인정하고
+    # `_detect_operation_intent`도 '겹치는·똑같은 줄'을 중복으로 보는데 여기만 좁았다.
+    # 그래서 "겹치는 줄 정리해줘"가 근거 없음으로 판정되고도 대체 계획이 없어 그대로
+    # 실행됐다(2026-08-26 evidence_gate_passthrough 5건 중 3건). 판정을 실제와 맞춘다.
+    "excel_live.dedupe_rows": re.compile(
+        r"(중복|dedupe|duplicate|겹치|똑같은\s*(?:행|줄))", re.IGNORECASE
+    ),
     "excel_live.pivot_table": re.compile(r"(피벗|pivot|집계|요약)", re.IGNORECASE),
     "excel_live.set_font": re.compile(r"(굵게|볼드|bold|글꼴|폰트|글자색)", re.IGNORECASE),
     "excel_live.convert_to_excel_table": re.compile(
