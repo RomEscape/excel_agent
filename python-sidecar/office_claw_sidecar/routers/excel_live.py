@@ -10267,6 +10267,20 @@ async def _run_command(
                             "reason": f"규칙이 확정한 {rule_slot.intent} 실행 계획",
                             "intent": "edit",
                         }
+                        replaced = True
+
+            if not replaced:
+                # 근거 게이트가 "이 단계는 원문 근거가 없다"고 판정하고도 대체 계획을
+                # 못 찾으면 **그 단계를 그대로 실행한다** — 판정이 결과에 반영되지 않는
+                # 유일한 갈래다(2026-08-26 감사). 되묻기로 바꾸는 것이 옳아 보이지만,
+                # 근거 정규식이 불완전한 액션들에서 지금 통과하는 문장이 무더기로
+                # 뒤집힐 수 있어 **빈도를 먼저 센다.** 야간 게이트 로그에서
+                # evidence_gate_passthrough를 집계한 뒤에 판단한다.
+                trace_note(
+                    "evidence_gate_passthrough",
+                    action=planner_action,
+                    why="근거 없는 단계를 대체할 계획이 없어 그대로 실행",
+                )
 
     table_intent = (bool(hints.get("table_intent")) and not explicit_write) or pending_slot is not None
     if pending_operation is not None:
