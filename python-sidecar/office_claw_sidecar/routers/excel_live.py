@@ -528,7 +528,11 @@ _ACTION_EVIDENCE: dict[str, re.Pattern[str]] = {
     "excel_live.dedupe_rows": re.compile(
         r"(중복|dedupe|duplicate|겹치|똑같은\s*(?:행|줄))", re.IGNORECASE
     ),
-    "excel_live.pivot_table": re.compile(r"(피벗|pivot|집계|요약)", re.IGNORECASE),
+    # "담당자별로 … 표로 정리해줘"가 근거 없음으로 판정되고도 실행됐다 — 집계표를
+    # 만들라는 말이니 근거로 인정한다(2026-08-26 통과 집계).
+    "excel_live.pivot_table": re.compile(
+        r"(피벗|pivot|집계|요약|표로\s*정리|별로\s*[^\n]{0,10}표)", re.IGNORECASE
+    ),
     "excel_live.set_font": re.compile(r"(굵게|볼드|bold|글꼴|폰트|글자색)", re.IGNORECASE),
     "excel_live.convert_to_excel_table": re.compile(
         r"(엑셀\s*표|테이블로|표로\s*변환|listobject)", re.IGNORECASE
@@ -555,8 +559,14 @@ _ACTION_EVIDENCE: dict[str, re.Pattern[str]] = {
     "excel_live.rename_sheet": re.compile(
         r"(시트|탭|sheet).{0,24}(이름|바꿔|변경|rename)", re.IGNORECASE
     ),
+    # '지워/치워/날려'가 빠져 "임시 탭은 지워도 돼"가 근거 없음으로 판정되고도 대체
+    # 계획이 없어 그대로 실행됐다(2026-08-26 통과 집계). 다만 "시트 **값** 지워줘"는
+    # 값 비우기지 시트 삭제가 아니므로, 시트 낱말 뒤에 값·내용·데이터·칸·셀이 오면 뺀다
+    # (양성 5·음성 5 실증).
     "excel_live.delete_sheet": re.compile(
-        r"(시트|탭|sheet).{0,12}(삭제|제거|없애)", re.IGNORECASE
+        r"(시트|탭|sheet)(?![^\n]{0,10}(?:값|내용|데이터|칸|셀))[^\n]{0,12}"
+        r"(삭제|제거|없애|지워|지우|치워|날려)",
+        re.IGNORECASE,
     ),
     # 근거표 없는 편집 4종은 deny-default에 걸려 문장 무관 항상 '근거 없음'이었다 —
     # 플래너가 맞게 골라도 단계가 조용히 지워지는 부류(2026-08-26 감사 B-guard-02).

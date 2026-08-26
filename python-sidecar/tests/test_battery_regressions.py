@@ -5711,3 +5711,22 @@ class TestFilterRefusesUnknownColumn:
         from office_claw_sidecar.routers.excel_live import _action_lacks_evidence
 
         assert _action_lacks_evidence("excel_live.dedupe_rows", "노란색으로 칠해줘")
+
+    def test_시트_삭제_어휘에_지워가_들어간다(self):
+        from office_claw_sidecar.routers.excel_live import _action_lacks_evidence
+
+        for msg in ("임시 탭은 지워도 돼", "임시 시트 삭제해줘", "임시 시트 치워줘"):
+            assert not _action_lacks_evidence("excel_live.delete_sheet", msg), msg
+
+    def test_시트_값_지우기는_시트_삭제_근거가_아니다(self):
+        # "시트 값 지워줘"는 값 비우기다 — 넓히면서 이걸 같이 삼키면 안 된다.
+        from office_claw_sidecar.routers.excel_live import _action_lacks_evidence
+
+        for msg in ("시트 값 지워줘", "시트 내용 전부 지워", "이 시트 데이터 삭제해줘"):
+            assert _action_lacks_evidence("excel_live.delete_sheet", msg), msg
+
+    def test_표로_정리는_피벗_근거다(self):
+        from office_claw_sidecar.routers.excel_live import _action_lacks_evidence
+
+        assert not _action_lacks_evidence("excel_live.pivot_table", "담당자별로 금액 얼마씩인지 표로 정리해줘")
+        assert _action_lacks_evidence("excel_live.pivot_table", "노란색으로 칠해줘")
