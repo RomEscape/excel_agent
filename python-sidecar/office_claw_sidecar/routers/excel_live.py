@@ -9629,7 +9629,18 @@ async def _run_command(
     )
     # 빈 칸 조건("입고예정일이 비어 있는 행만 노란색") — 규칙이 없어 모델이 엉뚱한 칸을
     # 칠하던 문형이다(2026-08-20 ex23). 머리글로 열을 짚을 수 있을 때만 만든다.
-    if (not quick_action_plan or _blanket_fill) and pending_slot is None and pending_operation is None:
+    # 일반 병합 규칙이 이미 계획을 냈어도, 문장이 **제목 줄**을 짚었으면 그쪽이 더 좁고
+    # 정확한 해석이다. 그러지 않으면 "제목 줄 병합해줘"가 선택 영역 전체(A1:F7)를 병합해
+    # 머리글·데이터 값을 먹는다 — 파괴 차단이 막아 주지만 사용자는 오류만 본다
+    # (2026-08-27 파괴 게이트 merge_keeps_values 실측).
+    _generic_merge_first = bool(quick_action_plan) and str(
+        (quick_action_plan[0] or {}).get("action") or ""
+    ) == "excel_live.merge_cells"
+    if (
+        (not quick_action_plan or _blanket_fill or _generic_merge_first)
+        and pending_slot is None
+        and pending_operation is None
+    ):
         _title_merge = _title_row_merge_plan(req.message, workbook_digest)
         if _title_merge:
             quick_action_plan = _title_merge

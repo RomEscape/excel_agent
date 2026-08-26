@@ -6193,3 +6193,50 @@ class TestMergeWordingIsNotTableCreation:
             ]
         stray = [r["text"] for r in rows if self._fires(r["text"]) and r["task"] not in {"merge_title", "merge_keeps_values"}]
         assert stray == [], stray
+
+
+class TestTitleRowMergeBeatsGenericMerge:
+    """"제목 줄 병합해줘"가 선택 영역 전체를 병합하던 것(2026-08-27 파괴 게이트).
+
+    제목 줄 규칙은 `if not quick_action_plan` 뒤에 있어, '병합'이라는 낱말로 일반 병합
+    규칙이 먼저 계획을 내면 **아예 돌지 않았다.** 제목 줄은 더 좁고 정확한 해석이므로
+    일반 병합보다 우선한다. 명시 범위("H1부터 M1까지")는 사람 뜻이라 건드리지 않는다.
+    """
+
+    @staticmethod
+    def _plan(msg, tmp_path, session):
+        import os
+
+        os.environ["EXCEL_LIVE_ENGINE"] = "file"
+        from fastapi.testclient import TestClient
+        from openpyxl import Workbook
+
+        from office_claw_sidecar.main import app
+        from office_claw_sidecar.services import excel_live_file_service as fs
+        from office_claw_sidecar.services import excel_live_service as ls
+
+        p = tmp_path / "t.xlsx"
+        if not p.exists():
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "지역성과"
+            ws.append(["2026년 상반기 지역 실적"])
+            ws.append(["지역", "주문건수", "출고건수", "정시배송률", "지연건수", "클레임"])
+            ws.append(["수도권", 10452, 10158, 97.1, 145, 12])
+            wb.save(p)
+        fs.WORKSPACE_ROOT = tmp_path
+        ls._excel_live_service = None
+        ls._excel_live_service_engine = None
+        body = TestClient(app).post(
+            "/excel-live/command",
+            json={"message": msg, "workbook_id": str(p), "session_id": session, "approve": False},
+            headers={"Authorization": "Bearer dev-token"},
+        ).json()
+        pending = body.get("pending_approval") or {}
+        return str(pending.get("summary") or body.get("reason") or "")
+
+    def test_제목_줄만_병합한다(self, tmp_path):
+        assert "A1:F1" in self._plan("제목 줄 병합해줘", tmp_path, "t1")
+
+    def test_명시_범위는_사람_뜻대로(self, tmp_path):
+        assert "H1:M1" in self._plan("H1부터 M1까지 병합해줘", tmp_path, "t2")
