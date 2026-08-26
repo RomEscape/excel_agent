@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import sys
 import time
 from collections import Counter, defaultdict
@@ -237,6 +238,18 @@ def _seed_with_chart(wb):
 
 
 NAVY = {"FF002060", "FF1F3864", "FF16324F", "FF0B2447", "FF1F4E79", "FF203864"}
+
+#: 문장이 **굵게**를 실제로 부르는가. "진한 남색"의 '진한'은 색이지 굵기가 아니므로 뺀다.
+_BOLD_ASKED = re.compile(r"(굵|볼드|bold|두껍|두꺼|진하게)", re.IGNORECASE)
+
+
+def _header_navy_oracle(wb, text: str) -> str:
+    """머리글 남색 — 남색은 항상, 굵게는 문장이 부를 때만 요구한다."""
+    if _fill(wb, "A1") not in NAVY:
+        return f"A1 채움={_fill(wb, 'A1')}"
+    if _BOLD_ASKED.search(str(text or "")) and not _sheet(wb)["A1"].font.bold:
+        return f"굵게를 요청했는데 bold={_sheet(wb)['A1'].font.bold}"
+    return ""
 RED = {"FFFF0000", "FFC00000", "FFFF3B30"}
 PINK = {"FFFFC7CE", "FFFFC0CB", "FFFF99CC", "FFF4CCCC"}
 
@@ -261,7 +274,12 @@ TASKS: dict[str, dict] = {
     "header_navy": {
         "desc": "표의 첫 줄(머리글 A1:F1)을 남색 배경, 흰 글씨, 굵게 만든다.",
         "canonical": "머리글 행은 남색 배경에 흰 글씨로 굵게 해줘", "ctx": None, "seed": _seed_default,
-        "oracle": lambda wb: "" if _fill(wb, "A1") in NAVY and _sheet(wb)["A1"].font.bold else f"A1 채움={_fill(wb, 'A1')} bold={_sheet(wb)['A1'].font.bold}"},
+        "oracle": lambda wb: "" if _fill(wb, "A1") in NAVY and _sheet(wb)["A1"].font.bold else f"A1 채움={_fill(wb, 'A1')} bold={_sheet(wb)['A1'].font.bold}",
+        # 문장이 요구한 것만 검사한다 — "머리글 남색"은 남색만 말한다. 굵게까지 요구하면
+        # **시키지 않은 편집을 강요**하는 셈이라, 제품의 근거 원칙(_action_lacks_evidence:
+        # "사용자가 시키지 않은 편집을 걸러낸다")과 정면으로 어긋난다. 남색은 항상 요구하고
+        # 굵게는 문장이 부를 때만 본다(2026-08-26: 이 한 문장이 오실행 3건 중 1건이었다).
+        "oracle_text": lambda wb, text: _header_navy_oracle(wb, text)},
     "border_table": {
         "desc": "표 전체(A1:F6)에 테두리(경계선)를 두른다.",
         "canonical": "표 전체에 테두리 그려줘", "ctx": None, "seed": _seed_default,
@@ -450,7 +468,9 @@ async def run_one(idx: int, row: dict, llm) -> dict:
     ok = bool(getattr(resp, "ok", False))
     wb = load_workbook(WB)
     try:
-        err = task["oracle"](wb)
+        # 문장-인지 오라클이 있으면 그쪽이 우선이다 — 과제 오라클은 정본(canonical)
+        # 기준이라 생략형 문장에 과잉 요구를 할 수 있다.
+        err = task["oracle_text"](wb, text) if "oracle_text" in task else task["oracle"](wb)
     except Exception as exc:
         # 오라클이 터지면 그 문장 하나만 ERROR다. 예전엔 예외가 그대로 올라가
         # **50분짜리 실행이 통째로 죽었다**(2026-08-20: 159번에서 명령이 시트 이름을
@@ -518,8 +538,12 @@ async def main() -> None:
     print(f"\n보고서: {report}")
 
 
-from office_claw_sidecar.services import decision_trace as _dt
+# 실행은 **스크립트로 불렸을 때만**. 가드가 없어서 `import run_blind_paraphrase_gate`가
+# 3시간짜리 게이트를 통째로 돌리고, main()이 sys.argv[1]을 파일로 읽어 즉시 터졌다 —
+# 그래서 오라클을 테스트로 고정할 수 없었다(2026-08-26).
+if __name__ == "__main__":
+    from office_claw_sidecar.services import decision_trace as _dt
 
-# 배터리 턴을 사람이 친 명령과 가를 출처 태그(2026-08-19 로그 감사: 실사용 로그의 source가 전부 비어 있었다).
-_dt.source(kind="script", name="blind_gate").__enter__()
-asyncio.run(main())
+    # 배터리 턴을 사람이 친 명령과 가를 출처 태그(2026-08-19 로그 감사: 실사용 로그의 source가 전부 비어 있었다).
+    _dt.source(kind="script", name="blind_gate").__enter__()
+    asyncio.run(main())

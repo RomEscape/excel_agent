@@ -5408,3 +5408,64 @@ class TestIntentFirstKindAllowlist:
         assert x._intent_first_kind_allowlist() == frozenset(
             {"excel_live.freeze_panes", "excel_live.autofit_columns"}
         )
+
+
+class TestHeaderNavyOracleAsksOnlyWhatSentenceAsks:
+    """게이트 오라클이 문장에 없는 요구를 하던 것(2026-08-26).
+
+    "머리글 남색"은 남색만 말하는데 과제 오라클은 굵게까지 요구해, 문장대로 실행한
+    결과를 오실행으로 셌다(0826_1212 실패 4건 중 1). 제품에는 "시키지 않은 편집은
+    걸러낸다"는 원칙(_action_lacks_evidence)이 있어 오라클이 그것과 모순됐다.
+    남색은 항상 요구하고, 굵게는 문장이 부를 때만 본다.
+    """
+
+    @staticmethod
+    def _mod():
+        import sys
+        from pathlib import Path
+
+        p = str(Path(__file__).resolve().parents[1] / "scripts")
+        if p not in sys.path:
+            sys.path.insert(0, p)
+        import run_blind_paraphrase_gate as m
+
+        return m
+
+    @staticmethod
+    def _wb(*, navy: bool, bold: bool):
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "지역성과"  # 오라클 헬퍼가 이 이름으로 시트를 찾는다(_sheet 기본값)
+        ws["A1"] = "지역"
+        if navy:
+            ws["A1"].fill = PatternFill("solid", fgColor="FF002060")
+        if bold:
+            ws["A1"].font = Font(bold=True)
+        return wb
+
+    def test_남색만_말한_문장은_남색만_요구(self):
+        m = self._mod()
+        assert m._header_navy_oracle(self._wb(navy=True, bold=False), "머리글 남색") == ""
+
+    def test_굵게를_말했으면_굵게도_요구(self):
+        m = self._mod()
+        err = m._header_navy_oracle(
+            self._wb(navy=True, bold=False), "머리글 행 남색 배경에 흰 글씨 굵게"
+        )
+        assert "굵게" in err
+
+    def test_남색이_없으면_언제나_실패(self):
+        m = self._mod()
+        assert m._header_navy_oracle(self._wb(navy=False, bold=True), "머리글 남색") != ""
+
+    def test_진한_남색의_진한은_굵기가_아니다(self):
+        m = self._mod()
+        assert not m._BOLD_ASKED.search("헤더가 진한 남색이더라고요")
+        assert m._BOLD_ASKED.search("글씨 진하게 해줘")
+
+    def test_문장인지_오라클이_실제로_쓰인다(self):
+        m = self._mod()
+        assert "oracle_text" in m.TASKS["header_navy"]
