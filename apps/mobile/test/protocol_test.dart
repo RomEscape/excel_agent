@@ -47,4 +47,37 @@ void main() {
   test('알 수 없는 frame type은 예외', () {
     expect(() => Frame.fromJson({'type': 'nope'}), throwsFormatException);
   });
+
+  test('ApprovalRequest 디코드 → ApprovalResponse 인코딩 (승인 왕복 계약)', () {
+    // 데스크톱(oc_protocol)이 보내는 형태
+    final req =
+        Frame.fromJson({
+              'type': 'approval_request',
+              'request_id': 'r1',
+              'command': 'write_cell',
+              'reason': 'B2 값을 바꿉니다',
+            })
+            as ApprovalRequest;
+    expect(req.requestId, 'r1');
+    expect(req.command, 'write_cell');
+
+    // 같은 request_id로 되돌려야 데스크톱이 대기 중인 턴을 재개할 수 있다
+    final resp = ApprovalResponse(requestId: req.requestId, approved: true).toJson();
+    expect(resp['type'], 'approval_response');
+    expect(resp['request_id'], 'r1');
+    expect(resp['approved'], true);
+  });
+
+  test('StreamEnd는 오류 사유를 보존한다', () {
+    final end =
+        Frame.fromJson({
+              'type': 'stream_end',
+              'stream_id': 's1',
+              'reason': 'error',
+              'error': '모델이 설정되지 않았습니다',
+            })
+            as StreamEnd;
+    expect(end.reason, 'error');
+    expect(end.error, '모델이 설정되지 않았습니다');
+  });
 }

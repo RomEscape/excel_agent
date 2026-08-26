@@ -1,24 +1,16 @@
-import React, { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import React, { lazy, Suspense, useEffect, useState } from "react";
 import { Loader2, MessageCircle } from "lucide-react";
 import ConversationSidebar from "./ConversationSidebar";
 import StatusBar from "./StatusBar";
-// 통합 승인 다이얼로그: Phase 2 메신저 CONFIRM과 Phase 4 에이전트 스킬 CONFIRM이
-// 동일한 pendingApproval 상태를 공유한다.
-// (엑셀 CONFIRM은 이제 채팅 패널 안의 인라인 버튼이 받는다 — 와이어프레임 B-6)
-import ApprovalDialog from "@/components/security/ApprovalDialog";
 import CommandPalette from "@/components/cmdk/CommandPalette";
 import ShortcutHelp from "@/components/cmdk/ShortcutHelp";
 import UpdateNotice from "@/components/updater/UpdateNotice";
 import ChatPanel from "@/components/chat/ChatPanel";
-import { Toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import useAppStore from "@/store/appStore";
 import useChatStore from "@/store/chatStore";
-import useToast from "@/hooks/useToast";
 import { reservesLayoutSpace } from "@/lib/chatPanel";
 import { toggleTheme } from "@/lib/themeManager";
-import { securityRespondApproval } from "@/lib/api";
-import { toUserMessage } from "@/lib/errorMessages";
 
 /**
  * 단일키(`?`, `Y`, `N` 등) 단축키는 input/textarea/contentEditable에 포커스가
@@ -62,7 +54,6 @@ const WorkspacePage = lazy(() => import("@/components/workspace/WorkspacePage"))
 const ConversationHistoryPage = lazy(() =>
   import("@/components/conversations/ConversationHistoryPage")
 );
-const ConversationsPage = lazy(() => import("@/components/conversations/ConversationsPage"));
 const SettingsHub = lazy(() => import("@/components/settings/SettingsHub"));
 const PreferencesPage = lazy(() => import("@/components/settings/PreferencesPage"));
 
@@ -80,13 +71,10 @@ const PAGE_MAP = {
   // 사이드바 `대화목록` — 지난 대화를 요일별/파일별로 훑는 화면.
   conversations: ConversationHistoryPage,
 
-  // 메신저 채널 모니터링. 와이어프레임에 없어 내비에서는 빠졌고 Cmd+K로 들어간다.
-  messenger_monitor: ConversationsPage,
-
   // 사이드바 푸터의 `환경 설정` — 와이어프레임의 단일 페이지.
   preferences: PreferencesPage,
 
-  // 탭 허브는 남는다. 와이어프레임에 없는 5개 기능(메신저·자격증명·보안·
+  // 탭 허브는 남는다. 와이어프레임에 없는 5개 기능(로컬 AI·자격증명·보안·
   // 허용 범위·실행 기록)의 유일한 진입 경로가 Cmd+K → 아래 키들이다.
   settings: SettingsHub,
 
@@ -95,7 +83,6 @@ const PAGE_MAP = {
   audit: SettingsHub,
   security: SettingsHub,
   permissions: SettingsHub,
-  messenger_settings: SettingsHub,
   guide: SettingsHub,
   mobile_relay: SettingsHub,
 };
@@ -111,8 +98,6 @@ function PageLoader() {
 
 export default function Layout() {
   const currentPage = useAppStore((s) => s.currentPage);
-  const pendingApproval = useAppStore((s) => s.pendingApproval);
-  const setPendingApproval = useAppStore((s) => s.setPendingApproval);
   const setSidebarCollapsed = useAppStore((s) => s.setSidebarCollapsed);
   const panelOpen = useChatStore((s) => s.panelOpen);
   const panelMode = useChatStore((s) => s.panelMode);
@@ -125,9 +110,6 @@ export default function Layout() {
 
   // 도킹일 때만 본문이 자리를 내준다 — 플로팅은 본문 위에 겹친다.
   const panelDocked = panelOpen && reservesLayoutSpace(panelMode);
-
-  // 로컬 토스트 상태 (승인/거부 결과 안내) — useToast 훅이 상태·자동 dismiss 소유
-  const { toast: notifyToast, showToast: showNotify, dismissToast: dismissNotify } = useToast();
 
   // ── 글로벌 모달 상태 ────────────────────────────────────────────────────
   const [cmdkOpen, setCmdkOpen] = useState(false);
@@ -202,33 +184,7 @@ export default function Layout() {
     return () => window.removeEventListener("keydown", onEsc);
   }, [shortcutOpen]);
 
-  const handleApprove = useCallback(async (_auditId) => {
-    if (!pendingApproval) return;
-    const approvalId = pendingApproval.approval_id;
-    setPendingApproval(null);
-    try {
-      await securityRespondApproval(approvalId, true);
-      showNotify({ message: "승인되었습니다. 작업이 실행됩니다." });
-    } catch (err) {
-      showNotify({ message: toUserMessage(err, "승인 전달에 실패했습니다.") });
-    }
-  }, [pendingApproval, setPendingApproval]);
 
-  const handleReject = useCallback(async (_auditId, reason) => {
-    if (!pendingApproval) return;
-    const approvalId = pendingApproval.approval_id;
-    setPendingApproval(null);
-    try {
-      await securityRespondApproval(approvalId, false);
-    } catch {
-      // 거부 전달 실패는 조용히 처리
-    }
-    showNotify({
-      message: reason
-        ? `거부되었습니다. 사유: ${reason}`
-        : "거부되었습니다. 작업이 취소되었습니다.",
-    });
-  }, [pendingApproval, setPendingApproval]);
 
   return (
     <div className="relative flex h-screen w-screen overflow-hidden bg-background">
@@ -249,7 +205,7 @@ export default function Layout() {
             홈에서는 StatusBar를 숨긴다.
             와이어프레임의 홈(B-1)에는 상단 바가 없고 우상단의 `로컬 에이전트 작동중`
             하나만 있는데, StatusBar를 같이 띄우면 같은 AI 상태가 40px 간격으로
-            두 번 나온다. 나머지 페이지에서는 그대로 둔다 — 보안·메신저 상태와
+            두 번 나온다. 나머지 페이지에서는 그대로 둔다 — 보안 상태와
             Cmd+K 힌트는 홈 밖에서 대체 경로가 없다.
           */}
           {!isHome && <StatusBar />}
@@ -284,28 +240,7 @@ export default function Layout() {
         </button>
       )}
 
-      {/* 전역 승인 다이얼로그 — 어느 페이지에서든 표시 (security/ApprovalDialog 단일화) */}
-      {pendingApproval && (
-        <ApprovalDialog
-          open={true}
-          command={pendingApproval.command ?? pendingApproval.summary ?? ""}
-          reason={pendingApproval.reason ?? pendingApproval.summary ?? "에이전트 스킬 실행 승인 요청"}
-          auditId={pendingApproval.audit_id ?? pendingApproval.approval_id}
-          source={pendingApproval.source}
-          toolName={pendingApproval.tool_display_name ?? pendingApproval.tool_name}
-          sessionId={pendingApproval.session_id}
-          danger={pendingApproval.danger}
-          timeoutSeconds={60}
-          onApprove={handleApprove}
-          onReject={handleReject}
-        />
-      )}
 
-      {/* 승인/거부 결과 토스트 */}
-      <Toast
-        toast={notifyToast}
-        onDismiss={dismissNotify}
-      />
 
       {/* 글로벌 명령 팔레트 — Cmd/Ctrl+K로 토글 */}
       <CommandPalette open={cmdkOpen} onClose={() => setCmdkOpen(false)} />

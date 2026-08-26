@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { formatResultText } from "./excelResult.js";
 
 /*
- * 이 문자열은 말풍선 본문 · 세션 영속화 · 메신저 전송 세 곳이 그대로 쓴다.
+ * 이 문자열은 말풍선 본문 · 세션 영속화 두 곳이 그대로 쓴다.
  * 문구가 바뀌면 저장된 대화 기록의 톤도 같이 바뀌므로 고정한다.
  *
  * 예전에 있던 표/막대/통계 뷰모델 테스트는 인라인 결과 카드를 걷어내면서

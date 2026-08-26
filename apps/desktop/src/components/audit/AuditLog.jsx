@@ -111,7 +111,7 @@ export default function AuditLog() {
               description={
                 filter === "confirm_pending"
                   ? "현재 승인 대기 중인 명령이 없습니다."
-                  : "메신저 또는 앱에서 명령을 실행하면 여기에 기록됩니다."
+                  : "앱에서 명령을 실행하면 여기에 기록됩니다."
               }
             />
           ) : (

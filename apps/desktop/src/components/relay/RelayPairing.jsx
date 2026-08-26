@@ -5,6 +5,7 @@
  *   - 페어링 코드 복사 필드 (334×44)
  *   - `입력 가능 시간 3:29` 카운트다운 + 재발급 버튼
  *   - Google Play / App Store 배지
+ *   - QR을 못 쓰는 환경(시뮬레이터·에뮬레이터)용 수동 입력 값 3종
  *
  * 카운트다운이 필요한 이유: relay의 페어링 code는 TTL(기본 120초)로 만료되는데,
  * 표시가 없으면 사용자는 이유 없는 페어링 실패만 보게 된다. 남은 시간은
@@ -242,6 +243,37 @@ export default function RelayPairing() {
                   스캔 대기 중…
                 </p>
               </>
+            )}
+
+            {/* 카메라가 없는 시뮬레이터·에뮬레이터는 QR을 못 쓴다 — relay·pairing_id·
+                code 세 값을 수동 입력용으로 그대로 노출한다. 셋 중 pairing_id가 빠지면
+                수동 페어링 자체가 불가능해서, 예전에는 relay_config.json을 직접 열어야 했다.
+                만료된 뒤에는 감춘다 — 죽은 값을 복사 가능한 모습으로 두면 흐려 놓은 QR과
+                같은 함정이 된다. */}
+            {!expired && (
+              <div className="w-full max-w-[21rem] space-y-2 rounded-lg border border-border bg-muted/40 p-3">
+                <p className="text-xs font-medium text-foreground">
+                  카메라가 없다면 (시뮬레이터·에뮬레이터) 수동 입력
+                </p>
+                <dl className="grid grid-cols-[5.5rem_1fr] gap-x-3 gap-y-1 text-xs">
+                  <dt className="text-ink-subtle">relay</dt>
+                  <dd>
+                    <code className="select-all break-all text-foreground">{pairing.relay_url}</code>
+                  </dd>
+                  <dt className="text-ink-subtle">pairing_id</dt>
+                  <dd>
+                    <code className="select-all break-all text-foreground">{pairing.pairing_id}</code>
+                  </dd>
+                  <dt className="text-ink-subtle">code</dt>
+                  <dd>
+                    <code className="select-all text-foreground">{pairing.code}</code>
+                  </dd>
+                </dl>
+                <p className="text-[11px] text-ink-faint">
+                  폰이 <code>127.0.0.1</code>로는 이 PC에 닿지 못합니다 — relay 주소가 LAN
+                  IP인지 확인하세요.
+                </p>
+              </div>
             )}
 
             {/* 앱 설치 안내 + 스토어 배지 — 와이어프레임 Frame 157 */}

@@ -16,7 +16,7 @@ DB 위치: ~/officeclaw/audit.db
   approved         INTEGER           (1=승인, 0=거부, NULL=해당없음/대기중)
   user_id          TEXT              (텔레그램 chat_id 등)
   source           TEXT    DEFAULT 'agent'  (telegram|slack|discord|agent|webui)
-  tool_name        TEXT              (호출된 스킬 이름, 예: gog.gmail.send)  — Sprint 3
+  tool_name        TEXT              (호출된 스킬 이름, 예: excel_live.write_range)  — Sprint 3
   session_id       TEXT              (OpenClaw 세션 ID)                      — Sprint 3
   rejection_reason TEXT              (거부 시 사용자 입력 사유, 선택)          — Sprint 3
 """
@@ -58,7 +58,11 @@ CREATE INDEX IF NOT EXISTS idx_command_log_timestamp
 ON command_log (timestamp);
 """
 
-# 허용 source enum 값
+# 허용 source enum 값.
+#
+# 메신저 봇 기능은 제거됐지만 telegram/slack/discord는 **남긴다** — 이미 쌓인
+# 감사 로그 행이 그 값을 갖고 있고, enum을 줄이면 과거 기록의 디바이스 칸이
+# 깨진다. 이 값으로 새로 기록하는 곳은 이제 없다.
 _VALID_SOURCES = frozenset({"telegram", "slack", "discord", "agent", "webui"})
 
 # 자유 문자열 → enum 정규화 매핑
@@ -147,7 +151,7 @@ class CommandAuditLogger:
         approved:   True=승인, False=거부, None=해당없음/대기중
         user_id:    텔레그램 chat_id 등
         source:     telegram | slack | discord | agent | webui (자유 문자열은 정규화됨)
-        tool_name:  호출된 스킬 이름 (예: gog.gmail.send) — Sprint 3
+        tool_name:  호출된 스킬 이름 (예: excel_live.write_range) — Sprint 3
         session_id: OpenClaw 세션 ID — Sprint 3
         """
         ts = datetime.now(timezone.utc).isoformat()
@@ -240,15 +244,9 @@ class CommandAuditLogger:
             logger.error("CommandAuditLogger.get_by_id 실패: %s", e)
             return None
 
-    def get_stats(self, extra_pending: int = 0) -> dict:
+    def get_stats(self) -> dict:
         """
         등급별 집계를 반환한다.
-
-        Parameters
-        ----------
-        extra_pending:
-            UI 승인 대기 큐(_pending_ui_approvals)의 미처리 건수.
-            confirm_pending = DB의 CONFIRM+approved IS NULL 건수 + extra_pending.
 
         Returns::
 
@@ -279,7 +277,6 @@ class CommandAuditLogger:
             ).fetchone()
             if not rows:
                 return {}
-            confirm_pending = (rows["confirm_pending_db"] or 0) + extra_pending
             return {
                 "total": rows["total"] or 0,
                 "safe": rows["safe"] or 0,
@@ -287,7 +284,7 @@ class CommandAuditLogger:
                 "denied": rows["denied"] or 0,
                 "confirm_approved": rows["confirm_approved"] or 0,
                 "confirm_rejected": rows["confirm_rejected"] or 0,
-                "confirm_pending": confirm_pending,
+                "confirm_pending": rows["confirm_pending_db"] or 0,
             }
         except sqlite3.Error as e:
             logger.error("CommandAuditLogger.get_stats 실패: %s", e)

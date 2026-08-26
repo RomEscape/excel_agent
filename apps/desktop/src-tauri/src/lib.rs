@@ -40,9 +40,6 @@ pub fn run() {
             ipc::list_credentials,
             ipc::chat,
             ipc::get_audit_logs,
-            ipc::telegram_status,
-            ipc::telegram_start,
-            ipc::telegram_stop,
             ipc::get_llm_settings,
             ipc::save_llm_settings,
             ipc::excel_live_status,
@@ -78,25 +75,12 @@ pub fn run() {
             ipc::command_audit_list,
             ipc::command_audit_stats,
             ipc::command_audit_clear,
-            // Phase 2: Security UI Approval (텔레그램 미연결 시 앱 UI 대체 수단)
-            ipc::security_get_pending_approvals,
-            ipc::security_respond_approval,
-            // Phase 3: Slack commands
-            ipc::slack_setup,
-            ipc::slack_status,
-            ipc::slack_start,
-            ipc::slack_stop,
-            // Phase 3: Discord commands
-            ipc::discord_setup,
-            ipc::discord_status,
-            ipc::discord_start,
-            ipc::discord_stop,
             // Phase 3: Permissions commands
             ipc::permissions_get,
             ipc::permissions_update,
             ipc::permissions_whitelist_add,
             ipc::permissions_whitelist_remove,
-            // Phase 1: officeclaw — Workspace + Telegram setup
+            // Phase 1: officeclaw — Workspace
             ipc::open_workspace_folder,
             ipc::open_workspace_file,
             ipc::workspace_list_files,
@@ -105,7 +89,6 @@ pub fn run() {
             ipc::workspace_delete_file,
             ipc::workspace_create_excel_file,
             ipc::workspace_write_file_binary, // Sprint 3: 바이너리 업로드 (S-2 해소)
-            ipc::telegram_setup,
             // Sprint 5: 채팅 세션 영속화
             ipc::chat_save_message,
             ipc::chat_list_sessions,

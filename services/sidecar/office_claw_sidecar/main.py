@@ -18,7 +18,6 @@ from office_claw_sidecar.routers import (
     backup,
     chat,
     credentials,
-    discord,
     excel_live,
     health,
     llm,
@@ -27,8 +26,6 @@ from office_claw_sidecar.routers import (
     relay,
     security,
     settings,
-    slack,
-    telegram,
     workspace,
 )
 
@@ -61,7 +58,6 @@ async def lifespan(app: FastAPI):
     await _load_permissions_whitelist()
 
     # Phase 1: 저장된 봇 토큰이 있으면 텔레그램 봇 자동 시작
-    await _auto_start_telegram()
 
     # 모바일 릴레이: 페어링돼 있으면 relay로 아웃바운드 WS 클라이언트 자동 기동
     await _auto_start_relay_client(app)
@@ -98,30 +94,6 @@ async def _load_permissions_whitelist() -> None:
         logger.warning("화이트리스트 로드 실패 (무시됨): %s", exc)
 
 
-async def _auto_start_telegram() -> None:
-    """
-    앱 시작 시 keyring에 봇 토큰이 저장되어 있으면 자동으로 텔레그램 봇을 시작한다.
-    토큰이 없거나 봇 시작에 실패하면 조용히 무시 — 사용자가 온보딩에서 설정 가능.
-    """
-    try:
-        from office_claw_sidecar.services.keyring_service import KeyringService
-        from office_claw_sidecar.routers.telegram import telegram_svc
-
-        ks = KeyringService()
-        token = ks.retrieve("telegram_bot_token")
-        if not token:
-            logger.info("텔레그램 봇 토큰 없음 — 자동 시작 건너뜀")
-            return
-
-        if telegram_svc.is_running():
-            logger.info("텔레그램 봇 이미 실행 중 — 자동 시작 건너뜀")
-            return
-
-        logger.info("저장된 봇 토큰 감지 — 텔레그램 봇 자동 시작 중...")
-        await telegram_svc.start()
-        logger.info("텔레그램 봇 자동 시작 완료")
-    except Exception as exc:
-        logger.warning("텔레그램 봇 자동 시작 실패 (무시됨): %s", exc)
 
 
 async def _auto_start_relay_client(app: FastAPI) -> None:
@@ -164,7 +136,6 @@ app.include_router(
 )
 app.include_router(llm.router, prefix="/llm", dependencies=[Depends(verify_auth)])
 app.include_router(audit.router, prefix="/audit", dependencies=[Depends(verify_auth)])
-app.include_router(telegram.router, prefix="/telegram", dependencies=[Depends(verify_auth)])
 
 # ── Phase 1: officeclaw 워크스페이스 라우터 ──────────────────────────────────
 app.include_router(workspace.router, prefix="/workspace", dependencies=[Depends(verify_auth)])
@@ -174,9 +145,7 @@ app.include_router(maintenance.router, prefix="/maintenance", dependencies=[Depe
 # ── 보안 라우터 ───────────────────────────────────────────────────────────────
 app.include_router(security.router, prefix="/security", dependencies=[Depends(verify_auth)])
 
-# ── Phase 3: 멀티 메신저 + 권한 설정 라우터 ─────────────────────────────────────
-app.include_router(slack.router, prefix="/slack", dependencies=[Depends(verify_auth)])
-app.include_router(discord.router, prefix="/discord", dependencies=[Depends(verify_auth)])
+# ── Phase 3: 권한 설정 라우터 ───────────────────────────────────────────────────
 app.include_router(permissions.router, prefix="/permissions", dependencies=[Depends(verify_auth)])
 
 # ── Sprint 5: 채팅 세션 영속화 + 백업/복원 ─────────────────────────────────────

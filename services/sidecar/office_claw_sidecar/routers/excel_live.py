@@ -11,6 +11,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from office_claw_sidecar.command_audit import get_command_audit_logger
 from office_claw_sidecar.models.approval import ApprovalRequest, ApprovalResponse
 from office_claw_sidecar.services.audit_service import AuditService
 from office_claw_sidecar.services.excel_actions import execute_excel_action
@@ -86,19 +87,73 @@ class PendingExcelApproval:
     # B안 재개용 대화 상태 {"messages": [...], "tool_call_id": str}.
     # tool-calling 경로에서 설정되며, /action 직접 호출 경로에서는 None(단순 실행).
     resume: dict[str, Any] | None = None
+    # 이 승인 대기가 만든 command_log 행 id — 승인/거부가 정해지면 그 행을 갱신한다.
+    audit_id: int | None = None
+    # 사용자가 실제로 입력한 자연어 명령. 재개 턴에서도 같은 문장을 쓰기 위해 들고 간다.
+    command_text: str = ""
 
 
 _pending_approvals: dict[str, PendingExcelApproval] = {}
 
 
+# ── 명령 감사 로그(command_log) ───────────────────────────────────────────────
+#
+# `audit.jsonl`(_audit)과 별개인 SQLite 감사 로그다. 데스크톱 `작업 기록` 화면이
+# 읽는 쪽은 이 SQLite이고, 예전에는 메신저 경로만 여기에 기록해서 데스크톱으로
+# 작업한 사용자에게는 표가 늘 비어 있었다. 그래서 엑셀 실행 경로도 여기에 남긴다.
+#
+# `source="webui"`인 이유: `normalize_source()`가 허용하는 5개 enum 중 데스크톱 앱을
+# 가리키는 값이다. 프론트 `lib/activityLog.js`가 이 값을 `데스크탑`으로 읽는다.
+_AUDIT_SOURCE = "webui"
+
+
+def _log_command(
+    grade: str,
+    command: str,
+    reason: str,
+    tool_name: str,
+    approved: bool | None = None,
+) -> int:
+    """엑셀 작업 한 건을 명령 감사 로그에 남기고 row id를 돌려준다."""
+    return get_command_audit_logger().log(
+        grade=grade,
+        command=command or tool_name,
+        reason=reason,
+        approved=approved,
+        source=_AUDIT_SOURCE,
+        tool_name=tool_name,
+    )
+
+
 def _register_and_respond(
-    turn: dict[str, Any], workbook_id: str | None
+    turn: dict[str, Any],
+    workbook_id: str | None,
+    command_text: str = "",
+    log_safe: bool = True,
 ) -> ExcelLiveActionResponse:
-    """에이전트 턴 결과를 응답으로 변환한다. approval이면 승인 대기(재개 상태 포함)를 등록."""
+    """
+    에이전트 턴 결과를 응답으로 변환한다. approval이면 승인 대기(재개 상태 포함)를 등록.
+
+    Parameters
+    ----------
+    command_text:
+        사용자가 입력한 자연어 명령. `작업 기록` 표의 `명령` 칸에 그대로 나간다.
+    log_safe:
+        실행 완료 턴을 SAFE로 기록할지. 승인 후 재개하는 턴에서는 False다 —
+        그 명령은 이미 CONFIRM 행으로 남아 있고 승인 결과로 갱신되므로,
+        여기서 또 남기면 같은 명령이 표에 두 줄로 보인다.
+    """
     executed = turn.get("executed", [])
 
     if turn["type"] == "approval":
         approval = _build_approval(turn["action"], turn["params"])
+        audit_id = _log_command(
+            grade="CONFIRM",
+            command=command_text,
+            reason=turn.get("reason", "승인이 필요한 작업입니다."),
+            tool_name=turn["action"],
+            approved=None,
+        )
         _pending_approvals[approval.approval_id] = PendingExcelApproval(
             action=turn["action"],
             params=turn["params"],
@@ -106,6 +161,8 @@ def _register_and_respond(
             sheet_name=turn.get("sheet_name"),
             created_at=approval.created_at,
             resume=turn.get("resume"),
+            audit_id=audit_id or None,
+            command_text=command_text,
         )
         return ExcelLiveActionResponse(
             ok=True,
@@ -117,6 +174,17 @@ def _register_and_respond(
         )
 
     last = executed[-1] if executed else None
+
+    # 도구를 하나도 쓰지 않은 턴(일반 대화)은 기록하지 않는다 — `작업 기록`은
+    # 대화록이 아니라 작업 목록이라, 잡담까지 쌓이면 표가 못 쓰게 된다.
+    if log_safe and last is not None:
+        _log_command(
+            grade="SAFE",
+            command=command_text,
+            reason="자동 실행 (허용된 작업)",
+            tool_name=last["action"],
+        )
+
     return ExcelLiveActionResponse(
         ok=True,
         action=last["action"] if last else "chat",
@@ -208,6 +276,15 @@ def get_status():
 def post_action(req: ExcelLiveActionRequest):
     tool_def = get_tool(req.action)
     if tool_def and tool_def.permission == PermissionLevel.DENIED:
+        # 차단도 기록한다 — 남기지 않으면 `작업 기록`의 `차단` 배지가 영영 안 뜨고,
+        # "무엇이 막혔는지"를 사용자가 확인할 방법이 사라진다.
+        _log_command(
+            grade="DENIED",
+            command=req.action,
+            reason="보안 정책에 의해 거부된 작업입니다.",
+            tool_name=req.action,
+            approved=False,
+        )
         return ExcelLiveActionResponse(
             ok=False,
             action=req.action,
@@ -216,12 +293,21 @@ def post_action(req: ExcelLiveActionRequest):
 
     if tool_def and tool_def.permission == PermissionLevel.CONFIRM and not req.approve:
         pending = _build_approval(req.action, req.params)
+        audit_id = _log_command(
+            grade="CONFIRM",
+            command=req.action,
+            reason="승인이 필요한 작업입니다.",
+            tool_name=req.action,
+            approved=None,
+        )
         _pending_approvals[pending.approval_id] = PendingExcelApproval(
             action=req.action,
             params=req.params,
             workbook_id=req.workbook_id,
             sheet_name=req.sheet_name,
             created_at=pending.created_at,
+            audit_id=audit_id or None,
+            command_text=req.action,
         )
         return ExcelLiveActionResponse(
             ok=True,
@@ -242,6 +328,12 @@ def post_action(req: ExcelLiveActionRequest):
             action="excel.live.action",
             target=req.action,
             detail=f"ok=True workbook={req.workbook_id or ''}",
+        )
+        _log_command(
+            grade="SAFE",
+            command=req.action,
+            reason="자동 실행 (허용된 작업)",
+            tool_name=req.action,
         )
         return ExcelLiveActionResponse(ok=True, action=req.action, result=result)
     except Exception as exc:
@@ -272,7 +364,7 @@ async def post_command(
     except (LLMConfigError, LLMToolsNotSupportedError, httpx.HTTPError) as exc:
         raise _map_llm_error(exc)
 
-    return _register_and_respond(turn, req.workbook_id)
+    return _register_and_respond(turn, req.workbook_id, command_text=req.message)
 
 
 @router.post("/approval", response_model=ExcelLiveActionResponse)
@@ -283,6 +375,11 @@ async def post_approval(
     pending = _pending_approvals.pop(req.approval_id, None)
     if pending is None:
         raise HTTPException(status_code=404, detail="승인 대기 작업을 찾을 수 없습니다.")
+
+    # 승인 대기로 남겨둔 command_log 행에 결과를 새긴다. 이 갱신이 없으면 그 행이
+    # 영원히 `대기`로 남아 표에서 완료/차단으로 넘어가지 않는다.
+    if pending.audit_id is not None:
+        get_command_audit_logger().update_approval(pending.audit_id, req.approved)
 
     if not req.approved:
         # 거부 시 나머지 계획은 중단하고 종료한다 (에이전트 루프를 재개하지 않음).
@@ -312,7 +409,12 @@ async def post_approval(
             )
         except (LLMConfigError, LLMToolsNotSupportedError, httpx.HTTPError) as exc:
             raise _map_llm_error(exc)
-        return _register_and_respond(turn, pending.workbook_id)
+        return _register_and_respond(
+            turn,
+            pending.workbook_id,
+            command_text=pending.command_text,
+            log_safe=False,
+        )
 
     # 재개 상태 없음 (/action 직접 승인 경로) — 단순 실행.
     try:

@@ -4,8 +4,8 @@
  * 최종 와이어프레임 A군(Frame 159~165)은 3단계다:
  *   파일 설치 → 모델 설치 → 워크스페이스 지정
  *
- * 앱에는 그 3단계 말고 메신저 연결도 필요해서, 3단계 뒤에 붙였다. 와이어프레임
- * 하단 스텝 인디케이터는 그 3단계에만 붙는다 — 메신저·완료 화면에는 없다.
+ * 메신저 봇 연결 단계(선택 + 설정)가 3단계 뒤에 붙어 있었지만, 봇 기능이
+ * 제거되면서 함께 사라졌다. 이제 남은 건 와이어프레임 A군 3단계와 완료 화면뿐이다.
  *
  * `파일 설치`와 `모델 설치`는 별도 화면이 아니라 같은 화면의 두 상태다:
  * Ollama가 아직 없으면 파일 설치(1단계), 깔려 있으면 모델 선택(2단계).
@@ -14,8 +14,6 @@
  *
  * Step 0: AI 엔진 — Ollama 설치 + 모델 선택 (와이어프레임 1·2단계)
  * Step 1: 워크스페이스 지정            (와이어프레임 3단계)
- * Step 2: 메신저 선택 (Telegram / Slack / Discord)
- * Step 3: 선택된 메신저 설정
  * Step 4: 완료 안내
  *
  * appStore의 `onboardingComplete`가 false일 때만 표시된다.
@@ -52,33 +50,24 @@ import useAppStore from "@/store/appStore";
 import {
   saveLLMSettings,
   healthCheck,
-  telegramSetup,
-  telegramStatus,
-  telegramStart,
-  slackSetup,
-  slackStart,
-  discordSetup,
-  discordStart,
   openWorkspaceFolder,
 } from "@/lib/api";
 import { toUserMessage } from "@/lib/errorMessages";
 
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 3;
 
 const STEP_LABELS = [
   "AI 엔진",
   "워크스페이스",
-  "메신저 선택",
-  "메신저 설정",
   "완료",
 ];
 
 /**
- * 와이어프레임 밖 화면(메신저·완료)의 진행 표시.
+ * 와이어프레임 밖 화면(완료)의 진행 표시.
  *
  * 3단계 인디케이터(WizardSteps)는 와이어프레임 A군 화면에만 붙는다. 그 뒤
- * 화면까지 3단계를 그리면 "워크스페이스 지정"이 활성인 채로 메신저 화면이
- * 떠서 어느 단계인지 거짓말을 하게 된다.
+ * 화면까지 3단계를 그리면 "워크스페이스 지정"이 활성인 채로 완료 화면이 떠서
+ * 어느 단계인지 거짓말을 하게 된다.
  */
 function StepDots({ current }) {
   return (
@@ -423,452 +412,6 @@ function StepLLM({ onNext, onPrev }) {
   );
 }
 
-// ── Step 2: 메신저 선택 ────────────────────────────────────────────────────────
-
-function StepMessengerChoice({ onNext, onPrev }) {
-  const selectedMessenger = useAppStore((s) => s.selectedMessenger);
-  const setSelectedMessenger = useAppStore((s) => s.setSelectedMessenger);
-  const [choice, setChoice] = useState(selectedMessenger);
-
-  const MESSENGERS = [
-    {
-      id: "telegram",
-      name: "텔레그램 (Telegram)",
-      desc: "스마트폰에서 가장 쉽게 사용 가능. @BotFather로 봇 토큰 발급 후 즉시 연결.",
-      icon: MessageCircle,
-      color: "text-blue-500",
-    },
-    {
-      id: "slack",
-      name: "슬랙 (Slack)",
-      desc: "팀 채널에서 업무 자동화. Slack App과 소켓 모드 토큰이 필요합니다.",
-      icon: Hash,
-      color: "text-purple-500",
-    },
-    {
-      id: "discord",
-      name: "디스코드 (Discord)",
-      desc: "Discord 서버에서 봇으로 사용. Bot Token 발급 후 서버에 초대하세요.",
-      icon: Bot,
-      color: "text-indigo-500",
-    },
-  ];
-
-  const handleNext = () => {
-    setSelectedMessenger(choice);
-    onNext();
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-          <MessageCircle className="h-7 w-7 text-primary" />
-        </div>
-        <h2 className="text-xl font-bold">메신저 선택</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          어떤 메신저로 김대리를 제어하시겠어요?
-        </p>
-      </div>
-
-      <div className="grid gap-3">
-        {MESSENGERS.map(({ id, name, desc, icon: Icon, color }) => (
-          <Card
-            key={id}
-            className={`cursor-pointer transition-all ${choice === id ? "border-primary ring-1 ring-primary" : ""}`}
-            onClick={() => setChoice(id)}
-          >
-            <CardContent className="flex items-start gap-3 pt-4 pb-4">
-              <div className="mt-0.5 h-4 w-4 rounded-full border-2 border-primary flex items-center justify-center shrink-0">
-                {choice === id && <span className="block h-2 w-2 rounded-full bg-primary" />}
-              </div>
-              <Icon className={`h-5 w-5 shrink-0 mt-0.5 ${color}`} />
-              <div>
-                <p className="text-sm font-semibold">{name}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{desc}</p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <div className="flex gap-2">
-        <Button variant="ghost" className="flex-none" onClick={onPrev}>
-          <ChevronLeft className="mr-1 h-4 w-4" />
-          이전
-        </Button>
-        <Button className="flex-1" onClick={handleNext}>
-          다음
-          <ChevronRight className="ml-1 h-4 w-4" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// ── Step 3a: 텔레그램 봇 설정 ────────────────────────────────────────────────────
-
-function StepTelegram({ onNext, onPrev }) {
-  const setTelegramConnected = useAppStore((s) => s.setTelegramConnected);
-
-  const [token, setToken] = useState("");
-  const [chatId, setChatId] = useState("");
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState(null);
-
-  const handleTest = async () => {
-    if (!token.trim()) return;
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const result = await telegramSetup(token.trim(), chatId.trim() || undefined);
-      setTestResult(result);
-      if (result.ok) setTelegramConnected(true);
-    } catch (err) {
-      setTestResult({ ok: false, error: toUserMessage(err) });
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-          <MessageCircle className="h-7 w-7 text-primary" />
-        </div>
-        <h2 className="text-xl font-bold">텔레그램 봇 설정</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          텔레그램으로 PC 파일에 원격 접근할 수 있습니다.
-        </p>
-      </div>
-
-      <div className="space-y-3">
-        <div className="space-y-1.5">
-          <Label htmlFor="ob-tg-token">봇 토큰</Label>
-          <Input
-            id="ob-tg-token"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            placeholder="123456789:ABC-DEF..."
-            type="password"
-            autoComplete="off"
-          />
-          <p className="text-xs text-muted-foreground">
-            텔레그램에서 <strong>@BotFather</strong>에게 메시지를 보내{" "}
-            <code className="rounded bg-muted px-1">/newbot</code> 명령으로 봇을 만들고 토큰을 발급받으세요.
-          </p>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="ob-tg-chatid">내 Chat ID (권장)</Label>
-          <Input
-            id="ob-tg-chatid"
-            value={chatId}
-            onChange={(e) => setChatId(e.target.value)}
-            placeholder="숫자로 이루어진 내 Chat ID"
-            className={!chatId.trim() ? "border-orange-400 focus-visible:ring-orange-400" : ""}
-          />
-          {!chatId.trim() ? (
-            <div className="flex items-start gap-1.5 rounded-md bg-orange-50 dark:bg-orange-950/20 border border-orange-300 dark:border-orange-800 px-3 py-2">
-              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-orange-600" />
-              <p className="text-xs text-orange-700 dark:text-orange-400">
-                <strong>보안 권장:</strong> Chat ID를 설정하면 나만 봇에 접근할 수 있습니다.
-                텔레그램에서{" "}
-                <code className="rounded bg-orange-100 dark:bg-orange-900/40 px-1">@userinfobot</code>에
-                메시지를 보내면 내 Chat ID를 확인할 수 있습니다.
-              </p>
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              이 Chat ID만 봇에 접근할 수 있습니다. 보안 강화 설정입니다.
-            </p>
-          )}
-        </div>
-
-        <Button
-          variant="outline"
-          className="w-full"
-          onClick={handleTest}
-          disabled={testing || !token.trim()}
-        >
-          {testing ? (
-            <>
-              <RefreshCw className="mr-1.5 h-4 w-4 animate-spin" />
-              연결 테스트 중...
-            </>
-          ) : (
-            "연결 테스트"
-          )}
-        </Button>
-
-        {testResult?.ok && (
-          <div className="flex items-center gap-2 rounded-md bg-green-50 dark:bg-green-950/20 px-3 py-2">
-            <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
-            <p className="text-sm text-green-700 dark:text-green-400">
-              연결 성공! 봇: @{testResult.bot_username} ({testResult.bot_name})
-            </p>
-          </div>
-        )}
-
-        {testResult && !testResult.ok && (
-          <div className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2">
-            <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive shrink-0" />
-            <p className="text-sm text-destructive">{testResult.error}</p>
-          </div>
-        )}
-      </div>
-
-      <div className="flex gap-2">
-        <Button variant="ghost" className="flex-none" onClick={onPrev}>
-          <ChevronLeft className="mr-1 h-4 w-4" />
-          이전
-        </Button>
-        <Button variant="ghost" className="flex-1" onClick={onNext}>
-          나중에 설정
-        </Button>
-        <Button className="flex-1" onClick={onNext} disabled={testing}>
-          {testResult?.ok ? "완료" : "다음"}
-          <ChevronRight className="ml-1 h-4 w-4" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// ── Step 3b: 슬랙 봇 설정 ────────────────────────────────────────────────────────
-
-function StepSlack({ onNext, onPrev }) {
-  const [botToken, setBotToken] = useState("");
-  const [appToken, setAppToken] = useState("");
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState(null);
-
-  const handleTest = async () => {
-    if (!botToken.trim() || !appToken.trim()) return;
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const result = await slackSetup(botToken.trim(), appToken.trim());
-      setTestResult(result);
-    } catch (err) {
-      setTestResult({ ok: false, error: toUserMessage(err) });
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-          <Hash className="h-7 w-7 text-primary" />
-        </div>
-        <h2 className="text-xl font-bold">슬랙 봇 설정</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          슬랙 채널에서 김대리를 사용합니다.
-        </p>
-      </div>
-
-      <Card className="border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20">
-        <CardContent className="py-3 space-y-1.5">
-          <p className="text-xs font-medium text-blue-700 dark:text-blue-400">준비 사항</p>
-          <ol className="ml-4 space-y-1 text-xs text-blue-600 dark:text-blue-500 list-decimal">
-            <li><a href="https://api.slack.com/apps" target="_blank" rel="noreferrer" className="underline">api.slack.com/apps</a>에서 새 Slack App을 생성하세요.</li>
-            <li>OAuth &amp; Permissions에서 Bot Token Scopes 추가: <code className="rounded bg-blue-100 px-1">chat:write, app_mentions:read, im:read, im:write</code></li>
-            <li>Socket Mode를 활성화하고 App Token을 발급받으세요.</li>
-            <li>앱을 워크스페이스에 설치한 뒤 아래 토큰을 입력하세요.</li>
-          </ol>
-        </CardContent>
-      </Card>
-
-      <div className="space-y-3">
-        <div className="space-y-1.5">
-          <Label htmlFor="ob-slack-bot">Bot Token (xoxb-...)</Label>
-          <Input
-            id="ob-slack-bot"
-            value={botToken}
-            onChange={(e) => setBotToken(e.target.value)}
-            placeholder="xoxb-..."
-            type="password"
-            autoComplete="off"
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="ob-slack-app">App Token (xapp-...)</Label>
-          <Input
-            id="ob-slack-app"
-            value={appToken}
-            onChange={(e) => setAppToken(e.target.value)}
-            placeholder="xapp-..."
-            type="password"
-            autoComplete="off"
-          />
-        </div>
-
-        <Button
-          variant="outline"
-          className="w-full"
-          onClick={handleTest}
-          disabled={testing || !botToken.trim() || !appToken.trim()}
-        >
-          {testing ? (
-            <><RefreshCw className="mr-1.5 h-4 w-4 animate-spin" />연결 테스트 중...</>
-          ) : "연결 테스트"}
-        </Button>
-
-        {testResult?.ok && (
-          <div className="flex items-center gap-2 rounded-md bg-green-50 dark:bg-green-950/20 px-3 py-2">
-            <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
-            <p className="text-sm text-green-700 dark:text-green-400">
-              슬랙 연결 성공! 팀: {testResult.team}
-            </p>
-          </div>
-        )}
-
-        {testResult && !testResult.ok && (
-          <div className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2">
-            <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive shrink-0" />
-            <p className="text-sm text-destructive">{testResult.error}</p>
-          </div>
-        )}
-      </div>
-
-      <div className="flex gap-2">
-        <Button variant="ghost" className="flex-none" onClick={onPrev}>
-          <ChevronLeft className="mr-1 h-4 w-4" />
-          이전
-        </Button>
-        <Button variant="ghost" className="flex-1" onClick={onNext}>
-          나중에 설정
-        </Button>
-        <Button className="flex-1" onClick={onNext} disabled={testing}>
-          다음
-          <ChevronRight className="ml-1 h-4 w-4" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// ── Step 3c: 디스코드 봇 설정 ──────────────────────────────────────────────────
-
-function StepDiscord({ onNext, onPrev }) {
-  const [token, setToken] = useState("");
-  const [guildId, setGuildId] = useState("");
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState(null);
-
-  const handleTest = async () => {
-    if (!token.trim()) return;
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const result = await discordSetup(token.trim(), guildId.trim() || undefined);
-      setTestResult(result);
-    } catch (err) {
-      setTestResult({ ok: false, error: toUserMessage(err) });
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-          <Bot className="h-7 w-7 text-primary" />
-        </div>
-        <h2 className="text-xl font-bold">디스코드 봇 설정</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Discord 서버에서 김대리를 사용합니다.
-        </p>
-      </div>
-
-      <Card className="border-indigo-200 bg-indigo-50/50 dark:border-indigo-800 dark:bg-indigo-950/20">
-        <CardContent className="py-3 space-y-1.5">
-          <p className="text-xs font-medium text-indigo-700 dark:text-indigo-400">준비 사항</p>
-          <ol className="ml-4 space-y-1 text-xs text-indigo-600 dark:text-indigo-500 list-decimal">
-            <li><a href="https://discord.com/developers/applications" target="_blank" rel="noreferrer" className="underline">Discord 개발자 포털</a>에서 새 Application을 만드세요.</li>
-            <li>Bot 탭에서 봇을 생성하고 Token을 복사하세요.</li>
-            <li>Message Content Intent, Server Members Intent를 활성화하세요.</li>
-            <li>OAuth2에서 봇을 서버에 초대한 뒤 아래 토큰을 입력하세요.</li>
-          </ol>
-        </CardContent>
-      </Card>
-
-      <div className="space-y-3">
-        <div className="space-y-1.5">
-          <Label htmlFor="ob-discord-token">Bot Token</Label>
-          <Input
-            id="ob-discord-token"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            placeholder="Discord Bot Token"
-            type="password"
-            autoComplete="off"
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="ob-discord-guild">서버 ID (선택 — 보안 강화)</Label>
-          <Input
-            id="ob-discord-guild"
-            value={guildId}
-            onChange={(e) => setGuildId(e.target.value)}
-            placeholder="서버 우클릭 → 서버 ID 복사"
-          />
-          <p className="text-xs text-muted-foreground">
-            입력하면 이 서버의 메시지만 처리합니다. 빈칸이면 모든 서버에서 동작합니다.
-          </p>
-        </div>
-
-        <Button
-          variant="outline"
-          className="w-full"
-          onClick={handleTest}
-          disabled={testing || !token.trim()}
-        >
-          {testing ? (
-            <><RefreshCw className="mr-1.5 h-4 w-4 animate-spin" />연결 테스트 중...</>
-          ) : "연결 테스트"}
-        </Button>
-
-        {testResult?.ok && (
-          <div className="flex items-center gap-2 rounded-md bg-green-50 dark:bg-green-950/20 px-3 py-2">
-            <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
-            <p className="text-sm text-green-700 dark:text-green-400">
-              디스코드 연결 성공! 봇: @{testResult.bot_username}
-            </p>
-          </div>
-        )}
-
-        {testResult && !testResult.ok && (
-          <div className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2">
-            <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive shrink-0" />
-            <p className="text-sm text-destructive">{testResult.error}</p>
-          </div>
-        )}
-      </div>
-
-      <div className="flex gap-2">
-        <Button variant="ghost" className="flex-none" onClick={onPrev}>
-          <ChevronLeft className="mr-1 h-4 w-4" />
-          이전
-        </Button>
-        <Button variant="ghost" className="flex-1" onClick={onNext}>
-          나중에 설정
-        </Button>
-        <Button className="flex-1" onClick={onNext} disabled={testing}>
-          다음
-          <ChevronRight className="ml-1 h-4 w-4" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 // ── Step 4: 워크스페이스 폴더 확인 ────────────────────────────────────────────────
 
 function StepWorkspace({ onNext, onPrev }) {
@@ -927,55 +470,15 @@ function StepWorkspace({ onNext, onPrev }) {
   );
 }
 
-// ── Step 5: 완료 ──────────────────────────────────────────────────────────────
+// ── Step 3: 완료 ──────────────────────────────────────────────────────────────
 
 function StepComplete({ onFinish, onPrev }) {
   const setCurrentPage = useAppStore((s) => s.setCurrentPage);
-  const telegramConnected = useAppStore((s) => s.telegramConnected);
-  const selectedMessenger = useAppStore((s) => s.selectedMessenger);
-  const [botStarting, setBotStarting] = useState(false);
-  const [botStarted, setBotStarted] = useState(false);
-  const [botError, setBotError] = useState("");
-
-  const MESSENGER_LABELS = {
-    telegram: "텔레그램",
-    slack: "슬랙",
-    discord: "디스코드",
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    const autoStart = async () => {
-      setBotStarting(true);
-      setBotError("");
-      try {
-        if (selectedMessenger === "telegram" && telegramConnected) {
-          const status = await telegramStatus();
-          if (!status?.running) await telegramStart();
-          if (!cancelled) setBotStarted(true);
-        } else if (selectedMessenger === "slack") {
-          await slackStart();
-          if (!cancelled) setBotStarted(true);
-        } else if (selectedMessenger === "discord") {
-          await discordStart();
-          if (!cancelled) setBotStarted(true);
-        }
-      } catch (err) {
-        if (!cancelled) setBotError(toUserMessage(err));
-      } finally {
-        if (!cancelled) setBotStarting(false);
-      }
-    };
-    autoStart();
-    return () => { cancelled = true; };
-  }, [selectedMessenger, telegramConnected]);
 
   const handleFinish = (navigateTo) => {
     onFinish();
     if (navigateTo) setCurrentPage(navigateTo);
   };
-
-  const messengerLabel = MESSENGER_LABELS[selectedMessenger] ?? selectedMessenger;
 
   return (
     <div className="space-y-6 text-center">
@@ -995,24 +498,6 @@ function StepComplete({ onFinish, onPrev }) {
         </p>
         <ul className="space-y-2 text-sm">
           <li className="flex items-start gap-2">
-            {botStarting ? (
-              <RefreshCw className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
-            ) : botStarted ? (
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
-            ) : (
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-            )}
-            <span>
-              {botStarting
-                ? `${messengerLabel} 봇 자동 시작 중...`
-                : botStarted
-                ? `${messengerLabel} 봇이 자동으로 시작되었습니다.`
-                : botError
-                ? `${messengerLabel} 봇 시작 실패 — 메신저 설정에서 직접 시작하세요.`
-                : `${messengerLabel} 봇 시작 대기 중...`}
-            </span>
-          </li>
-          <li className="flex items-start gap-2">
             <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
             <span>
               <strong>워크스페이스</strong> 폴더에 파일을 넣어 보세요.
@@ -1021,7 +506,13 @@ function StepComplete({ onFinish, onPrev }) {
           <li className="flex items-start gap-2">
             <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
             <span>
-              {messengerLabel}에서 <strong>"파일 목록 보여줘"</strong>라고 입력해 확인하세요.
+              채팅 패널에서 <strong>"파일 목록 보여줘"</strong>라고 입력해 확인하세요.
+            </span>
+          </li>
+          <li className="flex items-start gap-2">
+            <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <span>
+              밖에서도 쓰려면 <strong>환경 설정 → 디바이스 추가</strong>에서 폰을 연결하세요.
             </span>
           </li>
         </ul>
@@ -1047,35 +538,24 @@ function StepComplete({ onFinish, onPrev }) {
 
 /**
  * Main onboarding wizard — shown only when onboardingComplete is false.
- * Phase 3 (officeclaw): 5단계 흐름
+ * 3단계 흐름
  *   0: LLM 선택 (Ollama 설치 가이드 강화)
- *   1: 메신저 선택 (Telegram / Slack / Discord)
- *   2: 메신저별 설정 (분기)
- *   3: 워크스페이스 폴더 확인
- *   4: 완료
+ *   1: 워크스페이스 폴더 확인
+ *   2: 완료
  */
 export default function OnboardingWizard() {
   const completeOnboarding = useAppStore((s) => s.completeOnboarding);
-  const selectedMessenger = useAppStore((s) => s.selectedMessenger);
   const [step, setStep] = useState(0);
 
   const goNext = () => setStep((s) => s + 1);
   const goPrev = () => setStep((s) => Math.max(0, s - 1));
 
-  // Step 3: 선택된 메신저에 따라 분기
-  const MessengerStep = {
-    telegram: StepTelegram,
-    slack: StepSlack,
-    discord: StepDiscord,
-  }[selectedMessenger] ?? StepTelegram;
 
   // 순서는 와이어프레임 A군을 따른다: AI 엔진(파일 설치 → 모델 설치) →
-  // 워크스페이스 지정. 메신저 연결은 와이어프레임에 없어서 그 뒤에 붙였다.
+  // 워크스페이스 지정 → 완료.
   const steps = [
     <StepLLM key="llm" onNext={goNext} onPrev={goPrev} />,
     <StepWorkspace key="workspace" onNext={goNext} onPrev={goPrev} />,
-    <StepMessengerChoice key="messenger-choice" onNext={goNext} onPrev={goPrev} />,
-    <MessengerStep key={`messenger-${selectedMessenger}`} onNext={goNext} onPrev={goPrev} />,
     <StepComplete key="complete" onFinish={completeOnboarding} onPrev={goPrev} />,
   ];
 

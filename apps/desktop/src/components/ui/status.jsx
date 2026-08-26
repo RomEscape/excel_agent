@@ -2,11 +2,11 @@
  * 통일된 상태 표시 컴포넌트 모음.
  *
  * 모든 톤은 `lib/statusTokens.js`의 STATUS_TONE에서 가져온다.
- * 도메인별 변환은 같은 파일의 getOllamaStatus / getLLMStatus / getMessengerStatus / getSecurityStatus.
+ * 도메인별 변환은 `lib/statusTokens.js`의 getOllamaStatus / getLLMStatus / getSecurityStatus.
  *
  * 컴포넌트:
  *   - StatusDot: 점 + 라벨 (StatusBar segment, 작은 행 안내)
- *   - StatusBadge: 알약 배지 (인라인 표시 — MessengerSettings, ConversationsPage 등)
+ *   - StatusBadge: 알약 배지 (인라인 상태 표시)
  *   - StatusRow: 아이콘 + 제목 + 설명 (LocalAISetupWizard 진단 항목, Dashboard 카드)
  *   - StatusBanner: 큰 배너 (Dashboard 메인 AI 엔진 영역)
  */
@@ -39,7 +39,7 @@ export function StatusDot({ tone, label, icon: Icon, className }) {
 }
 
 /**
- * 알약 배지 — 인라인 상태 표시 (예: MessengerSettings의 "실행 중").
+ * 알약 배지 — 인라인 상태 표시 (예: "실행 중").
  *
  * @param {{
  *   tone: 'ok'|'warning'|'pending',

@@ -128,22 +128,6 @@ export async function getAuditLogs(limit) {
   return parseResponse(raw);
 }
 
-// ── Telegram ──────────────────────────────────────────────────────────────
-
-export async function telegramStatus() {
-  const raw = await call("telegram_status");
-  return parseResponse(raw);
-}
-
-export async function telegramStart() {
-  const raw = await call("telegram_start");
-  return parseResponse(raw);
-}
-
-export async function telegramStop() {
-  const raw = await call("telegram_stop");
-  return parseResponse(raw);
-}
 
 // ── Excel Live(COM) ────────────────────────────────────────────────────────
 
@@ -234,7 +218,7 @@ export async function securityGetWhitelist() {
 /**
  * 스킬별 권한을 업데이트한다.
  *
- * @param {Record<string, string>} overrides  {"gog.gmail.send": "safe", ...}
+ * @param {Record<string, string>} overrides  {"excel_live.write_range": "safe", ...}
  * @returns {Promise<{ ok: boolean, updated: number }>}
  */
 export async function securityUpdateWhitelist(overrides) {
@@ -297,30 +281,6 @@ export async function getCommandAuditStats() {
  */
 export async function clearCommandAuditLogs() {
   const raw = await call("command_audit_clear");
-  return parseResponse(raw);
-}
-
-// ── Phase 2: Security UI Approval (텔레그램 미연결 대체 수단) ────────────────────
-
-/**
- * 대기 중인 보안 승인 요청 목록을 반환한다 (폴링용).
- *
- * @returns {Promise<{ pending: Array<{ approval_id: string, command: string, reason: string, audit_id: number|null }> }>}
- */
-export async function securityGetPendingApprovals() {
-  const raw = await call("security_get_pending_approvals");
-  return parseResponse(raw);
-}
-
-/**
- * 보안 승인 요청에 응답한다 (승인 또는 거부).
- *
- * @param {string} approvalId
- * @param {boolean} approved
- * @returns {Promise<{ ok: boolean, approved: boolean, approval_id: string }>}
- */
-export async function securityRespondApproval(approvalId, approved) {
-  const raw = await call("security_respond_approval", { approval_id: approvalId, approved });
   return parseResponse(raw);
 }
 
@@ -424,117 +384,6 @@ export async function openWorkspaceFile(path) {
   return parseResponse(raw);
 }
 
-// ── Phase 3: Slack ────────────────────────────────────────────────────────────
-
-/**
- * Slack 봇 토큰을 설정하고 연결 테스트를 수행한다.
- *
- * @param {string} botToken
- * @param {string} appToken
- * @param {string[]} [allowedUserIds]
- * @returns {Promise<{ ok: boolean, bot_name?: string, team?: string, error?: string }>}
- */
-export async function slackSetup(botToken, appToken, allowedUserIds) {
-  const raw = await call("slack_setup", {
-    bot_token: botToken,
-    app_token: appToken,
-    allowed_user_ids: allowedUserIds ?? null,
-  });
-  return parseResponse(raw);
-}
-
-/**
- * Slack 봇 상태를 확인한다.
- *
- * @returns {Promise<{ configured: boolean, running: boolean }>}
- */
-export async function slackStatus() {
-  const raw = await call("slack_status");
-  return parseResponse(raw);
-}
-
-/**
- * Slack 봇을 시작한다.
- *
- * @returns {Promise<{ status: string }>}
- */
-export async function slackStart() {
-  const raw = await call("slack_start");
-  return parseResponse(raw);
-}
-
-/**
- * Slack 봇을 정지한다 (sidecar에 명령이 없으면 graceful fail).
- *
- * @returns {Promise<{ status: string }>}
- */
-export async function slackStop() {
-  const raw = await call("slack_stop");
-  return parseResponse(raw);
-}
-
-// ── Phase 3: Discord ──────────────────────────────────────────────────────────
-
-/**
- * Discord 봇 토큰을 설정하고 연결 테스트를 수행한다.
- *
- * @param {string} token
- * @param {string} [allowedGuildId]
- * @param {string[]} [allowedUserIds]
- * @returns {Promise<{ ok: boolean, bot_username?: string, error?: string }>}
- */
-export async function discordSetup(token, allowedGuildId, allowedUserIds) {
-  const raw = await call("discord_setup", {
-    token,
-    allowed_guild_id: allowedGuildId ?? null,
-    allowed_user_ids: allowedUserIds ?? null,
-  });
-  return parseResponse(raw);
-}
-
-/**
- * Discord 봇 상태를 확인한다.
- *
- * @returns {Promise<{ configured: boolean, running: boolean }>}
- */
-export async function discordStatus() {
-  const raw = await call("discord_status");
-  return parseResponse(raw);
-}
-
-/**
- * Discord 봇을 시작한다.
- *
- * @returns {Promise<{ status: string }>}
- */
-export async function discordStart() {
-  const raw = await call("discord_start");
-  return parseResponse(raw);
-}
-
-/**
- * Discord 봇을 정지한다 (sidecar에 명령이 없으면 graceful fail).
- *
- * @returns {Promise<{ status: string }>}
- */
-export async function discordStop() {
-  const raw = await call("discord_stop");
-  return parseResponse(raw);
-}
-
-// ── Phase 1: officeclaw — Telegram setup ───────────────────────────────────
-
-/**
- * 텔레그램 봇 토큰을 설정하고 연결 테스트를 수행한다.
- *
- * @param {string} token - Telegram Bot API 토큰
- * @param {string} [chatId] - 허용할 chat_id (선택)
- * @returns {Promise<{ ok: boolean, bot_name: string, bot_username: string }>}
- */
-export async function telegramSetup(token, chatId) {
-  const raw = await call("telegram_setup", { token, chat_id: chatId ?? null });
-  return parseResponse(raw);
-}
 
 // ── Phase 3: Permissions (에이전트 허용 범위) ──────────────────────────────────
 

@@ -120,26 +120,6 @@ export function getLLMStatus({ sidecarState, llmReachable, provider, model }) {
 }
 
 /**
- * 메신저 봇 상태 → tone + 라벨.
- *
- * 입력: { running, configured } — Telegram/Slack/Discord status() 응답 공통 필드.
- * 응답을 못 받았으면 `unknown=true`로 표시.
- */
-export function getMessengerStatus({ running, configured, unknown, name }) {
-  const label = name || "메신저";
-  if (unknown) {
-    return { tone: "pending", label, sub: "확인 중" };
-  }
-  if (running) {
-    return { tone: "ok", label, sub: "실행 중" };
-  }
-  if (configured) {
-    return { tone: "warning", label, sub: "중지됨" };
-  }
-  return { tone: "warning", label, sub: "미설정" };
-}
-
-/**
  * 보안 상태 → tone + 라벨.
  *
  * pendingCount > 0이면 "승인 대기"로 warning. AI 엔진 자체가 준비 전이면 pending.
@@ -157,10 +137,3 @@ export function getSecurityStatus({ pendingCount, llmRunning }) {
   }
   return { tone: "ok", label: "보안", sub: "안전하게 보호 중" };
 }
-
-/** 메신저 표시 이름 — id → 한국어 라벨 */
-export const MESSENGER_LABELS = Object.freeze({
-  telegram: "Telegram",
-  slack: "Slack",
-  discord: "Discord",
-});

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Shield, Eye, EyeOff, Save, Trash2, CheckCircle2, Mail, MessageCircle, Cpu } from "lucide-react";
+import { Shield, Eye, EyeOff, Save, Trash2, CheckCircle2, Cpu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,51 +16,6 @@ import { toUserMessage } from "@/lib/errorMessages";
  * `key` must match what the Python sidecar reads from keyring.
  */
 const CREDENTIAL_GROUPS = [
-  {
-    id: "google",
-    icon: Mail,
-    title: "Google Gmail",
-    description: "Gmail 연동을 위한 OAuth 앱 자격증명입니다. Google Cloud Console에서 발급하세요.",
-    guideUrl: "https://console.cloud.google.com/apis/credentials",
-    fields: [
-      {
-        key: "google_client_id",
-        label: "Client ID",
-        placeholder: "1234567890-abcdefg.apps.googleusercontent.com",
-        sensitive: false,
-        hint: "Google Cloud Console → 사용자 인증 정보 → OAuth 2.0 클라이언트 ID",
-      },
-      {
-        key: "google_client_secret",
-        label: "Client Secret",
-        placeholder: "GOCSPX-...",
-        sensitive: true,
-        hint: "Client ID와 함께 발급되는 비밀 키입니다.",
-      },
-    ],
-  },
-  {
-    id: "telegram",
-    icon: MessageCircle,
-    title: "텔레그램 봇",
-    description: "텔레그램 봇을 통해 알림을 받고 명령을 내릴 수 있습니다. BotFather에서 봇을 생성하세요.",
-    fields: [
-      {
-        key: "telegram_bot_token",
-        label: "Bot Token",
-        placeholder: "1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ",
-        sensitive: true,
-        hint: "텔레그램 @BotFather에서 /newbot 명령으로 발급받습니다.",
-      },
-      {
-        key: "telegram_chat_id",
-        label: "Chat ID",
-        placeholder: "123456789",
-        sensitive: false,
-        hint: "@userinfobot 에게 메시지를 보내면 본인의 Chat ID를 알 수 있습니다.",
-      },
-    ],
-  },
   {
     id: "claude",
     icon: Cpu,

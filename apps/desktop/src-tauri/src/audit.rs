@@ -183,7 +183,7 @@ mod tests {
         let e = AuditEntry {
             timestamp: "2026-05-20T00:00:00Z".into(),
             action: "credential_store".into(),
-            target: "telegram_token".into(),
+            target: "llm_api_key".into(),
             detail: "".into(),
         };
         let json = serde_json::to_string(&e).unwrap();

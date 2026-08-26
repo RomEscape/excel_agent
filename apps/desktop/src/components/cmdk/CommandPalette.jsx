@@ -13,6 +13,7 @@ import {
   Command as CmdIcon,
   TextSearch,
   FolderOpen,
+  FileText,
   MessagesSquare,
   Settings as SettingsIcon,
   Bot,
@@ -33,15 +34,6 @@ import useAppStore from "@/store/appStore";
 import useToast from "@/hooks/useToast";
 import {
   openWorkspaceFolder,
-  telegramStop,
-  telegramStart,
-  telegramStatus,
-  slackStart,
-  slackStop,
-  slackStatus,
-  discordStart,
-  discordStop,
-  discordStatus,
   clearCommandAuditLogs,
 } from "@/lib/api";
 
@@ -51,50 +43,22 @@ import {
 // ctx: { setCurrentPage, requestConfirm, close, notify }
 //
 
-// 메신저 재시작 — sidecar에 stop이 없을 수 있어 모두 try-catch.
-// 친절한 토스트로 결과/실패를 안내한다.
-async function restartMessenger(kind, notify) {
-  const stopFn = kind === "telegram" ? telegramStop : kind === "slack" ? slackStop : discordStop;
-  const startFn =
-    kind === "telegram" ? telegramStart : kind === "slack" ? slackStart : discordStart;
-  const label = kind === "telegram" ? "Telegram" : kind === "slack" ? "Slack" : "Discord";
-
-  let stopOk = true;
-  let stopErr = null;
-  try {
-    await stopFn();
-  } catch (err) {
-    stopOk = false;
-    stopErr = String(err);
-  }
-
-  try {
-    await startFn();
-    if (!stopOk) {
-      notify(`${label} 봇 재시작됨 (정지 단계는 미지원: ${stopErr})`);
-    } else {
-      notify(`${label} 봇이 재시작되었습니다.`);
-    }
-  } catch (err) {
-    notify(`${label} 봇 재시작 실패: ${err}`);
-  }
-}
-
-const buildCommands = ({ tgConfigured, slackConfigured, discordConfigured } = {}) => [
+const buildCommands = () => [
   // 그룹: 페이지
   { id: "nav.home", group: "페이지", label: "홈", hint: "문서 목록 / 김대리에게 명령", icon: Bot, run: ({ setCurrentPage, close }) => { setCurrentPage("chat"); close(); } },
   { id: "nav.activity", group: "페이지", label: "작업 기록", hint: "작업 요약 / 최근 활동 검색", icon: TextSearch, run: ({ setCurrentPage, close }) => { setCurrentPage("activity"); close(); } },
   { id: "nav.conversations", group: "페이지", label: "대화목록", hint: "지난 대화 요일별 / 파일별", icon: MessagesSquare, run: ({ setCurrentPage, close }) => { setCurrentPage("conversations"); close(); } },
   { id: "nav.preferences", group: "페이지", label: "환경 설정", hint: "요금제 / 디바이스 / 테마 / 글자 크기", icon: SettingsIcon, run: ({ setCurrentPage, close }) => { setCurrentPage("preferences"); close(); } },
+  // `파일 목록`은 페이지가 아니라 사이드바 확장 목록이라 setCurrentPage로 못 간다.
+  // 사이드바가 듣는 커스텀 이벤트로 연다 (내비 4개 중 유일하게 빠져 있던 항목).
+  { id: "nav.files", group: "페이지", label: "파일 목록", hint: "워크스페이스 문서 (사이드바 확장)", icon: FileText, run: ({ close }) => { window.dispatchEvent(new CustomEvent("officeclaw:open-file-list")); close(); } },
   // 아래 둘은 최종안 사이드바에서 빠진 화면이다 — 여기가 유일한 진입 경로이므로 지우지 말 것.
   { id: "nav.workspace", group: "페이지", label: "파일 탐색기", hint: "폴더 탐색 / 미리보기 (내비에 없음)", icon: FolderOpen, run: ({ setCurrentPage, close }) => { setCurrentPage("workspace"); close(); } },
-  { id: "nav.messenger_monitor", group: "페이지", label: "메신저 모니터링", hint: "채널로 들어온 명령 (내비에 없음)", icon: MessagesSquare, run: ({ setCurrentPage, close }) => { setCurrentPage("messenger_monitor"); close(); } },
   { id: "nav.settings", group: "페이지", label: "설정 허브", hint: "보안 / 자격증명 / 실행 기록", icon: SettingsIcon, run: ({ setCurrentPage, close }) => { setCurrentPage("settings"); close(); } },
 
   // 그룹: 설정
   { id: "settings.guide", group: "설정", label: "로컬 AI 설정", icon: Bot, run: ({ setCurrentPage, close }) => { setCurrentPage("guide"); close(); } },
   { id: "settings.general", group: "설정", label: "일반", icon: SlidersHorizontal, run: ({ setCurrentPage, close }) => { setCurrentPage("settings"); close(); } },
-  { id: "settings.messenger", group: "설정", label: "메신저", icon: MessagesSquare, run: ({ setCurrentPage, close }) => { setCurrentPage("messenger_settings"); close(); } },
   { id: "settings.credentials", group: "설정", label: "자격증명", icon: KeyRound, run: ({ setCurrentPage, close }) => { setCurrentPage("credentials"); close(); } },
   { id: "settings.security", group: "설정", label: "보안", icon: ShieldCheck, run: ({ setCurrentPage, close }) => { setCurrentPage("security"); close(); } },
   { id: "settings.permissions", group: "설정", label: "에이전트 허용 범위", icon: ShieldAlert, run: ({ setCurrentPage, close }) => { setCurrentPage("permissions"); close(); } },
@@ -120,63 +84,6 @@ const buildCommands = ({ tgConfigured, slackConfigured, discordConfigured } = {}
     icon: RefreshCw,
     run: ({ setCurrentPage, close }) => {
       setCurrentPage("guide");
-      close();
-    },
-  },
-  {
-    id: "action.telegram_restart",
-    group: "액션",
-    label: "Telegram 봇 재시작",
-    hint: tgConfigured === false ? "설정 / 메신저에서 먼저 토큰을 등록하세요" : "Telegram 봇 정지 후 재시작",
-    icon: RefreshCw,
-    danger: true,
-    disabled: tgConfigured === false,
-    run: async ({ requestConfirm, notify, close }) => {
-      const ok = await requestConfirm({
-        title: "Telegram 봇 재시작",
-        description: "Telegram 봇을 정지 후 재시작합니다. 처리 중인 메신저 작업이 끊길 수 있습니다.",
-        confirmLabel: "재시작",
-      });
-      if (!ok) return;
-      await restartMessenger("telegram", notify);
-      close();
-    },
-  },
-  {
-    id: "action.slack_restart",
-    group: "액션",
-    label: "Slack 봇 재시작",
-    hint: slackConfigured === false ? "설정 / 메신저에서 먼저 토큰을 등록하세요" : "Slack 봇 정지 후 재시작",
-    icon: RefreshCw,
-    danger: true,
-    disabled: slackConfigured === false,
-    run: async ({ requestConfirm, notify, close }) => {
-      const ok = await requestConfirm({
-        title: "Slack 봇 재시작",
-        description: "Slack 봇을 정지 후 재시작합니다. 처리 중인 메신저 작업이 끊길 수 있습니다.",
-        confirmLabel: "재시작",
-      });
-      if (!ok) return;
-      await restartMessenger("slack", notify);
-      close();
-    },
-  },
-  {
-    id: "action.discord_restart",
-    group: "액션",
-    label: "Discord 봇 재시작",
-    hint: discordConfigured === false ? "설정 / 메신저에서 먼저 토큰을 등록하세요" : "Discord 봇 정지 후 재시작",
-    icon: RefreshCw,
-    danger: true,
-    disabled: discordConfigured === false,
-    run: async ({ requestConfirm, notify, close }) => {
-      const ok = await requestConfirm({
-        title: "Discord 봇 재시작",
-        description: "Discord 봇을 정지 후 재시작합니다. 처리 중인 메신저 작업이 끊길 수 있습니다.",
-        confirmLabel: "재시작",
-      });
-      if (!ok) return;
-      await restartMessenger("discord", notify);
       close();
     },
   },
@@ -287,12 +194,6 @@ export default function CommandPalette({ open, onClose }) {
   const inputRef = useRef(null);
   const listRef = useRef(null);
 
-  // 메신저 봇 configured 상태 — 열릴 때마다 갱신해 disabled 라벨 동기화
-  const [botStatuses, setBotStatuses] = useState({
-    tgConfigured: undefined, // undefined = 미확인 → 표시는 enable
-    slackConfigured: undefined,
-    discordConfigured: undefined,
-  });
 
   // 250ms debounce
   useEffect(() => {
@@ -311,20 +212,10 @@ export default function CommandPalette({ open, onClose }) {
       // 다음 tick에 input focus
       setTimeout(() => inputRef.current?.focus(), 0);
 
-      // 메신저 봇 상태 확인 (실패는 조용히)
-      Promise.allSettled([telegramStatus(), slackStatus(), discordStatus()]).then(
-        ([tg, sl, dc]) => {
-          setBotStatuses({
-            tgConfigured: tg.status === "fulfilled" ? !!(tg.value?.configured ?? tg.value?.bot_username) : undefined,
-            slackConfigured: sl.status === "fulfilled" ? !!sl.value?.configured : undefined,
-            discordConfigured: dc.status === "fulfilled" ? !!dc.value?.configured : undefined,
-          });
-        }
-      );
     }
   }, [open]);
 
-  const commands = useMemo(() => buildCommands(botStatuses), [botStatuses]);
+  const commands = useMemo(() => buildCommands(), []);
 
   const filtered = useMemo(() => {
     const scored = commands

@@ -34,7 +34,6 @@ _CLASSIFIER_PROMPT = """당신은 사용자 메시지를 분석하여 수행할 
    - content: 사용자가 제공한 핵심 내용 (없으면 메시지 원문)
    - tone: 공식적|친근한|전문적 (명시 없으면 "공식적")
    - length: 짧게|보통|길게 (명시 없으면 "보통")
-5. gmail.fetch_emails 선택 시 params에 max_results (기본값 5)
 
 응답 형식:
 {{"tool": "도구이름", "params": {{}}, "reason": "선택 이유 (한국어 한 줄)"}}

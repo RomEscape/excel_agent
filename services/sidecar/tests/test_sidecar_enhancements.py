@@ -1,12 +1,13 @@
 """
-Sprint 2 사이드카 보강 5건 통합 테스트.
+Sprint 2 사이드카 보강 통합 테스트.
 
 검증 항목:
-  1. bot_username 노출 — telegram/slack/discord status 응답 구조
-  2. confirm_pending — command_audit_stats 응답 필드 존재 및 실제 대기 건수 반영
-  3. source enum 정규화 — normalize_source 함수 + log() 저장 후 get_recent() 반환값
-  4. slack_stop / discord_stop — 엔드포인트 200 응답 (noop 시 not_running)
-  5. last_blocked_at / last_approval_at — security_stats 응답 구조
+  1. confirm_pending — command_audit_stats 응답 필드 존재
+  2. source enum 정규화 — normalize_source 함수 + log() 저장 후 get_recent() 반환값
+  3. last_blocked_at / last_approval_at — security_stats 응답 구조
+
+메신저(telegram/slack/discord) 관련 항목은 봇 기능 제거와 함께 걷어냈다.
+source enum 정규화는 남는다 — 이미 쌓인 감사 로그가 그 값을 갖고 있다.
 """
 
 import pytest
@@ -20,34 +21,7 @@ client = TestClient(app)
 HEADERS = {"Authorization": "Bearer dev-token"}
 
 
-# ── 1. bot_username 노출 ─────────────────────────────────────────────────────
-
-class TestBotUsernameExposure:
-    def test_telegram_status_has_bot_username_field(self):
-        resp = client.get("/telegram/status", headers=HEADERS)
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "running" in data
-        assert "bot_username" in data  # null 허용, 키는 반드시 존재
-
-    def test_slack_status_has_bot_username_field(self):
-        resp = client.get("/slack/status", headers=HEADERS)
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "configured" in data
-        assert "running" in data
-        assert "bot_username" in data
-
-    def test_discord_status_has_bot_username_field(self):
-        resp = client.get("/discord/status", headers=HEADERS)
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "configured" in data
-        assert "running" in data
-        assert "bot_username" in data
-
-
-# ── 2. confirm_pending ───────────────────────────────────────────────────────
+# ── 1. confirm_pending ───────────────────────────────────────────────────────
 
 class TestConfirmPending:
     def test_audit_stats_has_confirm_pending(self):
@@ -61,18 +35,11 @@ class TestConfirmPending:
     def test_confirm_pending_non_negative(self):
         """confirm_pending은 항상 0 이상이어야 한다."""
         cmd_audit = get_command_audit_logger()
-        stats = cmd_audit.get_stats(extra_pending=0)
+        stats = cmd_audit.get_stats()
         assert stats.get("confirm_pending", 0) >= 0
 
-    def test_confirm_pending_extra_counts_ui_queue(self):
-        """extra_pending이 합산되는지 검증."""
-        cmd_audit = get_command_audit_logger()
-        base = cmd_audit.get_stats(extra_pending=0).get("confirm_pending", 0)
-        with_extra = cmd_audit.get_stats(extra_pending=3).get("confirm_pending", 0)
-        assert with_extra == base + 3
 
-
-# ── 3. source enum 정규화 ─────────────────────────────────────────────────────
+# ── 2. source enum 정규화 ─────────────────────────────────────────────────────
 
 class TestSourceEnumNormalization:
     @pytest.mark.parametrize("raw,expected", [
@@ -125,27 +92,7 @@ class TestSourceEnumNormalization:
         assert "source" in logs[0]
 
 
-# ── 4. slack_stop / discord_stop ─────────────────────────────────────────────
-
-class TestMessengerStopEndpoints:
-    def test_slack_stop_returns_200(self):
-        """봇이 실행 중이 아닌 경우 not_running을 200으로 반환."""
-        resp = client.post("/slack/stop", headers=HEADERS)
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "status" in data
-        assert data["status"] in ("not_running", "stopped")
-
-    def test_discord_stop_returns_200(self):
-        """봇이 실행 중이 아닌 경우 not_running을 200으로 반환."""
-        resp = client.post("/discord/stop", headers=HEADERS)
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "status" in data
-        assert data["status"] in ("not_running", "stopped")
-
-
-# ── 5. last_blocked_at / last_approval_at ─────────────────────────────────────
+# ── 3. last_blocked_at / last_approval_at ─────────────────────────────────────
 
 class TestSecurityTimestamps:
     def test_security_stats_has_timestamp_fields(self):

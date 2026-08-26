@@ -16,17 +16,12 @@ import {
   getLLMSettings,
   securityStats,
   getCommandAuditLogs,
-  telegramStatus,
-  slackStatus,
-  discordStatus,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   STATUS_TONE,
   getLLMStatus,
-  getMessengerStatus,
   getSecurityStatus,
-  MESSENGER_LABELS,
 } from "@/lib/statusTokens";
 
 // 페이지 키 → 한국어 라벨 (좌측 breadcrumb용)
@@ -39,23 +34,10 @@ const PAGE_LABELS = {
   audit: "설정 / 실행 기록",
   security: "설정 / 보안",
   permissions: "설정 / 에이전트 허용 범위",
-  messenger_settings: "설정 / 메신저",
   guide: "설정 / 로컬 AI",
 };
 
-// 활성 메신저별 아이콘
-const MESSENGER_ICONS = {
-  telegram: MessageCircle,
-  slack: Hash,
-  discord: MessagesSquare,
-};
 
-// 활성 메신저별 상태 fetch 함수
-const MESSENGER_STATUS_FNS = {
-  telegram: telegramStatus,
-  slack: slackStatus,
-  discord: discordStatus,
-};
 
 /**
  * 호버 200ms 후 등장하는 단순 popover.
@@ -132,19 +114,13 @@ export default function StatusBar() {
   const setLLMReachable = useAppStore((s) => s.setLLMReachable);
   const currentPage = useAppStore((s) => s.currentPage);
   const setCurrentPage = useAppStore((s) => s.setCurrentPage);
-  const setPendingApproval = useAppStore((s) => s.setPendingApproval);
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
   const setSidebarCollapsed = useAppStore((s) => s.setSidebarCollapsed);
-  const selectedMessenger = useAppStore((s) => s.selectedMessenger);
 
   // 보안 통계 (마스킹/차단 합산)
   const [secStats, setSecStats] = useState(null);
   // 승인 대기 건수
   const [pendingCount, setPendingCount] = useState(0);
-  // 가장 오래된 pending audit (배지 클릭 시 ApprovalDialog로 변환)
-  const [oldestPending, setOldestPending] = useState(null);
-  // 활성 메신저 상태 — null = 미확인 (pending), 객체 = 응답 받음
-  const [messengerState, setMessengerState] = useState(null);
 
   // sidecar 헬스 + LLM 도달성
   const checkHealth = useCallback(async () => {
@@ -190,48 +166,24 @@ export default function StatusBar() {
           (l) => (l.grade === "CONFIRM" || l.classification === "confirm") && l.approved == null
         );
         setPendingCount(pending.length);
-        // 가장 오래된 = 시간순 마지막 (logs는 최신순으로 옴)
-        setOldestPending(pending.length ? pending[pending.length - 1] : null);
       }
     } catch {
       // 조용히 실패
     }
   }, []);
 
-  // 활성 메신저 상태 폴링 (30s) — selectedMessenger가 바뀌면 즉시 재조회
-  const refreshMessenger = useCallback(async () => {
-    const statusFn = MESSENGER_STATUS_FNS[selectedMessenger];
-    if (!statusFn) {
-      setMessengerState({ running: false, configured: false, unknown: true });
-      return;
-    }
-    try {
-      const s = await statusFn();
-      setMessengerState({
-        running: !!s?.running,
-        configured: !!(s?.configured ?? s?.bot_username),
-        unknown: false,
-      });
-    } catch {
-      setMessengerState({ running: false, configured: false, unknown: true });
-    }
-  }, [selectedMessenger]);
-
   useEffect(() => {
     checkHealth();
     loadLLMConfig();
     refreshSecurity();
-    refreshMessenger();
 
     const t1 = setInterval(checkHealth, 30_000);
     const t3 = setInterval(refreshSecurity, 30_000);
-    const t4 = setInterval(refreshMessenger, 30_000);
     return () => {
       clearInterval(t1);
       clearInterval(t3);
-      clearInterval(t4);
     };
-  }, [checkHealth, loadLLMConfig, refreshSecurity, refreshMessenger]);
+  }, [checkHealth, loadLLMConfig, refreshSecurity]);
 
   // ── 톤/라벨 도출 (모두 통합 매퍼 사용) ────────────────────────────────────
   const llm = getLLMStatus({
@@ -239,12 +191,6 @@ export default function StatusBar() {
     llmReachable,
     provider: llmConfig.provider,
     model: llmConfig.model,
-  });
-  const messenger = getMessengerStatus({
-    running: messengerState?.running,
-    configured: messengerState?.configured,
-    unknown: messengerState === null || messengerState.unknown,
-    name: MESSENGER_LABELS[selectedMessenger] ?? "메신저",
   });
   const sec = getSecurityStatus({
     pendingCount,
@@ -277,48 +223,17 @@ export default function StatusBar() {
     </div>
   );
 
-  const MessengerIcon = MESSENGER_ICONS[selectedMessenger] ?? MessageCircle;
-  const messengerTooltip = (
-    <div className="space-y-1">
-      <p className="font-semibold text-foreground">{messenger.label}</p>
-      <p className="text-muted-foreground">상태: {toneLabel(messenger.tone)}</p>
-      {messenger.sub && (
-        <p className="text-[11px] text-muted-foreground">{messenger.sub}</p>
-      )}
-      <p className="pt-1 text-[11px] text-muted-foreground">
-        클릭하면 {messenger.tone === "ok" ? "대화 화면" : "메신저 설정"}으로 이동해요
-      </p>
-    </div>
-  );
 
   // ── 클릭 핸들러 ──────────────────────────────────────────────────────────
+  //
+  // 예전에는 승인 대기가 있으면 여기서 `ApprovalDialog`를 띄웠다. 그 모달은
+  // 메신저 CONFIRM 전용이었고 봇과 함께 사라졌다 — 지금 남은 CONFIRM은 엑셀
+  // 작업뿐이고, 그건 채팅 패널 말풍선의 인라인 버튼이 받는다. 그래서 배지는
+  // 건수만 알리고 클릭은 그 기록을 볼 수 있는 곳으로 보낸다.
   const handleSecurityClick = () => {
-    // 승인 대기가 있으면 ApprovalDialog로 변환해 자동 오픈.
-    if (pendingCount > 0 && oldestPending) {
-      setPendingApproval({
-        approval_id: oldestPending.approval_id ?? oldestPending.id,
-        audit_id: oldestPending.id,
-        command: oldestPending.command,
-        reason: oldestPending.reason || "메신저로부터 승인 요청이 들어왔습니다.",
-        summary: oldestPending.reason,
-        source: oldestPending.source,
-        tool_name: oldestPending.tool_name,
-        tool_display_name: oldestPending.tool_display_name,
-        session_id: oldestPending.session_id,
-        danger: oldestPending.danger ?? oldestPending.is_dangerous,
-      });
-      return;
-    }
-    setCurrentPage("security");
+    setCurrentPage(pendingCount > 0 ? "activity" : "security");
   };
 
-  const handleMessengerClick = () => {
-    if (messenger.tone === "ok") {
-      setCurrentPage("conversations");
-    } else {
-      setCurrentPage("messenger_settings");
-    }
-  };
 
   // ⌘K 트리거 — Layout이 들으므로 window event 발행
   const triggerCmdK = () => {
@@ -350,13 +265,6 @@ export default function StatusBar() {
           tone={llm.tone}
           tooltip={llmTooltip}
           onClick={() => setCurrentPage("settings")}
-        />
-        <StatusSegment
-          icon={MessengerIcon}
-          label={messenger.label}
-          tone={messenger.tone}
-          tooltip={messengerTooltip}
-          onClick={handleMessengerClick}
         />
 
         {/* ⌘K hint — 항상 노출 */}

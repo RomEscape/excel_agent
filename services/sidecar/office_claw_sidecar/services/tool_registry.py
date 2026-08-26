@@ -42,19 +42,6 @@ TOOL_REGISTRY: list[ToolDef] = [
         permission=PermissionLevel.SAFE,
         example_triggers=["안녕", "질문", "설명해줘", "어떻게", "뭐야", "알려줘"],
     ),
-    # ── Gmail ────────────────────────────────────────────────────────────────
-    ToolDef(
-        name="gmail.fetch_emails",
-        description="최근 받은 이메일 목록 조회 및 중요도 분류 (읽기 전용)",
-        permission=PermissionLevel.SAFE,
-        example_triggers=["메일 확인", "이메일 보여줘", "받은 메일", "최근 메일", "이메일 목록"],
-    ),
-    ToolDef(
-        name="gmail.summarize_recent",
-        description="최근 이메일 중 중요한 것을 골라 내용 요약",
-        permission=PermissionLevel.SAFE,
-        example_triggers=["메일 요약", "이메일 요약해줘", "중요한 메일 요약", "메일 내용 알려줘"],
-    ),
     # ── 문서 생성 ────────────────────────────────────────────────────────────
     ToolDef(
         name="document.generate",
@@ -69,7 +56,7 @@ TOOL_REGISTRY: list[ToolDef] = [
     # ── 시스템 ───────────────────────────────────────────────────────────────
     ToolDef(
         name="status.check",
-        description="시스템 상태 확인 (Gmail 연결, AI 엔진, 봇 상태)",
+        description="시스템 상태 확인 (AI 엔진, 사이드카 상태)",
         permission=PermissionLevel.SAFE,
         example_triggers=["상태 확인", "시스템 상태", "연결 상태", "잘 돼?", "작동해?"],
     ),
@@ -80,19 +67,6 @@ TOOL_REGISTRY: list[ToolDef] = [
         example_triggers=["도움말", "명령어", "뭘 할 수 있어", "기능 목록"],
     ),
     # ── OpenClaw 스킬 매핑 (Phase 4) ─────────────────────────────────────────
-    # GOG/GWS 스킬 — Gmail
-    ToolDef(
-        name="gog.gmail.read",
-        description="Gmail 읽기 및 검색 (OpenClaw GOG 스킬, 읽기 전용)",
-        permission=PermissionLevel.SAFE,
-        example_triggers=["gmail", "이메일 확인", "메일 읽기", "받은 편지함"],
-    ),
-    ToolDef(
-        name="gog.gmail.send",
-        description="Gmail 이메일 전송 (OpenClaw GOG 스킬, 전송 필요)",
-        permission=PermissionLevel.CONFIRM,
-        example_triggers=["이메일 보내", "메일 전송", "답장 보내"],
-    ),
     # GOG/GWS 스킬 — Google Sheets
     ToolDef(
         name="gog.sheets.read",
@@ -248,7 +222,6 @@ SAFE_TOOL_NAMES: set[str] = {
 
 # CONFIRM 권한 스킬 한국어 표시명
 TOOL_DISPLAY_NAMES: dict[str, str] = {
-    "gog.gmail.send": "Gmail 이메일 전송",
     "gog.sheets.write": "Google Sheets 수정",
     "excel_live.write_range": "Excel 셀 값 수정",
     "excel_live.highlight_by_condition": "Excel 조건부 서식 변경",
@@ -350,7 +323,7 @@ def get_whitelist_state() -> list[dict]:
     현재 스킬별 권한 상태 목록을 반환한다 (화이트리스트 오버라이드 반영).
 
     Returns:
-        [{"name": "gog.gmail.send", "display_name": "...", "default_permission": "confirm",
+        [{"name": "gog.sheets.write", "display_name": "...", "default_permission": "confirm",
           "current_permission": "safe", "overridden": True}, ...]
     """
     result: list[dict] = []

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'pairing/pairing_screen.dart';
 import 'pairing/pairing_service.dart';
+import 'protocol/protocol.dart';
 import 'store/chat_controller.dart';
 import 'theme/brand_theme.dart';
 import 'widgets/agent_status_chip.dart';
@@ -151,6 +152,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               itemBuilder: (_, i) => _bubble(st.messages[i]),
             ),
           ),
+          if (st.pendingApproval != null) _approvalBar(st.pendingApproval!),
           _inputBar(st.connected),
         ],
       ),
@@ -218,6 +220,80 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 '수동(개발용): 데스크톱 QR 화면의 pairing_id + code를 넣으면 페어링까지 됩니다.',
                 style: TextStyle(fontSize: 11),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 승인 대기 배너 — 데스크톱이 CONFIRM 권한 도구를 실행하기 전에 사람 확인을 받는다.
+  ///
+  /// 다이얼로그 대신 인라인 배너인 이유: 스트리밍 중 화면 전환 없이 대화 맥락(무슨 요청을
+  /// 했는지)을 그대로 보면서 판단할 수 있고, 뒤로가기·재빌드로 다이얼로그가 중복 표시될
+  /// 여지가 없다.
+  Widget _approvalBar(ApprovalRequest req) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.tertiaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.verified_user_outlined, size: 18, color: scheme.onTertiaryContainer),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '실행 승인이 필요합니다',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: scheme.onTertiaryContainer,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              req.command,
+              style: TextStyle(
+                fontFamily: 'monospace',
+                color: scheme.onTertiaryContainer,
+              ),
+            ),
+            if (req.reason.trim().isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  req.reason,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: scheme.onTertiaryContainer,
+                  ),
+                ),
+              ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => ref
+                      .read(chatControllerProvider.notifier)
+                      .respondApproval(false),
+                  child: const Text('거부'),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: () => ref
+                      .read(chatControllerProvider.notifier)
+                      .respondApproval(true),
+                  child: const Text('승인'),
+                ),
+              ],
             ),
           ],
         ),

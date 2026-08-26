@@ -5,8 +5,8 @@
  * 핵심 가치(비개발자가 로컬 AI를 쉽게 설치 + 보안성 제고)에 맞춰
  * "로컬 AI" 탭을 가장 먼저 강조 노출한다.
  *
- * Sidebar에서 settings/credentials/audit/security/permissions/messenger_settings/guide
- * 어떤 키로 진입해도 Layout이 모두 SettingsHub로 라우팅하므로,
+ * settings/credentials/audit/security/permissions/guide/mobile_relay 어떤 키로
+ * 진입해도 Layout이 모두 SettingsHub로 라우팅하므로,
  * 최초 마운트 시 useAppStore.currentPage 값으로 활성 탭을 결정한다.
  */
 import React, { lazy, Suspense, useEffect, useState } from "react";
@@ -16,7 +16,6 @@ import {
   ClipboardList,
   ShieldCheck,
   ShieldAlert,
-  MessagesSquare,
   Smartphone,
   Bot,
   SlidersHorizontal,
@@ -26,7 +25,6 @@ import { cn } from "@/lib/utils";
 import useAppStore from "@/store/appStore";
 
 const GeneralSettings = lazy(() => import("./Settings"));
-const MessengerSettings = lazy(() => import("./MessengerSettings"));
 const CredentialsManager = lazy(() => import("@/components/credentials/CredentialsManager"));
 const AuditLog = lazy(() => import("@/components/audit/AuditLog"));
 const SecurityDashboard = lazy(() => import("@/components/security/SecurityDashboard"));
@@ -44,7 +42,6 @@ const TABS = [
     highlight: true,
   },
   { id: "settings", label: "일반", icon: SlidersHorizontal, component: GeneralSettings },
-  { id: "messenger_settings", label: "메신저", icon: MessagesSquare, component: MessengerSettings },
   { id: "mobile_relay", label: "모바일 연결", icon: Smartphone, component: RelayPairing },
   { id: "credentials", label: "자격증명", icon: KeyRound, component: CredentialsManager },
   { id: "security", label: "보안", icon: ShieldCheck, component: SecurityDashboard },

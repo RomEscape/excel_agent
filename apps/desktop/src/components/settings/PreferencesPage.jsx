@@ -4,9 +4,9 @@
  * 탭 허브(`SettingsHub`)가 아니라 **섹션 카드를 세로로 쌓은 단일 페이지**다.
  * 사이드바 푸터의 `환경 설정`이 여기로 온다(페이지 키 `preferences`).
  *
- * SettingsHub는 지우지 않았다 — 메신저·자격증명·보안·허용 범위·실행 기록은
+ * SettingsHub는 지우지 않았다 — 자격증명·보안·허용 범위·실행 기록·로컬 AI는
  * 와이어프레임에 없지만 실제 기능이 붙어 있고, `Cmd/Ctrl+K` 명령 팔레트가
- * 그 탭 키(`messenger_settings` 등)로 직접 진입시킨다.
+ * 그 탭 키(`credentials` 등)로 직접 진입시킨다.
  *
  * 치수는 Figma export에서 그대로 옮겼다. 틀리기 쉬운 지점:
  *   - **카드 안은 세로 쌓기다** — 라벨이 위, 내용이 아래(gap 12). 라벨 왼쪽 /
@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 import { CURRENT_VERSION, checkForUpdate } from "@/lib/appUpdate";
 import { FONT_SCALES, FONT_SCALE_LABELS } from "@/lib/fontScale";
 import { setFontScale } from "@/lib/fontScaleManager";
+import { describeModel } from "@/lib/modelCatalog";
 import { THEME_LABELS, THEME_PREFERENCES } from "@/lib/theme";
 import { setThemePreference } from "@/lib/themeManager";
 import { disconnect as relayDisconnect } from "@/lib/relayManager";
@@ -143,6 +144,9 @@ export default function PreferencesPage() {
     }
     wasConnected.current = relayConnected;
   }, [relayConnected, pairOpen]);
+
+  // 지금 고른 모델이 추천 모델인지 — 배지 표시 판정용.
+  const model = describeModel(llmConfig?.model);
 
   const handleCheckUpdate = async () => {
     setChecking(true);
@@ -289,7 +293,12 @@ export default function PreferencesPage() {
             {llmConfig?.model || "선택된 모델 없음"}
           </span>
           <span className="flex shrink-0 items-center gap-2">
-            <span className="text-xs leading-4 text-brand-step">추천</span>
+            {/* 배지는 실제로 추천 모델일 때만 붙인다 — 어떤 모델을 골라도 `추천`이
+                떠 있으면 배지가 아무 말도 하지 않는 셈이다. 판정은
+                `lib/modelCatalog.js`가 소유한다(온보딩 셀렉트와 같은 규칙). */}
+            {model.recommended && (
+              <span className="text-xs leading-4 text-brand-step">추천</span>
+            )}
             <ChevronDown className="h-6 w-6 text-ink-subtle" />
           </span>
         </button>

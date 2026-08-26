@@ -53,25 +53,6 @@ const ERROR_MAPPINGS = [
     message: "저장된 토큰이 유효하지 않습니다. 자격증명 관리에서 토큰을 다시 저장해 주세요.",
   },
 
-  // OAuth / Gmail specific
-  {
-    pattern: /oauth|OAuth/,
-    message: "Google 인증 오류가 발생했습니다. Google 자격증명(client_id, client_secret)을 확인해 주세요.",
-  },
-  {
-    pattern: /gmail|Gmail/i,
-    message: "Gmail 연동 중 오류가 발생했습니다. Gmail 연결 상태를 확인해 주세요.",
-  },
-
-  // Telegram specific
-  {
-    pattern: /telegram.*token|bot.*token/i,
-    message: "텔레그램 봇 토큰이 올바르지 않습니다. 자격증명 관리에서 telegram_bot_token을 확인해 주세요.",
-  },
-  {
-    pattern: /chat.*id|Chat.*ID/i,
-    message: "텔레그램 Chat ID가 설정되지 않았습니다. 자격증명 관리에서 telegram_chat_id를 저장해 주세요.",
-  },
 
   // LLM / AI errors
   {
@@ -84,7 +65,7 @@ const ERROR_MAPPINGS = [
   },
   {
     // LLM request timeout — separate from generic network timeout
-    pattern: /AI 답장|draft.*reply|prioritize.*email|LLM.*timeout|llm.*timed/i,
+    pattern: /LLM.*timeout|llm.*timed/i,
     message: "AI 응답 시간이 초과되었습니다. AI 서비스가 바쁩니다. 잠시 후 다시 시도해 주세요.",
   },
   {
@@ -92,14 +73,14 @@ const ERROR_MAPPINGS = [
     message: "API 요청 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.",
   },
 
-  // Gmail token / credential expiry
+  // 자격증명 만료
   {
     pattern: /token.*expired|expired.*token|Token has been expired|invalid_grant/i,
-    message: "Gmail 인증 토큰이 만료되었습니다. 메일 AI 화면에서 Gmail을 다시 연결해 주세요.",
+    message: "인증 토큰이 만료되었습니다. 자격증명 관리에서 다시 저장해 주세요.",
   },
   {
     pattern: /refresh.*token|token.*refresh/i,
-    message: "Gmail 세션이 만료되었습니다. 다시 연결해 주세요.",
+    message: "인증 세션이 만료되었습니다. 자격증명 관리에서 다시 저장해 주세요.",
   },
 
   // Server errors

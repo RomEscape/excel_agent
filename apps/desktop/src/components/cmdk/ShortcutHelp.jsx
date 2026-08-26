@@ -4,10 +4,17 @@
  * 트리거: `?` 또는 `Cmd/Ctrl+/` (Layout이 글로벌 키 처리)
  * 1-screen 그리드로 카테고리별 모든 단축키 노출.
  *
- * 닫기: Esc, 외부 클릭, 우상단 X.
+ * 껍데기(오버레이·Esc·바깥 클릭·닫기 버튼·포커스)는 `ui/modal.jsx`가 소유한다 —
+ * 이 파일은 단축키 목록이라는 내용만 갖는다. 예전에는 같은 규칙을 여기에 한 벌
+ * 더 갖고 있어서, 모달 동작을 고칠 때 한쪽만 고쳐지는 자리였다.
+ *
+ * `layer="top"`인 이유: 명령 팔레트(z-[1000])를 열어둔 채로도 `Cmd/Ctrl+/`가
+ * 먹기 때문에, 기본 층(z-50)에 두면 도움말이 팔레트 뒤에 깔린다.
  */
 import React from "react";
-import { Keyboard, X } from "lucide-react";
+import { Keyboard } from "lucide-react";
+
+import Modal from "@/components/ui/modal";
 
 // 카테고리별 단축키 정의 (라벨/키)
 const SHORTCUTS = [
@@ -67,61 +74,37 @@ function ShortcutRow({ keys, label }) {
 }
 
 export default function ShortcutHelp({ open, onClose }) {
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-[1100] overflow-y-auto bg-black/40">
-      <div
-        className="flex min-h-full items-center justify-center p-4"
-        onClick={(e) => {
-          if (e.target === e.currentTarget) onClose();
-        }}
-      >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="단축키 도움말"
-        className="w-full max-w-2xl overflow-hidden rounded-lg border border-border bg-popover shadow-2xl"
-      >
-        {/* 헤더 */}
-        <div className="flex items-center justify-between border-b border-border px-5 py-3">
-          <div className="flex items-center gap-2">
-            <Keyboard className="h-4 w-4 text-primary" />
-            <h2 className="text-sm font-semibold">단축키</h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label="닫기"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        {/* 그리드 */}
-        <div className="grid gap-x-8 gap-y-4 p-5 sm:grid-cols-2 lg:grid-cols-3">
-          {SHORTCUTS.map((section) => (
-            <div key={section.group}>
-              <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                {section.group}
-              </h3>
-              <div className="divide-y divide-border/60">
-                {section.items.map((it, idx) => (
-                  <ShortcutRow key={idx} keys={it.keys} label={it.label} />
-                ))}
-              </div>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="단축키"
+      size="lg"
+      layer="top"
+      icon={Keyboard}
+      footer={
+        <>
+          <span className="text-[11px] text-muted-foreground">
+            입력 필드 포커스 시 단일키 단축키는 비활성화됩니다 · 한글/일본어 입력 중에도 안전.
+          </span>
+          <span className="shrink-0 text-[11px] text-muted-foreground">Esc 닫기</span>
+        </>
+      }
+    >
+      <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
+        {SHORTCUTS.map((section) => (
+          <div key={section.group}>
+            <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              {section.group}
+            </h3>
+            <div className="divide-y divide-border/60">
+              {section.items.map((it, idx) => (
+                <ShortcutRow key={idx} keys={it.keys} label={it.label} />
+              ))}
             </div>
-          ))}
-        </div>
-
-        {/* 푸터 */}
-        <div className="flex items-center justify-between border-t border-border bg-muted/30 px-5 py-2 text-[11px] text-muted-foreground">
-          <span>입력 필드 포커스 시 단일키 단축키는 비활성화됩니다 · 한글/일본어 입력 중에도 안전.</span>
-          <span>Esc 닫기</span>
-        </div>
+          </div>
+        ))}
       </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
