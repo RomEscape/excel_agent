@@ -88,6 +88,8 @@ option에는 그 문장에 실제로 나온 값만 적는다.
 {{"task": "formula", "range": "D8", "column": "지연건수", "option": "SUM"}}
 문장: "A1:F9에 매출표라는 이름 정의해줘"
 {{"task": "named_range", "range": "A1:F9", "column": null, "option": "매출표"}}
+문장: "수도권을 서울권으로 바꿔줘"
+{{"task": "find_replace", "range": null, "column": null, "option": {{"find": "수도권", "replace": "서울권"}}}}
 
 문장: "{message}"
 JSON:"""
