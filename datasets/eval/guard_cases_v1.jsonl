@@ -17,7 +17,7 @@
 {"task": "sort_keeps_pairs", "text": "등수 매기게 점수 순으로 좀 정렬해 주실래요?", "persona": "D_작성자(비블라인드)"}
 {"task": "sort_keeps_pairs", "text": "점수 내림차순 정렬", "persona": "D_작성자(비블라인드)"}
 {"task": "sort_keeps_pairs", "text": "높은 점수가 맨 위로 가게 바꿔줘", "persona": "D_작성자(비블라인드)"}
-{"task": "sort_keeps_pairs", "text": "ㅇㅇ 점수순", "persona": "D_작성자(비블라인드)"}
+{"task": "sort_keeps_pairs", "text": "ㅇㅇ 점수순", "persona": "D_작성자(비블라인드)", "expect_ask": true}
 {"task": "sort_keeps_pairs", "text": "학부모 상담 자료라서요, 점수가 높은 순서대로 정렬해 주시면 감사하겠습니다", "persona": "D_작성자(비블라인드)"}
 {"task": "sort_keeps_pairs", "text": "점수 열 기준으로 큰 값부터 나열해줘", "persona": "D_작성자(비블라인드)"}
 {"task": "sort_keeps_pairs", "text": "점수 높은 순 정렬해 주세요", "persona": "D_작성자(비블라인드)"}
@@ -60,13 +60,13 @@
 {"task": "filter_keeps_rows", "text": "대기 상태인 행만 보고 싶어", "persona": "D_작성자(비블라인드)"}
 {"task": "chart_keeps_data", "text": "이 표로 막대 그래프 그려줘", "persona": "D_작성자(비블라인드)"}
 {"task": "chart_keeps_data", "text": "지역별 주문건수 막대 차트 하나 만들어줘", "persona": "D_작성자(비블라인드)"}
-{"task": "chart_keeps_data", "text": "표 보고 그래프 좀 그려줄래?", "persona": "D_작성자(비블라인드)"}
-{"task": "chart_keeps_data", "text": "주문건수로 차트 그려 주세요", "persona": "D_작성자(비블라인드)"}
+{"task": "chart_keeps_data", "text": "표 보고 그래프 좀 그려줄래?", "persona": "D_작성자(비블라인드)", "expect_ask": true}
+{"task": "chart_keeps_data", "text": "주문건수로 차트 그려 주세요", "persona": "D_작성자(비블라인드)", "expect_ask": true}
 {"task": "chart_keeps_data", "text": "지역별로 막대 그래프 만들어줘", "persona": "D_작성자(비블라인드)"}
-{"task": "chart_keeps_data", "text": "이 데이터 시각화해줘", "persona": "D_작성자(비블라인드)"}
-{"task": "chart_keeps_data", "text": "주문건수 비교되게 그래프 하나", "persona": "D_작성자(비블라인드)"}
-{"task": "chart_keeps_data", "text": "표를 차트로 보여줘", "persona": "D_작성자(비블라인드)"}
-{"task": "chart_keeps_data", "text": "지역 주문건수 그래프로 그려줄 수 있어?", "persona": "D_작성자(비블라인드)"}
+{"task": "chart_keeps_data", "text": "이 데이터 시각화해줘", "persona": "D_작성자(비블라인드)", "expect_ask": true}
+{"task": "chart_keeps_data", "text": "주문건수 비교되게 그래프 하나", "persona": "D_작성자(비블라인드)", "expect_ask": true}
+{"task": "chart_keeps_data", "text": "표를 차트로 보여줘", "persona": "D_작성자(비블라인드)", "expect_ask": true}
+{"task": "chart_keeps_data", "text": "지역 주문건수 그래프로 그려줄 수 있어?", "persona": "D_작성자(비블라인드)", "expect_ask": true}
 {"task": "chart_keeps_data", "text": "막대 그래프로 정리해줘", "persona": "D_작성자(비블라인드)"}
-{"task": "chart_keeps_data", "text": "이 표 기준으로 차트 만들어 주세요", "persona": "D_작성자(비블라인드)"}
+{"task": "chart_keeps_data", "text": "이 표 기준으로 차트 만들어 주세요", "persona": "D_작성자(비블라인드)", "expect_ask": true}
 {"task": "chart_keeps_data", "text": "주문건수 막대로 그려줘", "persona": "D_작성자(비블라인드)"}

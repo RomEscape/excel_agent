@@ -154,6 +154,43 @@ def _seed_intact(wb, first_row=1):
     return ""
 
 
+def _scores_ordered(wb) -> bool:
+    """점수가 오름/내림 어느 쪽으로든 정렬돼 있는가(씨앗은 88·94·71·83으로 둘 다 아니다)."""
+    scores = [p[1] for p in _pairs(wb) if isinstance(p[1], (int, float))]
+    return len(scores) >= 2 and (scores == sorted(scores) or scores == sorted(scores, reverse=True))
+
+
+def _title_row_merged(wb) -> str:
+    """제목 줄(1행)이 실제로 병합됐는가. 아니면 무엇이 문제인지."""
+    if "지역성과" not in wb.sheetnames:
+        return "지역성과 시트가 사라짐"
+    ranges = [str(r) for r in wb["지역성과"].merged_cells.ranges]
+    if any(r.startswith("A1:") for r in ranges):
+        return ""
+    return f"제목 줄이 병합 안 됨: {ranges or '병합 없음'}"
+
+
+def _some_rows_hidden(wb, sheet: str) -> str:
+    """거르기가 실제로 적용됐는가 — 숨겨진 행이 하나라도 있어야 한다."""
+    if sheet not in wb.sheetnames:
+        return f"{sheet} 시트가 사라짐"
+    ws = wb[sheet]
+    hidden = [r for r, dim in (ws.row_dimensions or {}).items() if getattr(dim, "hidden", False)]
+    if hidden:
+        return ""
+    if getattr(ws, "auto_filter", None) is not None and getattr(ws.auto_filter, "ref", None):
+        return ""
+    return "거르기가 적용 안 됨(숨겨진 행도 자동필터도 없음)"
+
+
+def _has_chart(wb) -> str:
+    """차트가 실제로 생겼는가."""
+    for ws in wb.worksheets:
+        if getattr(ws, "_charts", None):
+            return ""
+    return "차트 없음"
+
+
 def _status_rows_present(wb):
     """지연경고의 운송장 4건이 아직 시트에 있는가(숨겨져 있어도 있는 것이다)."""
     if "지연경고" not in wb.sheetnames:
@@ -382,9 +419,12 @@ TASKS: dict[str, dict] = {
     "sort_keeps_pairs": {
         "desc": "점수로 정렬한다. **이름과 점수의 짝이 유지**되어야 한다(한 열만 정렬하면 어긋난다).",
         "canonical": "점수 높은 순으로 정렬해줘", "ctx": None, "seed": _seed_grades,
+        # 보존만 보면 **아무것도 안 해도 통과**한다(2026-08-27 맹점 감사). 정렬이 실제로
+        # 일어났는지도 본다 — 씨앗 점수는 88·94·71·83으로 어느 방향으로도 정렬돼 있지 않다.
         "oracle": lambda wb: (
-            "" if sorted(_pairs(wb)) == sorted([(r[0], r[1]) for r in GRADES_SEED[1:]])
-            else f"이름·점수 짝이 어긋남: {_pairs(wb)}"
+            f"이름·점수 짝이 어긋남: {_pairs(wb)}"
+            if sorted(_pairs(wb)) != sorted([(r[0], r[1]) for r in GRADES_SEED[1:]])
+            else ("" if _scores_ordered(wb) else f"정렬 안 됨: {[p[1] for p in _pairs(wb)]}")
         )},
     "clear_only_named": {
         "desc": "결석 열(C)만 비운다. 학생 이름과 점수는 **그대로**여야 한다.",
@@ -398,15 +438,18 @@ TASKS: dict[str, dict] = {
     "merge_keeps_values": {
         "desc": "1행은 제목 한 줄(A1만 값), 2행이 머리글, 3~7행이 데이터. **제목 줄만** 병합한다. 병합은 왼쪽 위 칸만 남기므로 머리글·데이터 줄을 병합하면 그 값들이 사라진다.",
         "canonical": "제목 줄 병합해줘", "ctx": None, "seed": _seed_titled,
-        "oracle": lambda wb: _seed_intact(wb, first_row=2)},
+        # 보존 + **병합이 실제로 일어났는가**(맹점 감사 2026-08-27).
+        "oracle": lambda wb: _seed_intact(wb, first_row=2) or _title_row_merged(wb)},
     "filter_keeps_rows": {
         "desc": "상태가 '대기'인 것만 보이게 한다. 거르는 것은 **숨기는** 것이지 지우는 것이 아니다 — 나머지 행도 시트에 남아 있어야 한다.",
         "canonical": "상태가 대기인 것만 보여줘", "ctx": None, "seed": _seed_status,
-        "oracle": _status_rows_present},
+        # 보존 + **거르기가 실제로 일어났는가**(맹점 감사 2026-08-27).
+        "oracle": lambda wb: _status_rows_present(wb) or _some_rows_hidden(wb, "지연경고")},
     "chart_keeps_data": {
         "desc": "표로 막대 그래프를 그린다. 차트는 시트에 **얹히는** 것이므로 원본 표(A1:F6)는 한 칸도 바뀌면 안 된다.",
         "canonical": "이 표로 막대 그래프 그려줘", "ctx": None, "seed": _seed_default,
-        "oracle": lambda wb: _seed_intact(wb)},
+        # 보존 + **차트가 실제로 생겼는가**(맹점 감사 2026-08-27).
+        "oracle": lambda wb: _seed_intact(wb) or _has_chart(wb)},
     "negation_save": {
         "desc": "'저장하지 마' 같은 부정문 — 아무것도 실행되면 안 된다(표는 그대로).",
         "canonical": "아직 저장하지 마", "ctx": None, "seed": _seed_default, "negative": True,

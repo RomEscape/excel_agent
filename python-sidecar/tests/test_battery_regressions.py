@@ -6107,3 +6107,39 @@ class TestSortMetricBeatsTargetNoun:
         plan3 = [PlanStep(action="excel_live.clear_range", params={"target_range": "A1:B2"}, reason="r")]
         _restore_sort_metric("클레임이 많은 지역부터", plan3, str(p), "지역성과")
         assert plan3[0].params == {"target_range": "A1:B2"}
+
+
+class TestGateOraclesRejectNoOp:
+    """오라클 맹점 — "아무것도 안 했을 때 통과하는가"를 전 과제에 대해 고정한다.
+
+    2026-08-26: `sort_keep_total`의 씨앗이 이미 정렬돼 있어 무동작이 통과했고, 그
+    그늘에 정렬이 통째로 버려지는 결함이 10건 숨어 있었다.
+    2026-08-27 전수 감사: 파괴 게이트 6과제 중 **4개(48문장)**가 보존만 검사해
+    무동작으로 통과하고 있었다(sort_keeps_pairs·merge_keeps_values·filter_keeps_rows·
+    chart_keeps_data). 보존 + 동작 발생을 함께 요구하도록 고쳤다.
+    """
+
+    def test_모든_과제가_무동작을_거른다(self):
+        import sys
+        from pathlib import Path
+
+        from openpyxl import Workbook
+
+        p = str(Path(__file__).resolve().parents[1] / "scripts")
+        if p not in sys.path:
+            sys.path.insert(0, p)
+        import run_blind_paraphrase_gate as m
+
+        blind = []
+        for name, task in m.TASKS.items():
+            if task.get("negative"):
+                continue  # 부정문 과제는 무동작이 정답이다
+            wb = Workbook()
+            task["seed"](wb)
+            if "oracle_text" in task:
+                err = task["oracle_text"](wb, str(task.get("canonical") or ""))
+            else:
+                err = task["oracle"](wb)
+            if err == "":
+                blind.append(name)
+        assert blind == [], f"무동작이 통과하는 과제: {blind}"
