@@ -94,15 +94,12 @@ export function getOllamaStatus(state) {
  *
  * 입력:
  *  - sidecarState: 'ok'|'checking'|'error'
- *  - llmReachable: null|true|false  (Ollama인 경우만 의미 있음)
- *  - provider: 'ollama'|'claude'
+ *  - llmReachable: null|true|false
  *
- * Claude API는 sidecar reachable이면 ok 처리 (실제 API 키 유무는 사용 시점 검증).
- * Ollama는 reachable === true일 때만 ok.
+ * provider는 ollama 하나뿐이라 인자로 받지 않는다 — reachable === true일 때만 ok다.
  */
-export function getLLMStatus({ sidecarState, llmReachable, provider, model }) {
-  const engineName = provider === "claude" ? "Claude API" : "Ollama";
-  const fullLabel = model ? `${engineName} · ${model}` : engineName;
+export function getLLMStatus({ sidecarState, llmReachable, model }) {
+  const fullLabel = model ? `Ollama · ${model}` : "Ollama";
 
   if (sidecarState === "checking" || llmReachable === null) {
     return { tone: "pending", label: fullLabel, sub: "확인 중" };
@@ -110,13 +107,9 @@ export function getLLMStatus({ sidecarState, llmReachable, provider, model }) {
   if (sidecarState === "error") {
     return { tone: "warning", label: fullLabel, sub: "앱과 연결할 수 없어요" };
   }
-  if (provider === "ollama") {
-    return llmReachable
-      ? { tone: "ok", label: fullLabel }
-      : { tone: "warning", label: fullLabel, sub: "Ollama가 실행되고 있지 않아요" };
-  }
-  // Claude API — sidecar OK면 ok로 간주
-  return { tone: "ok", label: fullLabel };
+  return llmReachable
+    ? { tone: "ok", label: fullLabel }
+    : { tone: "warning", label: fullLabel, sub: "Ollama가 실행되고 있지 않아요" };
 }
 
 /**

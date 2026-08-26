@@ -25,7 +25,6 @@ import { cn } from "@/lib/utils";
 import useAppStore from "@/store/appStore";
 
 const GeneralSettings = lazy(() => import("./Settings"));
-const CredentialsManager = lazy(() => import("@/components/credentials/CredentialsManager"));
 const AuditLog = lazy(() => import("@/components/audit/AuditLog"));
 const SecurityDashboard = lazy(() => import("@/components/security/SecurityDashboard"));
 const PermissionManager = lazy(() => import("@/components/permissions/PermissionManager"));
@@ -43,7 +42,6 @@ const TABS = [
   },
   { id: "settings", label: "일반", icon: SlidersHorizontal, component: GeneralSettings },
   { id: "mobile_relay", label: "모바일 연결", icon: Smartphone, component: RelayPairing },
-  { id: "credentials", label: "자격증명", icon: KeyRound, component: CredentialsManager },
   { id: "security", label: "보안", icon: ShieldCheck, component: SecurityDashboard },
   { id: "permissions", label: "에이전트 허용 범위", icon: ShieldAlert, component: PermissionManager },
   { id: "audit", label: "실행 기록", icon: ClipboardList, component: AuditLog },

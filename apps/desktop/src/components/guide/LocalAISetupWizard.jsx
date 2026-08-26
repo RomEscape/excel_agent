@@ -106,25 +106,23 @@ export default function LocalAISetupWizard() {
 
   // 앱 시작 직후 1회 진단은 App.jsx의 useStatusPoller가 처리 — 여기선 별도 트리거 불필요.
 
-  // 모달 자동 노출 결정 — provider=ollama인 사용자에게만 자동 노출
-  // (Claude API 사용자는 글로벌 이벤트로 수동 트리거 가능)
+  // 모달 자동 노출 결정 — 온보딩을 마쳤는데 로컬 스택이 덜 준비된 경우
   useEffect(() => {
     if (!diag) return;
     if (!onboardingComplete) return;
     if (dismissed) return;
-    if (llmConfig?.provider !== "ollama") return;
     const allReady = isAllReady(diag, model);
     if (!allReady && !open) {
       setOpen(true);
     }
-  }, [diag, onboardingComplete, dismissed, model, open, llmConfig?.provider]);
+  }, [diag, onboardingComplete, dismissed, model, open]);
 
   // llmConfig의 model이 있으면 초기값으로 사용
   useEffect(() => {
-    if (llmConfig?.provider === "ollama" && llmConfig?.model) {
+    if (llmConfig?.model) {
       setModel(llmConfig.model);
     }
-  }, [llmConfig?.provider, llmConfig?.model]);
+  }, [llmConfig?.model]);
 
   // 글로벌 이벤트 — Dashboard "지금 자동 설치" 등에서 다시 열기.
   // 모달을 *즉시* 열어 사용자에게 피드백을 주고, 진단은 백그라운드로 갱신한다.

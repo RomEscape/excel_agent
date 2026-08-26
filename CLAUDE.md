@@ -39,7 +39,7 @@
 | 시스템 상태 | `store/statusStore.js` | `lib/statusManager.js`, `lib/statusTokens.js` | — | `components/ui/status.jsx` |
 | 로컬 AI 설정 단계 | — | `lib/localAISetup.js` (buildPlan/isAllReady) | — | `components/guide/LocalAISetupWizard.jsx` (조합만) |
 | Tauri IPC | — | `lib/api.js` (모든 invoke wrapper 1곳) | `src-tauri/src/ipc.rs` | — |
-| OS 자격증명 | — | api.js의 `rustCredential*` | `src-tauri/src/keyring_svc.rs` | — |
+| OS 자격증명 | — | api.js의 `rustCredential*` | `src-tauri/src/keyring_svc.rs` | — (UI 없음, 아래 노트) |
 | 감사 로그 | — | api.js의 `rustAudit*` | `src-tauri/src/audit.rs` | — |
 | Excel tool-calling | — | (sidecar) `services/excel_tool_schemas.py`(함수 명세) · `excel_tool_agent.py`(루프) · `excel_actions.py`(실행) | — | ChatPage (조합만) |
 | 에이전트 채팅 | `store/chatStore.js`(세션 목록·진행 상태) + appStore의 `agentMessages`·`activeSessionId` | `lib/chatManager.js`(전송/세션/승인 액션) · `lib/chatSessions.js`(오늘·어제 그룹핑, 순수) · `lib/excelRangeContext.js`(범위 참조 블록, 순수) | — | `components/ui/chat.jsx`(버블·컴포저·칩) |
@@ -65,6 +65,18 @@
 > **2026-05 Rust 보안 계층 노트**: Keyring · Audit 두 도메인은 Python sidecar의 동명 서비스와 *같은* OS Keychain·파일(`audit.jsonl`, `credentials_registry.json`)을 공유한다. 신규 코드는 Rust 경로(`rustCredential*`, `rustAudit*`)를 우선 사용하되, Python 측은 자체 라우터 안에서 자기 서비스를 계속 쓴다.
 >
 > **2026-07 LLM 경로 노트**: OpenClaw 게이트웨이 통합은 `feat/ollama-tool-calling`에서 전면 제거됐다. LLM 호출은 Ollama OpenAI 호환 API(`/v1/chat/completions`) + `tools`(function calling) 단일 경로다. Excel 함수 명세는 `excel_tool_schemas.py`가 단일 소스이며, 권한(SAFE/CONFIRM/DENIED)은 `tool_registry.py`가 계속 소유한다.
+>
+> **2026-08 Claude API 경로 제거 노트**: 위 "단일 경로"를 코드로도 못박았다. **`ClaudeProvider`는 `chat()`만 구현하고 `chat_with_tools()`가 없었다** — 베이스 클래스의 기본 구현이 `LLMToolsNotSupportedError`를 던지므로, 온보딩에서 `Claude API`를 고른 사용자는 엑셀 명령을 넣을 때마다 400만 받았다. 이 앱이 하는 일이 엑셀 작업 하나인데 온보딩 첫 화면이 그걸 못 하게 만드는 선택지를 동등한 카드로 제시하고 있었다.
+>
+> 지운 것 — 사이드카 `services/claude_service.py`·`llm_service.py`의 `ClaudeProvider`와 팩토리 분기·`routers/llm.py`의 `engine == "claude"` 분기, 데스크톱의 온보딩 provider 카드 2장·`Settings`의 `AI 선택` 드롭다운·`SetupGuide`의 Claude 탭·`statusTokens.getLLMStatus`의 provider 분기·`StatusBar`의 reachable 분기·`errorMessages`의 Claude 패턴.
+>
+> **`provider` 필드 자체는 남긴다.** 저장된 `llm_config.json`이 이 키를 갖고 있고 앞으로 provider가 다시 늘 수 있다 — `routers/settings.py`의 화이트리스트만 `{"ollama"}`로 좁혔다. 되살리려면 **`chat_with_tools`를 먼저 구현**할 것. UI만 되돌리면 같은 함정이 그대로 재현된다.
+>
+> **연쇄로 `CredentialsManager` 화면이 사라졌다.** `claude_api_key`가 마지막 남은 자격증명이었고(Gmail의 Google OAuth 키는 앞선 커밋에서 제거), 그룹이 0개인 자격증명 관리 탭은 빈 껍데기다. **키체인 백엔드는 그대로 살아 있다** — Rust IPC 8개(`store_credential`·`rustCredential*` 등), 사이드카 `routers/credentials.py` 4개 엔드포인트, `keyring_svc.rs`·`keyring_service.py`. 새 자격증명이 생기면 UI만 다시 만들면 된다. `api.js`의 래퍼 7개도 살아 있는 엔드포인트를 가리키므로 남겼다.
+>
+> **`SetupGuide`는 탭 바가 없어졌다.** 안내 대상이 Ollama 설치 하나뿐이라 탭이 하나 남았기 때문이다(예전엔 5개 — 메신저 3 · Gmail · Claude). 둘 이상이 되면 탭 바를 되살릴 것.
+>
+> `errorMessages.js`의 tool-calling 미지원 문구는 **지우지 않고 바꿨다** — provider 분기로는 도달 불가하지만, 사용자가 고른 Ollama 모델이 tools를 지원하지 않으면 사이드카가 같은 오류를 낸다. 그래서 "Ollama provider로 전환하세요"가 아니라 "다른 모델을 고르세요"로 고쳤다.
 >
 > **2026-07 브랜드 색 노트**: 김대리 색의 단일 소스는 브랜드 SVG의 `fill`·`stop-color`다(`apps/desktop/src/assets/brand-logo-{light,dark}.svg`, `apps/mobile/assets/brand-wordmark.svg`). 모바일은 `BrandPalette.core`(#2DB400) **시드 하나**에서 M3가 라이트/다크를 전부 파생하고, 데스크톱 `index.css`의 `--primary`·`--sidebar-*`는 같은 값을 HSL로 옮긴 것이다(흰 전경 대비 4.5:1을 넘기려 명도만 24%로 낮춤). **코드에서 새 브랜드 색을 짓지 않는다** — 필요하면 SVG를 먼저 고치고 값을 옮긴다. 단, 상태색 중 `thinking`(앰버)·`remoteControlling`(바이올렛)은 "정상 동작 중"과 구분돼야 해서 의도적으로 브랜드 밖 색이다. 워드마크 SVG는 그라디언트의 어두운 끝(#0B3F0A·#015F00)이 다크 지면에서 대비 1.5:1로 사라지므로 `BrandWordmark`가 다크에서 단색(#46C642)으로 눕힌다.
 >

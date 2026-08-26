@@ -114,7 +114,7 @@ export async function getLLMSettings() {
 }
 
 /**
- * @param {{ provider: 'ollama'|'claude', model: string }} config
+ * @param {{ provider: 'ollama', model: string }} config
  */
 export async function saveLLMSettings(config) {
   const raw = await call("save_llm_settings", { config });

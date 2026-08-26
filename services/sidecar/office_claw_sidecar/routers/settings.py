@@ -23,13 +23,15 @@ router = APIRouter()
 class LLMConfig(BaseModel):
     """LLM provider selection persisted to disk."""
 
-    provider: str  # "ollama" | "claude"
+    provider: str  # "ollama" — 유일한 경로
     model: str
 
     @field_validator("provider")
     @classmethod
     def validate_provider(cls, v: str) -> str:
-        allowed = {"ollama", "claude"}
+        # Claude API 경로 제거로 provider는 ollama 하나뿐이다. 필드 자체는 남긴다 —
+        # 저장된 llm_config.json이 이 키를 갖고 있고, 앞으로 provider가 늘 수 있다.
+        allowed = {"ollama"}
         if v not in allowed:
             raise ValueError(f"provider must be one of {allowed}, got '{v}'")
         return v

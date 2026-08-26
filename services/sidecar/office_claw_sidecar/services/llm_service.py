@@ -1,10 +1,9 @@
 """
-LLM integration layer — unified abstraction over Ollama and Claude API.
+LLM integration layer — Ollama(OpenAI 호환 API) 단일 경로.
 
 Architecture:
   LLMProvider (ABC)
     ├── OllamaProvider   — wraps OllamaService
-    └── ClaudeProvider   — wraps ClaudeService
 
   LLMService            — holds the active provider, delegates calls
   get_llm_service()     — singleton factory; reads provider from config file
@@ -20,7 +19,6 @@ from collections.abc import Awaitable, Callable
 from office_claw_sidecar.config import get_data_dir
 from office_claw_sidecar.local_stack import get_default_llm_config
 from office_claw_sidecar.services.ollama_service import OllamaService
-from office_claw_sidecar.services.claude_service import ClaudeService
 
 logger = logging.getLogger(__name__)
 
@@ -180,24 +178,6 @@ class OllamaProvider(LLMProvider):
         )
 
 
-class ClaudeProvider(LLMProvider):
-    """Delegates to the existing ClaudeService."""
-
-    def __init__(self, model: str | None = None) -> None:
-        self._svc = ClaudeService()
-        self._model = (model or "").strip() or None
-
-    @property
-    def provider_name(self) -> str:
-        return "claude"
-
-    async def chat(self, messages: list[dict], model: str | None = None) -> str:
-        # 전체 대화 히스토리를 그대로 Claude에 전달 (멀티턴 지원)
-        # model이 없으면 ClaudeService 자체 기본 모델을 사용한다 (클라우드 모델은
-        # 로컬 설치 개념이 없어 '모델 없음' 문제가 없다).
-        return await self._svc.chat_messages(messages, model=model or self._model)
-
-
 # ── LLM Service ───────────────────────────────────────────────────────────
 
 
@@ -257,11 +237,8 @@ def get_llm_service() -> LLMService:
         cfg = load_llm_config()
         provider_name = cfg.get("provider", "ollama")
         model = cfg.get("model")
-        provider: LLMProvider = (
-            ClaudeProvider(model=model)
-            if provider_name == "claude"
-            else OllamaProvider(model=model)
-        )
+        # provider는 ollama 하나뿐이다 — Claude API 경로는 제거됐다(아래 모듈 주석).
+        provider: LLMProvider = OllamaProvider(model=model)
         _llm_service_instance = LLMService(provider)
         logger.info(
             "LLMService initialised with provider=%s model=%s", provider_name, model

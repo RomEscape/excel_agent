@@ -22,6 +22,9 @@ export const RECOMMENDED_MODEL = "qwen3:4b";
  *
  * 색은 와이어프레임이 각 아이콘에 쓴 브랜드 색이다. 우리 브랜드 색이 아니므로
  * 테마 토큰으로 옮기지 않고 그대로 둔다 (남의 로고 색).
+ *
+ * 입력은 **Ollama가 실제로 서빙하는 모델 ID**뿐이다 — 클라우드 전용 모델
+ * (claude/opus/sonnet 등)은 이 목록에 올 수 없으므로 넣지 않는다.
  */
 const BRANDS = [
   { match: /^qwen/i, label: "Qwen", color: "#615CED" },
@@ -31,7 +34,6 @@ const BRANDS = [
   { match: /^mistral|^mixtral/i, label: "Mistral", color: "#FF7000" },
   { match: /^phi/i, label: "Microsoft", color: "#00A4EF" },
   { match: /^kimi/i, label: "Kimi", color: "#092400" },
-  { match: /^claude|^opus|^sonnet|^haiku/i, label: "Anthropic", color: "#FF7043" },
 ];
 
 const FALLBACK_BRAND = { label: "로컬 모델", color: "#828B80" };

@@ -344,7 +344,7 @@ def test_command_tools_not_supported_returns_400(monkeypatch):
     _patch_service(monkeypatch)
 
     async def _fake_turn(**_kwargs):
-        raise LLMToolsNotSupportedError("'claude' provider는 tools(function calling)를 지원하지 않습니다.")
+        raise LLMToolsNotSupportedError("'stub' provider는 tools(function calling)를 지원하지 않습니다.")
 
     monkeypatch.setattr(excel_live_router, "run_excel_tool_turn", _fake_turn)
 
