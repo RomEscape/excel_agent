@@ -5837,3 +5837,183 @@ class TestKeyColumnProblemAsksBeforeApproval:
 
     def test_대상_액션이_아니면_보지_않는다(self, tmp_path):
         assert self._problem(tmp_path, "excel_live.clear_range", {"target_range": "A1:B2"}) == ""
+
+    def test_정렬_기준_열도_같은_잣대(self, tmp_path):
+        # 정렬은 행을 지우진 않지만 순서를 통째로 바꾼다 — 엉뚱한 열이면 조용한 오답.
+        q = self._problem(tmp_path, "excel_live.sort_range", {"key_column": "없는열"})
+        assert "없는열" in q
+
+    def test_정렬_기준이_비었거나_숫자면_보지_않는다(self, tmp_path):
+        # "정렬 좀 해줘"류(빈 값)는 기존 되묻기가 맡고, 숫자 색인은 유효하다.
+        assert self._problem(tmp_path, "excel_live.sort_range", {"key_column": ""}) == ""
+        assert self._problem(tmp_path, "excel_live.sort_range", {"key_column": 2}) == ""
+
+
+class TestUnstatedParamAsksInsteadOfGuessing:
+    """② 미지정 값 확인 — 사용자가 말하지 않은 값을 층이 조용히 채우던 것(2026-08-26).
+
+    2026-08-24에 "방향 없는 정렬은 짐작하지 말고 물러난다"고 결정해 놓고, 검증기가
+    `order or "asc"`로 뒤에서 채우고 있었다 — 결정이 한 층에만 적용됐다.
+    실측: 게이트 정렬 48문장 중 47이 방향을 말하고 `클레임순` 하나만 안 말한다.
+    배터리 정렬 발화 67건 중 방향어 없는 33건은 전부 열도 안 말해 기존 열 되묻기가
+    먼저 맡는다(영향 0).
+    """
+
+    @staticmethod
+    def _sort_plan():
+        from office_claw_sidecar.routers.excel_live import PlanStep
+
+        return [
+            PlanStep(
+                action="excel_live.sort_range",
+                params={"key_column": "클레임", "order": "asc"},
+                reason="r",
+            )
+        ]
+
+    def test_방향을_안_말했으면_묻는다(self):
+        from office_claw_sidecar.routers.excel_live import _unstated_param_problem
+
+        q = _unstated_param_problem("클레임순", self._sort_plan(), "s")
+        assert "오름차순" in q and "내림차순" in q
+
+    def test_방향을_말했으면_안_묻는다(self):
+        from office_claw_sidecar.routers.excel_live import _unstated_param_problem
+
+        for msg in (
+            "클레임 많은 순으로 정렬해줘",
+            "주문건수 만은 순으로 정렬해주세요",
+            "가나다순으로 정렬",
+            "주문 많이 들어온 지역이 맨 위로 가게 순서 바꿔줘",
+            "최신순으로 정렬해줘",
+        ):
+            assert _unstated_param_problem(msg, self._sort_plan(), "s") == "", msg
+
+    def test_정렬이_아닌_계획은_관여하지_않는다(self):
+        from office_claw_sidecar.routers.excel_live import PlanStep, _unstated_param_problem
+
+        plan = [PlanStep(action="excel_live.clear_range", params={"target_range": "A1:B2"}, reason="r")]
+        assert _unstated_param_problem("이거 지워", plan, "s") == ""
+
+    def test_멀티턴이면_원_요청의_방향을_인정한다(self):
+        # 앞 턴에서 "내림차순"이라 말했으면 이번 턴 답변에 없다고 또 묻지 않는다.
+        import time
+
+        from office_claw_sidecar.routers.excel_live import (
+            PendingClarification,
+            _pending_clarifications,
+            _unstated_param_problem,
+        )
+
+        key = "s-multi"
+        _pending_clarifications[key] = PendingClarification(
+            session_id=key,
+            original_message="내림차순으로 정렬해줘",
+            question="어떤 열 기준으로 정렬할까요?",
+            ask_count=1,
+            created_at_ts=time.time(),
+        )
+        try:
+            assert _unstated_param_problem("클레임 열", self._sort_plan(), key) == ""
+        finally:
+            _pending_clarifications.pop(key, None)
+
+    def test_게이트_48문장_중_한_문장만_묻는다(self):
+        # 폭발 반경의 근거를 코드에 고정한다 — 어휘를 좁히면 이 핀이 먼저 깨진다.
+        import json
+        from pathlib import Path
+
+        from office_claw_sidecar.routers.excel_live import _unstated_param_problem
+
+        path = Path(__file__).resolve().parents[2] / "datasets" / "eval" / "blind_paraphrases_v1.jsonl"
+        texts = [
+            json.loads(line)["text"]
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip() and json.loads(line)["task"] in {"sort_desc", "sort_keep_total"}
+        ]
+        asked = [t for t in texts if _unstated_param_problem(t, self._sort_plan(), "s")]
+        assert len(texts) == 48
+        assert asked == ["클레임순"], asked
+
+    def test_게이트_씨앗이_이미_정렬돼_있으면_안_된다(self):
+        # 클레임 열이 이미 내림차순이면 sort_keep_total 오라클이 **무동작도 통과**시킨다
+        # (2026-08-26: 방향 되묻기가 정상 발동했는데 PASS로 집계됐다).
+        import sys
+        from pathlib import Path
+
+        p = str(Path(__file__).resolve().parents[1] / "scripts")
+        if p not in sys.path:
+            sys.path.insert(0, p)
+        import run_blind_paraphrase_gate as m
+
+        claims = [row[5] for row in m.SEED[1:]]
+        assert claims != sorted(claims, reverse=True), f"씨앗이 이미 내림차순이다: {claims}"
+        # 다른 오라클이 기대는 성질은 지킨다.
+        assert sum(claims) == 28, claims
+        assert [c for c in claims if c > 10] == [12], claims
+
+
+class TestTotalsAsConstraintDoesNotHijackSort:
+    """"합계 줄은 맨 아래 그대로 두고 정렬해줘"에서 합계는 **제약**이지 명령이 아니다.
+
+    2026-08-26 실측: 집계 훅이 이 문형을 가로채 합계 줄을 **하나 더** 만들고 정렬은
+    통째로 버렸다(게이트 sort_keep_total 24문장 중 10건). 씨앗이 이미 정렬돼 있어
+    오라클이 통과하는 바람에 여태 안 보였다 — 씨앗 맹점을 없애자 드러났다.
+    """
+
+    @staticmethod
+    def _match(text):
+        from office_claw_sidecar.services.excel_aggregate_below import match_aggregate_below
+
+        return match_aggregate_below(text)
+
+    def test_제약_문형은_집계_훅이_물러난다(self):
+        for msg in (
+            "합계 행은 맨 아래 고정하고 클레임 열 내림차순으로 정렬해 주세요",
+            "클레임 많은 순으로 정렬해라 합계 줄은 밑에 냅두고",
+            "여기 클레임 많은 지역부터 위로, 합계는 맨 아래 두고",
+            "클레임 많은 지역부터 위로 올려 주세요, 맨 밑 합계 줄은 그대로 두고",
+        ):
+            assert self._match(msg) is None, msg
+
+    def test_진짜_집계_요청은_그대로_잡는다(self):
+        for msg in (
+            "합계를 표 아래에 한 줄로 넣어줘",
+            "표 밑에 평균 한 줄 추가해줘",
+            "이 표 바로 밑에 합계 한 줄 부탁드려요",
+        ):
+            assert self._match(msg) is not None, msg
+
+    def test_게이트_코퍼스_전수(self):
+        # 폭발 반경을 코드에 고정한다: 가로채기 0 · 진짜 집계 요청 오차단 0.
+        import json
+        from pathlib import Path
+
+        from office_claw_sidecar.services.excel_aggregate_below import (
+            _PRIMARY_ACTION_WITH_TOTALS as P,
+        )
+        from office_claw_sidecar.services.excel_aggregate_below import (
+            _TOTALS_AS_CONSTRAINT as C,
+        )
+
+        path = Path(__file__).resolve().parents[2] / "datasets" / "eval" / "blind_paraphrases_v1.jsonl"
+        rows = [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
+        hijacked = [r["text"] for r in rows if r["task"] == "sort_keep_total" and self._match(r["text"])]
+        assert hijacked == [], hijacked
+        wrongly_blocked = [
+            r["text"]
+            for r in rows
+            if r["task"] in {"sum_below", "avg_below"} and P.search(r["text"]) and C.search(r["text"])
+        ]
+        assert wrongly_blocked == [], wrongly_blocked
+
+    def test_방향_없는_정렬_문장은_되묻기가_정답으로_라벨돼_있다(self):
+        # 실행 전 파라미터 검증이 되묻는 문장을 게이트가 오답으로 세면, 옳은 동작이
+        # 점수를 깎는다. 커버리지 하네스와 같은 expect_ask 계약을 블라인드에도 뒀다.
+        import json
+        from pathlib import Path
+
+        path = Path(__file__).resolve().parents[2] / "datasets" / "eval" / "blind_paraphrases_v1.jsonl"
+        rows = [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
+        asked = [r["text"] for r in rows if r.get("expect_ask")]
+        assert asked == ["클레임순"], asked

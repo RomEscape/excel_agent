@@ -48,7 +48,7 @@
 {"task": "sort_desc", "text": "ㅇㅇ 주문건수 많은 지역이 위로 오게 소팅", "persona": "A_팀장"}
 {"task": "sort_keep_total", "text": "클레임 많은 순서대로 정렬, 합계 줄은 맨 밑에 그대로", "persona": "A_팀장"}
 {"task": "sort_keep_total", "text": "정렬해 클레임 큰 순으로, 합계행은 건들지 말고", "persona": "A_팀장"}
-{"task": "sort_keep_total", "text": "클레임순", "persona": "A_팀장"}
+{"task": "sort_keep_total", "text": "클레임순", "persona": "A_팀장", "expect_ask": true}
 {"task": "sort_keep_total", "text": "여기 클레임 많은 지역부터 위로, 합계는 맨 아래 두고", "persona": "A_팀장"}
 {"task": "sort_keep_total", "text": "클래임 많은 순으로 정렬해라 합게 줄은 밑에 냅두고", "persona": "A_팀장"}
 {"task": "sort_keep_total", "text": "클레임 높은순 정렬, 합계줄은 맨 아레 그대로 둬 빨ㄹ리", "persona": "A_팀장"}

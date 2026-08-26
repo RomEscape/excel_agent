@@ -51,8 +51,13 @@ SEED = [
     ["수도권", 10452, 10158, 97.1, 145, 12],
     ["충청권", 3892, 3773, 95.2, 89, 6],
     ["호남권", 3214, 3086, 94.7, 112, 5],
-    ["영남권", 6789, 6512, 95.8, 174, 5],
-    ["강원제주", 2495, 2383, 92.6, 145, 0],
+    # 클레임 열(F)이 이미 내림차순이면 `sort_keep_total` 오라클이 **아무것도 안 해도**
+    # 통과한다 — 되묻기·무동작을 성공으로 세는 맹점이다(2026-08-26 실측: 방향 되묻기가
+    # 정상 발동했는데 PASS로 집계됐다). 마지막 두 행의 클레임을 맞바꿔 12·6·5·0·5로
+    # 만든다. 합계(28)는 그대로라 sum_below·avg_below 오라클은 무변이고,
+    # highlight_threshold("10 넘는 셀은 수도권 12뿐")도 그대로다.
+    ["영남권", 6789, 6512, 95.8, 174, 0],
+    ["강원제주", 2495, 2383, 92.6, 145, 5],
 ]
 STATUS_SEED = [
     ["운송장", "구간", "지연시간", "상태"],
@@ -483,7 +488,12 @@ async def run_one(idx: int, row: dict, llm) -> dict:
             "secs": round(time.time() - t0, 1),
         }
     wb.close()
-    if task.get("negative"):
+    if row.get("expect_ask"):
+        # **묻는 것이 정답인 문장**. 정보가 모자란 요청에 실행부터 하면 오답이다 —
+        # "클레임순"은 방향(오름/내림)을 말하지 않았고, 짐작하면 표 순서를 통째로
+        # 뒤집는다(2026-08-24 결정). 커버리지 하네스의 같은 이름 필드와 짝을 맞춘다.
+        outcome = "PASS_RULE" if asked else "WRONG"
+    elif task.get("negative"):
         outcome = "PASS_RULE" if (err == "" and (asked or action in {"excel_live.noop", "excel_live.not_excel_request"} or not ok)) else "WRONG"
     elif asked and err:
         outcome = "ASK"

@@ -10806,10 +10806,57 @@ async def _run_command(
     )
 
 
-#: 기준 열이 시트에 없으면 결과가 통째로 달라지는 액션 — 파라미터 이름까지 짝지어 둔다.
+# ── 실행 전 파라미터 검증 ────────────────────────────────────────────────
+# 두 갈래다. 둘 다 "확신할 수 없으면 실행하지 말고 묻는다"는 같은 원칙이다.
+#   ① 열 지목 검증(_key_column_problem) — 계획이 가리킨 열이 시트에 **실재하는가**.
+#      없으면 실행기가 1번 열로 강등해 엉뚱한 기준으로 지우고·거르고·세웠다(2026-08-26).
+#   ② 미지정 값 확인(_unstated_param_problem) — 사용자가 **말하지 않은 값**을 층이
+#      조용히 채운 것인가. 정렬 방향이 그랬다: 검증기의 `order or "asc"`가 짐작했다.
+# 두 검사 모두 승인 카드 **직전**에 서고, 걸리면 되묻기로 바꾼다(오류보다 질문이 낫다).
+
+#: ② 미지정 값 확인 규칙표 — (액션들, 문장에 있어야 할 근거, 없을 때 물을 말).
+#: 항목을 늘릴 때는 **반드시 폭발 반경을 먼저 재라** — 근거 어휘가 좁으면 정상 지시가
+#: 무더기로 되묻기로 뒤집힌다. 정렬 방향은 게이트 48문장 중 47이 근거를 갖고 있고
+#: 배터리 영향 0으로 실측한 뒤에 넣었다(2026-08-26).
+_UNSTATED_PARAM_RULES: tuple[tuple[frozenset[str], re.Pattern[str], str], ...] = (
+    (
+        frozenset({"excel_live.sort_range", "excel_live.sort_rows"}),
+        re.compile(
+            r"(많은|많이|만은|맣은|큰|높은|내림|desc|위로|맨\s*위|작은|적은|낮은|오름|asc|"
+            r"아래로|역순|거꾸로|가나다|ㄱㄴㄷ|최신|최근|오래된|예전|빠른|늦은|차순)",
+            re.IGNORECASE,
+        ),
+        "오름차순(작은 값부터)으로 할까요, 내림차순(큰 값부터)으로 할까요?",
+    ),
+)
+
+
+def _unstated_param_problem(message: str, plan: list[PlanStep], session_key: str) -> str:
+    """계획이 **사용자가 말하지 않은 값**에 기대고 있으면 물을 말을. 없으면 "".
+
+    2026-08-24에 "방향 없는 정렬은 짐작하지 말고 물러난다"고 결정해 놓고, 정작
+    검증기가 `order or "asc"`로 뒤에서 채우고 있었다 — 결정이 한 층에만 적용됐다.
+    멀티턴이면 원 요청까지 합쳐 본다(앞 턴에서 말한 방향을 또 묻지 않게).
+    """
+    actions = {s.action for s in plan}
+    text = str(message or "")
+    previous = _pending_clarifications.get(session_key)
+    if previous is not None:
+        text = f"{text} {getattr(previous, 'original_message', '') or ''}"
+    for targets, evidence, question in _UNSTATED_PARAM_RULES:
+        if actions & targets and not evidence.search(text):
+            return question
+    return ""
+
+
+#: ① 열 지목 검증 대상 — 기준 열이 바뀌면 결과가 통째로 달라지는 액션.
 _KEY_COLUMN_GUARDED: dict[str, tuple[str, ...]] = {
     "excel_live.dedupe_rows": ("key_columns",),
     "excel_live.filter_rows": ("column",),
+    # 정렬은 행을 지우진 않지만 **순서를 통째로 바꾼다** — 엉뚱한 열로 세우면 조용한
+    # 오답이다. 기준 열이 비어 있거나 숫자·열 문자면 여기서 보지 않는다(빈 값은
+    # "정렬 좀 해줘"류라 기존 되묻기가 맡는다).
+    "excel_live.sort_range": ("key_column",),
 }
 
 
@@ -11048,6 +11095,9 @@ def _plan_approval_gate(
         key_problem = _key_column_problem(req.workbook_id, plan_sheet or req.sheet_name, plan)
         if key_problem:
             target_problem = key_problem
+    if not target_problem:
+        # ② 미지정 값 확인 — 열은 맞는데 **방향처럼 말하지 않은 값**을 층이 채웠는가.
+        target_problem = _unstated_param_problem(req.message, plan, ctx.session_key)
     if target_problem:
         trace_note("target_missing", action=head.action, detail=target_problem)
         # 되묻고 끝내면 다음 턴이 맨바닥에서 다시 계획한다. 사용자의 답변("Sales_Data

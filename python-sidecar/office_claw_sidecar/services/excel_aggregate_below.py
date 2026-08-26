@@ -43,6 +43,27 @@ _BELOW = re.compile(r"밑|아래|하단|아랫|다음\s*(?:줄|행|칸|라인)|�
 _RANGE = re.compile(r"^([A-Z]+)(\d+):([A-Z]+)(\d+)$")
 
 
+#: "합계 줄은 맨 아래 그대로 두고 …" — 여기서 합계는 **명령이 아니라 제약**이다.
+#: 정렬·필터 같은 본 동작이 함께 있으면 집계 훅이 문장을 가로채선 안 된다.
+#: 2026-08-26 실측(게이트 sort_keep_total 24문장 중 10건): "합계 행은 맨 아래 고정하고
+#: 클레임 열 내림차순으로 정렬해 주세요"가 **합계 줄 하나를 더 만들고 정렬은 통째로
+#: 버렸다.** 씨앗이 이미 정렬돼 있어 오라클이 통과하는 바람에 여태 안 보였다.
+_PRIMARY_ACTION_WITH_TOTALS = re.compile(
+    r"(정렬|sort|순으로|순서대로|순서\s*바꿔|내림차순|오름차순|descending|ascending"
+    # "클레임 많은 지역부터 위로 올려 주세요" — 사람은 '정렬'이라 말하지 않고
+    # 위치로 말한다(2026-08-26 게이트 실측 2건이 이 표현이었다).
+    r"|부터\s*위로|위로\s*올려|맨\s*위로|아래로\s*내려"
+    r"|필터|filter|만\s*남기|만\s*보이)",
+    re.IGNORECASE,
+)
+#: 합계 줄을 **유지하라**는 말(만들라는 말이 아니다).
+_TOTALS_AS_CONSTRAINT = re.compile(
+    r"(합계|총합|total)[^\n]{0,20}(그대로|고정|냅두|남겨|유지|건드리지|두고|둔\s*채|있으니|있어)"
+    r"|(그대로|고정|냅두|유지)[^\n]{0,12}(합계|총합|total)",
+    re.IGNORECASE,
+)
+
+
 def match_aggregate_below(message: str) -> tuple[str, str] | None:
     """(엑셀 함수, 한국어 이름표)를 돌려준다. 이 문형이 아니면 None."""
     text = str(message or "")
@@ -50,6 +71,9 @@ def match_aggregate_below(message: str) -> tuple[str, str] | None:
         return None
     if "=" in text:
         # 수식을 직접 쓴 문장은 기존 수식 경로가 맡는다.
+        return None
+    if _PRIMARY_ACTION_WITH_TOTALS.search(text) and _TOTALS_AS_CONSTRAINT.search(text):
+        # 본 동작(정렬·필터)이 있고 합계는 "그대로 두라"는 제약이다 — 물러난다.
         return None
     for pattern, func, label in _FUNC_VOCAB:
         if pattern.search(text):
