@@ -996,7 +996,12 @@ class ExcelLiveService:
         start_col = int(getattr(rng, "column", 1) or 1)
         start_row = int(getattr(rng, "row", 1) or 1)
         header_row = normalized[0] if has_header else None
-        field_idx = self._resolve_column_selector(column, start_col, col_count, header_row)
+        # 기준 열을 못 찾으면 거르지 않는다(dedupe와 같은 부류, 2026-08-26).
+        field_idx = self._resolve_column_selector(
+            column, start_col, col_count, header_row, strict=True
+        )
+        if field_idx < 0:
+            raise ExcelLiveError(self._unresolved_filter_column_error(column, header_row))
         op = str(operator or "==").strip()
         drop_matches = str(mode or "keep").strip().lower() == "remove"
 
@@ -3171,6 +3176,13 @@ class ExcelLiveService:
         shown = ", ".join(str(n) for n in names)
         tail = f" 이 시트의 머리글: {', '.join(headers[:8])}" if headers else ""
         return f"중복 기준 열을 찾지 못했습니다: {shown}.{tail}"
+
+    @staticmethod
+    def _unresolved_filter_column_error(name: Any, header_row: list[Any] | None) -> str:
+        """filter 기준 열을 못 찾았을 때 — 이 액션은 조건에 안 맞는 행을 지운다."""
+        headers = [str(h or "").strip() for h in (header_row or []) if str(h or "").strip()]
+        tail = f" 이 시트의 머리글: {', '.join(headers[:8])}" if headers else ""
+        return f"필터 기준 열을 찾지 못했습니다: {name}.{tail}"
 
     @staticmethod
     def _sortable_value(value: Any) -> tuple[int, Any]:

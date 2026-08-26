@@ -1839,7 +1839,11 @@ class FileExcelLiveService(ExcelLiveService):
         if not body:
             return {"filtered_rows": 0, "removed_rows": 0, "remaining_rows": 0, "address": address}
 
-        col_idx = self._resolve_column_selector(column, 1, col_count, header)
+        # 기준 열을 못 찾으면 지우지 않는다 — 1번 열 강등은 **조건에 안 맞는 행을
+        # 엉뚱한 열 기준으로 지우는** 조용한 오실행이다(dedupe와 같은 부류, 2026-08-26).
+        col_idx = self._resolve_column_selector(column, 1, col_count, header, strict=True)
+        if col_idx < 0:
+            raise ExcelLiveError(self._unresolved_filter_column_error(column, header))
         op = str(operator or "==").strip()
         mode_word = str(mode or "hide").strip().lower()
         # 숨길지 지울지(`hide_only`)와 어느 쪽을 뺄지(`exclude`)는 **다른 축**이다.

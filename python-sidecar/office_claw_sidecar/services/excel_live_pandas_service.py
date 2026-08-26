@@ -653,7 +653,10 @@ class PandasExcelLiveService(ExcelLiveService):
         if not body:
             return {"filtered_rows": 0, "address": payload.get("address", target_range)}
         df = pd.DataFrame(body)
-        col_idx = self._resolve_column_selector(column, 1, col_count, header)
+        # 기준 열을 못 찾으면 지우지 않는다(dedupe와 같은 부류, 2026-08-26).
+        col_idx = self._resolve_column_selector(column, 1, col_count, header, strict=True)
+        if col_idx < 0:
+            raise ExcelLiveError(self._unresolved_filter_column_error(column, header))
         series = df[col_idx]
         op = str(operator or "==").strip()
         if op in {"=", "=="}:

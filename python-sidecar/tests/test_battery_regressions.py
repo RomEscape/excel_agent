@@ -5647,3 +5647,53 @@ class TestDedupeRefusesUnknownKeyColumn:
         ]
         out = validate_plan(steps, context=ValidationContext(message="담당자 기준으로 중복 제거해줘"))
         assert out[0].params["key_columns"] == ["담당자"]
+
+
+class TestFilterRefusesUnknownColumn:
+    """필터도 없는 열이면 1번 열로 강등돼 엉뚱한 기준으로 행을 지웠다(2026-08-26).
+
+    dedupe와 같은 부류다 — 라우터 주석(_RISKY_WITHOUT_COLUMN 근처)이 이미
+    "filter_rows가 특히 위험하다. 기준 열을 못 정하면 1번 열로 채우는데 이 액션은
+    조건에 안 맞는 행을 지운다"고 적어 두었는데 실행기에 그 차단이 없었다.
+    """
+
+    @staticmethod
+    def _svc(tmp_path):
+        from openpyxl import Workbook
+
+        from office_claw_sidecar.services.excel_live_file_service import FileExcelLiveService
+
+        path = tmp_path / "f.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "매출"
+        ws.append(["날짜", "지역", "담당자"])
+        ws.append(["2026-01-01", "서울", "김"])
+        ws.append(["2026-01-02", "부산", "이"])
+        wb.save(path)
+        service = FileExcelLiveService()
+        service.select_workbook(str(path))
+        service.select_sheet(None, "매출")
+        return service, path
+
+    def test_없는_기준_열이면_거르지_않고_멈춘다(self, tmp_path):
+        import pytest as _pytest
+        from openpyxl import load_workbook
+
+        from office_claw_sidecar.services.excel_live_file_service import ExcelLiveError
+
+        service, path = self._svc(tmp_path)
+        with _pytest.raises(ExcelLiveError) as exc:
+            service.filter_rows(None, "매출", "A1:C3", column="없는열", value="서울", mode="remove")
+        assert "없는열" in str(exc.value)
+        assert load_workbook(path)["매출"].max_row == 3  # 한 행도 안 지워졌다
+
+    def test_실재하는_기준_열은_그대로_동작(self, tmp_path):
+        service, _ = self._svc(tmp_path)
+        out = service.filter_rows(None, "매출", "A1:C3", column="지역", value="서울", mode="keep")
+        assert out is not None
+
+    def test_개념어_머리글은_계속_이어진다(self, tmp_path):
+        service, _ = self._svc(tmp_path)
+        out = service.filter_rows(None, "매출", "A1:C3", column="담당", value="김", mode="keep")
+        assert out is not None
