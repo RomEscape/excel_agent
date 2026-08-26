@@ -1,15 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Cpu, Save, Loader2, CheckCircle2, FolderOpen, Trash2, Info, ChevronDown, ChevronUp, ExternalLink, Monitor, Apple, Archive, Upload, Download, AlertTriangle, Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Card,
   CardContent,
@@ -22,7 +14,6 @@ import AlertDialog from "@/components/ui/dialog";
 import OllamaModelPicker from "@/components/settings/OllamaModelPicker";
 import ThemePicker from "@/components/settings/ThemePicker";
 import useAppStore from "@/store/appStore";
-import useStatusStore from "@/store/statusStore";
 import { getLLMSettings, saveLLMSettings, maintenanceCleanup, backupExport, backupImport } from "@/lib/api";
 import { toUserMessage } from "@/lib/errorMessages";
 import packageJson from "../../../package.json";
@@ -32,7 +23,6 @@ export default function Settings() {
   const setLLMConfig = useAppStore((s) => s.setLLMConfig);
 
   // LLM settings local state (uncommitted until Save)
-  const [provider, setProvider] = useState(llmConfig.provider);
   const [model, setModel] = useState(llmConfig.model);
   const [savingLLM, setSavingLLM] = useState(false);
   const [llmMsg, setLLMMsg] = useState("");
@@ -57,15 +47,11 @@ export default function Settings() {
     try {
       const cfg = await getLLMSettings();
       if (cfg?.provider) {
-        const resolvedModel =
-          cfg.model ??
-          (cfg.provider === "claude" ? "claude-sonnet-4-20250514" : "qwen3:4b");
-
-        setProvider(cfg.provider);
+        const resolvedModel = cfg.model ?? "qwen3:4b";
         setModel(resolvedModel);
 
         // Sync Zustand store with the server's authoritative value
-        setLLMConfig({ provider: cfg.provider, model: resolvedModel });
+        setLLMConfig({ provider: "ollama", model: resolvedModel });
       }
     } catch {
       // Endpoint not yet deployed — use Zustand defaults silently
@@ -81,7 +67,7 @@ export default function Settings() {
     setLLMMsg("");
     setLLMMsgError(false);
     try {
-      const config = { provider, model };
+      const config = { provider: "ollama", model };
       await saveLLMSettings(config);
       setLLMConfig(config);
       setLLMMsg("저장 완료!");
@@ -199,23 +185,6 @@ export default function Settings() {
     return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
   };
 
-  // Auto-set default model when provider changes.
-  // Ollama: 실제 설치된 모델 목록(중앙 statusStore)에서 첫 번째를 기본값으로.
-  // 없으면 sentinel "qwen3:4b"로 두고 picker가 "현재 설치 안 됨" 경고 표시.
-  const handleProviderChange = (val) => {
-    setProvider(val);
-    if (val === "claude") {
-      setModel("claude-sonnet-4-20250514");
-    } else {
-      const installed = useStatusStore.getState().modules.ollama.models;
-      if (Array.isArray(installed) && installed.length > 0) {
-        setModel(installed[0].name);
-      } else {
-        setModel("qwen3:4b");
-      }
-    }
-  };
-
   return (
     <div className="space-y-6">
       <div>
@@ -250,50 +219,16 @@ export default function Settings() {
             <CardTitle className="text-base">AI 엔진 설정</CardTitle>
           </div>
           <CardDescription>
-            앱에서 사용할 AI를 선택해요. 민감한 자료를 다룬다면 내 컴퓨터에서만
-            동작하는 Ollama를 추천해요.
+            김대리는 Ollama 로컬 모델로만 동작해요 — 자료가 이 컴퓨터를 떠나지
+            않습니다. 사용할 모델만 고르면 돼요.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="llm-provider">AI 선택</Label>
-            <Select value={provider} onValueChange={handleProviderChange}>
-              <SelectTrigger id="llm-provider" className="w-64">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ollama">
-                  Ollama (내 컴퓨터에서만 동작)
-                </SelectItem>
-                <SelectItem value="claude">
-                  Claude (인터넷을 통한 클라우드 AI)
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
             <Label htmlFor="llm-model">모델</Label>
-            {provider === "ollama" ? (
-              // Ollama: 실제 설치된 모델만 선택 가능 (자유 입력 제거).
-              // 모델 목록·상태는 OllamaModelPicker가 중앙 statusStore에서 구독.
-              <OllamaModelPicker id="llm-model" value={model} onChange={setModel} />
-            ) : (
-              // Claude: 모델명 문자열 자유 입력 (anthropic.com에서 사용 가능한 ID 그대로)
-              <>
-                <Input
-                  id="llm-model"
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  className="w-64"
-                  placeholder="claude-sonnet-4-20250514"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Claude를 사용하려면 <strong>자격증명 관리</strong>에서 API 키를
-                  저장해야 해요.
-                </p>
-              </>
-            )}
+            {/* 실제 설치된 모델만 선택 가능 (자유 입력 제거).
+                목록·상태는 OllamaModelPicker가 중앙 statusStore에서 구독한다. */}
+            <OllamaModelPicker id="llm-model" value={model} onChange={setModel} />
           </div>
 
           <div className="flex items-center gap-3">
@@ -498,7 +433,7 @@ export default function Settings() {
                         ))}
                       </ul>
                       <p className="mt-1 text-amber-900 dark:text-amber-200">
-                        보안상 keyring(Claude API 키 등)은 복원되지 않습니다 — 자격증명 관리에서 다시 입력해 주세요.
+                        보안상 OS 키체인에 저장된 값은 복원되지 않습니다.
                       </p>
                     </div>
                   )}

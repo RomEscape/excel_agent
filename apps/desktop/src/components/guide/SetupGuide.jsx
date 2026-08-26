@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import {
   Cpu,
-  Bot,
   ChevronRight,
   ExternalLink,
   Monitor,
@@ -11,21 +10,14 @@ import {
   Check,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import useAppStore from "@/store/appStore";
 
 /**
- * 탭 순서:
- *   1) Ollama 설치
- *   2) Claude API
+ * 안내 대상은 Ollama 설치 하나뿐이라 탭 바가 없다.
  *
- * 텔레그램·Slack/Discord 탭은 메신저 봇 기능 제거와 함께 사라졌고,
- * Gmail 안내 탭은 Gmail 스킬 자체가 제거되면서 함께 사라졌다.
+ * 예전에는 탭이 5개였다 — 텔레그램·Slack/Discord는 메신저 봇 제거와 함께,
+ * Gmail은 스킬 제거와 함께, Claude API는 LLM 경로가 Ollama 하나로 확정되며
+ * 사라졌다. 탭이 다시 둘 이상이 되면 탭 바를 되살릴 것.
  */
-const TABS = [
-  { id: "ollama",   label: "Ollama 설치",   icon: Cpu },
-  { id: "claude",   label: "Claude API",    icon: Bot },
-];
 
 // ── 공통 building blocks ─────────────────────────────────────────────────────
 
@@ -219,95 +211,22 @@ function OllamaGuide() {
   );
 }
 
-// ── Claude API ───────────────────────────────────────────────────────────────
-
-function ClaudeGuide({ onGoToCredentials, onGoToSettings }) {
-  return (
-    <div>
-      <p className="mb-5 text-sm text-muted-foreground">
-        Claude API는 Anthropic에서 제공하는 클라우드 AI입니다. API 키를 발급받아 등록하면 바로 사용할 수 있습니다.
-      </p>
-      <div className="divide-y">
-        <Step number={1} title="Anthropic Console 접속">
-          <p>Anthropic Console에 접속해 계정을 만들거나 로그인합니다.</p>
-          <div className="mt-2">
-            <LinkBadge href="https://console.anthropic.com">console.anthropic.com</LinkBadge>
-          </div>
-        </Step>
-        <Step number={2} title="API 키 발급">
-          <p>왼쪽 메뉴에서 <strong>API Keys</strong>를 선택합니다.</p>
-          <p><strong>Create Key</strong> 버튼을 클릭하고 이름을 입력합니다. (예: <CodeBlock>김대리</CodeBlock>)</p>
-          <p>생성된 키를 복사합니다. 키는 이 화면에서 한 번만 표시되므로 바로 저장하세요.</p>
-          <Note>API 키는 <CodeBlock>sk-ant-api03-</CodeBlock>로 시작합니다. 크레딧이 있어야 API를 사용할 수 있습니다.</Note>
-        </Step>
-        <Step number={3} title="앱에 API 키 저장">
-          <p>자격증명 관리의 <CodeBlock>claude_api_key</CodeBlock>에 복사한 키를 붙여넣고 저장합니다.</p>
-          <div className="mt-2">
-            <NavButton onClick={onGoToCredentials} label="자격증명 관리로 이동" />
-          </div>
-        </Step>
-        <Step number={4} title="LLM 엔진을 Claude로 변경">
-          <p>설정 메뉴에서 <strong>LLM 엔진</strong>을 <strong>Claude API</strong>로 변경하고 저장합니다.</p>
-          <div className="mt-2">
-            <NavButton onClick={onGoToSettings} label="설정으로 이동" />
-          </div>
-        </Step>
-      </div>
-    </div>
-  );
-}
-
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function SetupGuide() {
-  // 첫 진입 활성 탭 = ollama
-  const [activeTab, setActiveTab] = useState("ollama");
-  const setCurrentPage = useAppStore((s) => s.setCurrentPage);
-
-  const content = {
-    ollama:   <OllamaGuide />,
-    claude:   <ClaudeGuide
-                onGoToCredentials={() => setCurrentPage("credentials")}
-                onGoToSettings={() => setCurrentPage("settings")}
-              />,
-  };
-
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">설치 가이드</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          로컬 AI 엔진 설치와 외부 연동을 단계별로 안내해요.
+          로컬 AI 엔진(Ollama) 설치를 단계별로 안내해요.
         </p>
       </div>
 
       <Card>
         {/* Tab bar */}
-        <div className="flex border-b overflow-x-auto">
-          {TABS.map(({ id, label, icon: Icon, badge }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id)}
-              className={`flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
-                activeTab === id
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              <span>{label}</span>
-              {badge && (
-                <Badge variant="default" className="ml-0.5 h-4 px-1.5 text-[10px]">
-                  {badge}
-                </Badge>
-              )}
-            </button>
-          ))}
-        </div>
-
-        {/* Tab content */}
         <CardContent className="pt-6">
-          {content[activeTab]}
+          <OllamaGuide />
         </CardContent>
       </Card>
     </div>

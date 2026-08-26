@@ -60,10 +60,6 @@ const ERROR_MAPPINGS = [
     message: "Ollama 서비스에 연결할 수 없습니다. Ollama가 로컬에 설치되고 실행 중인지 확인해 주세요.",
   },
   {
-    pattern: /claude.*api|API.*claude/i,
-    message: "Claude API 오류가 발생했습니다. 자격증명 관리에서 claude_api_key를 확인해 주세요.",
-  },
-  {
     // LLM request timeout — separate from generic network timeout
     pattern: /LLM.*timeout|llm.*timed/i,
     message: "AI 응답 시간이 초과되었습니다. AI 서비스가 바쁩니다. 잠시 후 다시 시도해 주세요.",
@@ -113,11 +109,12 @@ const ERROR_MAPPINGS = [
     message: "데이터를 읽는 중 오류가 발생했습니다. 다시 시도해 주세요.",
   },
 
-  // Ollama tool-calling 미지원 (예: Claude provider에서 /excel-live/command 호출)
+  // tool-calling 미지원 — provider가 ollama 하나뿐이라 지금은 도달 불가하지만,
+  // 선택한 Ollama 모델이 tools를 지원하지 않을 때 사이드카가 같은 오류를 낸다.
   {
     pattern: /tools\(function calling\)를 지원하지 않습니다|function calling/i,
     message:
-      "현재 AI provider가 함수 호출(tool-calling)을 지원하지 않습니다. 설정에서 Ollama provider로 전환해 주세요.",
+      "선택한 AI 모델이 함수 호출(tool-calling)을 지원하지 않습니다. 설정에서 다른 모델을 골라 주세요.",
   },
   // Ollama 서버 연결 실패 (사이드카가 503으로 반환)
   {

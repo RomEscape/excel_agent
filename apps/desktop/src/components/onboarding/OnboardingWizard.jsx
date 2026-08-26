@@ -14,29 +14,24 @@
  *
  * Step 0: AI 엔진 — Ollama 설치 + 모델 선택 (와이어프레임 1·2단계)
  * Step 1: 워크스페이스 지정            (와이어프레임 3단계)
- * Step 4: 완료 안내
+ * Step 2: 완료 안내
  *
  * appStore의 `onboardingComplete`가 false일 때만 표시된다.
  */
 import React, { useState, useEffect } from "react";
 import {
   Cpu,
-  CheckCircle2,
   ChevronRight,
   ChevronLeft,
   Sparkles,
   AlertTriangle,
-  Bot,
-  MessageCircle,
   RefreshCw,
   Copy,
   ExternalLink,
-  Hash,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BrandMark } from "@/components/ui/logo";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   FileChecklist,
@@ -99,7 +94,6 @@ function StepLLM({ onNext, onPrev }) {
   const setLLMConfig = useAppStore((s) => s.setLLMConfig);
   const llmConfig = useAppStore((s) => s.llmConfig);
 
-  const [provider, setProvider] = useState(llmConfig.provider);
   const [model, setModel] = useState(llmConfig.model);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -111,11 +105,6 @@ function StepLLM({ onNext, onPrev }) {
   const modelOptions = React.useMemo(() => buildModelOptions(ollamaModels), [ollamaModels]);
 
   useEffect(() => {
-    if (provider !== "ollama") {
-      setOllamaStatus("unknown");
-      setOllamaModels([]);
-      return;
-    }
     let cancelled = false;
     setOllamaStatus("unknown");
     healthCheck()
@@ -134,26 +123,19 @@ function StepLLM({ onNext, onPrev }) {
         if (!cancelled) setOllamaStatus("not_installed");
       });
     return () => { cancelled = true; };
-  }, [provider]);
-
-  const handleProviderChange = (val) => {
-    setProvider(val);
-    setModel(val === "claude" ? "claude-sonnet-4-20250514" : "qwen3:4b");
-    setOllamaModels([]);
-    setOllamaStatus("unknown");
-  };
+  }, []);
 
   const handleNext = async () => {
     setSaving(true);
     setError("");
     try {
-      const config = { provider, model };
+      const config = { provider: "ollama", model };
       await saveLLMSettings(config);
       setLLMConfig(config);
       onNext();
     } catch (err) {
       setError(toUserMessage(err));
-      setLLMConfig({ provider, model });
+      setLLMConfig({ provider: "ollama", model });
       onNext();
     } finally {
       setSaving(false);
@@ -196,50 +178,14 @@ function StepLLM({ onNext, onPrev }) {
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
           <Cpu className="h-7 w-7 text-primary" />
         </div>
-        <h2 className="text-xl font-bold">AI 엔진 선택</h2>
+        <h2 className="text-xl font-bold">AI 엔진 준비</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          김대리에서 사용할 AI 언어 모델을 선택하세요.
+          김대리는 Ollama 로컬 모델로 동작합니다 — 데이터가 이 컴퓨터를 떠나지 않습니다.
         </p>
       </div>
 
-      <div className="grid gap-3">
-        <Card
-          className={`cursor-pointer transition-all ${provider === "ollama" ? "border-primary ring-1 ring-primary" : ""}`}
-          onClick={() => handleProviderChange("ollama")}
-        >
-          <CardContent className="flex items-start gap-3 pt-4 pb-4">
-            <div className="mt-0.5 h-4 w-4 rounded-full border-2 border-primary flex items-center justify-center">
-              {provider === "ollama" && <span className="block h-2 w-2 rounded-full bg-primary" />}
-            </div>
-            <div>
-              <p className="text-sm font-semibold">Ollama (로컬 — 완전 오프라인)</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                모든 데이터가 내 컴퓨터에서만 처리됩니다. 인터넷 불필요.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card
-          className={`cursor-pointer transition-all ${provider === "claude" ? "border-primary ring-1 ring-primary" : ""}`}
-          onClick={() => handleProviderChange("claude")}
-        >
-          <CardContent className="flex items-start gap-3 pt-4 pb-4">
-            <div className="mt-0.5 h-4 w-4 rounded-full border-2 border-primary flex items-center justify-center">
-              {provider === "claude" && <span className="block h-2 w-2 rounded-full bg-primary" />}
-            </div>
-            <div>
-              <p className="text-sm font-semibold">Claude API (클라우드)</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Anthropic의 Claude 모델. API 키가 필요합니다.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Ollama 미설치 — 와이어프레임 A-1의 `파일 설치` 상태 */}
-      {provider === "ollama" && ollamaStatus === "not_installed" && (
+      {ollamaStatus === "not_installed" && (
         <Card className="border-amber-300 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20">
           <CardContent className="space-y-3 py-4">
             <div className="flex items-start gap-2">
@@ -315,7 +261,7 @@ function StepLLM({ onNext, onPrev }) {
       )}
 
       {/* Ollama 설치됨, 모델 없음 — 와이어프레임 A-2(설치 완료) → A-3(모델 설치) 사이 */}
-      {provider === "ollama" && ollamaStatus === "ok" && ollamaModels.length === 0 && (
+      {ollamaStatus === "ok" && ollamaModels.length === 0 && (
         <Card className="border-blue-300 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20">
           <CardContent className="space-y-2 py-3">
             <InstallProgress value={50} label="Ollama 설치 완료" detail="1/2 단계" />
@@ -351,7 +297,7 @@ function StepLLM({ onNext, onPrev }) {
       )}
 
       {/* Ollama 모델 선택 — 와이어프레임 A-3/A-4 (제조사 아이콘 + `추천` 배지) */}
-      {provider === "ollama" && ollamaStatus === "ok" && ollamaModels.length > 0 && (
+      {ollamaStatus === "ok" && ollamaModels.length > 0 && (
         <div className="space-y-2">
           <Label>설치할 AI 모델을 선택해주세요.</Label>
           <ModelSelectField
@@ -362,23 +308,6 @@ function StepLLM({ onNext, onPrev }) {
           />
           <p className="text-xs text-muted-foreground">
             AI 모델은 추후에 언제든 변경이 가능합니다.
-          </p>
-        </div>
-      )}
-
-      {/* Claude API 키 안내 */}
-      {provider === "claude" && (
-        <div className="space-y-1.5">
-          <Label htmlFor="ob-model">모델</Label>
-          <Input
-            id="ob-model"
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            placeholder="claude-sonnet-4-20250514"
-          />
-          <p className="text-xs text-muted-foreground">
-            API 키는 완료 후 자격증명 관리에서{" "}
-            <code className="rounded bg-muted px-1">claude_api_key</code>로 저장하세요.
           </p>
         </div>
       )}
@@ -403,11 +332,8 @@ function StepLLM({ onNext, onPrev }) {
       {/*
         와이어프레임 3단계 인디케이터.
         Ollama가 아직 없으면 `파일 설치`(0), 깔려 있으면 `모델 설치`(1)가 활성이다.
-        Claude API를 고른 경우엔 받을 파일이 없으므로 곧바로 모델 단계로 본다.
       */}
-      <WizardSteps
-        current={provider === "ollama" && ollamaStatus !== "ok" ? 0 : 1}
-      />
+      <WizardSteps current={ollamaStatus !== "ok" ? 0 : 1} />
     </div>
   );
 }

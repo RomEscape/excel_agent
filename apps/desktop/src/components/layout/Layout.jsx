@@ -79,7 +79,6 @@ const PAGE_MAP = {
   settings: SettingsHub,
 
   // ── 설정 허브 내부 탭으로 이동 — 외부에서 이 키로 진입해도 Settings로 라우팅 ──
-  credentials: SettingsHub,
   audit: SettingsHub,
   security: SettingsHub,
   permissions: SettingsHub,

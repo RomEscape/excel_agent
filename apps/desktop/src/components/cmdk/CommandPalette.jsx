@@ -54,12 +54,11 @@ const buildCommands = () => [
   { id: "nav.files", group: "페이지", label: "파일 목록", hint: "워크스페이스 문서 (사이드바 확장)", icon: FileText, run: ({ close }) => { window.dispatchEvent(new CustomEvent("officeclaw:open-file-list")); close(); } },
   // 아래 둘은 최종안 사이드바에서 빠진 화면이다 — 여기가 유일한 진입 경로이므로 지우지 말 것.
   { id: "nav.workspace", group: "페이지", label: "파일 탐색기", hint: "폴더 탐색 / 미리보기 (내비에 없음)", icon: FolderOpen, run: ({ setCurrentPage, close }) => { setCurrentPage("workspace"); close(); } },
-  { id: "nav.settings", group: "페이지", label: "설정 허브", hint: "보안 / 자격증명 / 실행 기록", icon: SettingsIcon, run: ({ setCurrentPage, close }) => { setCurrentPage("settings"); close(); } },
+  { id: "nav.settings", group: "페이지", label: "설정 허브", hint: "보안 / 허용 범위 / 실행 기록", icon: SettingsIcon, run: ({ setCurrentPage, close }) => { setCurrentPage("settings"); close(); } },
 
   // 그룹: 설정
   { id: "settings.guide", group: "설정", label: "로컬 AI 설정", icon: Bot, run: ({ setCurrentPage, close }) => { setCurrentPage("guide"); close(); } },
   { id: "settings.general", group: "설정", label: "일반", icon: SlidersHorizontal, run: ({ setCurrentPage, close }) => { setCurrentPage("settings"); close(); } },
-  { id: "settings.credentials", group: "설정", label: "자격증명", icon: KeyRound, run: ({ setCurrentPage, close }) => { setCurrentPage("credentials"); close(); } },
   { id: "settings.security", group: "설정", label: "보안", icon: ShieldCheck, run: ({ setCurrentPage, close }) => { setCurrentPage("security"); close(); } },
   { id: "settings.permissions", group: "설정", label: "에이전트 허용 범위", icon: ShieldAlert, run: ({ setCurrentPage, close }) => { setCurrentPage("permissions"); close(); } },
   { id: "settings.audit", group: "설정", label: "실행 기록", icon: ClipboardList, run: ({ setCurrentPage, close }) => { setCurrentPage("audit"); close(); } },

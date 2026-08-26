@@ -127,17 +127,12 @@ export default function StatusBar() {
     try {
       const result = await healthCheck();
       setSidecarStatus({ state: "ok", message: "연결됨" });
-      if (llmConfig.provider === "ollama") {
-        setLLMReachable(result?.ollama_status === "connected");
-      } else {
-        // Claude API는 sidecar 응답만으로 판단 — reachable=null 대신 true로
-        setLLMReachable(true);
-      }
+      setLLMReachable(result?.ollama_status === "connected");
     } catch {
       setSidecarStatus({ state: "error", message: "연결 오류" });
       setLLMReachable(false);
     }
-  }, [setSidecarStatus, setLLMReachable, llmConfig.provider]);
+  }, [setSidecarStatus, setLLMReachable]);
 
   const loadLLMConfig = useCallback(async () => {
     try {
@@ -189,7 +184,6 @@ export default function StatusBar() {
   const llm = getLLMStatus({
     sidecarState: sidecarStatus.state,
     llmReachable,
-    provider: llmConfig.provider,
     model: llmConfig.model,
   });
   const sec = getSecurityStatus({

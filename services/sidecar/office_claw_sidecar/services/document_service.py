@@ -10,7 +10,7 @@ Supported document types:
   제안서    — pitch / proposal deck
 
 All AI calls go through the passed-in LLMService so the caller controls
-which provider (Ollama / Claude) is active.
+which provider is active.
 """
 
 from __future__ import annotations

@@ -3,7 +3,7 @@
  *
  * Tracks:
  *  - currentPage: which sidebar section is active
- *  - llmConfig: provider (ollama|claude) + model name
+ *  - llmConfig: provider (ollama) + model name
  *  - sidecarStatus: whether the Python sidecar is reachable
  *  - onboardingComplete: whether the user has completed the onboarding wizard
  */
@@ -22,7 +22,7 @@ import { persist } from "zustand/middleware";
 
 /**
  * @typedef {Object} LLMConfig
- * @property {'ollama'|'claude'} provider
+ * @property {'ollama'} provider
  * @property {string} model
  */
 
