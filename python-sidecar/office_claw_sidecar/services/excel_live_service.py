@@ -1526,8 +1526,15 @@ class ExcelLiveService:
         self, workbook_id: str | None, sheet_name: str, name: str, target_range: str
     ) -> dict[str, Any]:
         clean_name = str(name or "").strip()
-        if not clean_name or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]*", clean_name):
-            raise ExcelLiveError("define_named_range.name은 문자/밑줄로 시작하는 영문 식별자여야 합니다.")
+        # Excel은 한글 정의 이름을 허용한다 — 영문 전용 검사가 "매출표"를 반려해
+        # 사용자가 부른 이름으로 정의할 수 없었다(2026-08-26 커버리지 0906 실측).
+        # 셀 주소 꼴(A1)은 Excel 자체가 금지하므로 계속 막는다.
+        if (
+            not clean_name
+            or not re.fullmatch(r"[A-Za-z_가-힣][A-Za-z0-9_.가-힣]*", clean_name)
+            or re.fullmatch(r"[A-Za-z]{1,3}\d{1,7}", clean_name)
+        ):
+            raise ExcelLiveError("define_named_range.name은 문자/밑줄/한글로 시작해야 하고 셀 주소 꼴일 수 없습니다.")
         wb, sheet = self._open_target(workbook_id, sheet_name)
         rng = self._resolve_target_range(sheet, target_range)
         sheet_title = str(getattr(sheet, "name", sheet_name) or sheet_name).replace("'", "''")

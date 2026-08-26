@@ -1262,12 +1262,17 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
 
 def _ensure_action_step(step: dict[str, Any]) -> dict[str, Any]:
     action = str(step.get("action", "")).strip()
+    # 접두 생략('write_range')은 형식 실수지 다른 의도가 아니다 — 붙여서 지원 액션이면
+    # 그게 의도다. generic 통반려는 2티어 무정보 재시도만 낳는다(2026-08-26 감사 D5).
+    if action and not action.startswith("excel_live.") and f"excel_live.{action}" in SUPPORTED_ACTIONS:
+        action = f"excel_live.{action}"
     if action not in SUPPORTED_ACTIONS:
         raise ValueError(f"지원하지 않는 action: {action}")
     params = step.get("params", {})
     if not isinstance(params, dict):
         params = {}
-    reason = str(step.get("reason", "")).strip()
+    # 설명이 길다는 이유로 계획 전체를 반려하지 않는다 — 자른다(감사 D3).
+    reason = str(step.get("reason", "")).strip()[:240]
     return {"action": action, "params": params, "reason": reason}
 
 
@@ -1385,6 +1390,15 @@ async def parse_command_plan_with_llm(
         for raw_step in steps_raw[:4]:
             if isinstance(raw_step, dict):
                 action_plan.append(_ensure_action_step(raw_step))
+        # 뒤에 붙은 clarify는 "실행하고 나서 묻겠다"라 의미가 없다(기존 규칙). 그것
+        # 때문에 정답 단계까지 통반려하지 않고 clarify 단계만 뗀다(감사 D4). 첫 단계가
+        # clarify인 계획(진짜 되묻기)은 그대로 계약 검사로 보낸다.
+        if len(action_plan) > 1 and str(action_plan[0].get("action", "")).strip() != "excel_live.clarify":
+            action_plan = [
+                s
+                for i, s in enumerate(action_plan)
+                if i == 0 or str(s.get("action", "")).strip() != "excel_live.clarify"
+            ]
         _assert_action_plan_contract(action_plan)
         clarify_question = clarify_question_from_plan(action_plan)
         intent = str(parsed.get("intent", "")).strip().lower()
@@ -1569,8 +1583,10 @@ async def parse_excel_live_command(
             "follow_up_question": planned.get("follow_up_question", ""),
         }
     except Exception as exc:
+        # 원인 문구를 보존한다 — generic 한 줄로 갈아끼우면 2티어 자가수정(_repair_note)이
+        # 반려 사유를 못 받아 무정보 재시도가 된다(2026-08-26 감사 D2).
         raise ValueError(
-            "엑셀 명령을 해석하지 못했습니다. 범위/동작을 함께 적어주세요. 예: 'B2:D5 범위에 경계선 적용해줘'"
+            f"엑셀 명령을 해석하지 못했습니다({exc}). 범위/동작을 함께 적어주세요. 예: 'B2:D5 범위에 경계선 적용해줘'"
         ) from exc
 
 

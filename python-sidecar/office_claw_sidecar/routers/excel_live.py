@@ -8815,9 +8815,19 @@ async def _run_command(
     # "도넛으로 보여줘"의 '보여줘'는 조회가 아니라 시각화다 — 차트 어휘가 있으면
     # 단순 조회 판정에서 뺀다(2026-08-18 사람 말투 배터리 실측: read로 새서
     # 차트가 안 만들어졌다).
-    reads_only = not re.search(r"(수식|함수|formula)", req.message, re.IGNORECASE) and not (
-        re.search(r"(차트|그래프|chart)", req.message, re.IGNORECASE)
-        or _CHART_TYPE_MENTION.search(req.message or "")
+    reads_only = (
+        not re.search(r"(수식|함수|formula)", req.message, re.IGNORECASE)
+        and not (
+            re.search(r"(차트|그래프|chart)", req.message, re.IGNORECASE)
+            or _CHART_TYPE_MENTION.search(req.message or "")
+        )
+        # "D2에 확인 필요 라고 메모 달아줘"는 조회가 아니라 메모 추가고, "확인자 열
+        # 새로 만들어줘"는 열 추가다 — 조회 오버라이드가 이 둘을 read_range로
+        # 갈아끼웠다(2026-08-26 커버리지 v2 실측, run_id=0826-051705).
+        and not re.search(r"(메모|주석|코멘트|comment)", req.message, re.IGNORECASE)
+        and not re.search(
+            r"(?:열|컬럼|column)\s*\S{0,6}\s*(?:만들|추가|새로|넣)", req.message, re.IGNORECASE
+        )
     )
     standalone_read_step = (
         None
@@ -9615,10 +9625,12 @@ async def _run_command(
             validate=_validate_for_escalation,
             context=parse_context_base,
             local_model=get_planner_model_name(),
-            # 규칙 계획이나 슬롯 의도가 이미 잡혀 있으면 그쪽이 답한다.
-            # 그런 요청까지 LLM에 두세 번 더 태우면 지연만 늘어난다.
+            # '폴백이 있다'가 아니라 '폴백이 문장 **전체**를 덮는가'로 판정한다 — 부분만
+            # 덮는 규칙 후보 때문에 재시도를 끄면 복합문의 나머지 절반이 조용히 사라진다
+            # (2026-08-24 A/B 오류 35건의 유력 경로, 2026-08-26 감사 D1). 슬롯 의도·폴백
+            # 규칙은 단문 전제라 기존 판정 유지.
             allow_repair=not (
-                bool(quick_action_plan)
+                _rule_covers_message
                 or fallback_rule_step is not None
                 or bool(operation_hints.get("intent"))
             ),

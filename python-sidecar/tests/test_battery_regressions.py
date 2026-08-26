@@ -5101,6 +5101,18 @@ class TestCreateSheetNamelessAndPossessive:
         assert plan is not None
         assert plan["params"]["sheet_name"] == ""
 
+    def test_열_추가_오분류는_무명_생성으로_안_승격(self):
+        # "확인자 열 새로 만들어줘"를 모델이 create_sheet로 오분류 — 무명 폴백이 이를
+        # 시트 생성으로 승격하면 안 된다(2026-08-26 커버리지 0845 실측 회귀).
+        plan = self._plan({"option": ""}, "맨 오른쪽에 확인자 열 새로 만들어줘")
+        assert plan is None
+
+    def test_열_추가_오분류는_이름이_근거돼도_안_승격(self):
+        # 같은 문장에 모델이 option='확인자'(원문에 실재)를 실으면 named 경로로 새서
+        # '확인자' 시트가 생겼다(2026-08-26 커버리지 0906 실측) — 열-문형이면 전면 물러남.
+        plan = self._plan({"option": "확인자"}, "맨 오른쪽에 확인자 열 새로 만들어줘")
+        assert plan is None
+
     def test_이름_지정_구가_있으면_무명으로_안_덮는다(self):
         # "이름은 요약으로"가 있는데 모델이 'null'을 내면 물러난다 — 기본 이름으로
         # 만들면 부른 이름(요약)과 조용히 달라진다. 퀵룰·플래너가 잡을 자리다.
@@ -5195,3 +5207,94 @@ class TestBatch2VocabAndGuards:
         assert not _action_lacks_evidence("excel_live.set_print_area", "인쇄 영역 잡아줘")
         assert not _action_lacks_evidence("excel_live.add_cell_comment", "여기 메모 달아줘")
         assert _action_lacks_evidence("excel_live.add_cell_comment", "정렬해줘")
+
+    def test_다_지움_문형에도_열_발명은_막힌다(self):
+        # 게이트 0535 실측(2026-08-26): "이 표 내용 다 지어줘 빈칸으루"에서 모델이
+        # column=카테고리(실재 머리글)를 지어내 한 열만 비웠다 — 601→600 회귀의 전부.
+        plan = self._plan(
+            {"task": "clear_values", "column": "카테고리"}, "이 표 내용 다 지어줘 빈칸으루"
+        )
+        assert plan is None
+
+    def test_열을_부른_다_비워줘는_통과(self):
+        # "상태 열 다 비워줘" — 열 낱말이 문장에 실재하면 '다'가 있어도 그 열이 맞다.
+        plan = self._plan({"task": "clear_values", "column": "상태"}, "상태 열 다 비워줘")
+        assert plan is not None
+        assert plan["params"]["target_range"].startswith("C2:")
+
+
+class TestPlanContractLocalRepairs:
+    """계약 위반의 국소 보정(2026-08-26 감사 D3·D5) — 통반려 대신 고칠 수 있는 건 고친다.
+
+    generic 통반려는 2티어 자가수정에 무정보 재시도만 남긴다(A/B 오류 35건의 경로).
+    """
+
+    def test_접두_생략은_붙여서_살린다(self):
+        from office_claw_sidecar.services.excel_live_agent import _ensure_action_step
+
+        step = _ensure_action_step({"action": "write_range", "params": {}, "reason": "r"})
+        assert step["action"] == "excel_live.write_range"
+
+    def test_모르는_액션은_여전히_반려(self):
+        import pytest as _pytest
+
+        from office_claw_sidecar.services.excel_live_agent import _ensure_action_step
+
+        with _pytest.raises(ValueError):
+            _ensure_action_step({"action": "no_such_tool", "params": {}, "reason": "r"})
+
+    def test_긴_reason은_자른다(self):
+        from office_claw_sidecar.services.excel_live_agent import _ensure_action_step
+
+        step = _ensure_action_step(
+            {"action": "excel_live.write_range", "params": {}, "reason": "가" * 300}
+        )
+        assert len(step["reason"]) == 240
+
+
+class TestTablePresetSkipsNamingRequests:
+    """프리셋 키워드 부분일치가 이름-정의 요청을 표 인터뷰로 끌고 가던 것(2026-08-26).
+
+    "A1:F9에 매출표라는 이름 정의해줘" → 프리셋이 "월별/상품별 기준?"을 되물어
+    define_named_range 경로가 원천 차단됐다(커버리지 0845 실측, named_range ASK 2건).
+    """
+
+    def test_이름_정의_문형은_프리셋을_안_탄다(self):
+        from office_claw_sidecar.services.excel_live_table_presets import match_table_preset
+
+        assert match_table_preset("A1:F9에 매출표라는 이름 정의해줘") is None
+        assert match_table_preset("이 범위를 매출표로 이름 붙여줘") is None
+
+    def test_진짜_표_요청은_프리셋_유지(self):
+        from office_claw_sidecar.services.excel_live_table_presets import match_table_preset
+
+        preset = match_table_preset("매출표 만들어줘")
+        assert preset is not None and preset.key == "sales"
+        assert match_table_preset("체크리스트 하나 만들어줘") is not None
+
+    def test_한글_정의_이름_허용_셀주소는_금지(self, tmp_path) -> None:
+        # 영문 전용 검사가 "매출표"를 반려해 이름 정의가 실행 단계에서 죽었다
+        # (2026-08-26 커버리지 0906: PLAN_BAD). Excel은 한글 이름을 허용한다.
+        import pytest as _pytest
+        from openpyxl import Workbook, load_workbook
+
+        from office_claw_sidecar.services.excel_live_file_service import (
+            ExcelLiveError,
+            FileExcelLiveService,
+        )
+
+        path = tmp_path / "n.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "매출"
+        ws.append(["날짜", "금액"])
+        ws.append(["2026-01-01", 100])
+        wb.save(path)
+        service = FileExcelLiveService()
+        service.select_workbook(str(path))
+        service.select_sheet(None, "매출")
+        out = service.define_named_range(None, "매출", "매출표", "A1:B2")
+        assert out.get("ok", True)
+        assert "매출표" in load_workbook(path).defined_names
+        with _pytest.raises(ExcelLiveError):
+            service.define_named_range(None, "매출", "A1", "A1:B2")

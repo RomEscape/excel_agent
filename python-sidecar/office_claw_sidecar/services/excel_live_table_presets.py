@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 
@@ -111,6 +112,11 @@ TABLE_PRESETS: tuple[TablePreset, ...] = (
 
 def match_table_preset(message: str) -> TablePreset | None:
     lowered = str(message or "").lower()
+    # "A1:F9에 매출표라는 이름 정의해줘"는 범위에 **이름을 붙이는** 요청이지 매출표를
+    # 만드는 게 아니다 — 키워드 부분일치가 이걸 프리셋 인터뷰로 끌고 가 "월별/상품별
+    # 기준?"을 되물었다(2026-08-26 커버리지 0845 실측). 이름-정의 문형이면 물러난다.
+    if re.search(r"(?:이?라는|이?란|으로|로)?\s*이름\s*(?:을|이|은)?\s*(?:정의|붙|지어|달아)", lowered):
+        return None
     for preset in TABLE_PRESETS:
         if any(keyword in lowered for keyword in preset.keywords):
             return preset

@@ -86,6 +86,8 @@ option에는 그 문장에 실제로 나온 값만 적는다.
 {{"task": "formula", "range": "G1", "column": "금액", "option": "AVERAGE"}}
 문장: "D8에 지연건수 다 더한 값 넣어줘"
 {{"task": "formula", "range": "D8", "column": "지연건수", "option": "SUM"}}
+문장: "A1:F9에 매출표라는 이름 정의해줘"
+{{"task": "named_range", "range": "A1:F9", "column": null, "option": "매출표"}}
 
 문장: "{message}"
 JSON:"""
@@ -427,8 +429,11 @@ def intent_to_plan(
             # 단 "표 내용 싹 지워"(전체)에 모델이 column=지역을 지어낸 사고(2026-08-25
             # 게이트)는 계속 막는다: 전체를 뜻하는 문장에서 원문에 없는 열을 믿지 않는다.
             # 머리글까지 지우면 표가 뭉개진다(파괴 게이트 `clear_only_named`가 지키는 것).
+            # "다 지어줘/다 비워"도 전체를 뜻한다 — 이 낱말이 빠져 "이 표 내용 다
+            # 지어줘 빈칸으루"에서 지어낸 column=지역이 통과해 A열만 비웠다
+            # (2026-08-26 게이트 0535 실측, 601→600 회귀 1건의 전부).
             whole_table_wording = bool(
-                re.search(r"(전체|전부|싹|모두|몽땅)", plain_message)
+                re.search(r"(전체|전부|싹|모두|몽땅|내용\s*다|다\s*지[워어]|다\s*비워|다\s*삭제)", plain_message)
             ) and str(column).strip() not in plain_message
             letter, last = _column_letter(entry, column), _last_row(entry)
             if letter and last > 2 and not whole_table_wording:
@@ -527,11 +532,21 @@ def intent_to_plan(
         # 시트 이름은 option 또는 column에 실려 온다. 이름을 지어내지 않는다 —
         # 모델이 "null"을 이름으로 내 'null' 시트가 생겼다(2026-08-25).
         name = str(option_text or column or "").strip().strip("'\"")
+        # "확인자 열 새로 만들어줘"는 열 추가다 — 모델이 create_sheet로 오분류하면
+        # 이름('확인자')이 원문에 있어도 시트를 만들면 안 된다(2026-08-26 커버리지 0906).
+        column_wording = bool(
+            re.search(r"(?:열|컬럼|column)\s*\S{0,6}\s*(?:만들|추가|새로|넣)", plain_message)
+        )
         degenerate = {
             "시트", "sheet", "탭", "새 시트", "새", "새로운", "새로", "하나", "빈", "임시",
             "null", "none", "undefined",
         }
-        usable = bool(name) and name.lower() not in degenerate and len(name) <= 31
+        usable = (
+            bool(name)
+            and name.lower() not in degenerate
+            and len(name) <= 31
+            and not column_wording
+        )
         if usable and name not in plain_message:
             # 모델이 "sheet 2"를 "시트 2"로 의역하는 부류 — 시트 낱말을 뗀 나머지가
             # 원문에 있으면 같은 이름으로 본다("2"가 "sheet 2"에 있다).
@@ -546,6 +561,7 @@ def intent_to_plan(
         elif (
             (not name or name.lower() in degenerate)
             and not re.search(r"(?:이름|명)\s*(?:은|을|이|으로|로|의)", plain_message)
+            and not column_wording
             and _worded(r"만들", r"맏드", r"만드", r"생성", r"추가", r"create", r"add")
         ):
             # 이름 없는 생성("새로운 시트 만들어줘") — 조용히 버리면 플래너가 미라벨
