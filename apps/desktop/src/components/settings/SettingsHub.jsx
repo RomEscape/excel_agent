@@ -36,7 +36,7 @@ const TABS = [
     id: "guide",
     label: "로컬 AI",
     icon: Bot,
-    description: "Ollama 설치·실행 단계별 가이드",
+    description: "로컬 AI 엔진 설치·실행 단계별 가이드",
     component: SetupGuide,
     highlight: true,
   },

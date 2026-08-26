@@ -255,7 +255,7 @@ mkdir -p "$APP_DIR"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-echo "Ollama 공식 배포본을 내려받는 중입니다 (약 181MB)..."
+echo "로컬 AI 엔진을 내려받는 중입니다 (약 181MB)..."
 curl -fL -s -o "$TMP/Ollama.zip" "{url}" &
 CURL_PID=$!
 while kill -0 $CURL_PID 2>/dev/null; do
@@ -268,7 +268,7 @@ wait $CURL_PID
 echo "압축을 푸는 중입니다..."
 ditto -x -k "$TMP/Ollama.zip" "$TMP/out"
 if [ ! -d "$TMP/out/Ollama.app" ]; then
-  echo "내려받은 파일에서 Ollama.app을 찾지 못했습니다." >&2
+  echo "내려받은 파일에서 프로그램을 찾지 못했습니다." >&2
   exit 1
 fi
 
@@ -285,7 +285,7 @@ echo "설치 완료: $APP_DIR/Ollama.app""#,
             &state,
             "install-ollama",
             &cmd,
-            "https://ollama.com/download 에서 Ollama를 내려받아 설치",
+            "https://ollama.com/download 에서 내려받아 설치",
         )?;
         serde_json::to_value(result).map_err(|e| e.to_string())
     }
@@ -304,7 +304,7 @@ echo "설치 완료: $APP_DIR/Ollama.app""#,
                 "  winget install -e --id Ollama.Ollama --silent --disable-interactivity ",
                 "    --accept-package-agreements --accept-source-agreements ",
                 "}} else {{ ",
-                "  Write-Output 'winget이 없어 공식 설치 프로그램을 내려받습니다 (약 1.5GB)...'; ",
+                "  Write-Output '로컬 AI 엔진 설치 프로그램을 내려받습니다 (약 1.5GB)...'; ",
                 // Windows PowerShell 5.1의 Invoke-WebRequest는 진행률 막대를 그리느라
                 // 대용량 다운로드가 수십 배 느려진다. 1.5GB에서는 치명적이라 끈다.
                 "  $ProgressPreference = 'SilentlyContinue'; ",
@@ -361,7 +361,7 @@ pub async fn start_ollama(
             None => match crate::ollama::macos_ollama_exe() {
                 // nohup + & : 이 셸이 끝나도 데몬이 살아남아야 한다.
                 Some(exe) => format!(
-                    "nohup \"{}\" serve >/dev/null 2>&1 & echo 'Ollama 데몬을 시작했습니다.'",
+                    "nohup \"{}\" serve >/dev/null 2>&1 & echo '로컬 AI 엔진을 시작했습니다.'",
                     exe.display()
                 ),
                 None => {
@@ -371,7 +371,7 @@ pub async fn start_ollama(
                         stderr_tail: Vec::new(),
                         eacces: false,
                         message:
-                            "이 Mac에서 Ollama를 찾지 못했어요. 먼저 설치 단계를 실행해 주세요."
+                            "이 Mac에서 로컬 AI 엔진을 찾지 못했어요. 먼저 설치 단계를 실행해 주세요."
                                 .to_string(),
                         manual_command: "open -a Ollama".to_string(),
                     })
@@ -442,7 +442,7 @@ pub async fn pull_ollama_model(
                     stderr_tail: Vec::new(),
                     eacces: false,
                     message: format!(
-                        "Ollama 데몬은 응답하지만 이 PC에서 ollama 실행 파일을 찾지 못했어요. \
+                        "로컬 AI 엔진은 응답하지만 이 PC에서 실행 파일을 찾지 못했어요. \
                          WSL이나 다른 기기의 데몬을 쓰고 있을 수 있습니다 — 그 환경에서 \
                          `ollama pull {}`을 직접 실행해 주세요.",
                         model
@@ -469,7 +469,7 @@ pub async fn pull_ollama_model(
                     stderr_tail: Vec::new(),
                     eacces: false,
                     message: format!(
-                        "Ollama 데몬은 응답하지만 이 Mac에서 ollama 실행 파일을 찾지 못했어요. \
+                        "로컬 AI 엔진은 응답하지만 이 Mac에서 실행 파일을 찾지 못했어요. \
                          다른 기기의 데몬을 쓰고 있을 수 있습니다 — 그 환경에서 \
                          `ollama pull {}`을 직접 실행해 주세요.",
                         model

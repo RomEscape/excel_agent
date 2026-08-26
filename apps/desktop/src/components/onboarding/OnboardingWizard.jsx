@@ -172,7 +172,7 @@ function StepLLM({ onNext, onPrev }) {
         </div>
         <h2 className="text-xl font-bold">AI 엔진 준비</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          김대리는 Ollama 로컬 모델로 동작합니다 — 데이터가 이 컴퓨터를 떠나지 않습니다.
+          김대리는 로컬 AI 엔진으로 동작합니다 — 데이터가 이 컴퓨터를 떠나지 않습니다.
         </p>
       </div>
 
@@ -183,7 +183,7 @@ function StepLLM({ onNext, onPrev }) {
             <div className="flex items-start gap-2">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
               <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">
-                Ollama가 설치되어 있지 않아요.
+                로컬 AI 엔진이 설치되어 있지 않아요.
               </p>
             </div>
 
@@ -196,12 +196,12 @@ function StepLLM({ onNext, onPrev }) {
             */}
             <InstallProgress
               value={0}
-              label="Ollama 설치 대기 중"
+              label="로컬 AI 엔진 설치 대기 중"
               detail="0/2 단계"
             />
             <FileChecklist
               items={[
-                { name: "Ollama 런타임", state: "active" },
+                { name: "로컬 AI 엔진", state: "active" },
                 { name: `AI 모델 (${RECOMMENDED_MODEL})`, state: "pending" },
               ]}
             />
@@ -214,7 +214,7 @@ function StepLLM({ onNext, onPrev }) {
             */}
             <div className="space-y-2">
               <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
-                공식 사이트에서 다운로드
+                공식 사이트에서 내려받기
               </p>
               <Button
                 size="sm"
@@ -244,15 +244,15 @@ function StepLLM({ onNext, onPrev }) {
       {ollamaStatus === "ok" && ollamaModels.length === 0 && (
         <Card className="border-blue-300 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20">
           <CardContent className="space-y-2 py-3">
-            <InstallProgress value={50} label="Ollama 설치 완료" detail="1/2 단계" />
+            <InstallProgress value={50} label="로컬 AI 엔진 설치 완료" detail="1/2 단계" />
             <FileChecklist
               items={[
-                { name: "Ollama 런타임", state: "done" },
+                { name: "로컬 AI 엔진", state: "done" },
                 { name: `AI 모델 (${RECOMMENDED_MODEL})`, state: "active" },
               ]}
             />
             <p className="text-xs font-medium text-blue-700 dark:text-blue-400">
-              Ollama가 설치되었어요. 이제 AI 모델을 받아야 해요.
+              로컬 AI 엔진이 설치되었어요. 이제 AI 모델을 받아야 해요.
             </p>
             <p className="text-xs text-blue-600 dark:text-blue-500">
               터미널에서 추천 모델을 받아주세요:

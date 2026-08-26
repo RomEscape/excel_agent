@@ -510,14 +510,14 @@ export default function LocalAISetupWizard() {
               {(stepStates[STEP.INSTALL_OLLAMA]?.status === "error" ||
                 stepStates[STEP.START_OLLAMA]?.status === "error") && (
                 <p className="mt-2">
-                  자동 설치/실행이 실패하면 Ollama를 직접 설치/실행한 뒤 [재진단]을 눌러주세요.{" "}
+                  자동 설치/실행이 실패하면 아래에서 직접 내려받아 설치한 뒤 [재진단]을 눌러주세요.{" "}
                   <a
                     href="https://ollama.com/download"
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center gap-1 underline"
                   >
-                    Ollama 다운로드
+                    로컬 AI 엔진 내려받기 (ollama.com)
                     <ExternalLink className="h-3 w-3" />
                   </a>
                 </p>
@@ -614,8 +614,8 @@ function DiagnosisCard({ diag, model }) {
   // 사용자 친화적 표현 — 포트/데몬 같은 용어는 표시하지 않음.
   // 버전은 hint(우측 메타)로만 작게 표시.
   const items = [
-    { label: "Ollama 설치", ok: ollInst, hint: diag.oll?.version },
-    { label: "Ollama 실행", ok: ollRun },
+    { label: "로컬 AI 엔진 설치", ok: ollInst, hint: diag.oll?.version },
+    { label: "로컬 AI 엔진 실행", ok: ollRun },
     { label: `AI 모델 (${model})`, ok: modelInst },
   ];
 

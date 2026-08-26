@@ -15,8 +15,8 @@ export const STEP = Object.freeze({
 });
 
 export const STEP_LABEL = Object.freeze({
-  [STEP.INSTALL_OLLAMA]: "Ollama 설치",
-  [STEP.START_OLLAMA]: "Ollama 실행",
+  [STEP.INSTALL_OLLAMA]: "로컬 AI 엔진 설치",
+  [STEP.START_OLLAMA]: "로컬 AI 엔진 실행",
   [STEP.PULL_MODEL]: "AI 모델 다운로드",
   [STEP.PROMPT_TEST]: "AI 대화 테스트",
 });

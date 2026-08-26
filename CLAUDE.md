@@ -193,6 +193,23 @@
 >
 > CI는 두 갈래다. `pr-check.yml`의 `python-check`는 **ubuntu에서만** 도는데 그건 타깃 OS가 아니다 — `cross-platform-check.yml`이 Windows·macOS에서 `pytest` + 소스 스모크를 돌려 그 구멍을 메운다(경로 필터로 사이드카 변경에만 건다. macOS 러너 청구 분이 10배라 무조건 돌리지 않는다). 번들 스모크는 `workflow_dispatch`와 릴리스 빌드가 맡는다.
 >
+> **2026-08 로컬 AI 엔진 용어 노트**: 화면에서는 엔진을 **`로컬 AI 엔진`**이라고 부른다. `Ollama`를 그대로 노출하면 남의 도구를 가져다 쓴 인상이 되고, 나중에 엔진을 바꾸면 문구가 전부 거짓이 된다.
+>
+> **다만 전부 가리지는 않는다.** 사용자가 **앱 밖에서 직접 찾아야 하는 것**은 실제 이름을 써야 한다 — 브라우저에서 누를 버튼(`Download for Mac`), 다운로드 폴더에서 확인할 파일명(`Ollama-darwin.zip`·`OllamaSetup.exe`), 응용 프로그램 폴더의 앱 아이콘(`Ollama`), 터미널에 복사할 명령(`ollama pull ...`). 여기서까지 가리면 **안내를 따라갈 수 없다.**
+>
+> 그래서 경계는 화면 단위로 갈린다.
+>
+> | 자리 | 표기 |
+> |---|---|
+> | 상태 바·설정·온보딩·마법사 단계 라벨·오류 문구 | `로컬 AI 엔진` |
+> | `SetupGuide`(수동 설치 가이드) | 실제 이름 — 그 화면은 앱 밖의 일을 안내한다 |
+>
+> `SetupGuide` 도입부가 **둘을 한 번 이어준다** — "아래 안내에 나오는 `Ollama`가 그 엔진의 이름이에요". 이 한 줄이 없으면 사용자는 상태 바의 `로컬 AI 엔진`과 사이트의 `Ollama`를 다른 것으로 여긴다.
+>
+> **코드 식별자는 바꾸지 않는다** — `ollama_status`·`STATUS_MODULES.ollama`·`macos_ollama_exe`·`STEP.INSTALL_OLLAMA` 등은 내부 이름이고, 사이드카 API 필드명이기도 하다. 바꾸면 프론트·Rust·파이썬 세 곳이 동시에 어긋난다. **화면 문자열만** 바꿨다.
+>
+> 확인 방법: `npm run build` 후 `dist/assets/*.js`에서 `Ollama`를 grep하면 **`SetupGuide` 문구만** 나와야 한다. 다른 화면에서 나오면 새 문구가 규칙을 벗어난 것이다.
+
 > **2026-08 Ollama 설치 경로 노트**: 설치 마법사는 **패키지 매니저를 전제하지 않는다.**
 >
 > 예전 macOS 경로는 `brew install ollama` / `brew services start ollama`였는데 둘 다 무너진다. (1) **Homebrew 자체가 따로 설치해야 하는 물건**이라 초기 상태의 Mac에서는 `brew: command not found`로 죽는다 — 우리 사용자는 비개발자를 상정한다. (2) 공식 앱(`Ollama.app`)으로 이미 설치한 사용자는 **탐지는 성공하고 시작만 실패**했다. `/usr/local/bin/ollama`(앱이 만드는 심볼릭 링크)가 PATH에 잡혀 "설치됨"으로 판정되는데, `brew services start ollama`는 `Error: Formula 'ollama' is not installed.`를 뱉는다 — 이미 Ollama를 설치한 사람에게는 뜻이 통하지 않는 메시지다. 실기기에서 재현·수정 후 재검증했다.

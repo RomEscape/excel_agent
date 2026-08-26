@@ -62,8 +62,8 @@ export default function OllamaModelPicker({ id, value, onChange, className }) {
       <HintBox
         icon={AlertTriangle}
         tone="warning"
-        title="Ollama가 설치되어 있지 않아요"
-        description="모델을 선택하려면 먼저 Ollama를 설치해야 해요."
+        title="로컬 AI 엔진이 설치되어 있지 않아요"
+        description="모델을 선택하려면 먼저 로컬 AI 엔진을 설치해야 해요."
         actions={
           <>
             <Button size="sm" variant="outline" onClick={handleRefresh} disabled={refreshing}>
@@ -85,8 +85,8 @@ export default function OllamaModelPicker({ id, value, onChange, className }) {
       <HintBox
         icon={AlertTriangle}
         tone="warning"
-        title="Ollama가 실행되고 있지 않아요"
-        description="Ollama 앱을 실행하거나, 아래 [자동 시작] 버튼을 눌러주세요."
+        title="로컬 AI 엔진이 실행되고 있지 않아요"
+        description="아래 [자동 시작] 버튼을 눌러주세요."
         actions={
           <>
             <Button size="sm" variant="outline" onClick={handleRefresh} disabled={refreshing}>

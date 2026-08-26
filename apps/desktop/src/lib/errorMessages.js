@@ -20,7 +20,7 @@ const ERROR_MAPPINGS = [
   {
     // Ollama not running: connection refused on port 11434
     pattern: /Connection refused.*11434|11434.*Connection refused|connect.*11434/i,
-    message: "Ollama가 실행되지 않고 있습니다. 터미널에서 'ollama serve'를 실행해주세요.",
+    message: "로컬 AI 엔진이 실행되지 않고 있습니다. 로컬 AI 설정에서 [자동 시작]을 눌러주세요.",
   },
   {
     pattern: /Connection refused|tcp connect error|error trying to connect/i,
@@ -57,7 +57,7 @@ const ERROR_MAPPINGS = [
   // LLM / AI errors
   {
     pattern: /ollama|Ollama/,
-    message: "Ollama 서비스에 연결할 수 없습니다. Ollama가 로컬에 설치되고 실행 중인지 확인해 주세요.",
+    message: "로컬 AI 엔진에 연결할 수 없습니다. 설치되고 실행 중인지 확인해 주세요.",
   },
   {
     // LLM request timeout — separate from generic network timeout
@@ -119,7 +119,7 @@ const ERROR_MAPPINGS = [
   // Ollama 서버 연결 실패 (사이드카가 503으로 반환)
   {
     pattern: /Ollama 서버에 연결할 수 없습니다|503/i,
-    message: "Ollama가 실행되지 않고 있습니다. 로컬 AI 설정에서 Ollama 실행을 확인해 주세요.",
+    message: "로컬 AI 엔진이 실행되지 않고 있습니다. 로컬 AI 설정에서 실행 상태를 확인해 주세요.",
   },
 
   // Session expiry

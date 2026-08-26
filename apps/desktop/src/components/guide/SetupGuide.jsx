@@ -117,7 +117,11 @@ function CopyableCommand({ command, label }) {
   );
 }
 
-// ── Ollama 가이드 (기존 유지) ────────────────────────────────────────────────
+// ── 로컬 AI 엔진 설치 가이드 ─────────────────────────────────────────────────
+//
+// 이 화면은 **사용자가 앱 밖에서 직접 하는 일**을 안내한다. 그래서 다른 화면과
+// 달리 엔진의 실제 이름(Ollama)과 파일명·버튼명을 그대로 쓴다 — 여기서까지
+// "로컬 AI 엔진"으로 가리면 사이트에서 무엇을 눌러야 할지 알 수 없다.
 
 function OllamaGuide() {
   const [os, setOs] = useState("mac");
@@ -125,7 +129,9 @@ function OllamaGuide() {
   return (
     <div>
       <p className="mb-4 text-sm text-muted-foreground">
-        Ollama는 AI 모델을 인터넷 없이 내 컴퓨터에서 실행할 수 있는 도구입니다. 설치 후 앱과 자동으로 연결됩니다.
+        김대리의 <strong>로컬 AI 엔진</strong>은 AI 모델을 인터넷 없이 내 컴퓨터에서 실행합니다.
+        설치 후 앱과 자동으로 연결됩니다. 아래 안내에 나오는{" "}
+        <CodeBlock>Ollama</CodeBlock>가 그 엔진의 이름이에요.
       </p>
 
       <div className="mb-5 flex gap-2">
@@ -175,7 +181,7 @@ function OllamaGuide() {
             <Step number={5} title="모델 다운로드">
               <p>터미널을 열고 아래 명령어를 입력합니다.</p>
               <CopyableCommand command="ollama pull qwen3:4b" />
-              <p className="mt-1">다운로드가 완료되면 앱에서 Ollama를 바로 사용할 수 있습니다.</p>
+              <p className="mt-1">다운로드가 완료되면 앱에서 바로 사용할 수 있습니다.</p>
               <Note>다른 모델을 사용하려면 <CodeBlock>ollama pull 모델명</CodeBlock> 형식으로 입력하고, 설정에서 모델명을 변경하세요.</Note>
             </Step>
           </>
@@ -201,7 +207,7 @@ function OllamaGuide() {
             <Step number={5} title="모델 다운로드">
               <p>명령 프롬프트(cmd) 또는 PowerShell을 열고 아래 명령어를 입력합니다.</p>
               <CopyableCommand command="ollama pull qwen3:4b" />
-              <p className="mt-1">다운로드가 완료되면 앱에서 Ollama를 바로 사용할 수 있습니다.</p>
+              <p className="mt-1">다운로드가 완료되면 앱에서 바로 사용할 수 있습니다.</p>
               <Note>다른 모델을 사용하려면 <CodeBlock>ollama pull 모델명</CodeBlock> 형식으로 입력하고, 설정에서 모델명을 변경하세요.</Note>
             </Step>
           </>
@@ -219,7 +225,7 @@ export default function SetupGuide() {
       <div>
         <h1 className="text-2xl font-bold">설치 가이드</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          로컬 AI 엔진(Ollama) 설치를 단계별로 안내해요.
+          로컬 AI 엔진 설치를 단계별로 안내해요.
         </p>
       </div>
 
