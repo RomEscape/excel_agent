@@ -4823,6 +4823,18 @@ def _intent_first_enabled() -> bool:
     return str(os.environ.get("OFFICECLAW_INTENT_FIRST", "")).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _intent_first_kind_allowlist() -> frozenset[str]:
+    """라벨 단위 AI-먼저 승격 목록 — 전역 일괄 뒤집기의 실측 실패(2026-08-24 A/B,
+    나빠진 63:좋아진 0) 뒤에 남긴 점진 경로다. 액션 이름을 콤마로 나열한다.
+    (예: OFFICECLAW_INTENT_FIRST_KINDS=excel_live.find_replace,excel_live.autofit_columns)
+    기본 비어 있음 — 제품 동작 무변. 환경변수를 매번 읽는다(한 프로세스 A/B용, 위와 동일).
+    """
+    raw = str(os.environ.get("OFFICECLAW_INTENT_FIRST_KINDS", "")).strip()
+    if not raw:
+        return frozenset()
+    return frozenset(t.strip() for t in raw.split(",") if t.strip())
+
+
 def _select_reasoning_mode(*, should_parse_with_llm: bool, complexity_score: int) -> str:
     if not should_parse_with_llm:
         return "rule"
@@ -9421,7 +9433,11 @@ async def _run_command(
     # 정확도는 79%다(2026-08-23 실측, 프로덕션 프롬프트 기준). 뒤집으면 그 492건이
     # 79%짜리 판단을 먼저 거친다 — 좋아질지 나빠질지는 **재야 안다.**
     # 켜고 끄고 각각 624를 돌려 비교하려고 스위치로 뺐다.
-    if _intent_first_enabled() and not should_parse_with_llm and quick_plan_for_parse:
+    if (
+        (_intent_first_enabled() or quick_first_action in _intent_first_kind_allowlist())
+        and not should_parse_with_llm
+        and quick_plan_for_parse
+    ):
         should_parse_with_llm = True
         llm_decision_reason = "intent_first_experiment"
     if should_parse_with_llm and not llm_decision_reason:

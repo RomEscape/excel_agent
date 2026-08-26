@@ -5386,3 +5386,25 @@ class TestQuickNamedRangeAndAddColumn:
         assert plan and plan[0]["action"] == "excel_live.define_named_range"
         plan = _build_quick_action_plan("맨 오른쪽에 확인자 열 새로 만들어줘", None)
         assert plan and plan[0]["action"] == "excel_live.add_column"
+
+
+class TestIntentFirstKindAllowlist:
+    """라벨 단위 AI-먼저 승격 스위치(2026-08-26) — 전역 일괄 뒤집기(A/B 63:0 악화)의
+    점진 대체 경로. 기본 비어 있어 제품 동작 무변이 계약이다."""
+
+    def test_기본은_빈_목록(self, monkeypatch):
+        from office_claw_sidecar.routers import excel_live as x
+
+        monkeypatch.delenv("OFFICECLAW_INTENT_FIRST_KINDS", raising=False)
+        assert x._intent_first_kind_allowlist() == frozenset()
+
+    def test_콤마_목록_파싱(self, monkeypatch):
+        from office_claw_sidecar.routers import excel_live as x
+
+        monkeypatch.setenv(
+            "OFFICECLAW_INTENT_FIRST_KINDS",
+            " excel_live.freeze_panes, excel_live.autofit_columns ,",
+        )
+        assert x._intent_first_kind_allowlist() == frozenset(
+            {"excel_live.freeze_panes", "excel_live.autofit_columns"}
+        )
