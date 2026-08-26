@@ -5198,6 +5198,40 @@ class TestBatch2VocabAndGuards:
         assert plan["action"] == "excel_live.define_named_range"
         assert plan["params"] == {"target_range": "A1:F9", "name": "매출표"}
 
+    def test_이_범위_이름_정의는_활성_선택으로(self):
+        # 리터럴 범위가 없어 물러나면 플래너가 convert_to_excel_table로 오해석했다
+        # (2026-08-26 커버리지 0906). "이 범위"는 활성 선택이다.
+        plan = self._plan(
+            {"task": "named_range", "option": "매출표로"},
+            "이 범위를 매출표로 이름 붙여줘",
+        )
+        assert plan is not None
+        assert plan["params"] == {"target_range": "__ACTIVE_SELECTION__", "name": "매출표"}
+
+    def test_행_수_조회는_표_읽기로(self):
+        # count 통계는 숫자만 세서 글자 열에서 0 — 표 읽기가 정직하다(읽기 전용).
+        plan = self._plan({"task": "read"}, "데이터 몇 줄이야?")
+        assert plan is not None
+        assert plan["action"] == "excel_live.read_range"
+        assert plan["params"]["range_ref"] == "__USED_RANGE__"
+
+    def test_행_수_조회는_모델이_슬롯을_지어내도_통한다(self):
+        # 실전(0938)에서 모델이 option='개수'·column='데이터'(없는 머리글)를 채우자
+        # 집계 분기가 체인을 소비해 unmapped가 됐다 — 행-수 문형이 우선한다.
+        plan = self._plan(
+            {"task": "read", "option": "개수", "column": "데이터"}, "데이터 몇 줄이야?"
+        )
+        assert plan is not None
+        assert plan["action"] == "excel_live.read_range"
+
+    def test_이름이_column_슬롯에_실려도_이름_정의(self):
+        # 실전(0938)에서 모델이 이름을 column에 실어 option-만 보던 분기가 놓쳤다.
+        plan = self._plan(
+            {"task": "named_range", "column": "매출표"}, "이 범위를 매출표로 이름 붙여줘"
+        )
+        assert plan is not None
+        assert plan["params"] == {"target_range": "__ACTIVE_SELECTION__", "name": "매출표"}
+
     def test_근거표_신규_4종(self):
         from office_claw_sidecar.routers.excel_live import _action_lacks_evidence
 
@@ -5207,6 +5241,9 @@ class TestBatch2VocabAndGuards:
         assert not _action_lacks_evidence("excel_live.set_print_area", "인쇄 영역 잡아줘")
         assert not _action_lacks_evidence("excel_live.add_cell_comment", "여기 메모 달아줘")
         assert _action_lacks_evidence("excel_live.add_cell_comment", "정렬해줘")
+        # 근거 없음이면 교체 장치가 옳은 퀵 add_column 후보를 기각했다(커버리지 1015).
+        assert not _action_lacks_evidence("excel_live.add_column", "맨 오른쪽에 확인자 열 새로 만들어줘")
+        assert _action_lacks_evidence("excel_live.add_column", "노란색으로 칠해줘")
 
     def test_다_지움_문형에도_열_발명은_막힌다(self):
         # 게이트 0535 실측(2026-08-26): "이 표 내용 다 지어줘 빈칸으루"에서 모델이
@@ -5298,3 +5335,54 @@ class TestTablePresetSkipsNamingRequests:
         assert "매출표" in load_workbook(path).defined_names
         with _pytest.raises(ExcelLiveError):
             service.define_named_range(None, "매출", "A1", "A1:B2")
+
+
+class TestQuickNamedRangeAndAddColumn:
+    """모델 슬롯 변동성에 밀리던 두 확실 문형을 퀵룰로 고정(2026-08-26 커버리지 0957).
+
+    named_range는 이름 위치가 런마다 달라 의도 계층이 미끄러졌고, add_column은
+    플래너 미근거-교체가 read_range로 갈아끼웠다 — 규칙이 결정적으로 잡는다.
+    """
+
+    def test_이_범위_이름_붙여줘(self):
+        from office_claw_sidecar.routers.excel_live import _quick_named_range_step
+
+        step = _quick_named_range_step("이 범위를 매출표로 이름 붙여줘", "")
+        assert step is not None
+        assert step["action"] == "excel_live.define_named_range"
+        assert step["params"] == {"target_range": "__ACTIVE_SELECTION__", "name": "매출표"}
+
+    def test_명시_범위_이름_정의(self):
+        from office_claw_sidecar.routers.excel_live import _quick_named_range_step
+
+        step = _quick_named_range_step("A1:F9에 매출표라는 이름 정의해줘", "A1:F9")
+        assert step is not None
+        assert step["params"] == {"target_range": "A1:F9", "name": "매출표"}
+
+    def test_이름만_붙여줘는_오캡처_금지(self):
+        from office_claw_sidecar.routers.excel_live import _quick_named_range_step
+
+        assert _quick_named_range_step("시트 이름 붙여줘", "") is None
+        assert _quick_named_range_step("이름 바꿔줘 지역별실적으로", "") is None
+
+    def test_열_추가(self):
+        from office_claw_sidecar.routers.excel_live import _quick_add_column_step
+
+        step = _quick_add_column_step("맨 오른쪽에 확인자 열 새로 만들어줘")
+        assert step is not None
+        assert step["action"] == "excel_live.add_column"
+        assert step["params"] == {"name": "확인자"}
+
+    def test_열_비우기_삭제는_오발화_금지(self):
+        from office_claw_sidecar.routers.excel_live import _quick_add_column_step
+
+        assert _quick_add_column_step("비고 열 비워줘") is None
+        assert _quick_add_column_step("열 이름 바꿔줘 확인자로") is None
+
+    def test_빌더_통합(self):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+
+        plan = _build_quick_action_plan("이 범위를 매출표로 이름 붙여줘", None)
+        assert plan and plan[0]["action"] == "excel_live.define_named_range"
+        plan = _build_quick_action_plan("맨 오른쪽에 확인자 열 새로 만들어줘", None)
+        assert plan and plan[0]["action"] == "excel_live.add_column"

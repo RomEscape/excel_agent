@@ -556,6 +556,11 @@ _ACTION_EVIDENCE: dict[str, re.Pattern[str]] = {
     ),
     "excel_live.set_print_area": re.compile(r"(인쇄\s*영역|print\s*area|인쇄\s*범위)", re.IGNORECASE),
     "excel_live.add_cell_comment": re.compile(r"(메모|코멘트|comment|주석)", re.IGNORECASE),
+    # 근거 없음 판정이면 교체 장치(10121)가 옳은 퀵 후보(add_column)를 기각하고
+    # read로 갈아끼웠다(2026-08-26 커버리지 1015 실측 — read는 근거표 대상 밖).
+    "excel_live.add_column": re.compile(
+        r"(?:열|컬럼|column)\s*\S{0,6}\s*(?:추가|만들|새로|넣|생성)", re.IGNORECASE
+    ),
 }
 
 
@@ -3298,6 +3303,14 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
     if header_step is not None:
         return [header_step]
 
+    named_range_step = _quick_named_range_step(text, explicit_range)
+    if named_range_step is not None:
+        return [named_range_step]
+
+    add_column_step = _quick_add_column_step(text)
+    if add_column_step is not None:
+        return [add_column_step]
+
     freeze_step = _quick_freeze_step(text)
     if freeze_step is not None:
         return [freeze_step]
@@ -4356,6 +4369,65 @@ def _message_wants_new_sheet(text: str) -> bool:
     if re.search(r"(바꿔|바꾸|변경|고쳐|rename|삭제|지워|없애)", src):
         return False
     return bool(re.search(_CS_LABEL + r"[^\n]{0,12}" + _CS_MAKE, src, re.IGNORECASE))
+
+
+def _quick_named_range_step(text: str, explicit_range: str) -> dict[str, Any] | None:
+    """"이 범위를 매출표로 이름 붙여줘" — 범위 이름 정의.
+
+    모델이 이름 슬롯을 런마다 다른 곳에 실어 의도 계층이 계속 미끄러졌다
+    (2026-08-26 커버리지 0938·0957 실측) — 문형이 확실하니 규칙으로 박는다.
+    이름은 "X로/X라는 이름" 꼴만 잡는다("시트 이름 붙여줘"류 오캡처 방지).
+    """
+    src = str(text or "")
+    if not re.search(r"이름\s*(?:을|이|은)?\s*(?:붙|정의|지어|달아)", src):
+        return None
+    if re.search(r"(바꿔|바꾸|변경|rename)", src):
+        return None
+    m = re.search(r"(?P<name>[A-Za-z0-9_가-힣]{1,31})\s*(?:이?라는|이?라고|으로|로)\s*이름", src)
+    if not m:
+        return None
+    name = m.group("name")
+    if name in {"이름", "새", "이", "그", "저", "범위", "영역"}:
+        return None
+    target = explicit_range or (
+        "__ACTIVE_SELECTION__"
+        if re.search(r"(?:이|선택한?|현재|여기)\s*(?:범위|영역)", src)
+        else ""
+    )
+    if not target:
+        return None
+    return {
+        "action": "excel_live.define_named_range",
+        "params": {"target_range": target, "name": name},
+        "reason": "빠른 규칙 기반 범위 이름 정의",
+    }
+
+
+def _quick_add_column_step(text: str) -> dict[str, Any] | None:
+    """"확인자 열 새로 만들어줘" — 열 추가.
+
+    의도 계층이 물러난 뒤 플래너의 미근거 단계를 교체 장치가 read_range로 갈아끼웠다
+    (2026-08-26 커버리지 0957 — read는 근거표 대상 밖이라 통과). 문형이 확실하니
+    규칙으로 박는다. 이름 없는 "열 만들어줘"는 잡지 않는다(이름 발명 금지).
+    """
+    src = str(text or "")
+    if re.search(r"(?:이름|명).{0,6}(?:바꿔|바꾸|변경|rename)", src):
+        return None
+    m = re.search(
+        r"(?P<name>[A-Za-z0-9_가-힣]{1,20})\s*(?:이?라는)?\s*(?:열|컬럼)\s*(?:을|를)?"
+        r"\s*(?:하나|새로)?\s*(?:새로)?\s*(?:만들|추가|넣어|생성)",
+        src,
+    )
+    if not m:
+        return None
+    name = m.group("name")
+    if name in {"새", "새로운", "한", "그", "이", "저", "요", "빈"}:
+        return None
+    return {
+        "action": "excel_live.add_column",
+        "params": {"name": name},
+        "reason": "빠른 규칙 기반 열 추가",
+    }
 
 
 # "이 시트" · "현재 시트" · "여기 탭" — 이름이 아니라 활성 시트를 가리킨다.

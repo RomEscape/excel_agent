@@ -796,28 +796,39 @@ def intent_to_plan(
                     "reason": "의도 정규화: ~별 집계 조회",
                 }]
 
-    elif task == "read" and option_text and column:
-        # 조회 중 "열 집계 물음"만 받는다 — "제일 큰 금액이 뭐야"가 정렬로 오실행됐다
-        # (2026-08-25 커버리지 v2). 넓은 read는 여전히 슬롯·플래너 몫이다(아래 주석).
-        # 읽기 전용(SAFE)이라 오매핑해도 데이터가 바뀌지 않는다.
-        up = str(option_text).strip().upper()
-        func = up if up in _AGG_FUNCS else str(aggregate_func(option_text) or "")
-        stat = {
-            "SUM": "sum",
-            "AVERAGE": "average",
-            "MAX": "max",
-            "MIN": "min",
-            "COUNT": "count",
-            "COUNTA": "count",
-        }.get(func.upper(), "")
-        if stat and _column_letter(entry, column) and not _worded(
-            r"넣어", r"써\s*줘", r"적어", r"입력", r"기록", r"채워"
-        ):
+    elif task == "read":
+        # 조회는 한 분기에서 순서대로 본다 — 두 elif로 가르면 모델이 option/column을
+        # 지어냈을 때 첫 분기가 체인을 소비해 행-수 검사에 못 떨어진다(2026-08-26
+        # 커버리지 0938 실측: '몇 줄이야'가 option 채움 탓에 unmapped→플래너 오판).
+        if re.search(r"몇\s*(?:줄|행)|(?:행|줄)\s*(?:수|개수)", plain_message):
+            # "데이터 몇 줄이야?" — 행 수 조회. count 통계는 숫자만 세서 글자 열에서
+            # 0이 나온다(서비스 실측) — 표를 그대로 읽어 행 수가 보이게 한다(읽기 전용).
             steps = [{
-                "action": "excel_live.calculate_column_stat",
-                "params": {"column": str(column).strip(), "stat": stat},
-                "reason": "의도 정규화: 열 집계 조회(읽기 전용)",
+                "action": "excel_live.read_range",
+                "params": {"range_ref": "__USED_RANGE__"},
+                "reason": "의도 정규화: 행 수 조회",
             }]
+        elif option_text and column:
+            # "열 집계 물음" — "제일 큰 금액이 뭐야"가 정렬로 오실행됐다(2026-08-25).
+            # 넓은 read는 여전히 슬롯·플래너 몫이다(아래 주석). 읽기 전용(SAFE).
+            up = str(option_text).strip().upper()
+            func = up if up in _AGG_FUNCS else str(aggregate_func(option_text) or "")
+            stat = {
+                "SUM": "sum",
+                "AVERAGE": "average",
+                "MAX": "max",
+                "MIN": "min",
+                "COUNT": "count",
+                "COUNTA": "count",
+            }.get(func.upper(), "")
+            if stat and _column_letter(entry, column) and not _worded(
+                r"넣어", r"써\s*줘", r"적어", r"입력", r"기록", r"채워"
+            ):
+                steps = [{
+                    "action": "excel_live.calculate_column_stat",
+                    "params": {"column": str(column).strip(), "stat": stat},
+                    "reason": "의도 정규화: 열 집계 조회(읽기 전용)",
+                }]
 
     elif task == "comment" and rng and _SINGLE_CELL.fullmatch(rng):
         # 메모는 단일 셀 + 내용이 문장에 실재할 때만 — 내용을 지어내 붙이면 없는 말이
@@ -830,16 +841,27 @@ def intent_to_plan(
                 "reason": "의도 정규화: 셀 메모",
             }]
 
-    elif task == "named_range" and rng:
-        # 이름 정의는 범위 명시 + 이름이 문장에 실재할 때만. rename_sheet처럼 조사를
-        # 벗긴다("매출표라는" → 매출표).
+    elif task == "named_range":
+        # 이름 정의는 이름이 문장에 실재할 때만. rename_sheet처럼 조사를 벗긴다
+        # ("매출표라는" → 매출표). 범위 리터럴이 없어도 "이 범위/선택 영역"이면 활성
+        # 선택으로 푼다 — 검증기·디스패처가 __ACTIVE_SELECTION__을 이미 해석한다.
+        # 물러나면 플래너가 convert_to_excel_table로 오해석했다(2026-08-26 커버리지 0906).
+        nr_target = rng or (
+            "__ACTIVE_SELECTION__"
+            if re.search(r"(?:이|선택한?|현재|여기)\s*(?:범위|영역)", plain_message)
+            else ""
+        )
+        # 이름은 option 또는 column에 실려 온다(create_sheet와 같은 편차 — 모델이
+        # column 슬롯에 이름을 실으면 option만 봐선 놓친다. 2026-08-26 커버리지 0938).
         nr_name = re.sub(
-            r"(?:이?라는|이?라고|이?란|으로|로)$", "", str(option_text or "").strip().strip("'\"")
+            r"(?:이?라는|이?라고|이?란|으로|로)$",
+            "",
+            str(option_text or column or "").strip().strip("'\""),
         ).strip()
-        if nr_name and nr_name in plain_message:
+        if nr_target and nr_name and nr_name in plain_message:
             steps = [{
                 "action": "excel_live.define_named_range",
-                "params": {"target_range": rng, "name": nr_name},
+                "params": {"target_range": nr_target, "name": nr_name},
                 "reason": "의도 정규화: 범위 이름 정의",
             }]
 
