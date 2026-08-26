@@ -1192,10 +1192,15 @@ class ExcelLiveService:
         start_col = int(getattr(rng, "column", 1) or 1)
         header_row = values[0] if has_header else None
         if key_columns:
-            cols = [
-                self._resolve_column_selector(col, start_col, col_count, header_row) + 1
+            resolved = [
+                self._resolve_column_selector(col, start_col, col_count, header_row, strict=True)
                 for col in key_columns
             ]
+            # 못 찾은 기준 열은 지우기 전에 멈춘다 — 1번 열 강등은 조용한 오실행이다.
+            if any(idx < 0 for idx in resolved):
+                missing = [c for c, idx in zip(key_columns, resolved) if idx < 0]
+                raise ExcelLiveError(self._unresolved_key_columns_error(missing, header_row))
+            cols = [idx + 1 for idx in resolved]
         else:
             cols = list(range(1, col_count + 1))
 
@@ -3114,7 +3119,18 @@ class ExcelLiveService:
         start_col_idx: int,
         col_count: int,
         header_row: list[Any] | None,
+        *,
+        strict: bool = False,
     ) -> int:
+        """열 지목을 0-기반 색인으로. `strict`면 못 찾았을 때 **-1**을 돌려준다.
+
+        기본값(strict=False)은 못 찾으면 1번 열로 강등한다 — 정렬·필터·피벗이 그 관용에
+        기대고 있어 전역으로 바꾸면 지금 통과하는 경로가 한꺼번에 오류가 된다.
+        다만 **행을 지우는** dedupe에서는 그 강등이 조용한 오실행이 된다: 머리글에 없는
+        '이름'이 A열(날짜)로 강등돼 날짜가 같은 행이 지워지는데 사후조건은
+        `removed_rows >= 0`이라 성공으로 보고된다(2026-08-26 감사).
+        그래서 파괴 호출부만 strict로 부른다.
+        """
         if isinstance(selector, int):
             raw = selector
         else:
@@ -3142,9 +3158,19 @@ class ExcelLiveService:
                     abs_idx = cls._col_to_idx(text.upper())
                     raw = abs_idx - start_col_idx + 1
                 if raw == 0:
+                    if strict:
+                        return -1
                     raw = 1
         raw = max(1, min(col_count, int(raw)))
         return raw - 1  # zero-based
+
+    @staticmethod
+    def _unresolved_key_columns_error(names: list[Any], header_row: list[Any] | None) -> str:
+        """dedupe 기준 열을 못 찾았을 때 사람이 고칠 수 있는 문구로."""
+        headers = [str(h or "").strip() for h in (header_row or []) if str(h or "").strip()]
+        shown = ", ".join(str(n) for n in names)
+        tail = f" 이 시트의 머리글: {', '.join(headers[:8])}" if headers else ""
+        return f"중복 기준 열을 찾지 못했습니다: {shown}.{tail}"
 
     @staticmethod
     def _sortable_value(value: Any) -> tuple[int, Any]:

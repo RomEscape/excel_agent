@@ -1663,9 +1663,14 @@ class FileExcelLiveService(ExcelLiveService):
         start_col = 1
         if key_columns:
             subset = [
-                self._resolve_column_selector(col, start_col, col_count, header)
+                self._resolve_column_selector(col, start_col, col_count, header, strict=True)
                 for col in key_columns
             ]
+            # 못 찾은 기준 열을 1번 열로 강등하면 엉뚱한 열 기준으로 행이 지워지고
+            # 성공으로 보고된다 — 지우기 전에 멈춘다(2026-08-26 감사).
+            if any(idx < 0 for idx in subset):
+                missing = [c for c, idx in zip(key_columns, subset) if idx < 0]
+                raise ExcelLiveError(self._unresolved_key_columns_error(missing, header))
         else:
             subset = list(range(col_count))
         before = len(body)

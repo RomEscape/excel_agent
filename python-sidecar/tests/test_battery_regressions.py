@@ -5544,3 +5544,106 @@ class TestConditionalGuardCoversFormula:
         drops: list[str] = []
         self._plan("금액이 100 이상인 것만 더해서 G1에", drops)
         assert any(d.startswith("conditional:") for d in drops)
+
+
+class TestDedupeRefusesUnknownKeyColumn:
+    """머리글에 없는 기준 열로 행을 지우던 조용한 오실행(2026-08-26 감사 P1).
+
+    실측: 머리글 날짜|지역|담당자|금액|상태|비고 시트에서 "이름 기준으로 중복 제거"가
+    key_columns=['이름']로 승인 카드까지 갔고, 실행기가 '이름'을 1번 열(날짜)로 강등해
+    **날짜가 같은 행**을 지웠다. 사후조건이 removed_rows>=0이라 성공으로 보고된다.
+    지우기 전에 멈춘다 — 정렬·필터의 1번 열 관용은 그대로 둔다(전역 변경 금지).
+    """
+
+    @staticmethod
+    def _svc(tmp_path):
+        from openpyxl import Workbook
+
+        from office_claw_sidecar.services.excel_live_file_service import FileExcelLiveService
+
+        path = tmp_path / "d.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "매출"
+        ws.append(["날짜", "지역", "담당자"])
+        ws.append(["2026-01-01", "수도권", "김"])
+        ws.append(["2026-01-01", "충청권", "이"])  # 날짜만 중복 — 잘못된 기준이면 이 행이 사라진다
+        ws.append(["2026-01-02", "호남권", "박"])
+        wb.save(path)
+        service = FileExcelLiveService()
+        service.select_workbook(str(path))
+        service.select_sheet(None, "매출")
+        return service, path
+
+    def test_없는_기준_열이면_지우지_않고_멈춘다(self, tmp_path):
+        import pytest as _pytest
+        from openpyxl import load_workbook
+
+        from office_claw_sidecar.services.excel_live_file_service import ExcelLiveError
+
+        service, path = self._svc(tmp_path)
+        with _pytest.raises(ExcelLiveError) as exc:
+            service.dedupe_rows(None, "매출", target_range="A1:C4", key_columns=["이름"])
+        assert "이름" in str(exc.value)
+        # 행이 하나도 안 지워졌는지 파일로 확인한다(API 자기보고를 믿지 않는다).
+        assert load_workbook(path)["매출"].max_row == 4
+
+    def test_실재하는_기준_열은_그대로_동작(self, tmp_path):
+        service, _ = self._svc(tmp_path)
+        out = service.dedupe_rows(None, "매출", target_range="A1:C4", key_columns=["날짜"])
+        assert out["removed_rows"] == 1
+
+    def test_개념어_머리글은_계속_이어진다(self, tmp_path):
+        # resolve_header 경유("담당"→담당자)는 막으면 안 된다.
+        service, _ = self._svc(tmp_path)
+        out = service.dedupe_rows(None, "매출", target_range="A1:C4", key_columns=["담당"])
+        assert out["removed_rows"] == 0
+
+    def test_기본값은_1번_열_관용을_유지한다(self):
+        # strict는 dedupe 전용이다. 전역으로 바꾸면 이 폴백에 기대던 범위 기반 경로
+        # (sort_range·filter·pivot)가 한꺼번에 오류가 된다.
+        from office_claw_sidecar.services.excel_live_service import ExcelLiveService
+
+        header = ["날짜", "지역", "담당자"]
+        assert ExcelLiveService._resolve_column_selector("없는열", 1, 3, header) == 0
+        assert ExcelLiveService._resolve_column_selector("없는열", 1, 3, header, strict=True) == -1
+        # 실재하는 열은 두 모드가 같은 답을 낸다.
+        assert ExcelLiveService._resolve_column_selector("지역", 1, 3, header) == 1
+        assert ExcelLiveService._resolve_column_selector("지역", 1, 3, header, strict=True) == 1
+
+    def test_행_전체_중복_문형은_지어낸_기준을_버린다(self):
+        # 실측(2026-08-26): "중복된 행 지워줘"인데 플래너가 key_columns=["이름"]을 실어
+        # 보냈고(그 시트에 없는 열), 실행기가 1번 열로 강등해 **날짜가 같은 행**을 지웠다.
+        # 지울 게 없으면 성공으로 보여 테스트가 우연히 통과하고 있었다.
+        from office_claw_sidecar.services.excel_live_plan_validator import (
+            PlanStep,
+            ValidationContext,
+            validate_plan,
+        )
+
+        steps = [
+            PlanStep(
+                action="excel_live.dedupe_rows",
+                params={"target_range": "A1:D5", "key_columns": ["이름"]},
+                reason="r",
+            )
+        ]
+        out = validate_plan(steps, context=ValidationContext(message="중복된 행 지워줘"))
+        assert out[0].params["key_columns"] == []
+
+    def test_열을_지목한_문형은_기준을_지킨다(self):
+        from office_claw_sidecar.services.excel_live_plan_validator import (
+            PlanStep,
+            ValidationContext,
+            validate_plan,
+        )
+
+        steps = [
+            PlanStep(
+                action="excel_live.dedupe_rows",
+                params={"target_range": "A1:D5", "key_columns": ["담당자"]},
+                reason="r",
+            )
+        ]
+        out = validate_plan(steps, context=ValidationContext(message="담당자 기준으로 중복 제거해줘"))
+        assert out[0].params["key_columns"] == ["담당자"]

@@ -853,6 +853,15 @@ def _validate_step_body(
         key_columns = params.get("key_columns", params.get("columns", []))
         if not isinstance(key_columns, list):
             key_columns = []
+        # "중복된 행 지워줘"는 **행 전체가 같은 것**을 지우라는 말이다. 그런데 플래너가
+        # 기준 열을 지어내 실어 보낸다(2026-08-26 실측: 머리글이 날짜|지역|담당자|금액인
+        # 시트에 key_columns=["이름"]). 예전엔 그게 실행기에서 1번 열로 강등돼 **날짜가
+        # 같은 행**이 지워졌고, 지워질 게 없으면 성공으로 보였다 — 조용한 오실행이다.
+        # 문장이 행 전체를 말하면 지어낸 기준을 버린다(같은 판정을 되묻기 억제도 쓴다).
+        if key_columns and re.search(
+            r"중복(된|되는)?\s*(행|줄|row)", str(ctx.message or ""), re.IGNORECASE
+        ):
+            key_columns = []
         has_header = bool(params.get("has_header", True))
         return PlanStep(
             action=action,
