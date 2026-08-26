@@ -36,14 +36,14 @@ class TestSchemaExtension:
             grade="SAFE",
             command="print('hello')",
             reason="테스트",
-            tool_name="gog.gmail.send",
+            tool_name="excel_live.write_range",
             session_id="session-abc-123",
         )
         assert row_id > 0
 
         entry = cmd_audit.get_by_id(row_id)
         assert entry is not None
-        assert entry["tool_name"] == "gog.gmail.send", f"tool_name 불일치: {entry['tool_name']}"
+        assert entry["tool_name"] == "excel_live.write_range", f"tool_name 불일치: {entry['tool_name']}"
         assert entry["session_id"] == "session-abc-123", f"session_id 불일치: {entry['session_id']}"
 
     def test_log_without_new_fields_defaults_to_none(self):

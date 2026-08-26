@@ -75,17 +75,12 @@ pub fn run() {
             ipc::command_audit_list,
             ipc::command_audit_stats,
             ipc::command_audit_clear,
-            // Phase 2: Security UI Approval (텔레그램 미연결 시 앱 UI 대체 수단)
-            ipc::security_get_pending_approvals,
-            ipc::security_respond_approval,
-            // Phase 3: Slack commands
-            // Phase 3: Discord commands
             // Phase 3: Permissions commands
             ipc::permissions_get,
             ipc::permissions_update,
             ipc::permissions_whitelist_add,
             ipc::permissions_whitelist_remove,
-            // Phase 1: officeclaw — Workspace + Telegram setup
+            // Phase 1: officeclaw — Workspace
             ipc::open_workspace_folder,
             ipc::open_workspace_file,
             ipc::workspace_list_files,

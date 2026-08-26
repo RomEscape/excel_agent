@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import {
-  Mail,
   Cpu,
   Bot,
   ChevronRight,
@@ -18,14 +17,13 @@ import useAppStore from "@/store/appStore";
 /**
  * 탭 순서:
  *   1) Ollama 설치
- *   2) Gmail 안내
- *   3) Claude API
+ *   2) Claude API
  *
- * 텔레그램·Slack/Discord 탭은 메신저 봇 기능 제거와 함께 사라졌다.
+ * 텔레그램·Slack/Discord 탭은 메신저 봇 기능 제거와 함께 사라졌고,
+ * Gmail 안내 탭은 Gmail 스킬 자체가 제거되면서 함께 사라졌다.
  */
 const TABS = [
   { id: "ollama",   label: "Ollama 설치",   icon: Cpu },
-  { id: "gmail",    label: "Gmail 안내",    icon: Mail },
   { id: "claude",   label: "Claude API",    icon: Bot },
 ];
 
@@ -221,30 +219,6 @@ function OllamaGuide() {
   );
 }
 
-// ── Gmail 안내 ───────────────────────────────────────────────────────────────
-
-function GmailGuide() {
-  return (
-    <div>
-      <div className="rounded-md border border-amber-200 bg-amber-50/60 p-3 dark:border-amber-900/40 dark:bg-amber-950/30">
-        <div className="flex items-start gap-2">
-          <Mail className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-          <div className="text-sm">
-            <p className="font-semibold text-amber-900 dark:text-amber-100">
-              Gmail 연동은 아직 앱에서 쓸 수 없습니다
-            </p>
-            <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">
-              Gmail 등 외부 연동은 메신저 봇 명령으로 처리되던 기능인데, 봇이
-              제거되면서 지금은 진입 경로가 없습니다. 현재 김대리가 실제로
-              다루는 것은 엑셀 작업입니다.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Claude API ───────────────────────────────────────────────────────────────
 
 function ClaudeGuide({ onGoToCredentials, onGoToSettings }) {
@@ -292,7 +266,6 @@ export default function SetupGuide() {
 
   const content = {
     ollama:   <OllamaGuide />,
-    gmail:    <GmailGuide />,
     claude:   <ClaudeGuide
                 onGoToCredentials={() => setCurrentPage("credentials")}
                 onGoToSettings={() => setCurrentPage("settings")}

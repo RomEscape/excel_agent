@@ -16,7 +16,7 @@ DB 위치: ~/officeclaw/audit.db
   approved         INTEGER           (1=승인, 0=거부, NULL=해당없음/대기중)
   user_id          TEXT              (텔레그램 chat_id 등)
   source           TEXT    DEFAULT 'agent'  (telegram|slack|discord|agent|webui)
-  tool_name        TEXT              (호출된 스킬 이름, 예: gog.gmail.send)  — Sprint 3
+  tool_name        TEXT              (호출된 스킬 이름, 예: excel_live.write_range)  — Sprint 3
   session_id       TEXT              (OpenClaw 세션 ID)                      — Sprint 3
   rejection_reason TEXT              (거부 시 사용자 입력 사유, 선택)          — Sprint 3
 """
@@ -151,7 +151,7 @@ class CommandAuditLogger:
         approved:   True=승인, False=거부, None=해당없음/대기중
         user_id:    텔레그램 chat_id 등
         source:     telegram | slack | discord | agent | webui (자유 문자열은 정규화됨)
-        tool_name:  호출된 스킬 이름 (예: gog.gmail.send) — Sprint 3
+        tool_name:  호출된 스킬 이름 (예: excel_live.write_range) — Sprint 3
         session_id: OpenClaw 세션 ID — Sprint 3
         """
         ts = datetime.now(timezone.utc).isoformat()

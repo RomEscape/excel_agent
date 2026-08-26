@@ -445,10 +445,6 @@ pub async fn security_update_masking_settings(
     .await
 }
 
-// ── Phase 3: Slack commands ──────────────────────────────────────────────────
-
-// ── Phase 3: Discord commands ────────────────────────────────────────────────
-
 // ── Phase 3: Permissions commands ────────────────────────────────────────────
 
 #[tauri::command]
@@ -522,44 +518,6 @@ pub async fn permissions_whitelist_remove(
         None,
         Some(Duration::from_secs(10)),
         "화이트리스트 제거 실패",
-    )
-    .await
-}
-
-// ── Phase 2: Security UI Approval commands ───────────────────────────────────
-
-/// 대기 중인 보안 승인 요청 목록을 반환한다 (UI 폴링용).
-#[tauri::command]
-pub async fn security_get_pending_approvals(
-    state: State<'_, Mutex<SidecarState>>,
-) -> Result<String, String> {
-    sidecar_request(
-        &state,
-        Method::GET,
-        "/security/approval/pending",
-        None,
-        Some(Duration::from_secs(5)),
-        "보안 승인 목록 조회 실패",
-    )
-    .await
-}
-
-/// 보안 승인 요청에 승인 또는 거부로 응답한다.
-#[tauri::command(rename_all = "snake_case")]
-pub async fn security_respond_approval(
-    state: State<'_, Mutex<SidecarState>>,
-    approval_id: String,
-    approved: bool,
-) -> Result<String, String> {
-    let path = format!("/security/approval/{}/respond", approval_id);
-    let body = serde_json::json!({ "approved": approved });
-    sidecar_request(
-        &state,
-        Method::POST,
-        &path,
-        Some(body),
-        Some(Duration::from_secs(10)),
-        "보안 승인 응답 전달 실패",
     )
     .await
 }

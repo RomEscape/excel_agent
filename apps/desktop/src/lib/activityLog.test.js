@@ -153,9 +153,9 @@ test("deviceLabel: source enum agent/webui는 데스크탑이다", () => {
 
 test("toActivityRows: 파일 컬럼이 없으면 툴 이름이 보조 자리에 온다", () => {
   const rows = toActivityRows([
-    { id: 1, command: "메일 보내줘", tool_name: "gog.gmail.send", grade: "SAFE" },
+    { id: 1, command: "B2 셀 고쳐줘", tool_name: "excel_live.write_range", grade: "SAFE" },
   ]);
-  assert.equal(rows[0].file, "gog.gmail.send");
+  assert.equal(rows[0].file, "excel_live.write_range");
 });
 
 test("sortRows: 시간은 표시 문자열이 아니라 원본 타임스탬프로 정렬한다", () => {

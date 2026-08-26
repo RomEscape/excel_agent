@@ -39,7 +39,7 @@ _audit = AuditService()
 
 class WhitelistUpdateRequest(BaseModel):
     """스킬 권한 일괄 업데이트 요청."""
-    overrides: dict[str, str]  # {"gog.gmail.send": "safe", "gog.sheets.write": "confirm"}
+    overrides: dict[str, str]  # {"excel_live.write_range": "safe", "gog.sheets.write": "confirm"}
 
 
 class MaskingSettingsRequest(BaseModel):

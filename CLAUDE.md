@@ -146,7 +146,15 @@
 >
 > `StatusBar`의 보안 배지는 남는다 — 엑셀 CONFIRM도 `command_log`에 `approved IS NULL`로 쌓이므로 건수는 여전히 의미가 있다. 다만 클릭이 모달을 열 수 없으니 `작업 기록`으로 보낸다.
 >
-> **남긴 것**: `command_audit.py`의 source enum과 `lib/activityLog.js`의 `telegram|slack|discord → 모바일` 매핑(과거 감사 로그 행 호환), `models/approval.py`의 `ApprovalResponse`(엑셀 승인이 계속 쓴다), `gmail_service.py`·`tool_registry`의 Gmail 스킬. **Gmail은 이제 진입 경로가 없다** — 메신저 봇 명령이 유일한 통로였고 엑셀 tool-calling 스키마(`excel_tool_schemas.py`)에는 Gmail 함수가 없다. 지울지 붙일지는 별도 결정이라 `SetupGuide`의 안내 문구만 사실대로 고쳐뒀다.
+> **남긴 것**: `command_audit.py`의 source enum과 `lib/activityLog.js`의 `telegram|slack|discord → 모바일` 매핑(과거 감사 로그 행 호환), `models/approval.py`의 `ApprovalResponse`(엑셀 승인이 계속 쓴다).
+>
+> **2026-08 Gmail 제거 노트**: 메신저 제거 때 판단을 미뤄뒀던 **Gmail 스킬도 걷어냈다.** 봇 명령이 유일한 통로였고 엑셀 tool-calling 스키마(`excel_tool_schemas.py`)에 Gmail 함수가 없어 진입 경로가 0이었다. 지운 것 — `services/gmail_service.py`(어디서도 import되지 않던 고아), `tool_registry`의 스킬 4개(`gmail.fetch_emails`·`gmail.summarize_recent`·`gog.gmail.read`·`gog.gmail.send`)와 `TOOL_DISPLAY_NAMES` 항목, `intent_router` 분류 프롬프트의 gmail 규칙, 데스크톱의 `SetupGuide` Gmail 탭·`CredentialsManager`의 Google OAuth 그룹·`errorMessages.js`의 Gmail 문구.
+>
+> **파이썬 의존성 3개(`google-auth`·`google-auth-oauthlib`·`google-api-python-client`)가 함께 빠졌다** — `gmail_service.py`가 유일한 사용처였다. 전이 의존까지 lockfile에서 17개가 사라진다.
+>
+> `errorMessages.js`의 토큰 만료 문구는 **지우지 않고 자격증명 일반 문구로 바꿨다** — `invalid_grant`·refresh 실패는 Claude API 키 등 다른 자격증명에서도 난다. 반대로 `AI 답장|draft.*reply|prioritize.*email` 패턴은 없어진 "메일 AI 화면"을 가리켜서 걷어냈다.
+>
+> **`gog.sheets.read`/`gog.sheets.write`는 남겼다.** 같은 OpenClaw GOG 계열이라 마찬가지로 진입 경로가 없지만, Gmail과 달리 Google Sheets는 엑셀 도메인과 겹쳐 되살릴 여지가 있다 — 지우려면 별도 판단이 필요하다. `services/intent_router.py`도 고아다(메신저 `base.py`가 유일한 호출자였다). 남긴 이유는 같다: 엑셀 밖 스킬 라우팅을 다시 붙일 때 쓰는 분류기다.
 
 > **2026-08 모바일 평문 차단 노트**: 모바일의 TLS 강제는 **매니페스트/plist가 아니라 Dart 코드**(`apps/mobile/lib/transport/relay_url.dart`)가 책임진다. 안드로이드 `usesCleartextTraffic`·네트워크 보안 설정과 iOS ATS는 *플랫폼이 소유한* 소켓에만 걸리는데, 이 앱의 통신은 `package:http`와 `web_socket_channel` 둘 다 Dart 소유 소켓이라 적용되지 않는다(Flutter 공식: "If the socket is owned by Dart/Flutter, no policy will be enforced" — flutter/flutter#106678은 not planned로 닫힘). 그래서 `kAllowInsecureRelayByDefault = !kReleaseMode`로 debug·profile만 평문을 허용하고, relay 주소는 QR·수동입력 어느 경로든 `normalizeRelayBaseUrl`을 통과시킨다. **새 네트워크 경로를 추가하면 이 함수를 반드시 태울 것** — 안 태우면 릴리스에서 평문이 그대로 나간다.
 >

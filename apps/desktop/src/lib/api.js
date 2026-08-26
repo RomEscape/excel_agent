@@ -218,7 +218,7 @@ export async function securityGetWhitelist() {
 /**
  * 스킬별 권한을 업데이트한다.
  *
- * @param {Record<string, string>} overrides  {"gog.gmail.send": "safe", ...}
+ * @param {Record<string, string>} overrides  {"excel_live.write_range": "safe", ...}
  * @returns {Promise<{ ok: boolean, updated: number }>}
  */
 export async function securityUpdateWhitelist(overrides) {

@@ -10,7 +10,7 @@ class ApprovalRequest(BaseModel):
 
     approval_id: str
     tool_name: str
-    tool_display_name: str   # 한국어 표시명 (예: "Gmail 이메일 전송")
+    tool_display_name: str   # 한국어 표시명 (예: "Excel 셀 값 수정")
     summary: str             # 한국어 요약 (예: "kim@company.com에게 이메일을 전송합니다")
     args_preview: dict       # 사용자가 검토할 핵심 인자 (민감 데이터 마스킹 적용)
     session_id: str
