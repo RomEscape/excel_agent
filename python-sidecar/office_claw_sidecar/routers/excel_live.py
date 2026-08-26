@@ -80,6 +80,7 @@ from office_claw_sidecar.services.excel_header_lexicon import (
     find_header_mentions,
     resolve_header,
 )
+from office_claw_sidecar.services.excel_intent_normalizer import UNMERGE_PATTERN
 from office_claw_sidecar.services.excel_live_agent import (
     _ROW_WRITE_FORMAT_VOCAB,
     COLUMN_LETTER_PATTERN,
@@ -3506,7 +3507,13 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
                 }
             ]
 
-    if any(token in lowered for token in ["예측", "forecast", "추세", "앞으로"]):
+    # '앞으로'는 한국어에서 그냥 시간 부사다("앞으로는 머리글 굵게 해줘"). 이 낱말 하나로
+    # 정렬·글꼴·차트가 버려지고 **예측 결과 시트를 새로 쓰는** 액션이 나갔다(2026-08-27 감사).
+    # 이 규칙의 근거표(_ACTION_EVIDENCE["excel_live.forecast_linear"])에도 '앞으로'는 없다 —
+    # 규칙이 자기 근거보다 넓었다. 차트를 말한 문장도 차트가 더 좁은 해석이므로 물러난다.
+    if any(token in lowered for token in ["예측", "forecast", "추세", "전망"]) and not re.search(
+        r"(차트|그래프|라인|꺾은선|시각화|chart|graph)", lowered
+    ):
         horizon_match = re.search(r"(\d{1,2})\s*(개월|달|월|주)", lowered)
         if explicit_range or normalized_ctx:
             return [
@@ -3810,7 +3817,9 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
     # 병합 — "A1부터 L1까지 병합해줘" / "A1:L1 병합" / "제목 줄은 A1부터 H1까지
     # 합쳐줘". 규칙이 없어 플래너 의존이었다(2026-08-18 사람 말투 각본 정찰:
     # 7건이 LLM 경로). "합계"의 '합'과 헷갈리지 않게 병합/합쳐/합치기만 받는다.
-    if re.search(r"(병합|합쳐|합치|merge)", lowered) and not re.search(r"(해제|풀어|unmerge|취소)", lowered):
+    # 부정 어휘는 **의도 해석과 같은 목록**(UNMERGE_PATTERN)을 본다. 규칙마다 따로 적었더니
+    # "합쳐진 칸 원래대로 나눠줘"가 정반대인 병합으로 실행됐다(2026-08-27 감사 실측).
+    if re.search(r"(병합|합쳐|합치|merge)", lowered) and not UNMERGE_PATTERN.search(text):
         span = re.search(
             r"\b([A-Za-z]{1,3}\d{1,7})\s*(?:부터|에서|~|-)\s*([A-Za-z]{1,3}\d{1,7})\s*(?:까지)?",
             text,

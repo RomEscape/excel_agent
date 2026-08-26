@@ -154,6 +154,17 @@ _COLORS = COLOR_HEX
 
 _AGG_FUNCS = {"SUM", "AVERAGE", "MAX", "MIN", "COUNT", "COUNTA", "MEDIAN"}
 
+#: **병합 해제**를 뜻하는 말 — 병합 규칙의 부정 가드와 여기가 **같은 목록을 봐야 한다.**
+#: 규칙마다 부정을 따로 적었더니 구멍이 났다: 퀵룰은 `해제|풀어|unmerge|취소`뿐이라
+#: "합쳐진 칸 원래대로 **나눠줘**"가 정반대인 **병합**으로 실행됐다(2026-08-27 감사 실측).
+#: 병합은 왼쪽 위 칸만 남기므로 값이 사라지는 파괴 액션이다.
+UNMERGE_WORDS: tuple[str, ...] = (
+    r"해제", r"풀어", r"풀고", r"풀기", r"풀어줘", r"취소", r"unmerge",
+    r"나눠", r"나누", r"분리", r"해체", r"되돌", r"떼어", r"떼줘", r"원래대로",
+)
+#: 위 목록을 하나의 정규식으로 — 문장에 병합 해제 뜻이 있는가.
+UNMERGE_PATTERN = re.compile("|".join(UNMERGE_WORDS), re.IGNORECASE)
+
 
 async def normalize_intent(
     message: str, digest: dict[str, Any] | None, llm_service: Any
@@ -629,7 +640,7 @@ def intent_to_plan(
                 "reason": "의도 정규화: 셀 병합",
             }]
 
-    elif task == "unmerge" and _worded(r"해제", r"풀", r"취소", r"unmerge"):
+    elif task == "unmerge" and _worded(*UNMERGE_WORDS):
         # 해제는 값을 만들지도 지우지도 않는다 — 범위가 없으면 사용 범위 전체.
         steps = [{
             "action": "excel_live.unmerge_cells",

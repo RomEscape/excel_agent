@@ -6240,3 +6240,56 @@ class TestTitleRowMergeBeatsGenericMerge:
 
     def test_명시_범위는_사람_뜻대로(self, tmp_path):
         assert "H1:M1" in self._plan("H1부터 M1까지 병합해줘", tmp_path, "t2")
+
+
+class TestOppositeAndAdverbHijacks:
+    """규칙이 낱말 하나로 **정반대 동작**을 하거나 시간 부사에 끌려가던 것(2026-08-27 감사).
+
+    ① "합쳐진 칸 원래대로 **나눠줘**" → 병합(merge_cells)이 실행됐다. 부정 가드가
+       `해제|풀어|unmerge|취소`뿐이었다. 병합은 왼쪽 위 칸만 남기는 **파괴 액션**이다.
+       규칙마다 부정을 따로 적어서 난 구멍이라 의도 해석과 **같은 목록**을 보게 했다.
+    ② "**앞으로**는 머리글 굵게 해줘" → 예측(forecast_linear). '앞으로'는 그냥 시간
+       부사인데 규칙이 자기 근거표(_ACTION_EVIDENCE)보다 넓었다.
+    """
+
+    @staticmethod
+    def _action(msg):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+
+        plan = _build_quick_action_plan(msg, "A1:F12")
+        return plan[0]["action"] if plan else None
+
+    def test_병합_해제_문장은_병합하지_않는다(self):
+        for msg in (
+            "합쳐진 칸 원래대로 나눠줘",
+            "병합된 셀 다시 나눠줘",
+            "병합된 셀 분리해줘",
+            "셀 병합 되돌려줘",
+            "병합 해제해줘",
+            "병합 풀어줘",
+        ):
+            assert self._action(msg) != "excel_live.merge_cells", msg
+
+    def test_진짜_병합은_그대로_동작한다(self):
+        for msg in ("A1부터 L1까지 병합해줘", "제목 줄 합쳐줘", "H1:M1 병합"):
+            assert self._action(msg) == "excel_live.merge_cells", msg
+
+    def test_부정_목록이_두_층에서_같다(self):
+        # 규칙마다 따로 적으면 구멍이 다시 생긴다 — 한 목록을 공유하는지 고정한다.
+        from office_claw_sidecar.routers.excel_live import UNMERGE_PATTERN as ROUTER
+        from office_claw_sidecar.services.excel_intent_normalizer import UNMERGE_PATTERN
+
+        assert ROUTER is UNMERGE_PATTERN
+        for word in ("나눠", "분리", "되돌", "해제", "풀어"):
+            assert UNMERGE_PATTERN.search(f"셀 {word}줘"), word
+
+    def test_앞으로는_예측이_아니다(self):
+        assert self._action("앞으로는 머리글 굵게 해줘") != "excel_live.forecast_linear"
+        assert self._action("앞으로 이 표는 매출 순으로 정렬해줘") != "excel_live.forecast_linear"
+
+    def test_진짜_예측은_그대로_동작한다(self):
+        assert self._action("3개월 매출 예측해줘") == "excel_live.forecast_linear"
+
+    def test_차트를_말하면_예측이_물러난다(self):
+        # 차트가 더 좁은 해석이다.
+        assert self._action("정시배송률 추세 라인 그래프로 뽑아줘") != "excel_live.forecast_linear"
