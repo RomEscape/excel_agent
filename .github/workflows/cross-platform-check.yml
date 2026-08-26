@@ -1,0 +1,102 @@
+name: Cross-platform check
+
+# 사이드카는 **Windows(COM)와 macOS(Apple Events) 양쪽에서 Excel을 제어**한다.
+# 그런데 pr-check.yml의 python-check는 ubuntu에서만 돈다 — 즉 두 타깃 OS 중
+# 어느 쪽에서도 검증되지 않는다. 여기서 그 구멍을 메운다.
+#
+# ubuntu를 넣지 않는 이유: 배포 타깃이 아니다(release.yml 매트릭스 참조).
+# 리눅스에서만 깨지는 것은 우리 사용자에게 의미가 없고, pr-check가 이미 본다.
+on:
+  pull_request:
+    # 비싼 잡이라(macOS 러너는 청구 분이 10배) 관련 변경에만 건다.
+    paths:
+      - 'services/sidecar/**'
+      - 'packages/**'
+      - '.github/workflows/cross-platform-check.yml'
+      - '.github/workflows/release.yml'
+  # 릴리스 직전 전체 확인용 — 번들 스모크까지 돌린다.
+  workflow_dispatch:
+    inputs:
+      bundle:
+        description: 'PyInstaller 번들까지 만들어 스모크 실행'
+        type: boolean
+        default: true
+
+concurrency:
+  group: cross-platform-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sidecar:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            label: macOS (Apple Silicon)
+          - os: windows-latest
+            label: Windows x64
+
+    name: 사이드카 — ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Python 3.12 설치
+        run: uv python install 3.12
+
+      # lockfile 고정 — 플랫폼 마커가 실제로 맞는 백엔드를 끌어오는지 여기서 걸린다.
+      # (xlwings가 darwin에서 appscript를, win32에서 pywin32를 가져온다.)
+      - name: 의존성 설치
+        working-directory: services/sidecar
+        run: uv sync --frozen --extra dev
+
+      - name: pytest
+        working-directory: services/sidecar
+        env:
+          # CI에서 실제 OS 키체인을 건드리지 않는다 — pr-check.yml과 같은 처리.
+          PYTHON_KEYRING_BACKEND: keyring.backends.null.Keyring
+        run: uv run pytest -q
+
+      # 소스 레벨 자기진단. xlwings와 그 **플랫폼 백엔드**(macOS appscript /
+      # Windows pythoncom)가 이 OS에서 실제로 import되는지 확인한다.
+      # 의존성 마커가 잘못되면 여기서 처음 드러난다 — 우리 코드는 두 백엔드를
+      # 직접 import하지 않으므로 pytest만으로는 절대 안 걸린다.
+      #
+      # keyring은 실제 백엔드를 봐야 의미가 있으므로 위의 null 백엔드를 걸지 않는다.
+      - name: 기동 스모크 (소스)
+        working-directory: services/sidecar
+        run: uv run python -m office_claw_sidecar --smoke-test
+
+      # ── 아래는 workflow_dispatch에서만 ──────────────────────────────────────
+      #
+      # PyInstaller 번들에서만 깨지는 결함이 따로 있다. 실제로 상대 import 때문에
+      # 번들이 기동조차 못 한 적이 있고(78213c6), `python -m`으로는 재현되지
+      # 않았다. 매 PR에 돌리기엔 비싸서 릴리스 직전 수동 실행으로 둔다 —
+      # release.yml도 같은 스모크를 빌드 게이트로 갖고 있다.
+      - name: PyInstaller 번들
+        if: github.event_name == 'workflow_dispatch' && inputs.bundle
+        working-directory: services/sidecar
+        run: |
+          uv pip install pyinstaller
+          uv run pyinstaller --onefile --name office-claw-sidecar \
+            --hidden-import office_claw_sidecar \
+            --hidden-import uvicorn \
+            --hidden-import fastapi \
+            office_claw_sidecar/__main__.py
+
+      - name: 기동 스모크 (번들, Unix)
+        if: github.event_name == 'workflow_dispatch' && inputs.bundle && runner.os != 'Windows'
+        working-directory: services/sidecar
+        run: ./dist/office-claw-sidecar --smoke-test
+
+      - name: 기동 스모크 (번들, Windows)
+        if: github.event_name == 'workflow_dispatch' && inputs.bundle && runner.os == 'Windows'
+        working-directory: services/sidecar
+        shell: pwsh
+        run: ./dist/office-claw-sidecar.exe --smoke-test

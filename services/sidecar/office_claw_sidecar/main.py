@@ -157,6 +157,71 @@ app.include_router(excel_live.router, prefix="/excel-live", dependencies=[Depend
 app.include_router(relay.router, prefix="/relay", dependencies=[Depends(verify_auth)])
 
 
+def _smoke_test() -> int:
+    """번들 산출물이 이 OS에서 실제로 설 수 있는지 확인한다 (CI 릴리스 게이트).
+
+    왜 필요한가: 사이드카는 PyInstaller로 얼려서 배포하는데, **번들에서만
+    깨지는 결함**이 있다. 실제로 `__main__.py`의 상대 import 때문에 번들이
+    기동조차 못 한 적이 있고(78213c6), 개발 중에는 `python -m`으로 돌아
+    패키지 컨텍스트가 있으므로 재현되지 않았다.
+
+    플랫폼 백엔드도 여기서 걸린다. xlwings는 Windows에서 pywin32(pythoncom·
+    win32com), macOS에서 appscript를 타는데 **둘 다 우리 코드가 직접 import
+    하지 않는다** — PyInstaller의 정적 분석이 놓치면 번들에 안 들어가고,
+    사용자가 엑셀 명령을 내리는 순간에야 드러난다.
+
+    포트는 열지 않는다. CI 러너에서 uvicorn을 띄우면 종료 시점을 잡아야 하고,
+    확인하려는 것은 "구성이 성립하는가"이지 "서빙이 되는가"가 아니다.
+    """
+    import platform
+    import sys
+
+    print(f"[smoke] {platform.system()} {platform.machine()} / Python {sys.version.split()[0]}")
+    print(f"[smoke] frozen={getattr(sys, 'frozen', False)}")
+
+    failures: list[str] = []
+
+    # 1. FastAPI 앱 구성 — 라우터·서비스 import 사슬 전체가 여기서 걸린다.
+    try:
+        print(f"[smoke] app routes: {len(app.routes)}")
+    except Exception as exc:  # pragma: no cover - 번들 전용 경로
+        failures.append(f"app 구성 실패: {exc}")
+
+    # 2. xlwings + 플랫폼 백엔드. Excel이 없어도 import 자체는 성공해야 한다.
+    try:
+        import xlwings  # noqa: F401
+
+        print(f"[smoke] xlwings {getattr(xlwings, '__version__', '?')}")
+    except Exception as exc:  # pragma: no cover - 번들 전용 경로
+        failures.append(f"xlwings import 실패: {exc}")
+
+    backend_name = "appscript" if sys.platform == "darwin" else "pythoncom"
+    try:
+        __import__(backend_name)
+        print(f"[smoke] {backend_name} OK")
+    except Exception as exc:  # pragma: no cover - 번들 전용 경로
+        failures.append(f"{backend_name} import 실패: {exc}")
+
+    # 3. keyring 백엔드 — entry point로 해석되므로 번들에서 잘 빠진다.
+    #    Null/Fail 백엔드로 떨어지면 자격증명이 조용히 평문이 되거나 실패한다.
+    try:
+        import keyring
+
+        kr = type(keyring.get_keyring()).__name__
+        print(f"[smoke] keyring backend: {kr}")
+        if any(bad in kr for bad in ("Null", "Fail")):
+            failures.append(f"keyring 백엔드가 사용 불가: {kr}")
+    except Exception as exc:  # pragma: no cover - 번들 전용 경로
+        failures.append(f"keyring 확인 실패: {exc}")
+
+    if failures:
+        for f in failures:
+            print(f"[smoke] FAIL: {f}")
+        return 1
+    print("[smoke] OK")
+    return 0
+
+
 def main() -> None:
     # Windows 콘솔에서 한글 경로/로그 깨짐 방지
     import os
@@ -176,7 +241,16 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=19532)
     parser.add_argument("--auth-token", type=str, default=None)
     parser.add_argument("--reload", action="store_true", default=False)
+    parser.add_argument(
+        "--smoke-test",
+        action="store_true",
+        default=False,
+        help="번들 산출물 자기진단 — 포트를 열지 않고 구성만 확인하고 종료한다.",
+    )
     args = parser.parse_args()
+
+    if args.smoke_test:
+        raise SystemExit(_smoke_test())
 
     global _auth_token
     _auth_token = args.auth_token

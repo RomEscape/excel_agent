@@ -175,6 +175,32 @@
 >
 > 안드로이드 `INTERNET` 권한은 별개다. 이건 플랫폼이 UID 레벨에서 막으므로 Dart 소켓도 걸린다 — Flutter 템플릿이 `src/debug`·`src/profile`에만 넣어주기 때문에 `src/main`에 직접 선언해야 릴리스 APK가 네트워크를 쓴다. iOS는 실기기에서 LAN 주소로 붙을 때 iOS 14+ 로컬 네트워크 권한 팝업이 뜨므로 `NSLocalNetworkUsageDescription`이 필요하다.
 >
+> **2026-08 크로스플랫폼 노트**: 배포 타깃은 **Apple Silicon macOS + Windows x64** 둘이고, OS 분기는 층마다 주인이 다르다.
+>
+> | 층 | 분기 주인 | 비고 |
+> |---|---|---|
+> | 데이터 경로 | `config.py`의 `get_data_dir()` | AppData / Application Support / `.local/share` |
+> | Excel 테두리 | `services/excel_border.py` | **COM(정수 상수) vs AppleScript(appscript 키워드)** — 유일하게 xlwings가 흡수 못 하는 영역 |
+> | 그 밖의 Excel 조작 | (분기 없음) | xlwings 고수준 API가 흡수한다 |
+> | Ollama·설치 | `src-tauri/src/{installer,ollama,shell}.rs`의 `#[cfg(target_os)]` | brew vs winget, 절대경로 탐지 |
+> | 앱 권한 | `Info.plist`(Apple Events·로컬 네트워크) · `entitlements.plist` | 각 파일 주석에 이유가 있다 |
+>
+> **색은 xlwings 고수준 API로만 넘긴다** — `cell.color = (r, g, b)`. COM 정수(BGR)를 만들어 넘기면 macOS에서 예외 없이 조용히 검게 칠해진다. 그래서 `excel_live_service`에 COM 색 변환 헬퍼를 두지 않는다(예전에 쓰이지 않는 채로 남아 있던 것을 지웠다).
+>
+> **플랫폼 백엔드는 우리 코드가 직접 import하지 않는다.** xlwings가 Windows에서 `pywin32`(pythoncom·win32com)를, macOS에서 `appscript`를 탄다 — 둘 다 `pyproject.toml`이 아니라 **xlwings 자신의 의존성 마커**로 들어온다(우리 쪽 `pywin32` 항목은 버전 하한선 역할). 그래서 **`pytest`로는 백엔드 누락이 절대 안 걸린다.** 그 자리를 `--smoke-test`가 맡는다(`main.py`의 `_smoke_test()`): FastAPI 앱 구성 · xlwings · 플랫폼 백엔드 · keyring 백엔드가 Null/Fail이 아닌지를 확인하고 포트는 열지 않는다.
+>
+> 실측해 둔 것 — PyInstaller는 macOS 빌드에서 `appscript`·`aem`·`xlwings`·`keyring.backends.macOS`를 **정적 분석만으로 전부 담는다**. Windows의 `pythoncom`·`pywintypes`·`win32com`도 PyInstaller 내장 훅이 처리한다. 그러므로 **`--hidden-import`에 플랫폼 백엔드를 적을 필요가 없다.** 반대로 **없는 모듈을 적으면 안 된다** — `ERROR: Hidden import 'x' not found`가 찍혀 진짜 실패를 가린다(제거된 `slack_bolt`·`discord`가 그 상태로 남아 있었다).
+>
+> CI는 두 갈래다. `pr-check.yml`의 `python-check`는 **ubuntu에서만** 도는데 그건 타깃 OS가 아니다 — `cross-platform-check.yml`이 Windows·macOS에서 `pytest` + 소스 스모크를 돌려 그 구멍을 메운다(경로 필터로 사이드카 변경에만 건다. macOS 러너 청구 분이 10배라 무조건 돌리지 않는다). 번들 스모크는 `workflow_dispatch`와 릴리스 빌드가 맡는다.
+>
+> **2026-08 배포 저장소 노트**: 릴리스 산출물은 이 저장소가 아니라 **`sadStoneTurtle/kdr_release`**로 나간다. 그래서 `release.yml`이 두 잡으로 쪼개져 있다 — `build`(매트릭스)는 빌드만 하고 workflow artifact로 올리고, `publish`(단일)가 `gh release create --repo`로 Draft를 만든다. **매트릭스 잡이 각자 릴리스를 만들면 경합이 난다**(릴리스가 둘 생기거나 한쪽이 실패). 단일 잡이라 한쪽 빌드가 깨지면 릴리스 자체가 안 생겨 반쪽 배포도 막힌다.
+>
+> 기본 `GITHUB_TOKEN`은 **다른 저장소에 못 쓴다** — `KDR_RELEASE_TOKEN`(대상 저장소 contents:write PAT)이 필요하고, 없으면 `publish`가 명시적 에러로 죽는다.
+>
+> 자산 이름은 `kimdaeri-<platform>-<arch>[-setup]<ext>`로 **버전을 뺀다**(랜딩 페이지가 `releases/latest/download/<고정이름>`을 영구 URL로 쓴다). 예전에는 `tauri-action`의 `releaseAssetNamePattern`이 했지만 업로드를 직접 하게 되면서 안 먹으므로, `build` 잡의 `자산 이름 정규화` 단계가 확장자 기준으로 붙인다 — **`.sig`를 `.tar.gz`보다 먼저 걸러야 한다.** 순서를 바꾸면 `*.app.tar.gz.sig`가 tar.gz 가지에 먼저 걸려 서명이 본체를 덮어쓴다.
+>
+> **자동 업데이트는 아직 동작하지 않는다.** 엔드포인트만 `kdr_release`로 고쳤을 뿐 `pubkey`가 비어 있고 `latest.json`을 만드는 단계가 없다. 켜려면 키쌍 생성 + `latest.json` 생성·업로드가 함께 필요하다(`docs/build-and-release.md`).
+
 > **2026-08 앱 아이덴티티 노트**: 저장소 곳곳에 `officeclaw`·`office-claw`·`office_claw`가 남아 있는데 **전부 의도적이다. 일괄 치환하면 빌드가 깨진다.** 사용자에게 보이는 이름만 김대리고, 나머지는 내부 식별자라 그대로 둔다.
 >
 > | 층 | 값 | 사용자에게 보이나 | 바꿔도 되나 |

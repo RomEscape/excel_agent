@@ -1,5 +1,5 @@
 """
-Excel Live Service — 실행 중인 Excel(COM) 실시간 제어용 서비스.
+Excel Live Service — 실행 중인 Excel Desktop을 실시간 제어하는 서비스.
 
 MVP Day 1 범위:
   - Excel 연결 가능 여부 확인
@@ -7,16 +7,23 @@ MVP Day 1 범위:
   - 통합문서 선택/조회 상태 관리
   - 기본 범위 읽기(read_range)
 
-주의:
-  - Windows + Excel Desktop 환경을 전제로 한다.
-  - xlwings 의존성은 lazy import로 처리하여 비-Windows 테스트 환경에서도
-    모듈 import 자체는 실패하지 않도록 한다.
+플랫폼:
+  - **Windows(COM)와 macOS(Apple Events) 양쪽을 지원한다.** 두 경로의 차이는
+    xlwings의 고수준 API가 대부분 흡수하므로 이 모듈은 플랫폼을 몰라도 된다.
+    흡수되지 않는 유일한 영역이 테두리 서식이고, 그건 `excel_border`가 전부
+    떠안는다(같은 모듈의 docstring 참조).
+  - 색을 직접 다룰 때는 `cell.color = (r, g, b)`처럼 **xlwings 고수준 API**를
+    쓴다. COM 정수(BGR)를 만들어 넘기면 macOS에서 예외 없이 조용히 검게
+    칠해진다 — 그래서 COM 색 변환 헬퍼를 이 모듈에 두지 않는다.
+  - xlwings 의존성은 lazy import로 처리해 Excel이 없는 CI·테스트 환경에서도
+    모듈 import 자체는 실패하지 않는다.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+import sys
 from typing import Any
 
 from office_claw_sidecar.services import excel_border
@@ -27,7 +34,7 @@ class ExcelLiveError(Exception):
 
 
 class ExcelDependencyError(ExcelLiveError):
-    """xlwings/pywin32 의존성 누락 또는 import 실패."""
+    """xlwings 및 그 플랫폼 백엔드(pywin32 / appscript) 누락 또는 import 실패."""
 
 
 class ExcelConnectionError(ExcelLiveError):
@@ -59,7 +66,7 @@ class WorkbookInfo:
 
 
 class ExcelLiveService:
-    """실행 중인 Excel(COM) 제어 서비스."""
+    """실행 중인 Excel 제어 서비스 (Windows COM / macOS Apple Events)."""
 
     def __init__(self, xw_module: Any | None = None) -> None:
         self._xw = xw_module
@@ -71,8 +78,12 @@ class ExcelLiveService:
         try:
             import xlwings as xw  # type: ignore[import]
         except Exception as exc:  # pragma: no cover - 환경 의존
+            # 백엔드 이름을 플랫폼에 맞게 말한다 — macOS 사용자에게 pywin32를
+            # 설치하라고 하면 해결할 수 없는 지시가 된다.
+            backend = "appscript" if sys.platform == "darwin" else "pywin32"
             raise ExcelDependencyError(
-                "xlwings 모듈을 불러올 수 없습니다. Windows 환경에서 xlwings/pywin32를 설치해 주세요."
+                f"xlwings 모듈을 불러올 수 없습니다. xlwings와 {backend}가 "
+                "설치돼 있는지 확인해 주세요."
             ) from exc
         self._xw = xw
         return xw
@@ -948,12 +959,6 @@ class ExcelLiveService:
         excel_border.apply_outline_if_absent(
             getattr(cell, "api", None), ExcelLiveService._GRIDLINE_RGB
         )
-
-    @staticmethod
-    def _rgb_to_excel_color(rgb: tuple[int, int, int]) -> int:
-        """(R,G,B) 튜플을 Excel COM Color 정수로 변환한다."""
-        r, g, b = rgb
-        return int(r) + (int(g) << 8) + (int(b) << 16)
 
     @classmethod
     def _idx_to_col(cls, idx: int) -> str:

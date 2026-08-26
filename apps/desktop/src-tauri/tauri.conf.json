@@ -57,7 +57,7 @@
     },
     "updater": {
       "endpoints": [
-        "https://github.com/{OWNER}/{REPO}/releases/latest/download/latest.json"
+        "https://github.com/sadStoneTurtle/kdr_release/releases/latest/download/latest.json"
       ],
       "pubkey": "",
       "windows": {
