@@ -3,8 +3,8 @@
  *
  * 진단 → 계획 → 자동 실행 → 검증 단일 모달.
  * 단계:
- *   0. Ollama 설치 (macOS: brew / Windows: winget) — 미설치 시
- *   1. Ollama 데몬 실행 (macOS: brew services / Windows: Ollama 앱 시작) — 미실행 시
+ *   0. Ollama 설치 (공식 배포본 — macOS는 .app, Windows는 winget/설치 프로그램) — 미설치 시
+ *   1. Ollama 데몬 실행 (탐지된 실물 경로로 실행) — 미실행 시
  *   2. Ollama 모델 다운로드 (`ollama pull <model>`) — 미다운로드 시
  *   3. AI 대화 테스트 (`/llm/chat` → Ollama) — 항상
  *

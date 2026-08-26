@@ -99,7 +99,6 @@ function StepLLM({ onNext, onPrev }) {
   const [error, setError] = useState("");
   const [ollamaStatus, setOllamaStatus] = useState("unknown");
   const [ollamaModels, setOllamaModels] = useState([]);
-  const [copied, setCopied] = useState(false);
 
   // 설치된 모델 → 셀렉트 옵션 (추천 모델이 맨 위로 올라온다).
   const modelOptions = React.useMemo(() => buildModelOptions(ollamaModels), [ollamaModels]);
@@ -140,13 +139,6 @@ function StepLLM({ onNext, onPrev }) {
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleCopyBrew = () => {
-    navigator.clipboard.writeText("brew install ollama").then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
   };
 
   const handleOpenOllama = async () => {
@@ -214,27 +206,15 @@ function StepLLM({ onNext, onPrev }) {
               ]}
             />
 
+            {/*
+              예전에는 여기서 `brew install ollama`를 "macOS 권장"으로 먼저
+              안내했다. 그런데 **Homebrew 자체가 따로 설치해야 하는 물건**이라,
+              초기 상태의 Mac에서는 이 안내를 따를 수가 없다(비개발자 사용자에게는
+              특히). 공식 다운로드는 어느 Mac에서나 되므로 그것만 남긴다.
+            */}
             <div className="space-y-2">
               <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
-                방법 1: Homebrew (macOS 권장)
-              </p>
-              <div className="flex items-center gap-2 rounded bg-amber-100 dark:bg-amber-900/40 px-3 py-2">
-                <code className="flex-1 text-xs font-mono">brew install ollama</code>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 px-2 text-xs"
-                  onClick={handleCopyBrew}
-                >
-                  <Copy className="h-3 w-3 mr-1" />
-                  {copied ? "복사됨!" : "복사"}
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
-                방법 2: 공식 사이트에서 다운로드
+                공식 사이트에서 다운로드
               </p>
               <Button
                 size="sm"

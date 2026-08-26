@@ -79,8 +79,8 @@ export const STATUS_MODULES = {
 
     /**
      * Ollama 설치.
-     * - macOS: brew install ollama
-     * - Windows: winget install Ollama.Ollama
+     * - macOS: ollama.com 공식 배포본을 받아 /Applications에 설치 (brew 비의존)
+     * - Windows: winget, 없으면 공식 설치 프로그램 내려받아 무인 설치
      */
     async install() {
       const store = useStatusStore.getState();
@@ -109,7 +109,7 @@ export const STATUS_MODULES = {
 
     /**
      * Ollama 실행.
-     * - macOS: brew services start ollama
+     * - macOS: 탐지된 Ollama.app을 open (brew services 비의존)
      * - Windows: Ollama 앱 프로세스 시작
      */
     async start() {

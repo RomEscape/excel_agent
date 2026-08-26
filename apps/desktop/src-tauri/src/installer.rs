@@ -207,9 +207,30 @@ fn run_shell_streaming(
     })
 }
 
+/// macOS 공식 Ollama 배포본 (Ollama.app) — ollama.com이 브라우저에 주는 것과 같은 파일.
+#[cfg(target_os = "macos")]
+const OLLAMA_MACOS_ZIP: &str = "https://ollama.com/download/Ollama-darwin.zip";
+
+/// Windows 공식 Ollama 설치 프로그램 (Inno Setup 6). winget이 없을 때만 쓴다.
+#[cfg(target_os = "windows")]
+const OLLAMA_WINDOWS_SETUP: &str = "https://ollama.com/download/OllamaSetup.exe";
+
 /// Tauri command: Ollama 설치.
-/// - macOS: `brew install ollama`
-/// - Windows: `winget install -e --id Ollama.Ollama ...`
+///
+/// ## 패키지 매니저를 전제하지 않는다
+///
+/// 예전에는 macOS에서 `brew install ollama`를 돌렸다. 그런데 **Homebrew 자체가
+/// 사용자가 따로 설치해야 하는 물건**이라, 초기 상태의 Mac에서는 `brew: command
+/// not found`로 죽는다. 우리 사용자는 비개발자를 상정하므로 brew가 있을 것이라
+/// 기대할 수 없다. 게다가 brew로 깐 것은 CLI 포뮬러라, 공식 앱(Ollama.app)을
+/// 이미 쓰던 사용자에게는 **두 번째 사본**이 생긴다.
+///
+/// 그래서 macOS는 ollama.com이 브라우저에 주는 것과 **같은 배포본**(약 181MB)을
+/// 직접 받아 `/Applications`에 설치한다. 의존성이 없다.
+///
+/// Windows는 반대로 `winget`이 OS에 기본 탑재라(Win10 1709+·Win11) 전제해도
+/// 안전하고, 1.5GB짜리 설치 프로그램의 다운로드·재시도를 winget이 대신 해준다.
+/// 그래서 winget을 우선 쓰고, 없는 구형 Windows에서만 공식 설치 프로그램을 받는다.
 #[tauri::command]
 pub async fn install_ollama(
     app: AppHandle,
@@ -217,12 +238,54 @@ pub async fn install_ollama(
 ) -> Result<serde_json::Value, String> {
     #[cfg(target_os = "macos")]
     {
+        // `ditto`를 쓰는 이유: macOS 네이티브 아카이버라 코드 서명과 확장 속성을
+        // 보존한다. `unzip`으로 풀면 서명이 깨져 Gatekeeper가 앱을 거부할 수 있다.
+        //
+        // 진행률: curl의 --progress-bar는 캐리지 리턴만 쓰므로 줄 단위로 읽는
+        // 우리 스트리밍 로그에 한 줄도 안 나오다가 끝에 몰려 나온다. 181MB를
+        // 아무 표시 없이 기다리게 두지 않으려고, 받는 동안 파일 크기를 직접 찍는다.
+        let cmd = format!(
+            r#"set -e
+APP_DIR="/Applications"
+if [ ! -w "$APP_DIR" ]; then
+  APP_DIR="$HOME/Applications"
+  echo "/Applications에 쓸 수 없어 $APP_DIR 에 설치합니다."
+fi
+mkdir -p "$APP_DIR"
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+
+echo "Ollama 공식 배포본을 내려받는 중입니다 (약 181MB)..."
+curl -fL -s -o "$TMP/Ollama.zip" "{url}" &
+CURL_PID=$!
+while kill -0 $CURL_PID 2>/dev/null; do
+  sleep 3
+  SZ=$(stat -f%z "$TMP/Ollama.zip" 2>/dev/null || echo 0)
+  echo "내려받는 중... $((SZ / 1048576))MB"
+done
+wait $CURL_PID
+
+echo "압축을 푸는 중입니다..."
+ditto -x -k "$TMP/Ollama.zip" "$TMP/out"
+if [ ! -d "$TMP/out/Ollama.app" ]; then
+  echo "내려받은 파일에서 Ollama.app을 찾지 못했습니다." >&2
+  exit 1
+fi
+
+echo "설치하는 중입니다..."
+rm -rf "$APP_DIR/Ollama.app"
+ditto "$TMP/out/Ollama.app" "$APP_DIR/Ollama.app"
+# curl로 받은 파일에는 보통 quarantine이 붙지 않지만, 붙어 있으면 첫 실행이 막힌다.
+xattr -dr com.apple.quarantine "$APP_DIR/Ollama.app" 2>/dev/null || true
+echo "설치 완료: $APP_DIR/Ollama.app""#,
+            url = OLLAMA_MACOS_ZIP,
+        );
         let result = run_shell_streaming(
             app,
             &state,
             "install-ollama",
-            "brew install ollama",
-            "brew install ollama",
+            &cmd,
+            "https://ollama.com/download 에서 Ollama를 내려받아 설치",
         )?;
         serde_json::to_value(result).map_err(|e| e.to_string())
     }
@@ -231,8 +294,38 @@ pub async fn install_ollama(
     {
         // --silent --disable-interactivity: 설치 UI/프롬프트가 떠서 스트리밍이
         // 멈추는 것을 막는다 (무인 설치 안정성).
-        let cmd = "winget install -e --id Ollama.Ollama --silent --disable-interactivity --accept-package-agreements --accept-source-agreements";
-        let result = run_shell_streaming(app, &state, "install-ollama", cmd, cmd)?;
+        //
+        // winget이 없는 구형 Windows에서는 공식 설치 프로그램을 직접 받는다.
+        // Inno Setup 6이므로 /VERYSILENT /SUPPRESSMSGBOXES /NORESTART가 맞는
+        // 무인 설치 스위치다 (설치 프로그램 실물로 확인).
+        let cmd = format!(
+            concat!(
+                "if (Get-Command winget -ErrorAction SilentlyContinue) {{ ",
+                "  winget install -e --id Ollama.Ollama --silent --disable-interactivity ",
+                "    --accept-package-agreements --accept-source-agreements ",
+                "}} else {{ ",
+                "  Write-Output 'winget이 없어 공식 설치 프로그램을 내려받습니다 (약 1.5GB)...'; ",
+                // Windows PowerShell 5.1의 Invoke-WebRequest는 진행률 막대를 그리느라
+                // 대용량 다운로드가 수십 배 느려진다. 1.5GB에서는 치명적이라 끈다.
+                "  $ProgressPreference = 'SilentlyContinue'; ",
+                "  $tmp = Join-Path $env:TEMP 'OllamaSetup.exe'; ",
+                "  Invoke-WebRequest -Uri '{url}' -OutFile $tmp -UseBasicParsing; ",
+                "  Write-Output ('내려받기 완료: ' + [math]::Round((Get-Item $tmp).Length / 1MB) + 'MB'); ",
+                "  Write-Output '설치하는 중입니다...'; ",
+                "  Start-Process -FilePath $tmp -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait; ",
+                "  Remove-Item $tmp -ErrorAction SilentlyContinue; ",
+                "  Write-Output '설치 완료' ",
+                "}}"
+            ),
+            url = OLLAMA_WINDOWS_SETUP,
+        );
+        let result = run_shell_streaming(
+            app,
+            &state,
+            "install-ollama",
+            &cmd,
+            "winget install -e --id Ollama.Ollama",
+        )?;
         serde_json::to_value(result).map_err(|e| e.to_string())
     }
 
@@ -244,8 +337,18 @@ pub async fn install_ollama(
 }
 
 /// Tauri command: Ollama 데몬 시작.
-/// - macOS: `brew services start ollama`
-/// - Windows: Ollama 앱 프로세스 시작
+///
+/// ## 탐지와 시작의 기준을 맞춘다
+///
+/// 예전 macOS 경로는 `brew services start ollama`였는데, 이건 **brew 포뮬러로
+/// 깐 경우에만** 동작한다. 공식 앱(Ollama.app)으로 설치한 사용자는 탐지는
+/// 성공하고(`/usr/local/bin/ollama` 심볼릭 링크가 PATH에 잡힌다) 시작만
+/// 실패한다 — 그것도 `Error: Formula 'ollama' is not installed.` 라는, 이미
+/// Ollama를 설치한 사용자에게는 뜻이 통하지 않는 메시지로.
+///
+/// 그래서 `macos_ollama_app`/`macos_ollama_exe`가 찾아낸 **실물 경로**로 띄운다.
+/// 앱이 있으면 `open`(메뉴막대 아이콘과 자동 시작까지 딸려 온다), 앱은 없고
+/// 실행 파일만 있으면 `serve`를 직접 띄운다.
 #[tauri::command]
 pub async fn start_ollama(
     app: AppHandle,
@@ -253,13 +356,30 @@ pub async fn start_ollama(
 ) -> Result<serde_json::Value, String> {
     #[cfg(target_os = "macos")]
     {
-        let result = run_shell_streaming(
-            app,
-            &state,
-            "start-ollama",
-            "brew services start ollama",
-            "brew services start ollama",
-        )?;
+        let cmd = match crate::ollama::macos_ollama_app() {
+            Some(app_path) => format!("open -a \"{}\"", app_path.display()),
+            None => match crate::ollama::macos_ollama_exe() {
+                // nohup + & : 이 셸이 끝나도 데몬이 살아남아야 한다.
+                Some(exe) => format!(
+                    "nohup \"{}\" serve >/dev/null 2>&1 & echo 'Ollama 데몬을 시작했습니다.'",
+                    exe.display()
+                ),
+                None => {
+                    return serde_json::to_value(InstallResult {
+                        ok: false,
+                        code: None,
+                        stderr_tail: Vec::new(),
+                        eacces: false,
+                        message:
+                            "이 Mac에서 Ollama를 찾지 못했어요. 먼저 설치 단계를 실행해 주세요."
+                                .to_string(),
+                        manual_command: "open -a Ollama".to_string(),
+                    })
+                    .map_err(|e| e.to_string());
+                }
+            },
+        };
+        let result = run_shell_streaming(app, &state, "start-ollama", &cmd, "open -a Ollama")?;
         serde_json::to_value(result).map_err(|e| e.to_string())
     }
 
@@ -335,7 +455,34 @@ pub async fn pull_ollama_model(
         }
     };
 
-    #[cfg(not(target_os = "windows"))]
+    // macOS도 Windows와 같은 이유로 절대경로를 먼저 쓴다. 공식 앱은 첫 실행 때
+    // 사용자가 승인해야 `/usr/local/bin/ollama` 링크를 만들므로, 승인 전에는
+    // 탐지(앱 번들 확인)는 성공하는데 맨 이름 `ollama`는 PATH에 없어 실패한다.
+    #[cfg(target_os = "macos")]
+    let cmd = match crate::ollama::macos_ollama_exe() {
+        Some(exe) => format!("\"{}\" pull {}", exe.display(), model),
+        None => {
+            if crate::ollama::is_ollama_running().await {
+                return serde_json::to_value(InstallResult {
+                    ok: false,
+                    code: None,
+                    stderr_tail: Vec::new(),
+                    eacces: false,
+                    message: format!(
+                        "Ollama 데몬은 응답하지만 이 Mac에서 ollama 실행 파일을 찾지 못했어요. \
+                         다른 기기의 데몬을 쓰고 있을 수 있습니다 — 그 환경에서 \
+                         `ollama pull {}`을 직접 실행해 주세요.",
+                        model
+                    ),
+                    manual_command: manual.clone(),
+                })
+                .map_err(|e| e.to_string());
+            }
+            manual.clone()
+        }
+    };
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     let cmd = manual.clone();
 
     let result = run_shell_streaming(app, &state, "pull-model", &cmd, &manual)?;

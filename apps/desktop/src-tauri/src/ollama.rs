@@ -63,7 +63,75 @@ pub async fn is_ollama_installed() -> serde_json::Value {
         }
     }
 
+    // macOS GUI 앱도 PATH가 빈약하다. 공식 Ollama.app은 첫 실행 때 사용자가
+    // 승인해야 `/usr/local/bin/ollama` 심볼릭 링크를 만들므로, 승인 전에는
+    // PATH·로그인 셸 어느 쪽으로도 안 잡힌다 — 그런데 앱은 분명히 설치돼 있다.
+    // 표준 위치를 직접 확인해 "설치돼 있는데 미설치로 보이는" 상태를 막는다.
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(exe) = macos_ollama_exe() {
+            if let Ok(output) = Command::new(&exe).arg("--version").output() {
+                if output.status.success() {
+                    let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    return serde_json::json!({
+                        "installed": true,
+                        "version": version,
+                        "source": "applications"
+                    });
+                }
+            }
+            return serde_json::json!({
+                "installed": true,
+                "version": null,
+                "source": "applications"
+            });
+        }
+    }
+
     serde_json::json!({ "installed": false, "version": null, "source": null })
+}
+
+/// macOS에서 Ollama 실행 파일(CLI)의 표준 위치를 찾는다.
+///
+/// 탐지·데몬 시작·모델 pull이 **같은 경로**를 바라보게 하는 단일 소스다.
+/// Windows의 `windows_ollama_exe`와 같은 역할 — 한쪽만 PATH에 의존하면
+/// "설치됨으로 보이는데 실행은 실패"하는 불일치가 생긴다.
+///
+/// 순서에 의미가 있다: 앱 번들 안의 실물을 **먼저** 본다. `/usr/local/bin/ollama`는
+/// 앱이 만드는 심볼릭 링크라 앱을 지우면 끊어진 링크로 남을 수 있는데,
+/// `Path::exists()`는 링크를 따라가므로 끊어진 링크는 자동으로 걸러진다.
+#[cfg(target_os = "macos")]
+pub fn macos_ollama_exe() -> Option<std::path::PathBuf> {
+    use std::path::PathBuf;
+    [
+        Some(PathBuf::from(
+            "/Applications/Ollama.app/Contents/Resources/ollama",
+        )),
+        std::env::var("HOME")
+            .ok()
+            .map(|h| PathBuf::from(h).join("Applications/Ollama.app/Contents/Resources/ollama")),
+        // Homebrew로 깔았을 수도 있다 — 우리가 권하는 경로는 아니지만 존중한다.
+        Some(PathBuf::from("/opt/homebrew/bin/ollama")),
+        Some(PathBuf::from("/usr/local/bin/ollama")),
+    ]
+    .into_iter()
+    .flatten()
+    .find(|p| p.exists())
+}
+
+/// macOS에서 Ollama.app 번들 경로를 찾는다 (데몬 시작용).
+#[cfg(target_os = "macos")]
+pub fn macos_ollama_app() -> Option<std::path::PathBuf> {
+    use std::path::PathBuf;
+    [
+        Some(PathBuf::from("/Applications/Ollama.app")),
+        std::env::var("HOME")
+            .ok()
+            .map(|h| PathBuf::from(h).join("Applications/Ollama.app")),
+    ]
+    .into_iter()
+    .flatten()
+    .find(|p| p.exists())
 }
 
 /// Windows에서 Ollama 실행 파일(CLI)의 표준 설치 경로를 찾는다.

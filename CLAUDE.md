@@ -193,6 +193,30 @@
 >
 > CI는 두 갈래다. `pr-check.yml`의 `python-check`는 **ubuntu에서만** 도는데 그건 타깃 OS가 아니다 — `cross-platform-check.yml`이 Windows·macOS에서 `pytest` + 소스 스모크를 돌려 그 구멍을 메운다(경로 필터로 사이드카 변경에만 건다. macOS 러너 청구 분이 10배라 무조건 돌리지 않는다). 번들 스모크는 `workflow_dispatch`와 릴리스 빌드가 맡는다.
 >
+> **2026-08 Ollama 설치 경로 노트**: 설치 마법사는 **패키지 매니저를 전제하지 않는다.**
+>
+> 예전 macOS 경로는 `brew install ollama` / `brew services start ollama`였는데 둘 다 무너진다. (1) **Homebrew 자체가 따로 설치해야 하는 물건**이라 초기 상태의 Mac에서는 `brew: command not found`로 죽는다 — 우리 사용자는 비개발자를 상정한다. (2) 공식 앱(`Ollama.app`)으로 이미 설치한 사용자는 **탐지는 성공하고 시작만 실패**했다. `/usr/local/bin/ollama`(앱이 만드는 심볼릭 링크)가 PATH에 잡혀 "설치됨"으로 판정되는데, `brew services start ollama`는 `Error: Formula 'ollama' is not installed.`를 뱉는다 — 이미 Ollama를 설치한 사람에게는 뜻이 통하지 않는 메시지다. 실기기에서 재현·수정 후 재검증했다.
+>
+> 지금은 이렇게 간다.
+>
+> | 단계 | macOS | Windows |
+> |---|---|---|
+> | 설치 | `ollama.com/download/Ollama-darwin.zip`(181MB)을 받아 `ditto`로 `/Applications`에 설치 | `winget` 우선, 없으면 `OllamaSetup.exe`(1.5GB) 받아 무인 설치 |
+> | 시작 | 탐지된 `Ollama.app`을 `open -a` | 표준 경로의 `Ollama.exe` 실행 |
+> | pull | 탐지된 실행 파일의 **절대경로** | 동일 |
+>
+> **`unzip`이 아니라 `ditto`를 쓴다** — macOS 네이티브라 코드 서명과 확장 속성을 보존한다. `unzip`으로 풀면 서명이 깨져 Gatekeeper가 앱을 거부할 수 있다. 실측으로 확인했다: `ditto` 설치 후 `spctl -a -vv`가 `accepted / Notarized Developer ID`를 준다.
+>
+> **탐지·시작·pull이 같은 경로 목록을 본다** — `ollama.rs`의 `macos_ollama_exe`/`macos_ollama_app`(Windows는 `windows_ollama_exe`)이 단일 소스다. **한 곳이라도 맨 이름 `ollama`에 의존하면 "설치됨으로 보이는데 실행은 실패"가 재현된다.** 공식 앱은 첫 실행 때 사용자가 승인해야 CLI 심볼릭 링크를 만들기 때문에, 승인 전에는 앱이 있어도 PATH에 없다. 경로 목록에서 **앱 번들 안의 실물을 먼저** 보는 이유는 `/usr/local/bin/ollama`가 끊어진 링크로 남을 수 있어서다(`Path::exists()`가 링크를 따라가므로 끊어진 링크는 자동으로 걸러진다).
+>
+> Windows에서 `winget`을 남긴 이유는 brew와 사정이 달라서다 — **OS 기본 탑재**(Win10 1709+·Win11)라 전제해도 안전하고, 1.5GB 다운로드의 재시도·검증을 대신해 준다. 폴백의 `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`는 설치 프로그램 실물에서 **Inno Setup 6.7.0**임을 확인하고 고른 스위치다. 그 경로에서 `$ProgressPreference = 'SilentlyContinue'`를 반드시 켠다 — PowerShell 5.1의 `Invoke-WebRequest`는 진행률 막대 때문에 대용량 다운로드가 수십 배 느려진다.
+>
+> 진행률은 **줄 단위로** 찍어야 한다. `run_shell_streaming`이 `lines()`로 읽으므로 `curl --progress-bar`처럼 캐리지 리턴만 쓰는 출력은 화면에 한 줄도 안 나오다가 끝에 몰려 나온다. 그래서 macOS는 curl을 백그라운드로 돌리고 파일 크기를 3초마다 직접 찍는다.
+>
+> `capabilities/default.json`의 `shell:allow-spawn`에서 **`brew`·`ollama` 항목을 회수했다.** 설치·시작·pull은 전부 Rust(`installer.rs`)가 `std::process::Command`로 돌리고, 프론트는 `plugin-shell`의 `open`(URL 열기)만 쓴다 — 웹뷰에 임의 spawn 권한을 남겨둘 이유가 없다. 사이드카 항목은 남는다.
+>
+> 온보딩의 "방법 1: Homebrew (macOS 권장)" 안내도 지웠다. **따를 수 없는 조언**이었다 — brew가 없는 Mac에서 brew로 설치하라는 안내다.
+
 > **2026-08 배포 저장소 노트**: 릴리스 산출물은 이 저장소가 아니라 **`sadStoneTurtle/kdr_release`**로 나간다. 그래서 `release.yml`이 두 잡으로 쪼개져 있다 — `build`(매트릭스)는 빌드만 하고 workflow artifact로 올리고, `publish`(단일)가 `gh release create --repo`로 Draft를 만든다. **매트릭스 잡이 각자 릴리스를 만들면 경합이 난다**(릴리스가 둘 생기거나 한쪽이 실패). 단일 잡이라 한쪽 빌드가 깨지면 릴리스 자체가 안 생겨 반쪽 배포도 막힌다.
 >
 > 기본 `GITHUB_TOKEN`은 **다른 저장소에 못 쓴다** — `KDR_RELEASE_TOKEN`(대상 저장소 contents:write PAT)이 필요하고, 없으면 `publish`가 명시적 에러로 죽는다.

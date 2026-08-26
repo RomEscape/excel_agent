@@ -1,7 +1,9 @@
 {
   "identifier": "default",
   "description": "Default capabilities for kimdaeri",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "shell:default",
@@ -16,38 +18,6 @@
           "name": "office-claw-sidecar",
           "sidecar": true,
           "args": true
-        },
-        {
-          "name": "brew-install-ollama",
-          "cmd": "brew",
-          "args": [
-            "install",
-            "ollama"
-          ]
-        },
-        {
-          "name": "brew-services-start-ollama",
-          "cmd": "brew",
-          "args": [
-            "services",
-            "start",
-            "ollama"
-          ]
-        },
-        {
-          "name": "ollama-pull",
-          "cmd": "ollama",
-          "args": [
-            "pull",
-            { "validator": "^[A-Za-z0-9._:/\\-]+$" }
-          ]
-        },
-        {
-          "name": "ollama-serve",
-          "cmd": "ollama",
-          "args": [
-            "serve"
-          ]
         }
       ]
     },
