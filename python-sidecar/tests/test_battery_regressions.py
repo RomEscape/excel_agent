@@ -5469,3 +5469,78 @@ class TestHeaderNavyOracleAsksOnlyWhatSentenceAsks:
     def test_문장인지_오라클이_실제로_쓰인다(self):
         m = self._mod()
         assert "oracle_text" in m.TASKS["header_navy"]
+
+
+class TestApprovalCardShowsKeyColumn:
+    """승인 카드가 '무엇을 기준으로' 하는지 감추던 것(2026-08-26 감사 P0).
+
+    머리글에 없는 이름은 실행기에서 1번 열로 강등되는데(excel_live_service.py:3144),
+    카드는 "⚠ 중복 제거 — A1:F9"만 보여 줘 사용자가 잡을 기회가 없었다. 사후조건도
+    removed_rows>=0이라 성공으로 보고된다 — 미검출 오실행의 마지막 고리였다.
+    표시 한 줄로 조용한 오실행을 보이는 오실행으로 바꾼다(실행 경로 무변).
+    """
+
+    def test_중복제거_카드에_기준_열이_찍힌다(self):
+        from office_claw_sidecar.routers.excel_live import _step_preview_line
+
+        line = _step_preview_line(1, "excel_live.dedupe_rows", {"target_range": "A1:F9", "key_columns": ["이름"]})
+        assert "기준: 이름" in line
+        assert "A1:F9" in line
+
+    def test_정렬_카드에도_기준_열(self):
+        from office_claw_sidecar.routers.excel_live import _step_preview_line
+
+        line = _step_preview_line(1, "excel_live.sort_range", {"target_range": "A1:F7", "key_column": "클레임"})
+        assert "기준: 클레임" in line
+
+    def test_기준_열이_없는_액션은_무변(self):
+        from office_claw_sidecar.routers.excel_live import _step_preview_line
+
+        line = _step_preview_line(1, "excel_live.clear_range", {"target_range": "A2:A6"})
+        assert "기준" not in line
+
+    def test_기준_열_여러개면_모두_찍는다(self):
+        from office_claw_sidecar.routers.excel_live import _step_preview_line
+
+        line = _step_preview_line(1, "excel_live.dedupe_rows", {"target_range": "A1:F9", "key_columns": ["이름", "전화번호"]})
+        assert "기준: 이름, 전화번호" in line
+
+
+class TestConditionalGuardCoversFormula:
+    """조건어 가드가 formula를 빼놓았던 잠복 결함(2026-08-26 감사 P0).
+
+    지금은 모델이 한국어 option('합계')을 내 영어 전용 검사에서 죽지만, 그 검사에
+    한국어 집계어를 받아들이는 순간 "금액이 100 넘는 것만 합해서"가 조건이 사라진
+    전체 집계로 매핑된다 — 개선이 사고가 되지 않게 가드를 먼저 넓혔다.
+    """
+
+    DIGEST = {
+        "active_sheet": "매출",
+        "sheets": [{"name": "매출", "used_range": "A1:F9", "columns": [{"header": "금액", "letter": "D"}]}],
+    }
+
+    def _plan(self, message, drops=None):
+        from office_claw_sidecar.services.excel_intent_normalizer import intent_to_plan
+
+        return intent_to_plan(
+            {"task": "formula", "range": "G1", "column": "금액", "option": "SUM"},
+            digest=self.DIGEST,
+            message=message,
+            drop_log=drops,
+        )
+
+    def test_조건부_집계는_물러난다(self):
+        drops: list[str] = []
+        assert self._plan("금액이 100 넘는 것만 합해서 G1에 넣어줘", drops) is None
+        assert drops == ["conditional:formula"]
+
+    def test_평범한_집계는_그대로_매핑(self):
+        plan = self._plan("금액 합계를 G1에 넣어줘")
+        assert plan is not None
+        assert plan["action"] == "excel_live.set_formula"
+
+    def test_조건어_물러남이_관측에_남는다(self):
+        # 이 물러남만 drop_log에 안 잡혀 63/58/37 자체가 과소 보고였다.
+        drops: list[str] = []
+        self._plan("금액이 100 이상인 것만 더해서 G1에", drops)
+        assert any(d.startswith("conditional:") for d in drops)

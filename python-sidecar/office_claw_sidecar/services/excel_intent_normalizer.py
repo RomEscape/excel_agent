@@ -335,11 +335,18 @@ def intent_to_plan(
         """
         return any(__import__("re").search(pat, plain_message, __import__("re").IGNORECASE) for pat in patterns)
 
-    # 분류가 fill/font/write로 나왔어도 문장에 조건어가 있으면 조건이 매핑에서
+    # 분류가 fill/font/write/formula로 나왔어도 문장에 조건어가 있으면 조건이 매핑에서
     # 사라진다 — 그 문장은 플래너·규칙 몫이다.
-    if task in {"fill_color", "font", "write_value"} and _CONDITIONAL_MENTION.search(
+    # formula가 빠져 있던 것은 **잠복 결함**이었다(2026-08-26 감사): 지금은 모델이
+    # 한국어 option('합계')을 내 아래 영어 전용 검사에서 죽지만, 그 검사에 한국어
+    # 집계어를 받아들이는 순간 "금액이 100 넘는 것만 합해서 G1에"가 조건이 사라진
+    # =SUM(전체)로 매핑된다. 개선이 사고가 되지 않게 가드를 **먼저** 넓힌다.
+    if task in {"fill_color", "font", "write_value", "formula"} and _CONDITIONAL_MENTION.search(
         str(message or "")
     ):
+        # 이 물러남만 관측에서 빠져 있었다 — 63/58/37 자체가 과소 보고였다.
+        if drop_log is not None:
+            drop_log.append(f"conditional:{task}")
         return None
 
     steps: list[dict[str, Any]] | None = None

@@ -8056,10 +8056,41 @@ def _step_target(params: dict[str, Any] | None) -> str:
     return f"{sheet} 시트 {label}" if sheet else label
 
 
+#: 이 액션들은 **어느 열을 기준으로 삼는지**가 결과를 통째로 바꾼다 — 카드에 찍어야 한다.
+#: 2026-08-26 감사: 머리글에 없는 이름('이름')이 실행기에서 1번 열로 강등돼 엉뚱한 열
+#: 기준으로 행이 지워지는데, 카드는 "⚠ 중복 제거 — A1:F9"만 보여 줘 사용자가 잡을
+#: 기회가 없었다(사후조건도 removed_rows>=0이라 성공으로 보고된다). 표시 한 줄이
+#: **조용한 오실행을 보이는 오실행으로** 바꾼다 — 실행 경로는 건드리지 않는다.
+_KEY_COLUMN_PARAM_KEYS = ("key_columns", "key_column", "column", "columns")
+
+
+def _step_key_columns(action: str, params: dict[str, Any] | None) -> str:
+    if action not in {
+        "excel_live.dedupe_rows",
+        "excel_live.sort_rows",
+        "excel_live.sort_range",
+        "excel_live.filter_rows",
+    }:
+        return ""
+    p = params or {}
+    for key in _KEY_COLUMN_PARAM_KEYS:
+        raw = p.get(key)
+        if isinstance(raw, (list, tuple)):
+            names = [str(v).strip() for v in raw if str(v).strip()]
+            if names:
+                return ", ".join(names)
+        elif str(raw or "").strip():
+            return str(raw).strip()
+    return ""
+
+
 def _step_preview_line(index: int, action: str, params: dict[str, Any] | None) -> str:
     mark = "⚠ " if action in _DESTRUCTIVE_ACTIONS else ""
     target = _step_target(params)
     tail = f" — {target}" if target else ""
+    keys = _step_key_columns(action, params)
+    if keys:
+        tail += f" (기준: {keys})"
     return f"{index}. {mark}{_action_summary(action)}{tail}"
 
 
