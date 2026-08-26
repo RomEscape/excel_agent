@@ -2570,6 +2570,13 @@ def _extract_axis_table_size(text: str) -> tuple[int | None, int | None]:
     return rows, cols
 
 
+#: "한 칸으로 만들어" = 병합. "하나 만들어" = 생성. 조사 '로'가 가른다.
+_MERGE_NOT_TABLE = re.compile(
+    r"(한\s*칸|한\s*셀|하나)\s*(?:로|으로)\s*(?:만들|합치|합쳐|묶|붙|이어)",
+    re.IGNORECASE,
+)
+
+
 def extract_create_table_slot_hints(message: str) -> dict[str, Any]:
     """
     create_table 멀티턴 슬롯필링용 힌트를 자연어에서 추출한다.
@@ -2596,6 +2603,11 @@ def extract_create_table_slot_hints(message: str) -> dict[str, Any]:
     table_intent = (
         any(token in table_scan for token in ["표", "테이블", "table"])
         and any(token in table_scan for token in ["만들", "생성", "create", "작성"])
+        # "표 위 제목 **한 칸으로 만들어**줘"는 병합이지 표 생성이 아니다. '표'+'만들'만
+        # 보면 표 인터뷰가 가로채 "표 크기와 헤더를 알려주세요"를 되묻는다
+        # (2026-08-27 파괴 게이트 실측 merge_keeps_values). '하나 만들어'(생성)와
+        # '하나**로** 만들어'(병합)를 조사로 가른다.
+        and not _MERGE_NOT_TABLE.search(table_scan)
     )
     if preset is not None:
         table_intent = True

@@ -6143,3 +6143,53 @@ class TestGateOraclesRejectNoOp:
             if err == "":
                 blind.append(name)
         assert blind == [], f"무동작이 통과하는 과제: {blind}"
+
+
+class TestMergeWordingIsNotTableCreation:
+    """"표 위 제목 **한 칸으로 만들어**줘"가 표 생성 인터뷰에 가로채였다(2026-08-27).
+
+    `table_intent`가 '표'+'만들'만 보기 때문이다. "하나 만들어"(생성)와
+    "하나**로** 만들어"(병합)를 조사로 가른다. 어제 집계 훅 가로채기와 같은 부류 —
+    규칙이 문장의 일부만 보고 다른 작업으로 끌고 간다.
+    """
+
+    @staticmethod
+    def _fires(text):
+        from office_claw_sidecar.services.excel_live_agent import _MERGE_NOT_TABLE
+
+        return bool(_MERGE_NOT_TABLE.search(text))
+
+    def test_병합_문형은_표_생성이_아니다(self):
+        for msg in (
+            "표 위 제목 한 칸으로 만들어줘",
+            "맨 위 제목 칸 하나로 합쳐줘",
+            "H1~M1 칸들 다 이어서 한 칸으로 만들어줘",
+            "위쪽 제목 줄 쭉 이어서 하나로 만들어줘",
+        ):
+            assert self._fires(msg), msg
+
+    def test_진짜_표_생성은_건드리지_않는다(self):
+        for msg in (
+            "표 하나 만들어줘",
+            "5*5 표 만들어줘",
+            "A1:D6에 카테고리, 매출액 헤더로 표 만들어",
+            "요약 시트에 표 하나 작성해줘",
+            "표 밑에다가 열마다 다 더한 값 한 줄로 붙여줘",  # 집계 줄 요청 — 병합 아님
+        ):
+            assert not self._fires(msg), msg
+
+    def test_게이트_코퍼스_전수_경계(self):
+        # 발동은 병합 과제에서만. 다른 과제로 새면 표 생성이 막힌다.
+        import json
+        from pathlib import Path
+
+        base = Path(__file__).resolve().parents[2] / "datasets" / "eval"
+        rows = []
+        for name in ("blind_paraphrases_v1.jsonl", "guard_cases_v1.jsonl"):
+            rows += [
+                json.loads(x)
+                for x in (base / name).read_text(encoding="utf-8").splitlines()
+                if x.strip()
+            ]
+        stray = [r["text"] for r in rows if self._fires(r["text"]) and r["task"] not in {"merge_title", "merge_keeps_values"}]
+        assert stray == [], stray
