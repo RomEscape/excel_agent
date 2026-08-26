@@ -6293,3 +6293,28 @@ class TestOppositeAndAdverbHijacks:
     def test_차트를_말하면_예측이_물러난다(self):
         # 차트가 더 좁은 해석이다.
         assert self._action("정시배송률 추세 라인 그래프로 뽑아줘") != "excel_live.forecast_linear"
+
+    def test_부정_과제는_무동작이면_통과해야_한다(self):
+        # 이 핀이 없어서 사고가 났다(2026-08-27): 다른 과제의 씨앗을 고치자
+        # negation_save 오라클의 하드코딩(F6==0)만 뒤처져 **24문장이 통째로**
+        # "미검출 오실행"으로 집계됐다. 제품은 멀쩡했는데 측정이 만들어 낸 수치다.
+        # 부정 과제는 아무것도 안 하는 것이 정답이므로 갓 만든 씨앗에서 통과해야 한다.
+        import sys
+        from pathlib import Path
+
+        from openpyxl import Workbook
+
+        p = str(Path(__file__).resolve().parents[1] / "scripts")
+        if p not in sys.path:
+            sys.path.insert(0, p)
+        import run_blind_paraphrase_gate as m
+
+        broken = []
+        for name, task in m.TASKS.items():
+            if not task.get("negative"):
+                continue
+            wb = Workbook()
+            task["seed"](wb)
+            if task["oracle"](wb) != "":
+                broken.append((name, task["oracle"](wb)))
+        assert broken == [], f"부정 과제인데 무동작이 실패한다: {broken}"

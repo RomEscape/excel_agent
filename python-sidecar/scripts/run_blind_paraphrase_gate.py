@@ -453,7 +453,11 @@ TASKS: dict[str, dict] = {
     "negation_save": {
         "desc": "'저장하지 마' 같은 부정문 — 아무것도 실행되면 안 된다(표는 그대로).",
         "canonical": "아직 저장하지 마", "ctx": None, "seed": _seed_default, "negative": True,
-        "oracle": lambda wb: "" if _sheet(wb)["A1"].value == "지역" and _sheet(wb)["F6"].value == 0 else "표가 바뀜"},
+        # 씨앗 값을 **하드코딩하지 않는다**. 예전엔 `F6 == 0`이었는데, 다른 과제의
+        # 맹점을 고치려고 SEED의 클레임 값을 바꾸자 이 오라클만 뒤처져 24문장이 통째로
+        # "표가 바뀜"이 됐다 — 제품은 멀쩡한데 **측정이 24건의 미검출 오실행을 만들어
+        # 냈다**(2026-08-27). 씨앗에서 파생시키면 같이 움직인다.
+        "oracle": lambda wb: _seed_intact(wb) and "표가 바뀜"},
 }
 
 
