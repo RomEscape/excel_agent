@@ -5946,6 +5946,16 @@ def _merge_operation_slots(
     slot.intent = intent
     slot.workbook_id = req.workbook_id or slot.workbook_id
     slot.sheet_name = req.sheet_name or slot.sheet_name
+    # 되묻기 판정이 "기준 열이 **실재하는가**"를 보려면 머리글이 필요하다. 슬롯에 실어
+    # 두면 `_operation_follow_up(slot)`의 시그니처를 안 바꿔도 된다(호출부 4곳 무변).
+    _slot_entry = sheet_entry(digest or {}, slot.sheet_name) if digest else None
+    _slot_headers = (
+        [str(c.get("header") or "").strip() for c in (_slot_entry.get("columns") or [])]
+        if _slot_entry
+        else []
+    )
+    if _slot_headers:
+        slot.params["_sheet_headers"] = [h for h in _slot_headers if h]
     slot.params.update(hints.get("params", {}))
     if slot.intent == "formula":
         slot.params.update(_extract_formula_params_freeform(req.message))
@@ -6015,12 +6025,39 @@ def _operation_follow_up(slot: PendingExcelOperationSlots) -> str:
             return "어떤 열을 기준으로 필터할까요? 예: 상태 열"
         if slot.params.get("value") is None:
             return "필터 값이 필요합니다. 예: 완료만 / 60점 미만"
-    if intent == "dedupe" and not slot.params.get("key_columns"):
-        # "중복된 행 지워줘"는 행 전체가 같은 걸 지우라는 말이다. 실행기는 키 없이
-        # 부르면 이미 전체 열 기준으로 돈다 — 여기서 기준 열을 물으면 과잉 질문이다
-        # (2026-08-17 배터리 실측). 특정 열 중복("전화번호 중복")일 때만 묻는다.
-        if not re.search(r"중복(된|되는)?\s*(행|줄|row)", str(slot.params.get("raw_message") or ""), re.IGNORECASE):
-            return "중복 기준 열을 알려주세요. 예: 전화번호 기준"
+    if intent == "dedupe":
+        _keys = slot.params.get("key_columns") or []
+        if not _keys:
+            # "중복된 행 지워줘"는 행 전체가 같은 걸 지우라는 말이다. 실행기는 키 없이
+            # 부르면 이미 전체 열 기준으로 돈다 — 여기서 기준 열을 물으면 과잉 질문이다
+            # (2026-08-17 배터리 실측). 특정 열 중복("전화번호 중복")일 때만 묻는다.
+            if not re.search(
+                r"중복(된|되는)?\s*(행|줄|row)",
+                str(slot.params.get("raw_message") or ""),
+                re.IGNORECASE,
+            ):
+                return "중복 기준 열을 알려주세요. 예: 전화번호 기준"
+        else:
+            # 키가 **있기만 하면** 안 묻던 것이 조용한 오실행의 첫 고리였다 — 시트에 없는
+            # 이름이 실행기에서 1번 열로 강등돼 엉뚱한 열 기준으로 행이 지워졌다
+            # (2026-08-26). 실행기 차단이 그걸 막아 주지만 사용자에게는 오류로 보인다.
+            # 여기서 실재를 확인해 **되묻기**로 승격한다(오류보다 되묻기가 낫다).
+            # 개념어 경유(매출→Sales)는 반드시 살린다 — 안 그러면 정상 지시가 뒤집힌다.
+            _headers = [str(h).strip() for h in (slot.params.get("_sheet_headers") or []) if str(h).strip()]
+            if _headers:
+                _missing = [
+                    str(k)
+                    for k in _keys
+                    if str(k).strip()
+                    and not str(k).strip().isdigit()
+                    and not re.fullmatch(r"[A-Za-z]{1,3}", str(k).strip())
+                    and resolve_header(str(k).strip(), _headers) is None
+                ]
+                if _missing:
+                    return (
+                        f"'{', '.join(_missing)}' 열을 찾지 못했습니다. "
+                        f"어느 열 기준으로 중복을 볼까요? 이 시트의 열: {', '.join(_headers[:8])}"
+                    )
     if intent == "pivot":
         if not slot.params.get("row_field"):
             return "피벗의 행 기준이 필요합니다. 예: 월"
@@ -10769,6 +10806,58 @@ async def _run_command(
     )
 
 
+#: 기준 열이 시트에 없으면 결과가 통째로 달라지는 액션 — 파라미터 이름까지 짝지어 둔다.
+_KEY_COLUMN_GUARDED: dict[str, tuple[str, ...]] = {
+    "excel_live.dedupe_rows": ("key_columns",),
+    "excel_live.filter_rows": ("column",),
+}
+
+
+def _key_column_problem(
+    workbook_id: str | None, sheet_name: str | None, plan: list[PlanStep]
+) -> str:
+    """계획이 지목한 기준 열이 시트에 없으면 되묻을 문장을. 없으면 "".
+
+    개념어 경유(매출→Sales)·열 문자(B)·숫자 색인은 그대로 통과시킨다 — 막으면
+    정상 지시가 뒤집힌다.
+    """
+    guarded = [s for s in plan if s.action in _KEY_COLUMN_GUARDED]
+    if not guarded:
+        return ""
+    try:
+        service = get_excel_live_service()
+        resolved_wb = _resolve_workbook_id(service, workbook_id)
+        resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
+        # 머리글 한 줄만 읽는다 — 표 전체를 읽으면 큰 시트에서 비싸다.
+        used = str(service.get_used_range_ref(resolved_wb, resolved_sheet) or "").upper()
+        m = re.fullmatch(r"([A-Z]{1,3})(\d+):([A-Z]{1,3})(\d+)", used)
+        head_ref = f"{m.group(1)}{m.group(2)}:{m.group(3)}{m.group(2)}" if m else used
+        rows = (service.read_range(resolved_wb, resolved_sheet, head_ref) or {}).get("values") or []
+        headers = [str(h or "").strip() for h in (rows[0] if rows else []) if str(h or "").strip()]
+    except Exception:
+        return ""  # 시트를 못 읽으면 판단하지 않는다 — 실행기 차단이 남아 있다.
+    if not headers:
+        return ""
+    for step in guarded:
+        for key in _KEY_COLUMN_GUARDED[step.action]:
+            raw = (step.params or {}).get(key)
+            names = raw if isinstance(raw, (list, tuple)) else ([raw] if raw else [])
+            missing = [
+                str(n).strip()
+                for n in names
+                if str(n or "").strip()
+                and not str(n).strip().isdigit()
+                and not re.fullmatch(r"[A-Za-z]{1,3}", str(n).strip())
+                and resolve_header(str(n).strip(), headers) is None
+            ]
+            if missing:
+                return (
+                    f"'{', '.join(missing)}' 열을 찾지 못했습니다. 어느 열 기준으로 "
+                    f"할까요? 이 시트의 열: {', '.join(headers[:8])}"
+                )
+    return ""
+
+
 def _plan_approval_gate(
     ctx: PlanExecution, plan: list[PlanStep], *, unseen_plan: bool = False
 ) -> ExcelLiveActionResponse | None:
@@ -10952,6 +11041,13 @@ def _plan_approval_gate(
             message="" if plan_sheet else guard_message,
         )
     )
+    # 시트 지목과 같은 잣대를 **기준 열**에도 댄다. 플래너가 시트에 없는 열을
+    # key_columns/column에 실어 보내면 실행기가 지우기 직전에 막지만(2026-08-26),
+    # 사용자에게는 오류로 보인다 — 여기서 되묻기로 올린다(오류보다 되묻기가 낫다).
+    if not target_problem:
+        key_problem = _key_column_problem(req.workbook_id, plan_sheet or req.sheet_name, plan)
+        if key_problem:
+            target_problem = key_problem
     if target_problem:
         trace_note("target_missing", action=head.action, detail=target_problem)
         # 되묻고 끝내면 다음 턴이 맨바닥에서 다시 계획한다. 사용자의 답변("Sales_Data

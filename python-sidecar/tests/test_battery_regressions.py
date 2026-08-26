@@ -5730,3 +5730,110 @@ class TestFilterRefusesUnknownColumn:
 
         assert not _action_lacks_evidence("excel_live.pivot_table", "담당자별로 금액 얼마씩인지 표로 정리해줘")
         assert _action_lacks_evidence("excel_live.pivot_table", "노란색으로 칠해줘")
+
+    def test_없는_기준_열은_오류가_아니라_되묻기로(self):
+        # 실행기 차단은 데이터를 지키지만 사용자에게는 오류로 보인다. 되묻기가 낫다
+        # (2026-08-26). 머리글은 슬롯에 실어 둬 호출부 시그니처를 안 바꿨다.
+        from office_claw_sidecar.routers.excel_live import (
+            PendingExcelOperationSlots,
+            _operation_follow_up,
+        )
+
+        slot = PendingExcelOperationSlots(
+            session_id="s", intent="dedupe", workbook_id=None, sheet_name="매출", params={}
+        )
+        slot.params.update(
+            {
+                "key_columns": ["이름"],
+                "raw_message": "이름 기준으로 중복 제거",
+                "_sheet_headers": ["날짜", "지역", "담당자", "금액"],
+            }
+        )
+        q = _operation_follow_up(slot)
+        assert "이름" in q and "담당자" in q, q
+
+    def test_개념어_기준_열은_되묻지_않는다(self):
+        # '담당'→담당자 같은 개념어 경유를 막으면 정상 지시가 뒤집힌다.
+        from office_claw_sidecar.routers.excel_live import (
+            PendingExcelOperationSlots,
+            _operation_follow_up,
+        )
+
+        slot = PendingExcelOperationSlots(
+            session_id="s", intent="dedupe", workbook_id=None, sheet_name="매출", params={}
+        )
+        slot.params.update(
+            {
+                "key_columns": ["담당"],
+                "raw_message": "담당 기준으로 중복 제거",
+                "_sheet_headers": ["날짜", "지역", "담당자", "금액"],
+            }
+        )
+        assert _operation_follow_up(slot) == ""
+
+    def test_열_문자_지목도_되묻지_않는다(self):
+        from office_claw_sidecar.routers.excel_live import (
+            PendingExcelOperationSlots,
+            _operation_follow_up,
+        )
+
+        slot = PendingExcelOperationSlots(
+            session_id="s", intent="dedupe", workbook_id=None, sheet_name="매출", params={}
+        )
+        slot.params.update(
+            {"key_columns": ["B"], "raw_message": "B열 기준 중복 제거", "_sheet_headers": ["날짜", "지역"]}
+        )
+        assert _operation_follow_up(slot) == ""
+
+
+class TestKeyColumnProblemAsksBeforeApproval:
+    """플래너 계획의 기준 열도 시트 지목과 같은 잣대로 본다(2026-08-26).
+
+    슬롯 경로에만 되묻기를 넣었더니 **실제 사고 경로(플래너 계획)는 그대로 오류**였다.
+    승인 카드 직전 가드(_edit_target_problem 옆)에서 같이 본다.
+    """
+
+    @staticmethod
+    def _wb(tmp_path):
+        from openpyxl import Workbook
+
+        from office_claw_sidecar.services import excel_live_file_service as fs
+        from office_claw_sidecar.services import excel_live_service as ls
+        from office_claw_sidecar.services.excel_live_service import get_excel_live_service
+
+        p = tmp_path / "k.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "매출"
+        ws.append(["날짜", "지역", "담당자", "금액"])
+        ws.append(["2026-01-01", "서울", "김", 1])
+        wb.save(p)
+        fs.WORKSPACE_ROOT = tmp_path
+        ls._excel_live_service = None
+        ls._excel_live_service_engine = None
+        svc = get_excel_live_service()
+        svc.select_workbook(str(p))
+        svc.select_sheet(None, "매출")
+        return str(p)
+
+    def _problem(self, tmp_path, action, params):
+        from office_claw_sidecar.routers.excel_live import PlanStep, _key_column_problem
+
+        path = self._wb(tmp_path)
+        step = PlanStep(action=action, params=params, reason="r")
+        return _key_column_problem(path, "매출", [step])
+
+    def test_없는_기준_열이면_질문을_만든다(self, tmp_path):
+        q = self._problem(tmp_path, "excel_live.dedupe_rows", {"key_columns": ["이름"]})
+        assert "이름" in q and "담당자" in q
+
+    def test_필터_기준_열도_같은_잣대(self, tmp_path):
+        q = self._problem(tmp_path, "excel_live.filter_rows", {"column": "없는열"})
+        assert "없는열" in q
+
+    def test_개념어와_열문자는_통과(self, tmp_path):
+        assert self._problem(tmp_path, "excel_live.dedupe_rows", {"key_columns": ["담당"]}) == ""
+        assert self._problem(tmp_path, "excel_live.filter_rows", {"column": "B"}) == ""
+
+    def test_대상_액션이_아니면_보지_않는다(self, tmp_path):
+        assert self._problem(tmp_path, "excel_live.clear_range", {"target_range": "A1:B2"}) == ""
