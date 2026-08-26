@@ -1,7 +1,7 @@
 {"task": "dedupe", "text": "중복된 행 지워줘", "expect": ["excel_live.dedupe_rows", "excel_live.find_duplicates"]}
 {"task": "dedupe", "text": "똑같은 줄이 두 번 들어간 거 정리해줄래?", "expect": ["excel_live.dedupe_rows", "excel_live.find_duplicates"], "expect_ask": true}
 {"task": "dedupe", "text": "겹치는 데이터 좀 없애줘", "expect": ["excel_live.dedupe_rows", "excel_live.find_duplicates"], "expect_ask": true}
-{"task": "dedupe", "text": "이름 기준으로 중복 제거", "expect": ["excel_live.dedupe_rows", "excel_live.find_duplicates"]}
+{"task": "dedupe", "text": "담당자 기준으로 중복 제거", "expect": ["excel_live.dedupe_rows", "excel_live.find_duplicates"]}
 {"task": "dedupe", "text": "중복 항목만 골라내서 빼줘", "expect": ["excel_live.dedupe_rows", "excel_live.find_duplicates"]}
 {"task": "dedupe_with_note", "text": "중복된 행 지워줘", "expect": ["excel_live.dedupe_rows", "excel_live.find_duplicates"]}
 {"task": "dedupe_with_note", "text": "겹치는 줄 정리해줘", "expect": ["excel_live.dedupe_rows", "excel_live.find_duplicates"], "expect_ask": true}
