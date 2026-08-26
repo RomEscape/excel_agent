@@ -6017,3 +6017,93 @@ class TestTotalsAsConstraintDoesNotHijackSort:
         rows = [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
         asked = [r["text"] for r in rows if r.get("expect_ask")]
         assert asked == ["클레임순"], asked
+
+
+class TestSortMetricBeatsTargetNoun:
+    """"클레임이 많은 **지역**부터"에서 플래너가 기준 열로 '지역'을 골랐다(2026-08-26).
+
+    사람은 "지표가 많은 대상부터"라고 말하는데 모델은 뒤의 명사를 집는다. 둘 다 실재
+    머리글이라 열 지목 검증으로는 못 잡는다 — 검증은 존재를 보지 의미를 못 본다.
+    피벗의 `_confident_group_key`와 같은 자격 조건(머리글로 확정될 때만 규칙이 이긴다).
+    """
+
+    DIGEST = {
+        "active_sheet": "지역성과",
+        "sheets": [
+            {
+                "name": "지역성과",
+                "used_range": "A1:F7",
+                "columns": [
+                    {"header": h, "letter": chr(65 + i)}
+                    for i, h in enumerate(["지역", "주문건수", "출고건수", "정시배송률", "지연건수", "클레임"])
+                ],
+            }
+        ],
+    }
+
+    def _metric(self, text):
+        from office_claw_sidecar.routers.excel_live import _confident_sort_metric
+
+        return _confident_sort_metric(text, self.DIGEST, sheet_name="지역성과")
+
+    def test_지표가_대상_명사를_이긴다(self):
+        assert self._metric("여기 클레임 많은 지역부터 위로, 합계는 맨 아래 두고") == "클레임"
+        assert self._metric("클레임이 많은 지역부터 보려고 하는데요") == "클레임"
+        assert self._metric("주문건수 큰 데부터 위로 오게 줄 세워 주세요") == "주문건수"
+
+    def test_머리글로_확정_못하면_플래너를_존중한다(self):
+        # 시트에 없는 말이면 빈 문자열 — 규칙이 플래너를 이길 자격이 없다.
+        assert self._metric("행복지수 많은 지역부터 보여줘") == ""
+        assert self._metric("아무 말이나 해봐") == ""
+
+    def test_정렬이_아닌_문장에는_발동하지_않는다(self):
+        # 게이트 코퍼스 전수 실측: 정렬 외 과제에서 발동 0건.
+        import json
+        from pathlib import Path
+
+        path = Path(__file__).resolve().parents[2] / "datasets" / "eval" / "blind_paraphrases_v1.jsonl"
+        rows = [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
+        fired = [
+            r["text"]
+            for r in rows
+            if r["task"] not in {"sort_desc", "sort_keep_total"} and self._metric(r["text"])
+        ]
+        assert fired == [], fired
+
+    def test_승인_직전에_계획의_기준_열을_바로잡는다(self, tmp_path):
+        # 같은 문장이 실행마다 플래너로도 의도 해석으로도 왔다 — 한 층만 막으면 샌다.
+        # 승인 카드 직전은 모든 경로가 지나는 자리다(2026-08-27 실측으로 확정).
+        from openpyxl import Workbook
+
+        from office_claw_sidecar.routers.excel_live import PlanStep, _restore_sort_metric
+        from office_claw_sidecar.services import excel_live_file_service as fs
+        from office_claw_sidecar.services import excel_live_service as ls
+        from office_claw_sidecar.services.excel_live_service import get_excel_live_service
+
+        p = tmp_path / "s.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "지역성과"
+        ws.append(["지역", "주문건수", "클레임"])
+        ws.append(["수도권", 10452, 12])
+        wb.save(p)
+        fs.WORKSPACE_ROOT = tmp_path
+        ls._excel_live_service = None
+        ls._excel_live_service_engine = None
+        svc = get_excel_live_service()
+        svc.select_workbook(str(p))
+        svc.select_sheet(None, "지역성과")
+
+        plan = [PlanStep(action="excel_live.sort_range", params={"key_column": "지역", "order": "desc"}, reason="r")]
+        _restore_sort_metric("클레임이 많은 지역부터 보려고 하는데요", plan, str(p), "지역성과")
+        assert plan[0].params["key_column"] == "클레임"
+
+        # 지표를 머리글로 확정 못 하면 손대지 않는다(플래너 판단 존중).
+        plan2 = [PlanStep(action="excel_live.sort_range", params={"key_column": "지역"}, reason="r")]
+        _restore_sort_metric("행복지수 많은 지역부터", plan2, str(p), "지역성과")
+        assert plan2[0].params["key_column"] == "지역"
+
+        # 정렬이 아닌 계획은 관여하지 않는다.
+        plan3 = [PlanStep(action="excel_live.clear_range", params={"target_range": "A1:B2"}, reason="r")]
+        _restore_sort_metric("클레임이 많은 지역부터", plan3, str(p), "지역성과")
+        assert plan3[0].params == {"target_range": "A1:B2"}

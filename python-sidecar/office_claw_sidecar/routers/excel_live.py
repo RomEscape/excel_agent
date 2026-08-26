@@ -5861,6 +5861,31 @@ def _infer_formula_mode_from_digest(
     }
 
 
+#: "클레임이 많은 지역부터" — 지표(앞)와 정렬 대상(뒤)이 뒤바뀌기 쉬운 꼴.
+#: 사람은 "지표가 많은 대상부터"라고 말하는데 모델은 뒤의 명사를 기준 열로 집는다.
+_SORT_METRIC_BEFORE_TARGET = re.compile(
+    r"([A-Za-z가-힣0-9_]{2,12})\s*(?:이|가)?\s*(?:많은|적은|높은|낮은|큰|작은)\s*"
+    r"[A-Za-z가-힣0-9_]{1,12}\s*(?:부터|순으로|순서로)"
+)
+
+
+def _confident_sort_metric(message: str, digest: dict[str, Any] | None, *, sheet_name: str | None) -> str:
+    """"X 많은 Y부터"의 X가 시트 머리글로 확정되면 그 이름을. 아니면 "".
+
+    피벗의 `_confident_group_key`와 같은 자격 조건이다 — 실제 머리글로 이어질 때만
+    규칙이 플래너를 이긴다. 확정 못 하면 빈 문자열을 돌려 플래너 판단을 존중한다.
+    """
+    match = _SORT_METRIC_BEFORE_TARGET.search(str(message or ""))
+    if not match:
+        return ""
+    entry = sheet_entry(digest or {}, sheet_name)
+    headers = [str(c.get("header") or "").strip() for c in (entry.get("columns") or [])] if entry else []
+    headers = [h for h in headers if h]
+    if not headers:
+        return ""
+    return resolve_header(match.group(1).strip(), headers) or ""
+
+
 def _confident_group_key(message: str, digest: dict[str, Any] | None, *, sheet_name: str | None) -> str:
     """집계 기준 열을 시트 머리글에서 확정할 수 있으면 그 열 이름을 준다.
 
@@ -5971,6 +5996,14 @@ def _merge_operation_slots(
         confident_key = _confident_group_key(req.message, digest, sheet_name=slot.sheet_name)
         if confident_key:
             slot.params["row_field"] = confident_key
+    if slot.intent == "sort":
+        # 같은 원칙을 정렬에도. "클레임이 많은 **지역부터**"에서 플래너가 기준 열로
+        # '지역'을 골랐다(2026-08-26 게이트 실측) — 사람은 "지표가 많은 대상부터"라고
+        # 말하는데 모델이 뒤의 명사를 집는다. 지표가 머리글로 **확정될 때만** 되돌린다
+        # (피벗과 같은 자격 조건 — 확정 못 하면 플래너 판단을 존중한다).
+        confident_metric = _confident_sort_metric(req.message, digest, sheet_name=slot.sheet_name)
+        if confident_metric:
+            slot.params["key_column"] = confident_metric
     slot.updated_at_ts = now
     return slot
 
@@ -10246,6 +10279,8 @@ async def _run_command(
     # [테두리 제거, 배경 제거, 내용 비우기] 3단계를 냈는데, 문장에 '테두리'라는
     # 낱말이 없다고 이 필터가 2단계를 잘라 **내용만 비우고 테두리가 남았다.**
     # 규칙은 문장을 보고 발화된 것이라 낱말 대조를 다시 할 이유가 없다.
+    # 여기부터가 근거 게이트다 — **규칙·의도 계획은 대상이 아니다**(아래 주석 참고).
+    # 위의 지표 복원과 조건이 다르므로 블록을 반드시 나눠 둔다.
     if parsed and parsed.get("action_plan") and parsed.get("plan_source") not in {"rule", "intent"}:
         planner_first = parsed["action_plan"][0] if isinstance(parsed["action_plan"][0], dict) else {}
         planner_action = str(planner_first.get("action", ""))
@@ -10860,6 +10895,51 @@ _KEY_COLUMN_GUARDED: dict[str, tuple[str, ...]] = {
 }
 
 
+def _first_row_headers(workbook_id: str | None, sheet_name: str | None) -> list[str]:
+    """대상 시트의 머리글 한 줄. 못 읽으면 빈 목록(판단하지 않는다).
+
+    표 전체를 읽지 않는다 — 큰 시트에서 비싸다.
+    """
+    try:
+        service = get_excel_live_service()
+        resolved_wb = _resolve_workbook_id(service, workbook_id)
+        resolved_sheet = _resolve_sheet_name(service, resolved_wb, sheet_name)
+        used = str(service.get_used_range_ref(resolved_wb, resolved_sheet) or "").upper()
+        m = re.fullmatch(r"([A-Z]{1,3})(\d+):([A-Z]{1,3})(\d+)", used)
+        head_ref = f"{m.group(1)}{m.group(2)}:{m.group(3)}{m.group(2)}" if m else used
+        rows = (service.read_range(resolved_wb, resolved_sheet, head_ref) or {}).get("values") or []
+    except Exception:
+        return []
+    return [str(h or "").strip() for h in (rows[0] if rows else []) if str(h or "").strip()]
+
+
+def _restore_sort_metric(
+    message: str, plan: list[PlanStep], workbook_id: str | None, sheet_name: str | None
+) -> None:
+    """"X 많은 Y부터"의 기준 열을 지표(X)로 바로잡는다 — 계획을 낸 층을 가리지 않는다.
+
+    같은 문장이 실행마다 플래너로도, 의도 해석으로도 왔다(2026-08-27 실측). 한 층만
+    막으면 다른 층으로 샌다. 승인 카드 직전은 **모든 경로가 지나는 자리**다.
+    지표가 머리글로 확정될 때만 손댄다(피벗의 `_confident_group_key`와 같은 자격).
+    """
+    targets = [s for s in plan if s.action in {"excel_live.sort_range", "excel_live.sort_rows"}]
+    if not targets:
+        return
+    match = _SORT_METRIC_BEFORE_TARGET.search(str(message or ""))
+    if not match:
+        return
+    headers = _first_row_headers(workbook_id, sheet_name)
+    metric = resolve_header(match.group(1).strip(), headers) if headers else None
+    if not metric:
+        return
+    for step in targets:
+        params = step.params if isinstance(step.params, dict) else {}
+        key = "key_column" if "key_column" in params else ("column" if "column" in params else "")
+        if key and str(params.get(key) or "").strip() != metric:
+            trace_note("sort_metric_restored", was=str(params.get(key) or ""), now=metric)
+            params[key] = metric
+
+
 def _key_column_problem(
     workbook_id: str | None, sheet_name: str | None, plan: list[PlanStep]
 ) -> str:
@@ -11091,6 +11171,9 @@ def _plan_approval_gate(
     # 시트 지목과 같은 잣대를 **기준 열**에도 댄다. 플래너가 시트에 없는 열을
     # key_columns/column에 실어 보내면 실행기가 지우기 직전에 막지만(2026-08-26),
     # 사용자에게는 오류로 보인다 — 여기서 되묻기로 올린다(오류보다 되묻기가 낫다).
+    # 기준 열을 **검사하기 전에** 바로잡는다 — "X 많은 Y부터"의 지표가 확정되면
+    # 그것이 사용자가 말한 기준이다(층을 가리지 않고 여기서 한 번에).
+    _restore_sort_metric(req.message, plan, req.workbook_id, plan_sheet or req.sheet_name)
     if not target_problem:
         key_problem = _key_column_problem(req.workbook_id, plan_sheet or req.sheet_name, plan)
         if key_problem:
