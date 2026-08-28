@@ -62,29 +62,42 @@ jobs:
         working-directory: services/sidecar
         run: |
           uv sync
-          uv pip install pyinstaller
+          # 빌드 도구는 lockfile **밖**에서 넣는다. `uv sync --extra dev` 로 넣으면
+          # 그 상태로 번들을 말 때 `_pytest` 71개 모듈이 산출물에 딸려 들어간다
+          # (실측). pyproject 의 dev extra 에 nuitka 를 적어둔 건 로컬 재현용이다.
+          uv pip install pyinstaller nuitka
 
-      # 3. PyInstaller로 사이드카 바이너리 빌드
+      # 3. 사이드카 바이너리 빌드 — 2단계 하드닝
       #    출력 바이너리를 Tauri externalBin 규칙(binaries/{name}-{target})으로 저장
       #
-      #    hidden-import는 **PyInstaller의 정적 분석이 놓치는 것만** 적는다.
-      #    xlwings의 플랫폼 백엔드(macOS appscript/aem, Windows pywin32의
-      #    pythoncom·pywintypes·win32com)와 keyring 백엔드는 PyInstaller가
-      #    번들 훅으로 이미 처리하므로 여기 적지 않는다 — 적어도 무해하지만,
-      #    없는 모듈을 적으면 PyInstaller가 ERROR 로그를 뿜어 진짜 실패를 가린다.
-      #    (예전에 지운 slack_bolt·discord가 그 상태로 남아 있었다.)
+      #    (1) Nuitka `--module` 로 **우리 패키지만** 네이티브 확장 모듈로 컴파일한다.
+      #        PyInstaller onefile 은 `.pyc` 를 담는 포장지일 뿐이라, 아카이브를 풀면
+      #        우리 모듈 42개가 디컴파일 가능한 상태로 나온다(실측).
+      #    (2) PyInstaller 는 spec 으로 돈다 — **분석은 소스로** 하되(그래야 fastapi·
+      #        uvicorn·xlwings 전이 의존을 빠짐없이 찾는다) 번들에는 (1) 의 확장
+      #        모듈을 넣고 우리 `.pyc` 는 PYZ 에서 뺀다. 자세한 건 spec 파일 주석.
+      #
+      #    전체를 Nuitka 로 컴파일하는 안은 **의도적으로 안 골랐다** — 컴파일 대상
+      #    1766개 모듈 중 우리 코드는 47개(2%)뿐이라, 보호할 필요 없는 오픈소스
+      #    의존성 때문에 빌드가 47초→490초, 기동이 4.8초→6.7초가 된다. 하이브리드는
+      #    같은 보호를 빌드 55초·기동 5.1초에 얻는다(측정값은 docs/build-and-release.md).
+      #
+      #    hidden-import 규칙은 그대로다 — 이제 CLI 플래그가 아니라 spec 의
+      #    `hiddenimports` 에 적는다. **PyInstaller 의 정적 분석이 놓치는 것만** 적을 것.
+      #    xlwings 의 플랫폼 백엔드(macOS appscript/aem, Windows pywin32 의
+      #    pythoncom·pywintypes·win32com)와 keyring 백엔드는 PyInstaller 가 번들 훅으로
+      #    이미 처리하므로 적지 않는다 — 적어도 무해하지만, **없는 모듈을 적으면**
+      #    PyInstaller 가 ERROR 로그를 뿜어 진짜 실패를 가린다(예전에 지운
+      #    slack_bolt·discord 가 그 상태로 남아 있었다).
       - name: 사이드카 바이너리 빌드 (Unix)
         if: runner.os != 'Windows'
         working-directory: services/sidecar
         run: |
-          uv run pyinstaller \
-            --onefile \
-            --optimize 2 \
-            --name office-claw-sidecar \
-            --hidden-import office_claw_sidecar \
-            --hidden-import uvicorn \
-            --hidden-import fastapi \
-            office_claw_sidecar/__main__.py
+          uv run python -m nuitka --module office_claw_sidecar \
+            --include-package=office_claw_sidecar \
+            --python-flag=-OO \
+            --output-dir=build-mod
+          uv run pyinstaller --noconfirm sidecar-hardened.spec
           mkdir -p ../../apps/desktop/src-tauri/binaries
           cp dist/office-claw-sidecar \
              "../../apps/desktop/src-tauri/binaries/office-claw-sidecar-${{ matrix.sidecar_suffix }}"
@@ -94,14 +107,11 @@ jobs:
         working-directory: services/sidecar
         shell: pwsh
         run: |
-          uv run pyinstaller `
-            --onefile `
-            --optimize 2 `
-            --name office-claw-sidecar `
-            --hidden-import office_claw_sidecar `
-            --hidden-import uvicorn `
-            --hidden-import fastapi `
-            office_claw_sidecar/__main__.py
+          uv run python -m nuitka --module office_claw_sidecar `
+            --include-package=office_claw_sidecar `
+            --python-flag=-OO `
+            --output-dir=build-mod
+          uv run pyinstaller --noconfirm sidecar-hardened.spec
           New-Item -ItemType Directory -Force -Path ../../apps/desktop/src-tauri/binaries
           Copy-Item dist/office-claw-sidecar.exe `
             "../../apps/desktop/src-tauri/binaries/office-claw-sidecar-${{ matrix.sidecar_suffix }}.exe"

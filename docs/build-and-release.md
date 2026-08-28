@@ -227,11 +227,65 @@ keyring backend: Keyring / OK`로 통과한다. **이 플래그를 만졌으면 
 `sourcemap: false`를 **명시**하고(기본값이지만 디버깅하다 켜놓고 릴리스하는 사고를
 막는다), `chunkFileNames`를 해시 전용으로 바꿔 컴포넌트 이름을 뺐다.
 
-### 아직 남은 구멍 — 사이드카 디컴파일
+### 조치 4 — 사이드카를 네이티브로 (Nuitka `--module` + PyInstaller spec)
 
-위 셋을 다 해도 **PyInstaller는 `.pyc`를 담고 있어 디컴파일이 가능하다.** 모듈
-구조와 함수 이름은 그대로 읽힌다. 이걸 막으려면 파이썬을 네이티브로 컴파일해야
-하고(Nuitka), 그건 이 문서의 "사이드카 Nuitka 빌드" 절이 다룬다.
+위 셋을 다 해도 **PyInstaller는 `.pyc`를 담고 있어 디컴파일이 가능하다.** 실제로
+CArchive → PYZ를 풀면 우리 모듈 42개가 그대로 나온다. 이걸 막는 건 파이썬을
+네이티브로 컴파일하는 것뿐이다.
+
+**전체를 Nuitka로 컴파일하는 안은 재보고 안 골랐다.** 세 방식을 같은 소스로 빌드해
+실측한 결과다(Apple Silicon, 유휴 상태):
+
+| | PyInstaller `-OO` | Nuitka 전체 `--onefile` | **하이브리드(채택)** |
+|---|---|---|---|
+| 사이드카 빌드 | 47초 | **490초** | 55초 (Nuitka 25 + PyInstaller 30) |
+| 산출물 크기 | 41.0MB | 47.9MB | 38.3MB |
+| 기동 시간(웜) | 4.84초 | **6.6~6.9초** | 5.1~5.2초 |
+| PYZ 안 우리 모듈 | **42개** | (PYZ 없음) | **0개** |
+| 우리 코드 디컴파일 | 가능 | 불가 | 불가 |
+
+전체 컴파일이 비싼 이유는 단순하다 — **컴파일 대상 1766개 모듈 중 우리 코드는
+47개(2%)뿐이다.** 나머지 98%는 pandas·numpy·openpyxl 같은 오픈소스라 보호할 이유가
+없는데, 그것 때문에 빌드가 10배가 되고 기동이 2초 느려진다. macOS 러너 청구가
+10배인 걸 감안하면 릴리스마다 실제 비용이다.
+
+그래서 **`office_claw_sidecar` 패키지 하나만** Nuitka `--module`로 확장 모듈
+(`.so`/`.pyd`, 2.6MB)로 만들고, PyInstaller는 `sidecar-hardened.spec`으로 돈다.
+핵심은 **분석은 소스로, 번들은 `.so`로**다 — 소스로 분석해야 fastapi·uvicorn·
+xlwings 같은 전이 의존을 빠짐없이 찾고(`.so`만 주면 PyInstaller가 그 안을 못 봐서
+전부 손으로 `--hidden-import`를 적어야 한다), 번들에는 `.pyc` 대신 `.so`가 들어간다.
+
+검증(macOS, CI와 같은 명령):
+
+- CArchive에 `office_claw_sidecar.cpython-312-darwin.so` **1개**, PYZ 1726개 모듈 중
+  **우리 모듈 0개**.
+- 기동 후 `/health` 정상, 자격증명 저장→조회→삭제 왕복 정상(= keyring OS 백엔드가
+  살아 있다), `/health`가 로컬 AI 엔진까지 잡는다.
+- 바이너리에서 시스템 프롬프트·docstring 문자열 **0건**.
+
+**남는 노출**: `.so` 안에도 모듈 이름과 함수 이름은 문자열/심볼로 남는다(Nuitka가
+import 기계장치에 쓴다). 사라지는 건 **로직**이다 — 디컴파일러가 걸 대상이 없다.
+이름만으로는 알고리즘이 복원되지 않으므로 여기까지를 목표로 잡았다.
+
+> **Windows 경로는 아직 실측하지 못했다.** 이 저장소의 CI에서 Windows가 도는 곳은
+> 태그 push 시의 `release.yml`뿐이라(PR 게이트는 ubuntu 전용), Nuitka의 Windows
+> 빌드(MSVC 사용·`.pyd` 산출·`--python-flag=-OO`)는 첫 릴리스 빌드에서 처음
+> 검증된다. **실패하면 `build` 잡이 죽어 릴리스 자체가 안 만들어지므로 반쪽 배포는
+> 나지 않는다**(그러라고 `publish`를 분리해 뒀다). 그래도 태그를 만들기 전에
+> `workflow_dispatch`로 Windows 사이드카 빌드를 한 번 돌려보는 편이 낫다.
+
+### 버린 것 — `office_claw_sidecar.spec`
+
+모노레포 재편(`d32dd44`) 때 들어온 spec이 하나 있었는데 **아무도 안 쓰는 죽은
+파일**이었다(CI는 CLI 형태로 PyInstaller를 돌렸다). 게다가 지금 돌리면 깨진다 —
+엔트리가 `main.py`(`__main__.py`여야 한다. 이유는 그 파일 docstring 참조),
+`block_cipher`/`a.zipped_data`는 PyInstaller 6에서 없어진 API, hiddenimports에
+이미 제거된 `telegram`·`googleapiclient`·`google_auth_oauthlib`가 남아 있다.
+진짜 spec 옆에 깨진 동명이인을 두면 다음 사람이 그걸 고치려 든다.
+
+거기 있던 `console=False`(윈도우 콘솔 창 방지)는 **가져오지 않았다.** `sidecar.rs`가
+사이드카의 stdout/stderr를 읽어 로그로 남기는데(`CommandEvent::Stdout`) windowed
+빌드는 그 출력을 잃는다. 콘솔 창은 `tauri-plugin-shell`이 이미 막는다.
 
 ### 하지 않기로 한 것
 

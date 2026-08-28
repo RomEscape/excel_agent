@@ -21,6 +21,12 @@ services/sidecar/build/
 # .spec 은 빌드할 때마다 재생성된다 — 빌드 옵션의 단일 소스는 release.yml 의
 # 커맨드라인이므로 커밋하면 둘이 어긋난다.
 services/sidecar/*.spec
+# 하드닝 빌드 spec 은 자동 생성물이 아니라 **소스**다 (위 규칙의 예외).
+!services/sidecar/sidecar-hardened.spec
+# Nuitka 산출물
+services/sidecar/build-mod/
+services/sidecar/dist-hybrid/
+services/sidecar/dist-nuitka/
 *.spec.bak
 
 # Virtual environments
