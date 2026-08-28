@@ -175,3 +175,129 @@ CI 없이 직접 만들려면 (윈도우 예시):
 ### 알려진 이슈
 
 - 자동 업데이트가 아직 동작하지 않는다(`pubkey` 미설정 + `latest.json` 미생성) — 위 "자동 업데이트는 아직 동작하지 않는다" 참고.
+
+## 배포본 하드닝 (리버스 엔지니어링 대응)
+
+전제부터 못박는다 — **사용자 기기에서 도는 코드는 원리상 100% 복원 가능하다.**
+목표는 "못 보게"가 아니라 "볼 비용을 올리기"다. 아래는 그 비용이 사실상 0이던
+지점들을 메운 것이고, 각 항목은 실제 산출물로 검증했다.
+
+### 층별 노출도 (측정값)
+
+| 층 | 조치 전 | 조치 후 |
+|---|---|---|
+| Python 사이드카 | PyInstaller CArchive → `PYZ.pyz`를 풀면 우리 모듈 56개 + **docstring 원문** + 함수/변수명이 전부 나옴 | docstring 제거(PYZ 19.2MB → 13.7MB). **모듈·함수 이름은 여전히 노출** |
+| React 번들 | minify만. 청크 파일명이 `ActivityPage-*.js`처럼 화면 구성을 그대로 드러냄 | 해시 전용 이름. 소스맵 비활성 명시 |
+| Rust | 심볼 테이블·소스 경로 문자열 잔존 | `strip` + `lto="fat"` |
+
+### 조치 1 — Rust 심볼 제거 (`src-tauri/Cargo.toml`)
+
+`[profile.release]`에 `strip`·`lto`·`codegen-units`. 근거는 그 파일 주석 참조.
+
+macOS 실빌드 검증(3분 39초, 바이너리 10.6MB):
+
+- `nm`이 내놓는 심볼 403개가 **전부 `U`(시스템 import)** — 우리 함수 이름은 0건.
+- 남는 건 패닉 위치의 **파일 이름**(`src/ollama.rs` 등 5개)뿐이고, 그마저
+  의존성 패닉 위치 ~130개(`src/ahocorasick.rs`, `src/verify_cert.rs` …) 사이에
+  섞여 있다. **`panic = "abort"`로는 이게 안 지워진다** — unwind 테이블을 없앨
+  뿐이다. 지우려면 nightly의 `-Z location-detail=none`이 필요하다.
+
+릴리스 빌드 시간이 늘지만 PR 게이트(`pr-check.yml`)는 debug 프로파일이라 영향 없다.
+
+### 조치 2 — PyInstaller `--optimize 2` (`release.yml`)
+
+`python -OO` 상당이라 **docstring과 assert가 바이트코드 단계에서 사라진다.**
+PyInstaller onefile은 `.pyc`를 담는 포장지일 뿐이라 아카이브를 풀면 모듈이 그대로
+나오는데, 그중 가장 읽기 쉬운 부분(설계 의도를 적어둔 한국어 docstring)이 여기
+전부 들어가 있었다.
+
+부작용 두 가지를 **먼저 확인하고 넣었다**:
+
+- `assert`가 사라지므로 assert로 런타임 불변식을 강제하면 안 된다 →
+  `office_claw_sidecar/` 전체에 런타임 assert **0건**(테스트 코드는 번들에 안 들어감).
+- FastAPI가 라우터 docstring을 OpenAPI 설명으로 쓴다 → `/docs` 문구만 비고,
+  사용자에게 보이는 화면이 아니다. `__doc__`을 직접 읽는 코드도 **0건**.
+
+macOS 실빌드로 검증: `--smoke-test`가 `xlwings 0.36.6 / appscript OK /
+keyring backend: Keyring / OK`로 통과한다. **이 플래그를 만졌으면 스모크를 반드시
+다시 돌릴 것** — `-OO`가 깨는 종류의 사고는 pytest로는 안 잡힌다(위 크로스플랫폼 노트와 같은 이유).
+
+### 조치 3 — 프론트 번들 (`vite.config.js`)
+
+`sourcemap: false`를 **명시**하고(기본값이지만 디버깅하다 켜놓고 릴리스하는 사고를
+막는다), `chunkFileNames`를 해시 전용으로 바꿔 컴포넌트 이름을 뺐다.
+
+### 조치 4 — 사이드카를 네이티브로 (Nuitka `--module` + PyInstaller spec)
+
+위 셋을 다 해도 **PyInstaller는 `.pyc`를 담고 있어 디컴파일이 가능하다.** 실제로
+CArchive → PYZ를 풀면 우리 모듈 42개가 그대로 나온다. 이걸 막는 건 파이썬을
+네이티브로 컴파일하는 것뿐이다.
+
+**전체를 Nuitka로 컴파일하는 안은 재보고 안 골랐다.** 세 방식을 같은 소스로 빌드해
+실측한 결과다(Apple Silicon, 유휴 상태):
+
+| | PyInstaller `-OO` | Nuitka 전체 `--onefile` | **하이브리드(채택)** |
+|---|---|---|---|
+| 사이드카 빌드 | 47초 | **490초** | 55초 (Nuitka 25 + PyInstaller 30) |
+| 산출물 크기 | 41.0MB | 47.9MB | 38.3MB |
+| 기동 시간(웜) | 4.84초 | **6.6~6.9초** | 5.1~5.2초 |
+| PYZ 안 우리 모듈 | **42개** | (PYZ 없음) | **0개** |
+| 우리 코드 디컴파일 | 가능 | 불가 | 불가 |
+
+전체 컴파일이 비싼 이유는 단순하다 — **컴파일 대상 1766개 모듈 중 우리 코드는
+47개(2%)뿐이다.** 나머지 98%는 pandas·numpy·openpyxl 같은 오픈소스라 보호할 이유가
+없는데, 그것 때문에 빌드가 10배가 되고 기동이 2초 느려진다. macOS 러너 청구가
+10배인 걸 감안하면 릴리스마다 실제 비용이다.
+
+그래서 **`office_claw_sidecar` 패키지 하나만** Nuitka `--module`로 확장 모듈
+(`.so`/`.pyd`, 2.6MB)로 만들고, PyInstaller는 `sidecar-hardened.spec`으로 돈다.
+핵심은 **분석은 소스로, 번들은 `.so`로**다 — 소스로 분석해야 fastapi·uvicorn·
+xlwings 같은 전이 의존을 빠짐없이 찾고(`.so`만 주면 PyInstaller가 그 안을 못 봐서
+전부 손으로 `--hidden-import`를 적어야 한다), 번들에는 `.pyc` 대신 `.so`가 들어간다.
+
+검증(macOS, CI와 같은 명령. 빌드 52초 / 산출물 37MB):
+
+- `--smoke-test` 통과 — `frozen=True / xlwings 0.36.6 / appscript OK /
+  keyring backend: Keyring / OK`. 네이티브 컴파일 후에도 플랫폼 백엔드가 붙는다.
+- CArchive에 `office_claw_sidecar.cpython-312-darwin.so` **1개**, PYZ 1726개 모듈 중
+  **우리 모듈 0개**.
+- 기동 후 `/health` 정상, 자격증명 저장→조회→삭제 왕복 정상(= keyring OS 백엔드가
+  살아 있다).
+- 바이너리에서 시스템 프롬프트·docstring 문자열 **0건**.
+
+**남는 노출**: `.so` 안에도 모듈 이름과 함수 이름은 문자열/심볼로 남는다(Nuitka가
+import 기계장치에 쓴다). 사라지는 건 **로직**이다 — 디컴파일러가 걸 대상이 없다.
+이름만으로는 알고리즘이 복원되지 않으므로 여기까지를 목표로 잡았다.
+
+> **Windows 경로는 아직 macOS만큼 실측하지 못했다.** Nuitka의 Windows 빌드는
+> MSVC를 타고 `.pyd`를 내놓는데, 손에 macOS밖에 없어 직접 돌려보지 못했다.
+>
+> **태그를 밀기 전에 `Cross-platform check`를 `workflow_dispatch`로 한 번 돌릴 것**
+> (`bundle: true`). 그 잡이 Windows·macOS 양쪽에서 이 문서와 **같은 2단계 명령**으로
+> 번들을 만들고 `--smoke-test`까지 돌린다 — 그러라고 `release.yml`과 명령을 맞춰
+> 뒀으니, 한쪽만 고치면 그 검증이 무의미해진다.
+>
+> 그걸 건너뛰어도 반쪽 배포는 나지 않는다 — Windows 빌드가 깨지면 `build` 잡이
+> 죽고, 릴리스를 만드는 `publish`는 `needs: build`라 아예 실행되지 않는다.
+
+### 버린 것 — `office_claw_sidecar.spec`
+
+모노레포 재편(`d32dd44`) 때 들어온 spec이 하나 있었는데 **아무도 안 쓰는 죽은
+파일**이었다(CI는 CLI 형태로 PyInstaller를 돌렸다). 게다가 지금 돌리면 깨진다 —
+엔트리가 `main.py`(`__main__.py`여야 한다. 이유는 그 파일 docstring 참조),
+`block_cipher`/`a.zipped_data`는 PyInstaller 6에서 없어진 API, hiddenimports에
+이미 제거된 `telegram`·`googleapiclient`·`google_auth_oauthlib`가 남아 있다.
+진짜 spec 옆에 깨진 동명이인을 두면 다음 사람이 그걸 고치려 든다.
+
+거기 있던 `console=False`(윈도우 콘솔 창 방지)는 **가져오지 않았다.** `sidecar.rs`가
+사이드카의 stdout/stderr를 읽어 로그로 남기는데(`CommandEvent::Stdout`) windowed
+빌드는 그 출력을 잃는다. 콘솔 창은 `tauri-plugin-shell`이 이미 막는다.
+
+### 하지 않기로 한 것
+
+- **JS 난독화기**(javascript-obfuscator 등): 런타임 성능·디버깅 비용 대비 얻는 게
+  거의 없다. minify + 파일명 정리로 충분하다.
+- **로직을 서버로 이전**: 일반적으로는 최선책이지만 이 제품은 "로컬에서 돈다"가
+  셀링 포인트라 해당 없다.
+- **`panic = "abort"`**: 얻는 게 바이너리 크기뿐이고(위 참고: 파일 이름은 그대로
+  남는다) unwind 동작이 바뀐다. 하드닝 목적으로는 값어치가 없다.
