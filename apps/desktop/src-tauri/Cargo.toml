@@ -23,3 +23,24 @@ crate-type = ["lib", "staticlib", "cdylib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+
+# 배포 바이너리 하드닝.
+#
+# 기본 릴리스 프로파일은 심볼 테이블을 그대로 남겨서, `nm`/`strings` 한 번이면
+# 우리 함수 이름과 모듈 구조가 통째로 읽힌다. 사용자에게 나가는 산출물에
+# 디버그 정보를 실을 이유가 없으므로 전부 턴다.
+#
+# lto="fat" + codegen-units=1은 크레이트 경계를 넘어 인라이닝하므로 함수 경계
+# 자체가 흐려진다(부수적으로 바이너리도 작아진다). 대신 릴리스 빌드 시간이
+# 늘어난다 — PR 게이트(`pr-check.yml`)는 debug 프로파일이라 영향이 없고,
+# 태그 push 시의 `release.yml`만 느려진다.
+#
+# 남는 것 하나 — 패닉 위치 메타데이터(`src/ollama.rs` 같은 **파일 이름**)는
+# strip 대상이 아니라 그대로 있다. `panic = "abort"`로도 안 지워진다(그건 unwind
+# 테이블을 없앨 뿐이다). 지우려면 nightly의 `-Z location-detail=none`이 필요하다.
+# 실측상 의존성 패닉 위치 ~130개에 우리 파일 5개가 섞여 들어가는 정도라,
+# 함수 이름이 전부 사라진 지금 시점에서 추가로 얻을 게 거의 없어 두었다.
+[profile.release]
+strip = true
+lto = "fat"
+codegen-units = 1

@@ -35,6 +35,13 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pyinstaller>=6.0",
+    # 사이드카 네이티브 컴파일(하드닝). 우리 코드가 import 하지 않으므로 번들에는
+    # 들어가지 않는다 — pyinstaller 와 같은 성격의 빌드 도구다.
+    #
+    # **lockfile 에 반드시 있어야 한다.** `uv pip install nuitka` 로 곁다리 설치하면
+    # 이후 누군가 `uv sync` 를 돌리는 순간 지워지고, 그게 컴파일 도중이면
+    # `operations_binary_matmult.h file not found` 같은 엉뚱한 C 에러로 나타난다.
+    "nuitka>=4.1",
 ]
 
 [project.scripts]

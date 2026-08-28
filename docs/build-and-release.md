@@ -175,3 +175,69 @@ CI 없이 직접 만들려면 (윈도우 예시):
 ### 알려진 이슈
 
 - 자동 업데이트가 아직 동작하지 않는다(`pubkey` 미설정 + `latest.json` 미생성) — 위 "자동 업데이트는 아직 동작하지 않는다" 참고.
+
+## 배포본 하드닝 (리버스 엔지니어링 대응)
+
+전제부터 못박는다 — **사용자 기기에서 도는 코드는 원리상 100% 복원 가능하다.**
+목표는 "못 보게"가 아니라 "볼 비용을 올리기"다. 아래는 그 비용이 사실상 0이던
+지점들을 메운 것이고, 각 항목은 실제 산출물로 검증했다.
+
+### 층별 노출도 (측정값)
+
+| 층 | 조치 전 | 조치 후 |
+|---|---|---|
+| Python 사이드카 | PyInstaller CArchive → `PYZ.pyz`를 풀면 우리 모듈 56개 + **docstring 원문** + 함수/변수명이 전부 나옴 | docstring 제거(PYZ 19.2MB → 13.7MB). **모듈·함수 이름은 여전히 노출** |
+| React 번들 | minify만. 청크 파일명이 `ActivityPage-*.js`처럼 화면 구성을 그대로 드러냄 | 해시 전용 이름. 소스맵 비활성 명시 |
+| Rust | 심볼 테이블·소스 경로 문자열 잔존 | `strip` + `lto="fat"` |
+
+### 조치 1 — Rust 심볼 제거 (`src-tauri/Cargo.toml`)
+
+`[profile.release]`에 `strip`·`lto`·`codegen-units`. 근거는 그 파일 주석 참조.
+
+macOS 실빌드 검증(3분 39초, 바이너리 10.6MB):
+
+- `nm`이 내놓는 심볼 403개가 **전부 `U`(시스템 import)** — 우리 함수 이름은 0건.
+- 남는 건 패닉 위치의 **파일 이름**(`src/ollama.rs` 등 5개)뿐이고, 그마저
+  의존성 패닉 위치 ~130개(`src/ahocorasick.rs`, `src/verify_cert.rs` …) 사이에
+  섞여 있다. **`panic = "abort"`로는 이게 안 지워진다** — unwind 테이블을 없앨
+  뿐이다. 지우려면 nightly의 `-Z location-detail=none`이 필요하다.
+
+릴리스 빌드 시간이 늘지만 PR 게이트(`pr-check.yml`)는 debug 프로파일이라 영향 없다.
+
+### 조치 2 — PyInstaller `--optimize 2` (`release.yml`)
+
+`python -OO` 상당이라 **docstring과 assert가 바이트코드 단계에서 사라진다.**
+PyInstaller onefile은 `.pyc`를 담는 포장지일 뿐이라 아카이브를 풀면 모듈이 그대로
+나오는데, 그중 가장 읽기 쉬운 부분(설계 의도를 적어둔 한국어 docstring)이 여기
+전부 들어가 있었다.
+
+부작용 두 가지를 **먼저 확인하고 넣었다**:
+
+- `assert`가 사라지므로 assert로 런타임 불변식을 강제하면 안 된다 →
+  `office_claw_sidecar/` 전체에 런타임 assert **0건**(테스트 코드는 번들에 안 들어감).
+- FastAPI가 라우터 docstring을 OpenAPI 설명으로 쓴다 → `/docs` 문구만 비고,
+  사용자에게 보이는 화면이 아니다. `__doc__`을 직접 읽는 코드도 **0건**.
+
+macOS 실빌드로 검증: `--smoke-test`가 `xlwings 0.36.6 / appscript OK /
+keyring backend: Keyring / OK`로 통과한다. **이 플래그를 만졌으면 스모크를 반드시
+다시 돌릴 것** — `-OO`가 깨는 종류의 사고는 pytest로는 안 잡힌다(위 크로스플랫폼 노트와 같은 이유).
+
+### 조치 3 — 프론트 번들 (`vite.config.js`)
+
+`sourcemap: false`를 **명시**하고(기본값이지만 디버깅하다 켜놓고 릴리스하는 사고를
+막는다), `chunkFileNames`를 해시 전용으로 바꿔 컴포넌트 이름을 뺐다.
+
+### 아직 남은 구멍 — 사이드카 디컴파일
+
+위 셋을 다 해도 **PyInstaller는 `.pyc`를 담고 있어 디컴파일이 가능하다.** 모듈
+구조와 함수 이름은 그대로 읽힌다. 이걸 막으려면 파이썬을 네이티브로 컴파일해야
+하고(Nuitka), 그건 이 문서의 "사이드카 Nuitka 빌드" 절이 다룬다.
+
+### 하지 않기로 한 것
+
+- **JS 난독화기**(javascript-obfuscator 등): 런타임 성능·디버깅 비용 대비 얻는 게
+  거의 없다. minify + 파일명 정리로 충분하다.
+- **로직을 서버로 이전**: 일반적으로는 최선책이지만 이 제품은 "로컬에서 돈다"가
+  셀링 포인트라 해당 없다.
+- **`panic = "abort"`**: 얻는 게 바이너리 크기뿐이고(위 참고: 파일 이름은 그대로
+  남는다) unwind 동작이 바뀐다. 하드닝 목적으로는 값어치가 없다.

@@ -79,6 +79,7 @@ jobs:
         run: |
           uv run pyinstaller \
             --onefile \
+            --optimize 2 \
             --name office-claw-sidecar \
             --hidden-import office_claw_sidecar \
             --hidden-import uvicorn \
@@ -95,6 +96,7 @@ jobs:
         run: |
           uv run pyinstaller `
             --onefile `
+            --optimize 2 `
             --name office-claw-sidecar `
             --hidden-import office_claw_sidecar `
             --hidden-import uvicorn `
