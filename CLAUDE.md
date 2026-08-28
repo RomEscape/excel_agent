@@ -54,7 +54,7 @@
 | 툴 진행 스텝 | chatStore의 `toolSteps` | `lib/toolSteps.js`(executed_actions→칩 문구, 순수) | — | `ui/chat.jsx`의 `ToolStepChip` |
 | 페어링 TTL 표시 | relayStore의 `pairingExpiresAt` | `lib/pairingCountdown.js`(남은 시간·`3:29` 포맷, 순수) | — | `components/relay/RelayPairing.jsx` (조합만) |
 | 모바일 승인 왕복 | (mobile) `ChatState.pendingApproval` | (mobile) `store/chat_controller.dart`의 `respondApproval` | — | (mobile) `main.dart`의 `_approvalBar` (조합만) |
-| 온보딩 모델 목록 | — | `lib/modelCatalog.js`(모델 ID→제조사·추천, 순수) | — | `components/ui/wizard.jsx`의 `ModelSelectField` |
+| 로컬 모델 선택 | statusStore의 `modules.ollama.models` | `lib/modelCatalog.js`(ID 정규화·옵션·기본값, 순수) · `hooks/useOllamaModels.js`(구독·새로고침) | `ollama.rs`의 `list_ollama_models` | `components/ui/wizard.jsx`의 `ModelSelectField` |
 | 작업 기록 | — | `lib/activityLog.js`(감사로그→표 행·KPI 4장·페이지 번호, 순수) | — | `components/activity/ActivityPage.jsx` (조합만) |
 | 글자 크기 | `store/fontScaleStore.js` | `lib/fontScale.js`(선택→루트 px, 순수) · `lib/fontScaleManager.js`(`<html>` font-size 적용) | — | `components/settings/PreferencesPage.jsx`의 폰트 크기 섹션 |
 | 대화 목록 | chatStore의 `sessions` | `lib/conversationGroups.js`(요일별·파일별 그룹, 순수) | — | `components/conversations/ConversationHistoryPage.jsx` (조합만) |
@@ -175,6 +175,85 @@
 >
 > 안드로이드 `INTERNET` 권한은 별개다. 이건 플랫폼이 UID 레벨에서 막으므로 Dart 소켓도 걸린다 — Flutter 템플릿이 `src/debug`·`src/profile`에만 넣어주기 때문에 `src/main`에 직접 선언해야 릴리스 APK가 네트워크를 쓴다. iOS는 실기기에서 LAN 주소로 붙을 때 iOS 14+ 로컬 네트워크 권한 팝업이 뜨므로 `NSLocalNetworkUsageDescription`이 필요하다.
 >
+> **2026-08 크로스플랫폼 노트**: 배포 타깃은 **Apple Silicon macOS + Windows x64** 둘이고, OS 분기는 층마다 주인이 다르다.
+>
+> | 층 | 분기 주인 | 비고 |
+> |---|---|---|
+> | 데이터 경로 | `config.py`의 `get_data_dir()` | AppData / Application Support / `.local/share` |
+> | Excel 테두리 | `services/excel_border.py` | **COM(정수 상수) vs AppleScript(appscript 키워드)** — 유일하게 xlwings가 흡수 못 하는 영역 |
+> | 그 밖의 Excel 조작 | (분기 없음) | xlwings 고수준 API가 흡수한다 |
+> | Ollama·설치 | `src-tauri/src/{installer,ollama,shell}.rs`의 `#[cfg(target_os)]` | brew vs winget, 절대경로 탐지 |
+> | 앱 권한 | `Info.plist`(Apple Events·로컬 네트워크) · `entitlements.plist` | 각 파일 주석에 이유가 있다 |
+>
+> **색은 xlwings 고수준 API로만 넘긴다** — `cell.color = (r, g, b)`. COM 정수(BGR)를 만들어 넘기면 macOS에서 예외 없이 조용히 검게 칠해진다. 그래서 `excel_live_service`에 COM 색 변환 헬퍼를 두지 않는다(예전에 쓰이지 않는 채로 남아 있던 것을 지웠다).
+>
+> **플랫폼 백엔드는 우리 코드가 직접 import하지 않는다.** xlwings가 Windows에서 `pywin32`(pythoncom·win32com)를, macOS에서 `appscript`를 탄다 — 둘 다 `pyproject.toml`이 아니라 **xlwings 자신의 의존성 마커**로 들어온다(우리 쪽 `pywin32` 항목은 버전 하한선 역할). 그래서 **`pytest`로는 백엔드 누락이 절대 안 걸린다.** 그 자리를 `--smoke-test`가 맡는다(`main.py`의 `_smoke_test()`): FastAPI 앱 구성 · xlwings · 플랫폼 백엔드 · keyring 백엔드가 Null/Fail이 아닌지를 확인하고 포트는 열지 않는다.
+>
+> 실측해 둔 것 — PyInstaller는 macOS 빌드에서 `appscript`·`aem`·`xlwings`·`keyring.backends.macOS`를 **정적 분석만으로 전부 담는다**. Windows의 `pythoncom`·`pywintypes`·`win32com`도 PyInstaller 내장 훅이 처리한다. 그러므로 **`--hidden-import`에 플랫폼 백엔드를 적을 필요가 없다.** 반대로 **없는 모듈을 적으면 안 된다** — `ERROR: Hidden import 'x' not found`가 찍혀 진짜 실패를 가린다(제거된 `slack_bolt`·`discord`가 그 상태로 남아 있었다).
+>
+> CI는 두 갈래다. `pr-check.yml`의 `python-check`는 **ubuntu에서만** 도는데 그건 타깃 OS가 아니다 — `cross-platform-check.yml`이 Windows·macOS에서 `pytest` + 소스 스모크를 돌려 그 구멍을 메운다(경로 필터로 사이드카 변경에만 건다. macOS 러너 청구 분이 10배라 무조건 돌리지 않는다). 번들 스모크는 `workflow_dispatch`와 릴리스 빌드가 맡는다.
+>
+> **2026-08 로컬 AI 엔진 용어 노트**: 화면에서는 엔진을 **`로컬 AI 엔진`**이라고 부른다. `Ollama`를 그대로 노출하면 남의 도구를 가져다 쓴 인상이 되고, 나중에 엔진을 바꾸면 문구가 전부 거짓이 된다.
+>
+> **다만 전부 가리지는 않는다.** 사용자가 **앱 밖에서 직접 찾아야 하는 것**은 실제 이름을 써야 한다 — 브라우저에서 누를 버튼(`Download for Mac`), 다운로드 폴더에서 확인할 파일명(`Ollama-darwin.zip`·`OllamaSetup.exe`), 응용 프로그램 폴더의 앱 아이콘(`Ollama`), 터미널에 복사할 명령(`ollama pull ...`). 여기서까지 가리면 **안내를 따라갈 수 없다.**
+>
+> 그래서 경계는 화면 단위로 갈린다.
+>
+> | 자리 | 표기 |
+> |---|---|
+> | 상태 바·설정·온보딩·마법사 단계 라벨·오류 문구 | `로컬 AI 엔진` |
+> | `SetupGuide`(수동 설치 가이드) | 실제 이름 — 그 화면은 앱 밖의 일을 안내한다 |
+>
+> `SetupGuide` 도입부가 **둘을 한 번 이어준다** — "아래 안내에 나오는 `Ollama`가 그 엔진의 이름이에요". 이 한 줄이 없으면 사용자는 상태 바의 `로컬 AI 엔진`과 사이트의 `Ollama`를 다른 것으로 여긴다.
+>
+> **코드 식별자는 바꾸지 않는다** — `ollama_status`·`STATUS_MODULES.ollama`·`macos_ollama_exe`·`STEP.INSTALL_OLLAMA` 등은 내부 이름이고, 사이드카 API 필드명이기도 하다. 바꾸면 프론트·Rust·파이썬 세 곳이 동시에 어긋난다. **화면 문자열만** 바꿨다.
+>
+> 확인 방법: `npm run build` 후 `dist/assets/*.js`에서 `Ollama`를 grep하면 **`SetupGuide` 문구만** 나와야 한다. 다른 화면에서 나오면 새 문구가 규칙을 벗어난 것이다.
+
+> **2026-08 모델 선택 단일화 노트**: 로컬 모델을 고르는 화면은 **넷**이고(온보딩 · 설치 마법사 · 설정 허브 `일반` · 환경 설정), 전부 같은 목록·같은 드롭다운을 쓴다. 단일 소스는 **`statusStore.modules.ollama.models`**(= Rust `ollama_status` → `/api/tags`, `ollama list`가 보는 것과 같은 목록)이고, 구독은 `hooks/useOllamaModels.js`가 맡는다.
+>
+> 원래는 화면마다 제각각이었다 — 설치 마법사는 추천 2개를 **라디오로 하드코딩**해서 이미 받아둔 모델이 목록에 안 떴고(직접 입력에 손으로 쳐야 했다), 환경 설정의 `사용중인 AI 모델`은 셰브런이 달렸는데 **누르면 목록이 아니라 `guide` 페이지로 넘어가는** 읽기 전용 버튼이었다. 온보딩만 목록을 띄웠는데 그마저 **사이드카 `healthCheck()`**를 따로 불러서, 사이드카가 아직 안 뜬 순간에 Ollama가 멀쩡한데도 "설치되어 있지 않아요"로 보였다. 엔진 설치 여부는 로컬 판정이라 사이드카를 거칠 이유가 없다.
+>
+> **모델 목록의 원본이 두 갈래이고 모양이 다르다** — Rust는 `/api/tags` 원본 그대로 `[{name, size, ...}]`(객체), 사이드카 `/health`는 `["qwen3:4b", ...]`(문자열). 한쪽만 받는 함수에 다른 쪽을 넣으면 **예외 없이 빈 목록**이 된다. 그래서 정규화(`toModelId`)를 `modelCatalog.js` 한 곳에 두고 화면은 전부 통과시킨다. `lib/modelCatalog.test.js`가 두 shape이 같은 결과를 내는지 고정한다.
+>
+> **설치 마법사는 설치된 모델만 보여주면 안 된다** — 그 화면의 목적이 *아직 없는 모델을 받는 것*이라, 갓 설치한 사용자는 목록이 비어 고를 것이 하나도 없다. 그래서 `buildModelChoices(설치됨, 추가후보)`가 추천 카탈로그를 `installed: false`로 함께 올리고 `ModelSelectField`가 `미설치` 배지를 붙인다. **배지를 빼면 안 된다** — 목록에 있다는 이유로 이미 받은 것처럼 보인다. 같은 함수가 설정 화면의 반대 경우(저장된 모델이 지워져 목록에서 빠진 경우)도 처리한다.
+>
+> 선택값 결정은 `pickDefaultModel(options, preferred)` 하나가 소유한다: **저장된 값 > 추천 > 첫 항목**. 예전에는 화면마다 `models[0]`을 집어넣어서 설정에서 고른 모델이 다음 화면에서 슬그머니 바뀌어 있었다. 목록 정렬도 `추천 → 설치됨 → 이름순`으로 고정했다 — `/api/tags`의 반환 순서가 보장되지 않아, 순서가 갱신마다 흔들리면 같은 자리를 누르려던 사용자가 다른 모델을 고르게 된다.
+>
+> 환경 설정에는 저장 버튼이 없어 **고르는 즉시 저장**한다. 그 화면의 `모델 추가하기` 링크(→ `guide`)는 지우지 말 것 — 모델을 *받는* 곳은 설치 마법사이고, 목록이 비었을 때 사용자가 갈 곳이 그것뿐이다.
+
+> **2026-08 Ollama 설치 경로 노트**: 설치 마법사는 **패키지 매니저를 전제하지 않는다.**
+>
+> 예전 macOS 경로는 `brew install ollama` / `brew services start ollama`였는데 둘 다 무너진다. (1) **Homebrew 자체가 따로 설치해야 하는 물건**이라 초기 상태의 Mac에서는 `brew: command not found`로 죽는다 — 우리 사용자는 비개발자를 상정한다. (2) 공식 앱(`Ollama.app`)으로 이미 설치한 사용자는 **탐지는 성공하고 시작만 실패**했다. `/usr/local/bin/ollama`(앱이 만드는 심볼릭 링크)가 PATH에 잡혀 "설치됨"으로 판정되는데, `brew services start ollama`는 `Error: Formula 'ollama' is not installed.`를 뱉는다 — 이미 Ollama를 설치한 사람에게는 뜻이 통하지 않는 메시지다. 실기기에서 재현·수정 후 재검증했다.
+>
+> 지금은 이렇게 간다.
+>
+> | 단계 | macOS | Windows |
+> |---|---|---|
+> | 설치 | `ollama.com/download/Ollama-darwin.zip`(181MB)을 받아 `ditto`로 `/Applications`에 설치 | `winget` 우선, 없으면 `OllamaSetup.exe`(1.5GB) 받아 무인 설치 |
+> | 시작 | 탐지된 `Ollama.app`을 `open -a` | 표준 경로의 `Ollama.exe` 실행 |
+> | pull | 탐지된 실행 파일의 **절대경로** | 동일 |
+>
+> **`unzip`이 아니라 `ditto`를 쓴다** — macOS 네이티브라 코드 서명과 확장 속성을 보존한다. `unzip`으로 풀면 서명이 깨져 Gatekeeper가 앱을 거부할 수 있다. 실측으로 확인했다: `ditto` 설치 후 `spctl -a -vv`가 `accepted / Notarized Developer ID`를 준다.
+>
+> **탐지·시작·pull이 같은 경로 목록을 본다** — `ollama.rs`의 `macos_ollama_exe`/`macos_ollama_app`(Windows는 `windows_ollama_exe`)이 단일 소스다. **한 곳이라도 맨 이름 `ollama`에 의존하면 "설치됨으로 보이는데 실행은 실패"가 재현된다.** 공식 앱은 첫 실행 때 사용자가 승인해야 CLI 심볼릭 링크를 만들기 때문에, 승인 전에는 앱이 있어도 PATH에 없다. 경로 목록에서 **앱 번들 안의 실물을 먼저** 보는 이유는 `/usr/local/bin/ollama`가 끊어진 링크로 남을 수 있어서다(`Path::exists()`가 링크를 따라가므로 끊어진 링크는 자동으로 걸러진다).
+>
+> Windows에서 `winget`을 남긴 이유는 brew와 사정이 달라서다 — **OS 기본 탑재**(Win10 1709+·Win11)라 전제해도 안전하고, 1.5GB 다운로드의 재시도·검증을 대신해 준다. 폴백의 `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`는 설치 프로그램 실물에서 **Inno Setup 6.7.0**임을 확인하고 고른 스위치다. 그 경로에서 `$ProgressPreference = 'SilentlyContinue'`를 반드시 켠다 — PowerShell 5.1의 `Invoke-WebRequest`는 진행률 막대 때문에 대용량 다운로드가 수십 배 느려진다.
+>
+> 진행률은 **줄 단위로** 찍어야 한다. `run_shell_streaming`이 `lines()`로 읽으므로 `curl --progress-bar`처럼 캐리지 리턴만 쓰는 출력은 화면에 한 줄도 안 나오다가 끝에 몰려 나온다. 그래서 macOS는 curl을 백그라운드로 돌리고 파일 크기를 3초마다 직접 찍는다.
+>
+> `capabilities/default.json`의 `shell:allow-spawn`에서 **`brew`·`ollama` 항목을 회수했다.** 설치·시작·pull은 전부 Rust(`installer.rs`)가 `std::process::Command`로 돌리고, 프론트는 `plugin-shell`의 `open`(URL 열기)만 쓴다 — 웹뷰에 임의 spawn 권한을 남겨둘 이유가 없다. 사이드카 항목은 남는다.
+>
+> 온보딩의 "방법 1: Homebrew (macOS 권장)" 안내도 지웠다. **따를 수 없는 조언**이었다 — brew가 없는 Mac에서 brew로 설치하라는 안내다.
+
+> **2026-08 배포 저장소 노트**: 릴리스 산출물은 이 저장소가 아니라 **`sadStoneTurtle/kdr_release`**로 나간다. 그래서 `release.yml`이 두 잡으로 쪼개져 있다 — `build`(매트릭스)는 빌드만 하고 workflow artifact로 올리고, `publish`(단일)가 `gh release create --repo`로 Draft를 만든다. **매트릭스 잡이 각자 릴리스를 만들면 경합이 난다**(릴리스가 둘 생기거나 한쪽이 실패). 단일 잡이라 한쪽 빌드가 깨지면 릴리스 자체가 안 생겨 반쪽 배포도 막힌다.
+>
+> 기본 `GITHUB_TOKEN`은 **다른 저장소에 못 쓴다** — `KDR_RELEASE_TOKEN`(대상 저장소 contents:write PAT)이 필요하고, 없으면 `publish`가 명시적 에러로 죽는다.
+>
+> 자산 이름은 `kimdaeri-<platform>-<arch>[-setup]<ext>`로 **버전을 뺀다**(랜딩 페이지가 `releases/latest/download/<고정이름>`을 영구 URL로 쓴다). 예전에는 `tauri-action`의 `releaseAssetNamePattern`이 했지만 업로드를 직접 하게 되면서 안 먹으므로, `build` 잡의 `자산 이름 정규화` 단계가 확장자 기준으로 붙인다 — **`.sig`를 `.tar.gz`보다 먼저 걸러야 한다.** 순서를 바꾸면 `*.app.tar.gz.sig`가 tar.gz 가지에 먼저 걸려 서명이 본체를 덮어쓴다.
+>
+> **자동 업데이트는 아직 동작하지 않는다.** 엔드포인트만 `kdr_release`로 고쳤을 뿐 `pubkey`가 비어 있고 `latest.json`을 만드는 단계가 없다. 켜려면 키쌍 생성 + `latest.json` 생성·업로드가 함께 필요하다(`docs/build-and-release.md`).
+
 > **2026-08 앱 아이덴티티 노트**: 저장소 곳곳에 `officeclaw`·`office-claw`·`office_claw`가 남아 있는데 **전부 의도적이다. 일괄 치환하면 빌드가 깨진다.** 사용자에게 보이는 이름만 김대리고, 나머지는 내부 식별자라 그대로 둔다.
 >
 > | 층 | 값 | 사용자에게 보이나 | 바꿔도 되나 |

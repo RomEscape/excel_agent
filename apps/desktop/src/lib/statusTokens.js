@@ -85,7 +85,7 @@ export function getOllamaStatus(state) {
   return {
     tone: "warning",
     label: "AI 엔진 문제 있음",
-    sub: "Ollama 설치 또는 실행이 필요해요",
+    sub: "로컬 AI 엔진 설치 또는 실행이 필요해요",
   };
 }
 
@@ -99,7 +99,9 @@ export function getOllamaStatus(state) {
  * provider는 ollama 하나뿐이라 인자로 받지 않는다 — reachable === true일 때만 ok다.
  */
 export function getLLMStatus({ sidecarState, llmReachable, model }) {
-  const fullLabel = model ? `Ollama · ${model}` : "Ollama";
+  // 엔진 이름(Ollama) 대신 역할로 부른다 — 사용자가 앱 밖에서 찾아야 하는
+  // 자리(다운로드 링크·파일명·복사할 명령)에서만 실제 이름을 쓴다.
+  const fullLabel = model ? `로컬 AI 엔진 · ${model}` : "로컬 AI 엔진";
 
   if (sidecarState === "checking" || llmReachable === null) {
     return { tone: "pending", label: fullLabel, sub: "확인 중" };
@@ -109,7 +111,7 @@ export function getLLMStatus({ sidecarState, llmReachable, model }) {
   }
   return llmReachable
     ? { tone: "ok", label: fullLabel }
-    : { tone: "warning", label: fullLabel, sub: "Ollama가 실행되고 있지 않아요" };
+    : { tone: "warning", label: fullLabel, sub: "로컬 AI 엔진이 실행되고 있지 않아요" };
 }
 
 /**

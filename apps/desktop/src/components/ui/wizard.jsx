@@ -137,6 +137,21 @@ function RecommendBadge() {
   );
 }
 
+/**
+ * 미설치 배지 — 아직 받지 않은 모델.
+ *
+ * 설치 마법사는 *받을* 모델을 고르는 화면이라 목록에 미설치 모델이 섞인다.
+ * 이 표시가 없으면 목록에 있다는 이유로 이미 받은 것처럼 보인다.
+ * 판정은 `lib/modelCatalog.js`의 `installed` 플래그가 소유한다.
+ */
+function NotInstalledBadge() {
+  return (
+    <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-ink-faint">
+      미설치
+    </span>
+  );
+}
+
 /** 제조사 색 점 — 와이어프레임의 제조사 아이콘 자리. */
 function BrandDot({ color }) {
   return (
@@ -154,11 +169,23 @@ function BrandDot({ color }) {
  * 네이티브 <select>를 안 쓰는 이유: 항목마다 제조사 색 점과 `추천` 배지가
  * 들어가는데 <option>에는 마크업을 못 넣는다.
  *
- * @param {Array<ReturnType<import('@/lib/modelCatalog').describeModel>>} options
+ * 옵션은 `lib/modelCatalog.js`의 `buildModelOptions`/`buildModelChoices`가 만든다.
+ * `installed: false`인 항목에는 `미설치` 배지가 붙는다 — 설치 마법사가 아직 받지
+ * 않은 모델까지 목록에 올리기 때문이다.
+ *
+ * @param {Array<ReturnType<import('@/lib/modelCatalog').describeModel> & {installed?: boolean}>} options
  * @param {string} value 선택된 모델 ID
  * @param {(id: string) => void} onChange
+ * @param {string} [emptyLabel] 옵션이 하나도 없을 때 목록에 띄울 문구
  */
-export function ModelSelectField({ options, value, onChange, disabled, placeholder = "모델을 선택해주세요." }) {
+export function ModelSelectField({
+  options,
+  value,
+  onChange,
+  disabled,
+  placeholder = "모델을 선택해주세요.",
+  emptyLabel = "설치된 모델이 없습니다.",
+}) {
   const [open, setOpen] = React.useState(false);
   const rootRef = React.useRef(null);
 
@@ -204,6 +231,7 @@ export function ModelSelectField({ options, value, onChange, disabled, placehold
                 <span className="ml-1 text-muted-foreground">{selected.tag}</span>
               )}
             </span>
+            {selected.installed === false && <NotInstalledBadge />}
             {selected.recommended && <RecommendBadge />}
           </>
         ) : (
@@ -223,9 +251,7 @@ export function ModelSelectField({ options, value, onChange, disabled, placehold
           className="absolute left-0 right-0 top-full z-20 mt-1 max-h-52 overflow-y-auto rounded-lg border border-border bg-popover py-1 shadow-lg"
         >
           {options.length === 0 ? (
-            <li className="px-3 py-2 text-xs text-muted-foreground">
-              설치된 모델이 없습니다.
-            </li>
+            <li className="px-3 py-2 text-xs text-muted-foreground">{emptyLabel}</li>
           ) : (
             options.map((opt) => (
               <li key={opt.id}>
@@ -247,6 +273,7 @@ export function ModelSelectField({ options, value, onChange, disabled, placehold
                     {opt.name}
                     {opt.tag && <span className="ml-1 text-muted-foreground">{opt.tag}</span>}
                   </span>
+                  {opt.installed === false && <NotInstalledBadge />}
                   {opt.recommended && <RecommendBadge />}
                 </button>
               </li>

@@ -3,8 +3,8 @@
  *
  * 진단 → 계획 → 자동 실행 → 검증 단일 모달.
  * 단계:
- *   0. Ollama 설치 (macOS: brew / Windows: winget) — 미설치 시
- *   1. Ollama 데몬 실행 (macOS: brew services / Windows: Ollama 앱 시작) — 미실행 시
+ *   0. Ollama 설치 (공식 배포본 — macOS는 .app, Windows는 winget/설치 프로그램) — 미설치 시
+ *   1. Ollama 데몬 실행 (탐지된 실물 경로로 실행) — 미실행 시
  *   2. Ollama 모델 다운로드 (`ollama pull <model>`) — 미다운로드 시
  *   3. AI 대화 테스트 (`/llm/chat` → Ollama) — 항상
  *
@@ -21,9 +21,12 @@ import {
   Download,
   ChevronRight,
   ExternalLink,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusRow } from "@/components/ui/status";
+import { ModelSelectField } from "@/components/ui/wizard";
+import { useOllamaModels } from "@/hooks/useOllamaModels";
 import useAppStore from "@/store/appStore";
 import useStatusStore from "@/store/statusStore";
 import {
@@ -510,14 +513,14 @@ export default function LocalAISetupWizard() {
               {(stepStates[STEP.INSTALL_OLLAMA]?.status === "error" ||
                 stepStates[STEP.START_OLLAMA]?.status === "error") && (
                 <p className="mt-2">
-                  자동 설치/실행이 실패하면 Ollama를 직접 설치/실행한 뒤 [재진단]을 눌러주세요.{" "}
+                  자동 설치/실행이 실패하면 아래에서 직접 내려받아 설치한 뒤 [재진단]을 눌러주세요.{" "}
                   <a
                     href="https://ollama.com/download"
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center gap-1 underline"
                   >
-                    Ollama 다운로드
+                    로컬 AI 엔진 내려받기 (ollama.com)
                     <ExternalLink className="h-3 w-3" />
                   </a>
                 </p>
@@ -614,8 +617,8 @@ function DiagnosisCard({ diag, model }) {
   // 사용자 친화적 표현 — 포트/데몬 같은 용어는 표시하지 않음.
   // 버전은 hint(우측 메타)로만 작게 표시.
   const items = [
-    { label: "Ollama 설치", ok: ollInst, hint: diag.oll?.version },
-    { label: "Ollama 실행", ok: ollRun },
+    { label: "로컬 AI 엔진 설치", ok: ollInst, hint: diag.oll?.version },
+    { label: "로컬 AI 엔진 실행", ok: ollRun },
     { label: `AI 모델 (${model})`, ok: modelInst },
   ];
 
@@ -642,61 +645,104 @@ function DiagnosisCard({ diag, model }) {
   );
 }
 
+/**
+ * 모델 선택 — **이 컴퓨터에 설치된 모델** + 받을 수 있는 추천 모델.
+ *
+ * 목록은 `useOllamaModels`가 중앙 statusStore(= Rust `ollama_status` → `/api/tags`,
+ * `ollama list`와 같은 목록)에서 가져온다. 예전에는 추천 2개를 라디오로 박아둬서,
+ * 이미 받아둔 모델이 있어도 목록에 안 보이고 `직접 입력`에 손으로 쳐야 했다.
+ *
+ * 여기서는 설치 목록만 보여주면 안 된다 — 이 화면의 목적이 **아직 없는 모델을
+ * 받는 것**이라, 갓 설치한 사용자는 목록이 비어 고를 것이 없다. 그래서
+ * 추천 모델을 `installed: false`로 함께 올리고 배지로 구분한다.
+ */
 function ModelPicker({ model, onChange }) {
   const [custom, setCustom] = useState(false);
+
+  // 추천 카탈로그(미설치여도 받을 수 있는 것) + 현재 선택값.
+  // 현재 선택값을 넣는 이유: 직접 입력한 모델이 목록에 없으면 셀렉트가
+  // placeholder로 떨어져 "무엇을 고른 상태인지" 화면에서 사라진다.
+  const extraIds = useMemo(
+    () => [...RECOMMENDED_MODELS.map((m) => m.id), model].filter(Boolean),
+    [model]
+  );
+  const { options, installedCount, refresh, refreshing } = useOllamaModels({ extraIds });
+
+  // 추천 카탈로그에만 있는 설명 문구 — 셀렉트 항목에는 안 들어가므로 아래에 붙인다.
+  const note = RECOMMENDED_MODELS.find((m) => m.id === model)?.note;
+  const selected = options.find((o) => o.id === model);
+
   return (
     <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
-      <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold">
-        <Download className="h-3.5 w-3.5 text-primary" />
-        AI 모델 선택
-      </p>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="flex items-center gap-1.5 text-xs font-semibold">
+          <Download className="h-3.5 w-3.5 text-primary" />
+          AI 모델 선택
+        </p>
+        <button
+          type="button"
+          onClick={refresh}
+          disabled={refreshing}
+          title="설치된 모델 목록 새로고침"
+          className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-50"
+        >
+          {refreshing ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3 w-3" />
+          )}
+          새로고침
+        </button>
+      </div>
+
       <div className="space-y-1.5">
-        {RECOMMENDED_MODELS.map((m) => (
-          <label
-            key={m.id}
-            className={`flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-1.5 text-xs ${
-              model === m.id && !custom
-                ? "border-primary bg-primary/5"
-                : "border-border hover:bg-muted/50"
-            }`}
-          >
-            <input
-              type="radio"
-              name="ollama-model"
-              checked={model === m.id && !custom}
-              onChange={() => {
-                onChange(m.id);
-                setCustom(false);
-              }}
-              className="mt-0.5"
-            />
-            <div className="flex-1">
-              <div className="font-medium">{m.label}</div>
-              <div className="text-muted-foreground">{m.note}</div>
-            </div>
-          </label>
-        ))}
+        <ModelSelectField
+          options={options}
+          value={custom ? "" : model}
+          onChange={(id) => {
+            onChange(id);
+            setCustom(false);
+          }}
+          disabled={custom}
+          placeholder="모델을 선택해주세요."
+          emptyLabel="고를 수 있는 모델이 없습니다."
+        />
+
+        {/* 선택한 모델이 무엇인지 한 줄로 밝힌다 — 배지만으로는 "미설치"가
+            "받아야 한다"는 뜻인지 "못 쓴다"는 뜻인지 갈린다. */}
+        {!custom && selected && (
+          <p className="text-[11px] text-muted-foreground">
+            {selected.installed
+              ? "이미 받아둔 모델이에요 — 다운로드 단계는 건너뜁니다."
+              : "아직 없는 모델이에요 — 아래 단계에서 내려받습니다."}
+            {note ? ` ${note}` : ""}
+          </p>
+        )}
+
         <label
           className={`flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs ${
             custom ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
           }`}
         >
           <input
-            type="radio"
-            name="ollama-model"
+            type="checkbox"
             checked={custom}
-            onChange={() => setCustom(true)}
+            onChange={(e) => setCustom(e.target.checked)}
           />
-          <span className="font-medium">직접 입력:</span>
+          <span className="font-medium shrink-0">직접 입력:</span>
           <input
             type="text"
             disabled={!custom}
             value={custom ? model : ""}
             onChange={(e) => onChange(e.target.value)}
             placeholder="qwen3:8b"
-            className="flex-1 rounded border border-input bg-background px-2 py-0.5 font-mono text-[11px] disabled:opacity-50"
+            className="min-w-0 flex-1 rounded border border-input bg-background px-2 py-0.5 font-mono text-[11px] disabled:opacity-50"
           />
         </label>
+
+        <p className="text-[11px] text-muted-foreground">
+          이 컴퓨터에 설치된 모델 {installedCount}개
+        </p>
       </div>
     </div>
   );
