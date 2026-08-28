@@ -54,7 +54,7 @@
 | 툴 진행 스텝 | chatStore의 `toolSteps` | `lib/toolSteps.js`(executed_actions→칩 문구, 순수) | — | `ui/chat.jsx`의 `ToolStepChip` |
 | 페어링 TTL 표시 | relayStore의 `pairingExpiresAt` | `lib/pairingCountdown.js`(남은 시간·`3:29` 포맷, 순수) | — | `components/relay/RelayPairing.jsx` (조합만) |
 | 모바일 승인 왕복 | (mobile) `ChatState.pendingApproval` | (mobile) `store/chat_controller.dart`의 `respondApproval` | — | (mobile) `main.dart`의 `_approvalBar` (조합만) |
-| 온보딩 모델 목록 | — | `lib/modelCatalog.js`(모델 ID→제조사·추천, 순수) | — | `components/ui/wizard.jsx`의 `ModelSelectField` |
+| 로컬 모델 선택 | statusStore의 `modules.ollama.models` | `lib/modelCatalog.js`(ID 정규화·옵션·기본값, 순수) · `hooks/useOllamaModels.js`(구독·새로고침) | `ollama.rs`의 `list_ollama_models` | `components/ui/wizard.jsx`의 `ModelSelectField` |
 | 작업 기록 | — | `lib/activityLog.js`(감사로그→표 행·KPI 4장·페이지 번호, 순수) | — | `components/activity/ActivityPage.jsx` (조합만) |
 | 글자 크기 | `store/fontScaleStore.js` | `lib/fontScale.js`(선택→루트 px, 순수) · `lib/fontScaleManager.js`(`<html>` font-size 적용) | — | `components/settings/PreferencesPage.jsx`의 폰트 크기 섹션 |
 | 대화 목록 | chatStore의 `sessions` | `lib/conversationGroups.js`(요일별·파일별 그룹, 순수) | — | `components/conversations/ConversationHistoryPage.jsx` (조합만) |
@@ -209,6 +209,18 @@
 > **코드 식별자는 바꾸지 않는다** — `ollama_status`·`STATUS_MODULES.ollama`·`macos_ollama_exe`·`STEP.INSTALL_OLLAMA` 등은 내부 이름이고, 사이드카 API 필드명이기도 하다. 바꾸면 프론트·Rust·파이썬 세 곳이 동시에 어긋난다. **화면 문자열만** 바꿨다.
 >
 > 확인 방법: `npm run build` 후 `dist/assets/*.js`에서 `Ollama`를 grep하면 **`SetupGuide` 문구만** 나와야 한다. 다른 화면에서 나오면 새 문구가 규칙을 벗어난 것이다.
+
+> **2026-08 모델 선택 단일화 노트**: 로컬 모델을 고르는 화면은 **넷**이고(온보딩 · 설치 마법사 · 설정 허브 `일반` · 환경 설정), 전부 같은 목록·같은 드롭다운을 쓴다. 단일 소스는 **`statusStore.modules.ollama.models`**(= Rust `ollama_status` → `/api/tags`, `ollama list`가 보는 것과 같은 목록)이고, 구독은 `hooks/useOllamaModels.js`가 맡는다.
+>
+> 원래는 화면마다 제각각이었다 — 설치 마법사는 추천 2개를 **라디오로 하드코딩**해서 이미 받아둔 모델이 목록에 안 떴고(직접 입력에 손으로 쳐야 했다), 환경 설정의 `사용중인 AI 모델`은 셰브런이 달렸는데 **누르면 목록이 아니라 `guide` 페이지로 넘어가는** 읽기 전용 버튼이었다. 온보딩만 목록을 띄웠는데 그마저 **사이드카 `healthCheck()`**를 따로 불러서, 사이드카가 아직 안 뜬 순간에 Ollama가 멀쩡한데도 "설치되어 있지 않아요"로 보였다. 엔진 설치 여부는 로컬 판정이라 사이드카를 거칠 이유가 없다.
+>
+> **모델 목록의 원본이 두 갈래이고 모양이 다르다** — Rust는 `/api/tags` 원본 그대로 `[{name, size, ...}]`(객체), 사이드카 `/health`는 `["qwen3:4b", ...]`(문자열). 한쪽만 받는 함수에 다른 쪽을 넣으면 **예외 없이 빈 목록**이 된다. 그래서 정규화(`toModelId`)를 `modelCatalog.js` 한 곳에 두고 화면은 전부 통과시킨다. `lib/modelCatalog.test.js`가 두 shape이 같은 결과를 내는지 고정한다.
+>
+> **설치 마법사는 설치된 모델만 보여주면 안 된다** — 그 화면의 목적이 *아직 없는 모델을 받는 것*이라, 갓 설치한 사용자는 목록이 비어 고를 것이 하나도 없다. 그래서 `buildModelChoices(설치됨, 추가후보)`가 추천 카탈로그를 `installed: false`로 함께 올리고 `ModelSelectField`가 `미설치` 배지를 붙인다. **배지를 빼면 안 된다** — 목록에 있다는 이유로 이미 받은 것처럼 보인다. 같은 함수가 설정 화면의 반대 경우(저장된 모델이 지워져 목록에서 빠진 경우)도 처리한다.
+>
+> 선택값 결정은 `pickDefaultModel(options, preferred)` 하나가 소유한다: **저장된 값 > 추천 > 첫 항목**. 예전에는 화면마다 `models[0]`을 집어넣어서 설정에서 고른 모델이 다음 화면에서 슬그머니 바뀌어 있었다. 목록 정렬도 `추천 → 설치됨 → 이름순`으로 고정했다 — `/api/tags`의 반환 순서가 보장되지 않아, 순서가 갱신마다 흔들리면 같은 자리를 누르려던 사용자가 다른 모델을 고르게 된다.
+>
+> 환경 설정에는 저장 버튼이 없어 **고르는 즉시 저장**한다. 그 화면의 `모델 추가하기` 링크(→ `guide`)는 지우지 말 것 — 모델을 *받는* 곳은 설치 마법사이고, 목록이 비었을 때 사용자가 갈 곳이 그것뿐이다.
 
 > **2026-08 Ollama 설치 경로 노트**: 설치 마법사는 **패키지 매니저를 전제하지 않는다.**
 >

@@ -40,11 +40,11 @@ import {
   ModelSelectField,
   WizardSteps,
 } from "@/components/ui/wizard";
-import { buildModelOptions, RECOMMENDED_MODEL } from "@/lib/modelCatalog";
+import { RECOMMENDED_MODEL } from "@/lib/modelCatalog";
+import { useOllamaModels } from "@/hooks/useOllamaModels";
 import useAppStore from "@/store/appStore";
 import {
   saveLLMSettings,
-  healthCheck,
   openWorkspaceFolder,
 } from "@/lib/api";
 import { toUserMessage } from "@/lib/errorMessages";
@@ -97,32 +97,27 @@ function StepLLM({ onNext, onPrev }) {
   const [model, setModel] = useState(llmConfig.model);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [ollamaStatus, setOllamaStatus] = useState("unknown");
-  const [ollamaModels, setOllamaModels] = useState([]);
 
-  // 설치된 모델 → 셀렉트 옵션 (추천 모델이 맨 위로 올라온다).
-  const modelOptions = React.useMemo(() => buildModelOptions(ollamaModels), [ollamaModels]);
+  // 모델 목록은 중앙 statusStore(= Rust `ollama_status` → `/api/tags`)를 구독한다.
+  // 예전에는 여기서 사이드카 `healthCheck()`를 따로 불렀는데, 그러면 (1) 설치
+  // 마법사·설정과 목록 소스가 갈리고 (2) 사이드카가 아직 안 떴을 때 Ollama가
+  // 멀쩡한데도 "설치되어 있지 않아요"로 보인다. 엔진 설치 여부는 로컬 판정이라
+  // 사이드카를 거칠 이유가 없다.
+  const {
+    options: modelOptions,
+    installedCount,
+    installed: ollamaInstalled,
+    running: ollamaRunning,
+    loading: ollamaLoading,
+    refresh: recheckOllama,
+    pickDefault,
+  } = useOllamaModels();
 
+  // 목록이 준비되면 선택값을 맞춘다 — 저장된 값이 목록에 있으면 그대로 두고,
+  // 없을 때만 추천 → 첫 항목 순으로 고른다.
   useEffect(() => {
-    let cancelled = false;
-    setOllamaStatus("unknown");
-    healthCheck()
-      .then((result) => {
-        if (cancelled) return;
-        const isConnected = result?.ollama_status === "connected";
-        setOllamaStatus(isConnected ? "ok" : "not_installed");
-        if (isConnected && Array.isArray(result?.ollama_models)) {
-          setOllamaModels(result.ollama_models);
-          if (result.ollama_models.length > 0) {
-            setModel(result.ollama_models[0]);
-          }
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setOllamaStatus("not_installed");
-      });
-    return () => { cancelled = true; };
-  }, []);
+    setModel((cur) => pickDefault(cur || llmConfig.model));
+  }, [pickDefault, llmConfig.model]);
 
   const handleNext = async () => {
     setSaving(true);
@@ -150,20 +145,6 @@ function StepLLM({ onNext, onPrev }) {
     }
   };
 
-  const handleRecheck = () => {
-    setOllamaStatus("unknown");
-    healthCheck()
-      .then((result) => {
-        const isConnected = result?.ollama_status === "connected";
-        setOllamaStatus(isConnected ? "ok" : "not_installed");
-        if (isConnected && Array.isArray(result?.ollama_models)) {
-          setOllamaModels(result.ollama_models);
-          if (result.ollama_models.length > 0) setModel(result.ollama_models[0]);
-        }
-      })
-      .catch(() => setOllamaStatus("not_installed"));
-  };
-
   return (
     <div className="space-y-6">
       <div className="text-center">
@@ -176,14 +157,18 @@ function StepLLM({ onNext, onPrev }) {
         </p>
       </div>
 
-      {/* Ollama 미설치 — 와이어프레임 A-1의 `파일 설치` 상태 */}
-      {ollamaStatus === "not_installed" && (
+      {/* Ollama 미설치·미실행 — 와이어프레임 A-1의 `파일 설치` 상태.
+          store가 둘을 구분하므로 문구도 구분한다 — 설치는 됐는데 데몬만 꺼진
+          사용자에게 "설치되어 있지 않아요"는 따를 수 없는 안내다. */}
+      {!ollamaLoading && (!ollamaInstalled || !ollamaRunning) && (
         <Card className="border-amber-300 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20">
           <CardContent className="space-y-3 py-4">
             <div className="flex items-start gap-2">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
               <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">
-                로컬 AI 엔진이 설치되어 있지 않아요.
+                {ollamaInstalled
+                  ? "로컬 AI 엔진이 실행되고 있지 않아요."
+                  : "로컬 AI 엔진이 설치되어 있지 않아요."}
               </p>
             </div>
 
@@ -231,7 +216,7 @@ function StepLLM({ onNext, onPrev }) {
               size="sm"
               variant="outline"
               className="w-full text-xs"
-              onClick={handleRecheck}
+              onClick={recheckOllama}
             >
               <RefreshCw className="h-3 w-3 mr-1" />
               설치 후 재확인
@@ -241,7 +226,7 @@ function StepLLM({ onNext, onPrev }) {
       )}
 
       {/* Ollama 설치됨, 모델 없음 — 와이어프레임 A-2(설치 완료) → A-3(모델 설치) 사이 */}
-      {ollamaStatus === "ok" && ollamaModels.length === 0 && (
+      {!ollamaLoading && ollamaInstalled && ollamaRunning && installedCount === 0 && (
         <Card className="border-blue-300 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20">
           <CardContent className="space-y-2 py-3">
             <InstallProgress value={50} label="로컬 AI 엔진 설치 완료" detail="1/2 단계" />
@@ -268,7 +253,7 @@ function StepLLM({ onNext, onPrev }) {
                 <Copy className="h-3 w-3" />
               </Button>
             </div>
-            <Button size="sm" variant="outline" className="w-full text-xs" onClick={handleRecheck}>
+            <Button size="sm" variant="outline" className="w-full text-xs" onClick={recheckOllama}>
               <RefreshCw className="h-3 w-3 mr-1" />
               모델 확인
             </Button>
@@ -277,7 +262,7 @@ function StepLLM({ onNext, onPrev }) {
       )}
 
       {/* Ollama 모델 선택 — 와이어프레임 A-3/A-4 (제조사 아이콘 + `추천` 배지) */}
-      {ollamaStatus === "ok" && ollamaModels.length > 0 && (
+      {!ollamaLoading && ollamaInstalled && ollamaRunning && installedCount > 0 && (
         <div className="space-y-2">
           <Label>설치할 AI 모델을 선택해주세요.</Label>
           <ModelSelectField
@@ -313,7 +298,7 @@ function StepLLM({ onNext, onPrev }) {
         와이어프레임 3단계 인디케이터.
         Ollama가 아직 없으면 `파일 설치`(0), 깔려 있으면 `모델 설치`(1)가 활성이다.
       */}
-      <WizardSteps current={ollamaStatus !== "ok" ? 0 : 1} />
+      <WizardSteps current={ollamaInstalled && ollamaRunning ? 1 : 0} />
     </div>
   );
 }

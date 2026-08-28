@@ -20,7 +20,6 @@ import {
   AlertCircle,
   Check,
   CheckCircle2,
-  ChevronDown,
   Loader2,
   Plus,
   RefreshCw,
@@ -33,12 +32,15 @@ import { cn } from "@/lib/utils";
 import { CURRENT_VERSION, checkForUpdate } from "@/lib/appUpdate";
 import { FONT_SCALES, FONT_SCALE_LABELS } from "@/lib/fontScale";
 import { setFontScale } from "@/lib/fontScaleManager";
-import { describeModel } from "@/lib/modelCatalog";
+import { saveLLMSettings } from "@/lib/api";
+import { toUserMessage } from "@/lib/errorMessages";
 import { THEME_LABELS, THEME_PREFERENCES } from "@/lib/theme";
 import { setThemePreference } from "@/lib/themeManager";
 import { disconnect as relayDisconnect } from "@/lib/relayManager";
+import { useOllamaModels } from "@/hooks/useOllamaModels";
 import AlertDialog from "@/components/ui/dialog";
 import Modal from "@/components/ui/modal";
+import { ModelSelectField } from "@/components/ui/wizard";
 import useAppStore from "@/store/appStore";
 import useFontScaleStore from "@/store/fontScaleStore";
 import useRelayStore from "@/store/relayStore";
@@ -119,6 +121,7 @@ function PlaceholderNote({ children }) {
 export default function PreferencesPage() {
   const setCurrentPage = useAppStore((s) => s.setCurrentPage);
   const llmConfig = useAppStore((s) => s.llmConfig);
+  const setLLMConfig = useAppStore((s) => s.setLLMConfig);
 
   const themePreference = useThemeStore((s) => s.preference);
   const themeResolved = useThemeStore((s) => s.resolved);
@@ -145,8 +148,34 @@ export default function PreferencesPage() {
     wasConnected.current = relayConnected;
   }, [relayConnected, pairOpen]);
 
-  // 지금 고른 모델이 추천 모델인지 — 배지 표시 판정용.
-  const model = describeModel(llmConfig?.model);
+  // 모델 목록 — 중앙 statusStore(= `ollama list`와 같은 목록)를 구독한다.
+  // 저장된 모델을 extraIds에 넣는 이유: 그 모델을 지운 뒤에도 항목으로 남겨
+  // `미설치` 배지를 달아 보여줘야 한다. 목록에서 빠지면 셀렉트가 placeholder로
+  // 떨어져, 설정이 비어 있는 것처럼 보인다.
+  const { options: modelOptions, installedCount } = useOllamaModels({
+    extraIds: [llmConfig?.model],
+  });
+  const [modelSaving, setModelSaving] = useState(false);
+  const [modelError, setModelError] = useState("");
+
+  /** 셀렉트에서 고르는 즉시 저장한다 — 이 페이지에는 저장 버튼이 없다. */
+  const handleSelectModel = async (id) => {
+    if (!id || id === llmConfig?.model) return;
+    setModelSaving(true);
+    setModelError("");
+    const config = { provider: "ollama", model: id };
+    try {
+      await saveLLMSettings(config);
+      setLLMConfig(config);
+    } catch (err) {
+      // 사이드카가 안 떠 있어도 앱 안에서는 고른 모델이 유지되게 store는 갱신하고,
+      // 저장에 실패했다는 사실만 화면에 남긴다.
+      setLLMConfig(config);
+      setModelError(toUserMessage(err));
+    } finally {
+      setModelSaving(false);
+    }
+  };
 
   const handleCheckUpdate = async () => {
     setChecking(true);
@@ -283,25 +312,42 @@ export default function PreferencesPage() {
 
       {/* 6. 사용중인 AI 모델 ------------------------------------------------ */}
       <Section title="사용중인 AI 모델">
-        {/* Figma: bg #F6F7F5, radius 4, px12 py8, width 441 */}
-        <button
-          type="button"
-          onClick={() => setCurrentPage("guide")}
-          className="flex w-[441px] max-w-full items-center justify-between rounded bg-muted px-3 py-2 text-left transition-colors hover:bg-accent"
-        >
-          <span className="truncate text-sm leading-5 text-foreground">
-            {llmConfig?.model || "선택된 모델 없음"}
-          </span>
-          <span className="flex shrink-0 items-center gap-2">
-            {/* 배지는 실제로 추천 모델일 때만 붙인다 — 어떤 모델을 골라도 `추천`이
-                떠 있으면 배지가 아무 말도 하지 않는 셈이다. 판정은
-                `lib/modelCatalog.js`가 소유한다(온보딩 셀렉트와 같은 규칙). */}
-            {model.recommended && (
-              <span className="text-xs leading-4 text-brand-step">추천</span>
-            )}
-            <ChevronDown className="h-6 w-6 text-ink-subtle" />
-          </span>
-        </button>
+        {/* 예전에는 여기가 `guide`로 넘어가는 읽기 전용 버튼이었다. 셰브런이
+            붙어 있어 드롭다운처럼 보이는데 눌러도 목록이 안 뜨고 페이지가
+            바뀌었다. 이제 실제로 설치된 모델 목록이 열리고, 고르면 즉시 저장된다.
+            표시 규칙(제조사 점·`추천`·`미설치` 배지)은 `ui/wizard.jsx`의
+            `ModelSelectField`와 `lib/modelCatalog.js`가 소유한다. */}
+        <ModelSelectField
+          options={modelOptions}
+          value={llmConfig?.model || ""}
+          onChange={handleSelectModel}
+          disabled={modelSaving}
+          placeholder="선택된 모델 없음"
+          emptyLabel="설치된 모델이 없습니다."
+        />
+
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-xs leading-4 text-ink-faint">
+            {modelSaving
+              ? "저장하는 중…"
+              : `이 컴퓨터에 설치된 모델 ${installedCount}개`}
+          </p>
+          {/* 모델을 받는 곳은 여기가 아니라 설치 마법사다 — 이 링크를 지우면
+              목록이 비었을 때 사용자가 갈 곳이 없어진다. */}
+          <button
+            type="button"
+            onClick={() => setCurrentPage("guide")}
+            className="text-xs leading-4 text-primary underline-offset-2 hover:underline"
+          >
+            모델 추가하기
+          </button>
+        </div>
+
+        {modelError && (
+          <p className="text-xs leading-4 text-destructive">
+            설정 저장에 실패했어요 — {modelError}
+          </p>
+        )}
       </Section>
 
       {/* 7. 버전 및 업데이트 (협의로 추가) ----------------------------------- */}
