@@ -255,24 +255,30 @@ CArchive → PYZ를 풀면 우리 모듈 42개가 그대로 나온다. 이걸 �
 xlwings 같은 전이 의존을 빠짐없이 찾고(`.so`만 주면 PyInstaller가 그 안을 못 봐서
 전부 손으로 `--hidden-import`를 적어야 한다), 번들에는 `.pyc` 대신 `.so`가 들어간다.
 
-검증(macOS, CI와 같은 명령):
+검증(macOS, CI와 같은 명령. 빌드 52초 / 산출물 37MB):
 
+- `--smoke-test` 통과 — `frozen=True / xlwings 0.36.6 / appscript OK /
+  keyring backend: Keyring / OK`. 네이티브 컴파일 후에도 플랫폼 백엔드가 붙는다.
 - CArchive에 `office_claw_sidecar.cpython-312-darwin.so` **1개**, PYZ 1726개 모듈 중
   **우리 모듈 0개**.
 - 기동 후 `/health` 정상, 자격증명 저장→조회→삭제 왕복 정상(= keyring OS 백엔드가
-  살아 있다), `/health`가 로컬 AI 엔진까지 잡는다.
+  살아 있다).
 - 바이너리에서 시스템 프롬프트·docstring 문자열 **0건**.
 
 **남는 노출**: `.so` 안에도 모듈 이름과 함수 이름은 문자열/심볼로 남는다(Nuitka가
 import 기계장치에 쓴다). 사라지는 건 **로직**이다 — 디컴파일러가 걸 대상이 없다.
 이름만으로는 알고리즘이 복원되지 않으므로 여기까지를 목표로 잡았다.
 
-> **Windows 경로는 아직 실측하지 못했다.** 이 저장소의 CI에서 Windows가 도는 곳은
-> 태그 push 시의 `release.yml`뿐이라(PR 게이트는 ubuntu 전용), Nuitka의 Windows
-> 빌드(MSVC 사용·`.pyd` 산출·`--python-flag=-OO`)는 첫 릴리스 빌드에서 처음
-> 검증된다. **실패하면 `build` 잡이 죽어 릴리스 자체가 안 만들어지므로 반쪽 배포는
-> 나지 않는다**(그러라고 `publish`를 분리해 뒀다). 그래도 태그를 만들기 전에
-> `workflow_dispatch`로 Windows 사이드카 빌드를 한 번 돌려보는 편이 낫다.
+> **Windows 경로는 아직 macOS만큼 실측하지 못했다.** Nuitka의 Windows 빌드는
+> MSVC를 타고 `.pyd`를 내놓는데, 손에 macOS밖에 없어 직접 돌려보지 못했다.
+>
+> **태그를 밀기 전에 `Cross-platform check`를 `workflow_dispatch`로 한 번 돌릴 것**
+> (`bundle: true`). 그 잡이 Windows·macOS 양쪽에서 이 문서와 **같은 2단계 명령**으로
+> 번들을 만들고 `--smoke-test`까지 돌린다 — 그러라고 `release.yml`과 명령을 맞춰
+> 뒀으니, 한쪽만 고치면 그 검증이 무의미해진다.
+>
+> 그걸 건너뛰어도 반쪽 배포는 나지 않는다 — Windows 빌드가 깨지면 `build` 잡이
+> 죽고, 릴리스를 만드는 `publish`는 `needs: build`라 아예 실행되지 않는다.
 
 ### 버린 것 — `office_claw_sidecar.spec`
 
