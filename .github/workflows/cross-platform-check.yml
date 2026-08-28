@@ -88,13 +88,31 @@ jobs:
       # pyinstaller·nuitka가 들어 있다). 단, **릴리스 빌드는 dev extra를 쓰지
       # 않는다** — 그 상태로 번들을 말면 `_pytest` 71개 모듈이 산출물에 딸려
       # 들어간다(실측). 여기서는 크기가 아니라 "빌드가 되는가"만 본다.
-      - name: 사이드카 번들 (Nuitka + PyInstaller)
-        if: github.event_name == 'workflow_dispatch' && inputs.bundle
+      # **Unix/Windows를 반드시 나눈다.** 이 잡의 기본 셸은 OS를 따라가서
+      # windows-latest에서는 pwsh로 돈다 — 거기서 줄 연결은 백슬래시가 아니라
+      # 백틱(`)이다. 한 단계로 합쳐 백슬래시를 쓰면 PowerShell이
+      #   ParserError: Missing expression after unary operator '--'
+      # 로 죽는다. 이 파일의 번들 스모크는 도입 이래 **Windows에서 한 번도
+      # 동작한 적이 없었다** — workflow_dispatch를 아무도 안 돌려봐서 안 드러났다.
+      # (아래 기동 스모크가 이미 OS별로 나뉘어 있는 것과 같은 이유다.)
+      - name: 사이드카 번들 (Nuitka + PyInstaller, Unix)
+        if: github.event_name == 'workflow_dispatch' && inputs.bundle && runner.os != 'Windows'
         working-directory: services/sidecar
         run: |
           uv run python -m nuitka --module office_claw_sidecar \
             --include-package=office_claw_sidecar \
             --python-flag=-OO \
+            --output-dir=build-mod
+          uv run pyinstaller --noconfirm sidecar-hardened.spec
+
+      - name: 사이드카 번들 (Nuitka + PyInstaller, Windows)
+        if: github.event_name == 'workflow_dispatch' && inputs.bundle && runner.os == 'Windows'
+        working-directory: services/sidecar
+        shell: pwsh
+        run: |
+          uv run python -m nuitka --module office_claw_sidecar `
+            --include-package=office_claw_sidecar `
+            --python-flag=-OO `
             --output-dir=build-mod
           uv run pyinstaller --noconfirm sidecar-hardened.spec
 

@@ -30,8 +30,12 @@ SO = glob.glob(os.path.join("build-mod", "office_claw_sidecar.*.so")) + glob.glo
     os.path.join("build-mod", "office_claw_sidecar.*.pyd")
 )
 if not SO:
+    # 이 문자열들은 **ASCII 여야 한다.** Windows 콘솔의 레거시 코드페이지(cp949)는
+    # 한글을 인코딩하지 못해 `charmap_encode` 에서 UnicodeEncodeError 가 나고
+    # 빌드가 그대로 죽는다(실제로 CI Windows 잡이 여기서 실패했다).
+    # 파일 안의 **주석**은 화면에 안 나가므로 한글 그대로 둔다.
     raise SystemExit(
-        "build-mod/office_claw_sidecar.*.{so,pyd} 가 없다. Nuitka --module 빌드를 먼저 돌릴 것."
+        "build-mod/office_claw_sidecar.*.{so,pyd} not found. Run the Nuitka --module build first."
     )
 SO = SO[0]
 
@@ -54,13 +58,13 @@ a = Analysis(
 # 그대로 남아 하드닝이 무의미해진다.
 removed = [e for e in a.pure if e[0] == "office_claw_sidecar" or e[0].startswith("office_claw_sidecar.")]
 a.pure = TOC([e for e in a.pure if e not in removed])
-print(f"[hardening] PYZ 에서 제외한 우리 모듈: {len(removed)}개")
+print(f"[hardening] excluded our modules from PYZ: {len(removed)}")
 
 # 그 자리에 Nuitka 컴파일 확장 모듈을 넣는다. `_MEIPASS` 최상단에 확장 모듈
 # 파일명 규칙(`<이름>.cpython-<버전>-<플랫폼>.so`)으로 두면 표준 FileFinder 가
 # `import office_claw_sidecar` 를 여기로 해석한다.
 a.binaries += TOC([(os.path.basename(SO), SO, "BINARY")])
-print(f"[hardening] 번들에 넣은 확장 모듈: {SO}")
+print(f"[hardening] bundled compiled extension: {SO}")
 
 pyz = PYZ(a.pure)
 

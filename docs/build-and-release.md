@@ -269,6 +269,10 @@ xlwings 같은 전이 의존을 빠짐없이 찾고(`.so`만 주면 PyInstaller�
 import 기계장치에 쓴다). 사라지는 건 **로직**이다 — 디컴파일러가 걸 대상이 없다.
 이름만으로는 알고리즘이 복원되지 않으므로 여기까지를 목표로 잡았다.
 
+> **macOS는 CI에서도 확인됐다** — GitHub 러너에서 `Cross-platform check`(bundle)로
+> 하이브리드 빌드 전체가 돌고 번들 스모크가 `frozen=True / appscript OK /
+> keyring backend: Keyring / OK`로 통과한다.
+>
 > **Windows 경로는 아직 macOS만큼 실측하지 못했다.** Nuitka의 Windows 빌드는
 > MSVC를 타고 `.pyd`를 내놓는데, 손에 macOS밖에 없어 직접 돌려보지 못했다.
 >
