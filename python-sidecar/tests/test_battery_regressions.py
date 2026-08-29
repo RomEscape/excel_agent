@@ -6318,3 +6318,47 @@ class TestOppositeAndAdverbHijacks:
             if task["oracle"](wb) != "":
                 broken.append((name, task["oracle"](wb)))
         assert broken == [], f"부정 과제인데 무동작이 실패한다: {broken}"
+
+
+class TestNumberFormatDoesNotHijack:
+    """값의 단위어('80퍼센트')가 서식 요청으로 읽히던 것(2026-08-27 감사 → 08-29 수정).
+
+    조건 감지기는 "~면 충분하다고"류 정중한 종속절에 오발동하므로, 색·강조 어휘가
+    함께 있을 때만 조건 백오프를 쓴다(코퍼스 48문장 무회귀 실측 — 규칙 밖 8건 동일).
+    """
+
+    @staticmethod
+    def _action(msg):
+        from office_claw_sidecar.routers.excel_live import _build_quick_action_plan
+
+        plan = _build_quick_action_plan(msg, "A1:F12")
+        return (plan or [{}])[0].get("action", "") or None
+
+    def test_조건_강조_문장은_서식이_아니다(self):
+        assert self._action("달성률 80퍼센트 미만인 행 빨갛게 강조해줘") != "excel_live.set_number_format"
+
+    def test_정렬_문장은_서식이_아니다(self):
+        assert self._action("퍼센트로 보이는 열 기준 내림차순 정렬해줘") != "excel_live.set_number_format"
+
+    def test_진짜_서식_요청은_그대로(self):
+        assert self._action("달성률을 퍼센트로 보여줘") == "excel_live.set_number_format"
+        # 정중한 종속절(조건 감지기 오발동 부류)도 서식으로 남아야 한다.
+        assert (
+            self._action("팀장님이 숫자는 소수 한 자리면 충분하다고 하셔서요, 정시배송률 열을 소수 첫째 자리까지만 보이게 해 주시면 감사하겠습니다.")
+            == "excel_live.set_number_format"
+        )
+
+    def test_코퍼스_무회귀_경계(self):
+        # 게이트 서식 48문장 중 규칙 밖은 8건(다른 경로가 처리) — 늘면 회귀다.
+        import json
+        from pathlib import Path
+
+        path = Path(__file__).resolve().parents[2] / "datasets" / "eval" / "blind_paraphrases_v1.jsonl"
+        rows = [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
+        miss = sum(
+            1
+            for r in rows
+            if r["task"] in {"percent_format", "comma_cols"}
+            and self._action(r["text"]) != "excel_live.set_number_format"
+        )
+        assert miss <= 8, f"규칙 밖 {miss}건 (기준 8)"

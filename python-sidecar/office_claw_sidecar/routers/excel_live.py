@@ -1976,6 +1976,10 @@ _CONDITION_SENSITIVE_QUICK_ACTIONS = frozenset(
         "excel_live.fill_range",
         "excel_live.clear_range",
         "excel_live.apply_border",
+        # set_number_format을 여기 넣으려다 되돌렸다(2026-08-29): 공용 조건 감지기가
+        # "~라서요, 숫자는 소수 한 자리면 충분하다고"류 정중한 종속절에 오발동해
+        # 게이트의 정상 서식 문장 2건이 플래너로 새 나간다. 대신 규칙 입구에서
+        # 색·강조 어휘가 **함께** 있을 때만 물러난다(_quick_number_format_step).
     }
 )
 # "수식 채워줘"의 "채워"가 색 채우기 규칙에 먼저 잡힌다.
@@ -3200,10 +3204,20 @@ _EXPLICIT_FORMAT_CODE = re.compile(r"([#0][#0,\.]*(?:%|)|yyyy[-/][mM]{1,2}[-/]dd
 def _quick_number_format_step(text: str, target: str) -> dict[str, Any] | None:
     """표시 형식 요청을 규칙으로 확정한다. 값은 건드리지 않는다."""
     lowered = str(text or "").lower()
+    # "80퍼센트 미만인 행 **빨갛게 강조**"·"퍼센트로 보이는 열 기준 **내림차순**" — 서식이
+    # 본 동작이 아닌 문장은 물러난다. '퍼센트'는 값의 단위다(2026-08-27 감사 실증).
+    # 조건 감지는 색·강조 어휘가 **함께** 있을 때만 쓴다 — 감지기가 "~면 충분하다고"류
+    # 정중한 종속절에 오발동해 정상 서식 문장을 잡는다(2026-08-29 코퍼스 실측 2건).
+    if re.search(r"(정렬|순으로|오름차순|내림차순|sort)", lowered):
+        return None
+    if re.search(r"(색|칠해|강조|빨갛|파랗|노랗|highlight)", lowered) and _message_states_condition(text):
+        return None
+    # 값에 바로 붙은 단위어("80퍼센트")는 서식 요청의 근거가 아니다 — 뗀 뒤에 판정한다.
+    stripped = re.sub(r"\d+(?:\.\d+)?\s*(?:퍼센트|%)", " ", lowered)
     # "소수점 두 자리로 보여줘"가 read_range로 샜다(2026-08-17 실측) — '보여줘'가
     # 읽기로 해석된 탓이다. 자릿수·서식 어휘가 있으면 표시 형식 요청으로 본다.
     if not re.search(
-        r"(형식|서식|포맷|format|콤마|쉼표|퍼센트|백분율|천\s*단위|자리|소수)", lowered
+        r"(형식|서식|포맷|format|콤마|쉼표|퍼센트|백분율|천\s*단위|자리|소수)", stripped
     ):
         return None
     # 문장에 코드가 그대로 있으면 그걸 쓴다("#,##0", "0.00%").
