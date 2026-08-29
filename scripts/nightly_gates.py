@@ -94,12 +94,18 @@ def run_gate(key: str, stamp: str) -> dict:
         env=_env(f"nightly-{key}-{stamp}"),
         log=log,
     )
-    try:
-        counts = _read_report(cases)
-        rows = json.loads(cases.with_name(cases.stem + "_report.json").read_text(encoding="utf-8"))
-        counts["실패목록"] = _failures_of(rows)
-    except Exception as exc:  # 보고서를 못 읽으면 그것 자체가 실패다
-        counts = {"오류": f"{type(exc).__name__}: {exc}"}
+    if code != 0:
+        # 스크립트가 죽으면 보고서 파일은 **이전 실행의 것**이다 — 그 숫자로 판정하면
+        # 옛 결과가 오늘 결과 행세를 한다(2026-08-30 04:02 실측: 즉사한 게이트가
+        # 8-27의 negation 24건을 오늘 수치처럼 ❌에 실었다). 죽음은 죽음으로 보고한다.
+        counts: dict = {"오류": f"게이트 스크립트 종료코드 {code} — {log.name} 참조"}
+    else:
+        try:
+            counts = _read_report(cases)
+            rows = json.loads(cases.with_name(cases.stem + "_report.json").read_text(encoding="utf-8"))
+            counts["실패목록"] = _failures_of(rows)
+        except Exception as exc:  # 보고서를 못 읽으면 그것 자체가 실패다
+            counts = {"오류": f"{type(exc).__name__}: {exc}"}
     counts["코드"] = code
     counts["초"] = round(time.time() - t0)
     return counts
