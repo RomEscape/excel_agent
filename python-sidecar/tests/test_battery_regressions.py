@@ -5794,7 +5794,7 @@ class TestKeyColumnProblemAsksBeforeApproval:
     """
 
     @staticmethod
-    def _wb(tmp_path):
+    def _wb(tmp_path, monkeypatch):
         from openpyxl import Workbook
 
         from office_claw_sidecar.services import excel_live_file_service as fs
@@ -5811,42 +5811,46 @@ class TestKeyColumnProblemAsksBeforeApproval:
         fs.WORKSPACE_ROOT = tmp_path
         ls._excel_live_service = None
         ls._excel_live_service_engine = None
+        # 파일 엔진 고정 — auto는 사용자의 Excel이 떠 있으면 xlwings를 골라, 이 임시
+        # 파일을 "열린 문서가 아니다"라며 거부한다(2026-08-29 실측: GUI 검증 중 핀 7개
+        # 가 환경 때문에 깨졌다). 핀은 환경과 무관해야 한다.
+        monkeypatch.setenv("EXCEL_LIVE_ENGINE", "file")
         svc = get_excel_live_service()
         svc.select_workbook(str(p))
         svc.select_sheet(None, "매출")
         return str(p)
 
-    def _problem(self, tmp_path, action, params):
+    def _problem(self, tmp_path, monkeypatch, action, params):
         from office_claw_sidecar.routers.excel_live import PlanStep, _key_column_problem
 
-        path = self._wb(tmp_path)
+        path = self._wb(tmp_path, monkeypatch)
         step = PlanStep(action=action, params=params, reason="r")
         return _key_column_problem(path, "매출", [step])
 
-    def test_없는_기준_열이면_질문을_만든다(self, tmp_path):
-        q = self._problem(tmp_path, "excel_live.dedupe_rows", {"key_columns": ["이름"]})
+    def test_없는_기준_열이면_질문을_만든다(self, tmp_path, monkeypatch):
+        q = self._problem(tmp_path, monkeypatch, "excel_live.dedupe_rows", {"key_columns": ["이름"]})
         assert "이름" in q and "담당자" in q
 
-    def test_필터_기준_열도_같은_잣대(self, tmp_path):
-        q = self._problem(tmp_path, "excel_live.filter_rows", {"column": "없는열"})
+    def test_필터_기준_열도_같은_잣대(self, tmp_path, monkeypatch):
+        q = self._problem(tmp_path, monkeypatch, "excel_live.filter_rows", {"column": "없는열"})
         assert "없는열" in q
 
-    def test_개념어와_열문자는_통과(self, tmp_path):
-        assert self._problem(tmp_path, "excel_live.dedupe_rows", {"key_columns": ["담당"]}) == ""
-        assert self._problem(tmp_path, "excel_live.filter_rows", {"column": "B"}) == ""
+    def test_개념어와_열문자는_통과(self, tmp_path, monkeypatch):
+        assert self._problem(tmp_path, monkeypatch, "excel_live.dedupe_rows", {"key_columns": ["담당"]}) == ""
+        assert self._problem(tmp_path, monkeypatch, "excel_live.filter_rows", {"column": "B"}) == ""
 
-    def test_대상_액션이_아니면_보지_않는다(self, tmp_path):
-        assert self._problem(tmp_path, "excel_live.clear_range", {"target_range": "A1:B2"}) == ""
+    def test_대상_액션이_아니면_보지_않는다(self, tmp_path, monkeypatch):
+        assert self._problem(tmp_path, monkeypatch, "excel_live.clear_range", {"target_range": "A1:B2"}) == ""
 
-    def test_정렬_기준_열도_같은_잣대(self, tmp_path):
+    def test_정렬_기준_열도_같은_잣대(self, tmp_path, monkeypatch):
         # 정렬은 행을 지우진 않지만 순서를 통째로 바꾼다 — 엉뚱한 열이면 조용한 오답.
-        q = self._problem(tmp_path, "excel_live.sort_range", {"key_column": "없는열"})
+        q = self._problem(tmp_path, monkeypatch, "excel_live.sort_range", {"key_column": "없는열"})
         assert "없는열" in q
 
-    def test_정렬_기준이_비었거나_숫자면_보지_않는다(self, tmp_path):
+    def test_정렬_기준이_비었거나_숫자면_보지_않는다(self, tmp_path, monkeypatch):
         # "정렬 좀 해줘"류(빈 값)는 기존 되묻기가 맡고, 숫자 색인은 유효하다.
-        assert self._problem(tmp_path, "excel_live.sort_range", {"key_column": ""}) == ""
-        assert self._problem(tmp_path, "excel_live.sort_range", {"key_column": 2}) == ""
+        assert self._problem(tmp_path, monkeypatch, "excel_live.sort_range", {"key_column": ""}) == ""
+        assert self._problem(tmp_path, monkeypatch, "excel_live.sort_range", {"key_column": 2}) == ""
 
 
 class TestUnstatedParamAsksInsteadOfGuessing:
@@ -6070,7 +6074,7 @@ class TestSortMetricBeatsTargetNoun:
         ]
         assert fired == [], fired
 
-    def test_승인_직전에_계획의_기준_열을_바로잡는다(self, tmp_path):
+    def test_승인_직전에_계획의_기준_열을_바로잡는다(self, tmp_path, monkeypatch):
         # 같은 문장이 실행마다 플래너로도 의도 해석으로도 왔다 — 한 층만 막으면 샌다.
         # 승인 카드 직전은 모든 경로가 지나는 자리다(2026-08-27 실측으로 확정).
         from openpyxl import Workbook
@@ -6090,6 +6094,7 @@ class TestSortMetricBeatsTargetNoun:
         fs.WORKSPACE_ROOT = tmp_path
         ls._excel_live_service = None
         ls._excel_live_service_engine = None
+        monkeypatch.setenv("EXCEL_LIVE_ENGINE", "file")  # 핀은 환경과 무관해야 한다(2026-08-29)
         svc = get_excel_live_service()
         svc.select_workbook(str(p))
         svc.select_sheet(None, "지역성과")
@@ -6362,3 +6367,44 @@ class TestNumberFormatDoesNotHijack:
             and self._action(r["text"]) != "excel_live.set_number_format"
         )
         assert miss <= 8, f"규칙 밖 {miss}건 (기준 8)"
+
+
+class TestFabricatedWriteValueAsksInsteadOfInventing:
+    """"여기에 입력을 해줘"의 '입력'이 콘텐츠로 24칸에 써졌다(2026-08-29 GUI 실사고).
+
+    두 겹으로 막는다: ①퀵룰이 조사('을/를')까지 삼켜 빈 쓰기로 되묻고 ②그걸 빠져나간
+    층이 동작 명사를 값으로 지어내면 승인 게이트의 값 조작 검사가 되묻는다.
+    "입력**이라는 글자를**"처럼 인용하면 그 낱말이 콘텐츠다 — 실행한다.
+    """
+
+    @staticmethod
+    def _plan(vals):
+        from office_claw_sidecar.routers.excel_live import PlanStep
+
+        return [PlanStep(action="excel_live.write_range", params={"start_cell": "C1", "values_2d": vals})]
+
+    def test_조사_붙은_빈_쓰기도_퀵룰이_잡는다(self):
+        from office_claw_sidecar.routers.excel_live import _BARE_WRITE_REQUEST
+
+        assert _BARE_WRITE_REQUEST.match("C1:F6 여기에 입력을 해줘")
+        assert _BARE_WRITE_REQUEST.match("여기에 입력을 해줘")
+        assert _BARE_WRITE_REQUEST.match("A1:D6 여기에 입력 좀 해줘")  # 기존 커버 유지
+        assert not _BARE_WRITE_REQUEST.match("입력이라는 글자를 전체 셀에 입력해줘")
+        assert not _BARE_WRITE_REQUEST.match("B2:D2에 이름,수량,금액 입력")
+
+    def test_동작_명사_방송은_되묻는다(self):
+        from office_claw_sidecar.routers.excel_live import _fabricated_write_value_problem
+
+        fab = [["입력"] * 4 for _ in range(6)]
+        q = _fabricated_write_value_problem("C1:F6 여기에 입력을 해줘", self._plan(fab), "s")
+        assert "어떤 값" in q
+        assert _fabricated_write_value_problem("여기에 데이터 입력해줘", self._plan([["데이터"] * 3]), "s")
+
+    def test_인용과_실제_값은_실행한다(self):
+        from office_claw_sidecar.routers.excel_live import _fabricated_write_value_problem
+
+        fab = [["입력"] * 4 for _ in range(6)]
+        assert _fabricated_write_value_problem("입력이라는 글자를 전체 셀에 입력해줘", self._plan(fab), "s") == ""
+        assert _fabricated_write_value_problem("'입력'을 전체 셀에 채워줘", self._plan(fab), "s") == ""
+        assert _fabricated_write_value_problem("B2:D2에 이름,수량,금액 입력", self._plan([["이름", "수량", "금액"]]), "s") == ""
+        assert _fabricated_write_value_problem("C1:F6 전부 0으로 채워줘", self._plan([["0"] * 4]), "s") == ""

@@ -2008,7 +2008,9 @@ _BARE_WRITE_REQUEST = re.compile(
     + _BARE_WRITE_ADVERB
     + r"(?:값\s*(?:을|를)?\s*)?"
     + _BARE_WRITE_ADVERB
-    + r"(?:입력|기록|넣어|채워|써|적어|붙여\s*넣어|붙여|붙여넣기)\s*"
+    # "입력**을** 해줘" — 조사도 값이 아니다(2026-08-29 GUI 실사고: '을' 한 글자로 이 규칙을
+    # 빠져나가 의도 해석이 '입력'이라는 낱말을 24칸에 지어 넣었다).
+    + r"(?:입력|기록|넣어|채워|써|적어|붙여\s*넣어|붙여|붙여넣기)\s*(?:을|를)?\s*"
     + _BARE_WRITE_ADVERB
     + r"(?:해)?\s*(?:줘요|줘|주세요|주라|줄래|놔|둬|봐)?\s*[~.!?…]*$"
 )
@@ -10922,6 +10924,53 @@ def _unstated_param_problem(message: str, plan: list[PlanStep], session_key: str
     return ""
 
 
+#: ③ 값 조작 검사 — 쓰기 계획의 값이 문장의 **동작 명사**뿐이면 층이 지어낸 것이다.
+#: "여기에 입력을 해줘"의 '입력'은 동사의 목적어지 콘텐츠가 아니다(2026-08-29 GUI 실사고:
+#: 의도 해석이 '입력'을 C1:F6 24칸에 방송했다). 반대로 "입력이라는 글자를 …"처럼
+#: 인용 표현이 있으면 그 낱말 자체가 콘텐츠다 — 실행한다.
+_WRITE_ACTION_NOUNS = frozenset(
+    {"입력", "기입", "작성", "기록", "쓰기", "타이핑", "값", "내용", "데이터", "텍스트"}
+)
+
+
+def _fabricated_write_value_problem(message: str, plan: list[PlanStep], session_key: str) -> str:
+    """쓰기 계획의 값이 사용자가 말한 콘텐츠가 아니면 물을 말을. 없으면 ""."""
+    text = str(message or "")
+    previous = _pending_clarifications.get(session_key)
+    if previous is not None:
+        text = f"{text} {getattr(previous, 'original_message', '') or ''}"
+    for step in plan:
+        if step.action != "excel_live.write_range":
+            continue
+        params = step.params if isinstance(step.params, dict) else {}
+        values = params.get("values_2d") or []
+        flat = {
+            str(v).strip()
+            for row in values
+            if isinstance(row, (list, tuple))
+            for v in row
+            if str(v or "").strip()
+        }
+        if len(flat) != 1:
+            continue  # 서로 다른 값들은 어딘가에서 말한 목록이다 — 여기서 판단하지 않는다.
+        token = next(iter(flat))
+        if token not in _WRITE_ACTION_NOUNS:
+            continue
+        # 인용 표현 — 그 낱말을 쓰라고 명시한 문장은 실행한다.
+        quoted = re.search(
+            rf"['\"‘“「]{re.escape(token)}['\"’”」]"
+            rf"|{re.escape(token)}\s*(?:이라는|이란|라는|이라고|라고)",
+            text,
+        )
+        if quoted:
+            continue
+        return (
+            "어떤 값을 넣을까요? 값을 쉼표로, 줄은 세미콜론(;)으로 구분해 적어 주세요. "
+            "예: 지역,주문건수; 수도권,10452"
+        )
+    return ""
+
+
 #: ① 열 지목 검증 대상 — 기준 열이 바뀌면 결과가 통째로 달라지는 액션.
 _KEY_COLUMN_GUARDED: dict[str, tuple[str, ...]] = {
     "excel_live.dedupe_rows": ("key_columns",),
@@ -11219,6 +11268,9 @@ def _plan_approval_gate(
     if not target_problem:
         # ② 미지정 값 확인 — 열은 맞는데 **방향처럼 말하지 않은 값**을 층이 채웠는가.
         target_problem = _unstated_param_problem(req.message, plan, ctx.session_key)
+    if not target_problem:
+        # ③ 값 조작 검사 — 쓰기 값이 동작 명사뿐이면 층이 지어낸 것이다(2026-08-29).
+        target_problem = _fabricated_write_value_problem(req.message, plan, ctx.session_key)
     if target_problem:
         trace_note("target_missing", action=head.action, detail=target_problem)
         # 되묻고 끝내면 다음 턴이 맨바닥에서 다시 계획한다. 사용자의 답변("Sales_Data
