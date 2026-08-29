@@ -86,7 +86,7 @@ try {
                 Write-Host "----------------------------"
             }
         } catch { }
-        throw "Sidecar 시작 실패. 수동 실행: `$env:UV_PROJECT_ENVIRONMENT='$SidecarVenvPath'; cd python-sidecar; uv run python -m office_claw_sidecar --port 19532"
+        throw "Sidecar 시작 실패. 수동 실행: `$env:UV_PROJECT_ENVIRONMENT='$SidecarVenvPath'; cd services/sidecar; uv run python -m office_claw_sidecar --port 19532"
     }
 }
 

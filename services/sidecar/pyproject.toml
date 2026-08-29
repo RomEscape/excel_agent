@@ -58,3 +58,9 @@ oc-shared = { path = "../../packages/py-shared", editable = true }
 # 값은 그동안 실효로 강제되던 ruff 기본 규칙(E4/E7/E9/F)과 동일하게 유지한다.
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F"]
+
+# 배포 대상은 사이드카 패키지 하나다. 이걸 안 적으면 setuptools가 flat-layout에서
+# scripts/·scenarios/·tests/까지 최상위 패키지로 보고 "Multiple top-level packages"
+# 에러를 낸다. 지금까지는 빌드된 wheel이 캐시에 남아 있어 안 드러났을 뿐이다.
+[tool.setuptools.packages.find]
+include = ["office_claw_sidecar*"]

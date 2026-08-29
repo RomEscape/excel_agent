@@ -1,364 +1,240 @@
-# Office Claw
+# 김대리 (officeclaw)
 
-개인정보 보호 중심의 로컬 AI 업무 에이전트. 모든 처리가 사용자 머신 안에서 끝나며, 외부 중계 서버가 없다.  
-**Tauri 데스크탑 앱 + Python FastAPI 사이드카 + 로컬 LLM(Ollama/OpenClaw)** 3계층 구성.
-앱 표시명은 **Team 503 AI**(구 ajou-ai)로 사용한다.
+**개인정보 보호 중심의 로컬 AI 업무 에이전트.** AI 추론(Ollama 로컬 LLM)도, 파일(Excel)도 사용자 PC를 떠나지 않는다.
+
+- **데스크톱** — Tauri 앱 + Python FastAPI 사이드카가 xlwings COM으로 Excel을 직접 제어. LLM은 Ollama의 OpenAI 호환 API(`/v1/chat/completions`) + `tools`(function calling) 단일 경로.
+- **모바일** — Flutter 앱이 **content-blind 릴레이**를 통해 내 데스크톱 에이전트를 원격 조종. 릴레이는 라우팅 헤더만 읽고 내용은 해석·저장하지 않는다.
+- **권한 게이트** — Excel 함수 16종은 SAFE / CONFIRM / DENIED로 분류. 변경 작업은 반드시 사용자 승인을 거친다.
+
+표시명은 **김대리**, 실행 바이너리·번들 식별자는 `officeclaw` / `com.officeclaw.app`.
 
 ---
 
-## 전체 구조
+## 모노레포 구조
 
 ```
-officeclaw/
-├── src/                    # React 프론트엔드 (Vite + Tailwind)
-├── src-tauri/              # Rust/Tauri 네이티브 레이어
-├── python-sidecar/         # Python FastAPI 사이드카
-├── scripts/                # 개발 보조 스크립트 (PowerShell)
-├── docs/                   # 설계·설치 문서
-└── .github/workflows/      # CI (PR 검사 + 릴리스 빌드)
+office_claw/
+├── apps/
+│   ├── desktop/            # React(Vite+Tailwind) + src-tauri/ (Rust/Tauri)
+│   └── mobile/             # Flutter 앱 (Riverpod, QR 페어링, 스트리밍 채팅)
+├── services/
+│   ├── sidecar/            # Python FastAPI 사이드카 (AI·Excel·보안 로직)
+│   └── relay/              # content-blind WebSocket 중계 서버 (oc-relay)
+├── packages/
+│   ├── protocol/           # 와이어 프로토콜 SSOT (Pydantic → JSON Schema)
+│   └── py-shared/          # sidecar↔relay 공용 순수 파이썬 (codec/replay/auth)
+├── scripts/                # 개발·검증 스크립트
+├── docs/                   # Excel Live 명령 리스트
+└── .github/workflows/      # pr-check.yml (CI) + release.yml (태그 빌드)
 ```
+
+각 패키지의 상세는 하위 README를 본다 — `services/relay/README.md`, `packages/protocol/README.md`, `packages/py-shared/README.md`.
 
 ---
 
 ## 계층별 역할
 
-### 1. Frontend — `src/`
+### `apps/desktop/src/` — 프론트엔드
 
-React(Vite + Tailwind) 기반 Webview UI. URL 라우팅 없이 Zustand `currentPage` 상태로 화면 전환.
+React + Zustand. URL 라우팅 없이 `appStore.currentPage`로 화면 전환.
 
-```
-src/
-├── main.jsx / App.jsx          # 앱 루트 (상태 폴링, 승인 다이얼로그)
-├── store/
-│   ├── appStore.js             # 전역 UI 상태 (currentPage, llmConfig, 온보딩 등)
-│   └── statusStore.js          # 시스템 상태 (OpenClaw·Ollama·sidecar)
-├── hooks/
-│   ├── useStatusPoller.js      # 주기적 상태 갱신
-│   └── useAsync.js
-├── lib/
-│   ├── api.js                  # 모든 Tauri invoke() 래퍼 (단일 진입점)
-│   ├── statusManager.js        # 시스템 모듈 check/install/start 액션
-│   ├── statusTokens.js         # 상태 표시 토큰·라벨
-│   ├── localAISetupCore.js     # LocalAISetupWizard 단계·플랜 로직
-│   ├── localAISetup.js         # localAISetupCore re-export (호환 레이어)
-│   ├── localStack/             # 로컬 AI 스택 프리셋 (Qwen3+OpenClaw)
-│   ├── updater.js              # Tauri 자동 업데이트 연동
-│   ├── errorMessages.js        # 에러 메시지 매핑
-│   └── utils.js                # cn() 등 공용 유틸
-└── components/
-    ├── ui/                     # 공용 primitive (Button, Dialog, StatusDot 등 15개)
-    ├── layout/                 # Layout, Sidebar, StatusBar
-    ├── dashboard/              # Dashboard
-    ├── workspace/              # WorkspacePage (일반 채팅 + Excel Live 라우팅)
-    ├── conversations/          # ConversationsPage
-    ├── settings/               # SettingsHub, MessengerSettings, OllamaModelPicker
-    ├── security/               # ApprovalDialog, SecurityDashboard
-    ├── audit/                  # AuditLog
-    ├── permissions/            # PermissionManager
-    ├── credentials/            # CredentialsManager
-    ├── onboarding/             # OnboardingWizard
-    ├── guide/                  # LocalAISetupWizard, SetupGuide
-    ├── updater/                # UpdateNotice
-    ├── cmdk/                   # CommandPalette, ShortcutHelp
-    └── email/ excel/ document/ telegram/  # 도메인 모듈 (UI only)
-```
+| 경로 | 역할 |
+|---|---|
+| `lib/api.js` | **모든 Tauri `invoke()` 단일 진입점** |
+| `store/` | `appStore`(전역 UI·LLM 설정) · `statusStore`(Ollama·사이드카) · `relayStore`(모바일 연동) |
+| `lib/statusManager.js`·`statusTokens.js` | 시스템 모듈 check/install/start 액션 + 상태 토큰 |
+| `lib/relayManager.js`·`relayQr.js` | 페어링 액션·상태 폴링 + QR 페이로드 계약(순수 모듈, 테스트로 형태 고정) |
+| `lib/localAISetupCore.js`·`localStack/` | LocalAISetupWizard 단계·플랜, 로컬 AI 스택 프리셋 |
+| `components/ui/` | 공용 primitive (Button·Dialog·StatusDot·Toast 등) |
+| `components/<domain>/` | workspace · relay · settings · security · audit · permissions · credentials · onboarding · guide · dashboard · conversations · cmdk · updater |
 
-**패턴:**
-- 도메인 로직은 `src/lib/` 모듈이 소유, UI는 store 구독만
-- 모든 Tauri IPC 호출은 `src/lib/api.js` 단일 파일 경유
+### `apps/desktop/src-tauri/src/` — Rust/Tauri
 
----
+프로세스 관리·보안·OS 통합. `ipc.rs`가 68개 `#[tauri::command]`를 사이드카 HTTP 프록시로 노출한다.
 
-### 2. Rust/Tauri — `src-tauri/src/`
+`main.rs` · `lib.rs`(Builder·상태 등록) · `ipc.rs` · `sidecar.rs`(spawn·health 폴링·Bearer 토큰) · `ollama.rs` · `installer.rs`(설치 로그 스트리밍) · `shell.rs`(로그인 셸 러너) · `tray.rs` · `keyring_svc.rs` · `audit.rs`
 
-프로세스 관리·보안·OS 통합 레이어.
+> 흐름: Frontend `invoke()` → `ipc.rs` → `sidecar.rs` HTTP 프록시 → 사이드카 (Bearer 인증)
+> Keyring·Audit은 Python 동명 서비스와 **같은** OS Keychain·파일을 공유한다. 신규 코드는 Rust 경로(`rustCredential*`, `rustAudit*`) 우선.
 
-```
-src-tauri/src/
-├── main.rs             # 진입점
-├── lib.rs              # Tauri Builder + 상태 등록 + invoke 등록
-├── ipc.rs              # 모든 #[tauri::command] — sidecar HTTP 프록시
-├── sidecar.rs          # Python 사이드카 spawn / health 폴링 / Bearer 토큰
-├── openclaw.rs         # OpenClaw 게이트웨이 spawn
-├── openclaw_cli.rs     # OpenClaw CLI 래퍼
-├── ollama.rs           # Ollama 상태·모델 목록·config set
-├── installer.rs        # 설치 명령 실시간 로그 스트리밍
-├── tray.rs             # 시스템 트레이
-├── keyring_svc.rs      # OS Keychain (Python keyring_service와 동일 저장소 공유)
-└── audit.rs            # 감사 로그 (Python audit_service와 동일 파일 공유)
-```
+### `services/sidecar/` — Python FastAPI 사이드카
 
-**흐름:** Frontend `invoke()` → `ipc.rs` → `sidecar.rs` HTTP 프록시 → Python 사이드카 (Bearer 토큰 인증)
+실제 AI·데이터 처리. PyInstaller로 단일 실행파일을 만들어 `apps/desktop/src-tauri/binaries/`에 배치한다.
+
+등록 라우터 (전부 Bearer 인증):
+
+| prefix | 용도 |
+|---|---|
+| (루트) `/health` | 헬스체크 |
+| `/excel-live` | 자연어 채팅 + Excel COM 제어 (`/status` `/command` `/action` `/approval`) |
+| `/relay` | 모바일 페어링 (`/pair` `/status` `/disconnect`) |
+| `/llm` | LLM 설정 |
+| `/workspace` | 파일 관리 |
+| `/credentials` | OS Keyring |
+| `/audit` · `/security` · `/permissions` | 감사 로그 · 마스킹/차단 · 도구 권한 |
+| `/telegram` `/slack` `/discord` | 메신저 연동 |
+| `/chat` · `/backup` · `/settings` · `/maintenance` | 세션 영속화 · 백업 · 설정 |
+
+핵심 서비스: `excel_tool_schemas.py`(함수 명세 SSOT) · `excel_tool_agent.py`(tool-calling 루프) · `excel_actions.py`(실행 디스패처) · `tool_registry.py`(권한) · `excel_live_service.py`(xlwings COM) · `relay_client.py`(아웃바운드 WS) · `keyring_service.py` · `audit_service.py` · `masking_service.py`
+
+### `services/relay/` — 중계 서버
+
+데스크톱·모바일이 **둘 다 아웃바운드로** 접속하고, relay가 `pairing_id`로 두 소켓을 짝지어 프레임만 브리지한다(NAT 통과, 인바운드 포트 불필요).
+
+`GET /health` · `POST /pair/start` · `POST /pair/complete` · `WS /ws/desktop` · `WS /ws/mobile`
+
+### `packages/` — 공용 계약
+
+- `protocol` — `Envelope`(평문 라우팅 헤더) + `Frame` discriminated union(`chat_user_msg` / `token_delta` / `stream_end` / `agent_status` / `approval_request` / `approval_response` / `ack` / `ping` / `pong` / `error`). Pydantic이 SSOT이고 `schema/*.json`은 생성물.
+- `py-shared` — `codec`(Envelope↔WS 텍스트, `parse_routing`은 relay 전용) · `replay`(seq·재전송 버퍼) · `auth`(페어링 토큰 HMAC).
 
 ---
 
-### 3. Python FastAPI 사이드카 — `python-sidecar/`
-
-실제 AI·데이터 처리 로직 담당. 빌드 시 PyInstaller로 단일 exe 생성 → `src-tauri/binaries/`에 배치.
+## Excel tool-calling 흐름
 
 ```
-python-sidecar/
-├── pyproject.toml / uv.lock        # 의존성 (uv 권장)
-├── requirements.txt                # pip 단일 진입점(루트 통합)
-├── build_sidecar.py                # PyInstaller 빌드 스크립트
-├── office_claw_sidecar.spec        # PyInstaller spec
-│
-├── office_claw_sidecar/
-│   ├── main.py                     # FastAPI 앱 + 라우터 등록
-│   ├── config.py                   # 플랫폼별 data dir
-│   ├── analyzer.py                 # SAFE/CONFIRM/DENIED 명령 분석
-│   ├── sandbox.py                  # 워크스페이스 샌드박스
-│   ├── backup.py / chat_history.py / command_audit.py
-│   │
-│   ├── routers/                    # HTTP API 엔드포인트
-│   │   ├── health.py               # GET /health
-│   │   ├── agent.py                # POST /agent/chat (OpenClaw 경유 AI 대화)
-│   │   ├── excel_live.py           # POST /excel-live/command|approval (COM 실시간 제어)
-│   │   ├── llm.py                  # LLM 설정 조회/변경
-│   │   ├── workspace.py            # 워크스페이스 파일 관리
-│   │   ├── credentials.py          # OS Keyring CRUD
-│   │   ├── audit.py                # 감사 로그 조회
-│   │   ├── security.py             # 마스킹·차단 통계
-│   │   ├── permissions.py          # 도구 권한 관리
-│   │   ├── telegram.py / slack.py / discord.py  # 메신저 라우터
-│   │   ├── chat.py                 # 채팅 세션 영속화
-│   │   ├── skills.py               # OpenClaw 스킬
-│   │   ├── backup.py               # 백업
-│   │   ├── settings.py / maintenance.py
-│   │   └── legacy.py               # /gmail·/excel·/document → 410 Gone 안내
-│   │
-│   ├── services/                   # 비즈니스 로직
-│   │   ├── llm_service.py / ollama_service.py / claude_service.py
-│   │   ├── openclaw_client.py      # OpenClaw WebSocket 클라이언트
-│   │   ├── tool_registry.py        # 도구 권한 레지스트리 (SAFE/CONFIRM/DENIED)
-│   │   ├── excel_live_service.py   # Excel 엔진 선택기(file/xlwings)
-│   │   ├── excel_live_file_service.py # 기본 엔진(openpyxl, 파일 기반 편집)
-│   │   ├── excel_live_executor.py  # Planner 단계 실행/검증/재시도 오케스트레이션
-│   │   ├── excel_live_plan_validator.py / excel_live_plan_critic.py
-│   │   ├── excel_live_agent.py     # 자연어 → Excel 명령 파싱(quick-action + LLM)
-│   │   ├── telegram_service.py     # 텔레그램 봇
-│   │   ├── gmail_service.py        # Gmail OAuth (텔레그램 봇에서 사용)
-│   │   ├── excel_service.py        # openpyxl 파일 분석 (텔레그램 봇에서 사용)
-│   │   ├── document_service.py     # 문서 생성 (텔레그램 봇에서 사용)
-│   │   ├── keyring_service.py / audit_service.py
-│   │   ├── filter_service.py / masking_service.py
-│   │   └── intent_router.py
-│   │
-│   ├── models/                     # Pydantic 스키마
-│   │   └── credential.py / audit.py / approval.py / llm.py / masking.py
-│   │
-│   ├── messenger/                  # 메신저 어댑터
-│   │   ├── base.py
-│   │   ├── telegram.py / slack.py / discord_adapter.py
-│   │
-│   └── local_stack/
-│       └── presets.py              # JS localStack과 동기화된 프리셋
-│
-└── tests/                          # pytest
-    ├── test_health.py
-    ├── test_local_ai_flow.py
-    ├── test_local_stack_presets.py
-    ├── test_sidecar_enhancements.py
-    ├── test_sprint3.py ~ test_sprint5.py
-    └── test_excel_live_{agent,router,service}.py
+사용자 자연어 ("매출 열 다 더해줘")
+  → WorkspacePage → excel_live_command IPC → 사이드카 /excel-live/command
+  → excel_tool_agent: Ollama /v1/chat/completions (tools=excel_tool_schemas)
+  → LLM이 tool_calls 반환: calculate_column_stat(column="매출", stat="sum")
+  → tool_registry 권한 확인
+      SAFE    → 즉시 실행 → 결과를 tool 메시지로 재주입 → LLM 최종 한국어 답변
+      CONFIRM → 승인 대기 → 사용자 승인 후 /excel-live/approval에서 실행 → 결과 재주입 → 루프 재개
+  → { action, result, assistant_text, executed_actions, approval_required, ... }
 ```
 
-**등록된 라우터 prefix 목록:**
+- 함수 명세 단일 소스는 `excel_tool_schemas.py` — 함수별 **Pydantic 모델 + docstring**에서 OpenAI `tools` JSON Schema를 자동 생성한다. LLM이 만든 인자도 같은 모델로 실행 전 검증되고, 검증 실패 메시지는 LLM에 재주입돼 자가 교정된다.
+- 등록 함수 16종
+  - **SAFE** — `list_workbooks` `select_workbook` `read_range` `save_workbook` `calculate_column_stat` `group_by_aggregate`
+  - **CONFIRM (편집·서식)** — `write_range` `highlight_by_condition` `apply_border` `set_formula`
+  - **CONFIRM (데이터 변환)** — `filter_rows` `sort_rows` `dedupe_rows` `drop_column` `rename_column` `add_column`
+- 데이터 변환은 used range를 읽어 메모리에서 변환 후 같은 자리에 다시 쓰는 **라이브 write-back** — 삭제된 행/열이 화면에서 즉시 비워진다(파일 재생성 없음).
+- 도구가 필요 없는 일반 대화도 같은 엔드포인트에서 `assistant_text`로 답변된다(별도 게이트웨이 없음).
+- 채팅의 `범위 참조 삽입` 버튼은 현재 Excel 선택 범위를 `[[EXCEL_RANGE:A1:C3]]` + TSV 미리보기로 넣는다. 사용자가 범위를 말하지 않으면 실행 계층이 현재 선택 범위를 쓴다.
 
-| prefix | 파일 | 용도 |
-|--------|------|------|
-| (루트) | health.py | `/health` 헬스체크 |
-| `/llm` | llm.py | LLM 설정 |
-| `/agent` | agent.py | AI 에이전트 채팅 |
-| `/excel-live` | excel_live.py | Excel COM 실시간 제어 |
-| `/workspace` | workspace.py | 파일 관리 |
-| `/credentials` | credentials.py | OS Keyring |
-| `/audit` | audit.py | 감사 로그 |
-| `/security` | security.py | 마스킹·차단 |
-| `/permissions` | permissions.py | 도구 권한 |
-| `/telegram` `/slack` `/discord` | 메신저 | 메신저 연동 |
-| `/chat` | chat.py | 채팅 세션 |
-| `/skills` | skills.py | OpenClaw 스킬 |
-| `/backup` | backup.py | 백업 |
-| `/settings` `/maintenance` | 설정·유지보수 |
-| `/gmail` `/excel` `/document` | legacy.py | 410 Gone (이전 API) |
+**스모크 테스트 예시**
 
----
+| 입력 | 호출되는 함수 |
+|---|---|
+| `열린 통합문서 목록 보여줘` | `list_workbooks` |
+| `A1:C10 조회해줘` | `read_range` |
+| `매출 열 다 더해줘` | `calculate_column_stat(stat='sum')` |
+| `지역별 매출 합계 알려줘` | `group_by_aggregate` |
+| `C3에 120 입력해줘` | `write_range` (승인) |
+| `A열에서 50 이상인 셀만 노란색 배경` | `highlight_by_condition` (승인) |
+| `J1에 수식 =SUM(A1:A10) 적용` | `set_formula` (승인) |
+| `매출 내림차순 정렬` / `중복 행 지워줘` | `sort_rows` / `dedupe_rows` (승인) |
 
-### 4. 스크립트 — `scripts/`
-
-| 파일 | 용도 |
-|------|------|
-| `dev.ps1` | Windows 개발 시작 (사이드카 백그라운드 + tauri dev) |
-| `dev.sh` | macOS/Linux 개발 시작 |
-| `local-env.ps1` | OpenClaw 토큰 환경변수 로드 |
-| `start-local-stack.ps1` | OpenClaw 게이트웨이 + 사이드카 기동 |
-| `verify-local-stack.ps1` | 로컬 스택 헬스체크 |
+전체 67개 검증 입력은 `TEST_INPUT_COMMANDS_EXCEL_LIVE.txt`, Excel Live 명령 레퍼런스는 `docs/excel-live-command-list.txt`.
 
 ---
 
-### 5. 문서 — `docs/`
+## 모바일 원격 제어 흐름
 
-| 파일 | 내용 |
-|------|------|
-| `ARCHITECTURE.md` | 계층·IPC·보안 상세 설계 |
-| `DEPENDENCIES.md` | 전체 의존성 설치 표 |
-| `WINDOWS_DESKTOP_SETUP.md` | Windows 설치·실행 가이드 |
-| `OPENCLAW_USAGE.md` | OpenClaw 사용법 |
-| `OPENCLAW_CLI_WRAPPER.md` | CLI 래퍼 문서 |
-| `PYINSTALLER_BUILD_GUIDE.md` | 사이드카 빌드 가이드 |
-| `RUST_MIGRATION_PLAN.md` | Keyring/Audit Rust 이전 계획 |
-| `EXCEL_LIVE_AGENT_MVP.md` | Excel Live 에이전트 MVP 명세 |
-| `EXCEL_LIVE_ROUTER_DATASET_SCHEMA.md` | 라우터 의도/슬롯 데이터셋 스키마 |
-| `EXCEL_LIVE_ROUTER_DATASET_SAMPLE.json` | 멀티턴 평가용 샘플 데이터셋 |
-| `EXCEL_COMPLEX_ORACLE_SCHEMA.md` | 복잡 작업 오라클(대화/실행/결과) 스키마 |
-| `local-stack/GEMMA4_OPENCLAW.md` | Gemma4 로컬 스택 상세 |
+```
+데스크톱: /relay/pair → {pairing_id, code, relay_url} → QR 렌더 (RelayPairing)
+모바일:   QR 스캔 → /pair/complete{code} 로 1:1 바인딩 → WS /ws/mobile 연결
+채팅:     ChatUserMsg → relay → 사이드카 relay_client → tool-calling 루프
+          → TokenDelta 스트리밍 / StreamEnd / AgentStatus 를 모바일로 push
+```
 
-### 6. 진단·감사 보고서 — 발행된 아티팩트 (claude.ai 링크)
+QR 페이로드 `{"v":1,"relay","pairing_id","code"}`는 데스크톱 `lib/relayQr.js`와 모바일 `lib/pairing/pairing_service.dart`가 공유하는 계약이다. 사이드카는 `relay_url`로 주므로 `relay`로 **매핑**해야 하며, 어긋나면 스캔이 조용히 실패하므로 `relayQr.test.js`가 형태를 고정한다.
 
-코드 밖에 있는 문서들. 회의·인수인계·실측 대조는 전부 여기서 찾는다. 갱신 이력과
-근거 수치는 `개발일지.md`에 날짜별로 남아 있다.
+relay 주소 정책은 모바일 `lib/transport/relay_url.dart`가 단일 소스다 — Dart 소유 소켓이라 Android 매니페스트·iOS ATS로는 평문을 막을 수 없어서, 릴리스 빌드의 `wss` 강제를 이 순수 모듈이 담당한다(debug/profile은 로컬 http 허용).
 
-| 문서 | 무엇인가 | 누가 읽나 | 최신 |
-|------|----------|-----------|------|
-| [Office Claw 에이전트 진단](https://claude.ai/code/artifact/74b35322-e0eb-4b73-9fd6-d4fa982bef63) | 구조 지도 · 문제 4가지 · 반복 고리 · 8/19~25 변화(게이트·감사 라운드·반증) · 방향 · 핵심 숫자 · 결정 5항 | 회의 참석자, 처음 보는 사람 | 2026-08-25 v5 |
-| [Office Claw 구현 플로우](https://claude.ai/code/artifact/20c4452e-8a69-4e5b-be46-cd9e72d9f82d) | React → Rust → 사이드카 → LLM → 엑셀 전 구간을 함수·줄 번호·JSON 필드명 단위로. 승인 왕복, 매크로 루프, 함정 10가지 | 개발자, 이식·인수인계 | 2026-08-25 v3 |
-| [사람 말투 대화 전록](https://claude.ai/code/artifact/cb1553b2-14a5-4b77-81f6-7bb021cac066) | 8개 데모 대시보드를 좌표 없는 사람 문장(오타·반말·정정 포함)과 실제 붙여넣기 흐름으로 만든 **대화 전문** — 되묻기·해석 카드·실행 리포트가 순서 그대로, 5라운드 반복 판정 | 실사용 흐름을 보고 싶은 사람 | 2026-08-19 |
-| [이미지 대 엑셀 대조](https://claude.ai/code/artifact/214f38f7-0f4d-49b8-8879-5d5e76685082) | 예시 6종의 목표 이미지(왼쪽)와 대화만으로 만들어진 실제 엑셀 파일 렌더(오른쪽)를 시트별로 나란히 | 결과물을 눈으로 확인하려는 사람 | 2026-08-18 |
-| [명령 인식·계획 정확도](https://claude.ai/code/artifact/1845c30a-5434-4b60-80d6-6e8faba21c90) | 다양한 명령을 넣었을 때 무엇을 할지 맞게 인식·계획하는지 — 게이트 안(99.4%)과 밖(68%)을 갈라 잰 실측, 과제별 표와 오인식 해부 | 정확도를 수치로 보려는 사람 | 2026-08-25 |
-| [Office-Claw 견고성 감사](https://claude.ai/code/artifact/110e2634-4a76-40bd-b0a0-a4b77d1ed472) | 대형 모델에 맡기듯 여러 방향에서 찔러 본 기록 — 라우팅 누수·정체성 이탈·프롬프트 주입 등 발견 F-01~F-09와 수정 순서 | 보안·견고성 검토자 | 2026-08-16 |
+페어링 code는 **TTL 120초 · IP당 10회/60초 rate-limit · 8 hex 엔트로피** 세 겹으로 방어한다(`oc_relay/pairing.py`·`rate_limit.py`). 셋이 곱해져야 성립하므로 하나를 줄이려면 나머지를 키워야 한다.
 
-> 링크는 소유자 계정으로 발행된 것이라 처음 열 때 claude.ai 로그인이 필요할 수 있다.
-> 문서를 갱신할 때는 새로 만들지 말고 **같은 URL로 재발행**한다(새 URL이 생기면 이 표가 낡는다).
-
----
-
-## 포함 기술 스택 (현재 운영)
-
-- 데스크톱: `Tauri v2` + `Rust`
-- 프론트: `React` + `Vite` + `Zustand` + `Tailwind`
-- 사이드카 API: `FastAPI` + `Pydantic` + `Uvicorn`
-- Excel 엔진:
-  - 기본(`EXCEL_LIVE_ENGINE=auto`): 실행 중인 Excel에 열린 문서가 있으면 `xlwings`, 없으면 `file`.
-    열려 있는 파일은 OS가 잠그기 때문에 `file` 엔진으로는 저장 자체가 불가능하다.
-  - `EXCEL_LIVE_ENGINE=file`: `openpyxl` 파일 직접 편집. Excel이 설치돼 있지 않아도 동작한다.
-  - `EXCEL_LIVE_ENGINE=xlwings`: Windows COM / macOS appscript로 실행 중인 Excel 제어
-- LLM/에이전트:
-  - 로컬 추론: `Ollama`
-  - 게이트웨이: `OpenClaw`
-  - 플래너: quick-action 규칙 + LLM 파서 하이브리드
-  - 실행 안정화: Planner/Executor/Validator/Critic + 승인 게이트
-- 품질/학습 루프:
-  - 통합 로그: `logs/all_events.jsonl`
-  - 하네스: 사용자 피드백 수집 + 실패 리플레이
-  - distillation: `excel_distill.v1` 포맷 + A.X 7B QLoRA 파이프라인
+**현재 상태 / 한계** — QR 페어링 + 스트리밍 채팅까지 실기기 검증 완료. 모바일 쪽 `ApprovalRequest` 처리(원격 승인 UI)는 프레임만 정의돼 있고 아직 미구현이다. 데스크톱 QR도 TTL 만료 카운트다운·재발급 UI가 아직 없다(`/pair/start`의 `expires_in` 미사용). E2E 암호화, 재연결 재개(`seq`+`Ack`+`ReplayBuffer` 연동), 수평 확장(Redis 백플레인)도 프로덕션 전 강화 항목이다(`services/relay/README.md`).
 
 ---
 
 ## 빠른 시작
 
-### 비개발자 사용 (권장: Windows EXE 배포본)
+### 배포본 (비개발자, Windows 권장)
 
-비개발자에게는 소스코드 실행보다 **릴리스 EXE 배포**가 가장 안전하고 쉽다.
+1. GitHub Releases에서 최신 패키지 다운로드 → 실행
+2. 첫 실행 시 `LocalAISetupWizard`가 Ollama 설치(winget)·기동·모델 pull(`qwen3:4b` / `qwen3:8b`)을 자동 점검
+3. 워크스페이스에서 Excel 파일을 열고 채팅으로 바로 작업
 
-1. GitHub Releases에서 최신 Windows 패키지(`Team 503 AI`) 다운로드
-2. 압축 해제 후 `Team 503 AI.exe` 실행
-3. 첫 실행 시 `LocalAISetupWizard`에서 의존성/Ollama/OpenClaw 자동 점검
-4. 워크스페이스에서 Excel 파일 열고 채팅으로 바로 작업
+릴리스는 `v*` 태그 push 시 macOS(arm64·x64) + Windows(x64)로 빌드된다 — Tauri 앱 + 번들된 사이드카 바이너리. 윈도우 네이티브 빌드·배포 절차는 [`docs/build-and-release.md`](docs/build-and-release.md).
 
-운영 권장 구성:
-- 배포 채널: GitHub Releases (버전 태그별 아카이브)
-- 실행 파일: Tauri 앱 EXE + 번들된 Python sidecar 바이너리
-- 사용자 관점: 설치/실행 후 Wizard만 통과하면 개발 도구 없이 사용 가능
-
-### 개발 환경 (Windows)
-
-```powershell
-# 1. 원클릭 준비 (툴 자동 설치 시도 + 의존성 설치 + 기본 빌드)
-.\scripts\setup.ps1
-
-# (선택) 자동 툴 설치 끄기
-.\scripts\setup.ps1 -NoAutoInstallTools
-
-# (선택) 빌드 단계 건너뛰기(의존성만 설치)
-.\scripts\setup.ps1 -SkipBuild
-
-# 2. 앱 실행 (Rust + Vite + Tauri Webview)
-npm run tauri:dev
-```
-
-### 개발 환경 (macOS / Linux)
+### 개발
 
 ```bash
-# 1. 원클릭 준비 (툴 자동 설치 시도 + 의존성 설치 + 기본 빌드)
-bash ./scripts/setup.sh
+# 0. (권장) 한 번에 기동 — 사이드카(:19532) + Vite(:1420) + Tauri
+bash scripts/dev.sh
 
-# (선택) 자동 툴 설치 끄기
-bash ./scripts/setup.sh --no-auto-install-tools
+# ── 또는 수동으로 ──
+# 1. 의존성
+cd apps/desktop && npm ci && cd -
+cd services/sidecar && uv sync --extra dev && cd -
 
-# (선택) 빌드 단계 건너뛰기(의존성만 설치)
-bash ./scripts/setup.sh --skip-build
+# 2. 사이드카 바이너리 빌드 (최초 1회, 사이드카 코드 변경 시 재실행)
+cd services/sidecar && uv run --extra dev python build_sidecar.py && cd -
 
-# (선택) sidecar 빌드 제외
-bash ./scripts/setup.sh --no-build-sidecar
-
-# 2. 앱 실행
-npm run tauri:dev
+# 3. 앱 실행
+cd apps/desktop && npm run tauri:dev
 ```
 
-> Excel Live 실편집은 **macOS + Microsoft Excel Desktop**에서 동작한다.  
-> Linux는 Excel Desktop 자동화 런타임이 없어 Excel Live 실시간 편집 대상이 아니다.
+- UI만 빠르게 볼 때는 `cd apps/desktop && npm run dev` (Tauri 없음 → `invoke()` 전부 실패).
+- Rust 변경 후에는 `tauri:dev`를 재시작해야 새 IPC 명령이 등록된다.
+- pip 환경이면 루트 `requirements.txt`로도 사이드카 런타임 의존성을 설치할 수 있다.
 
-> `requirements.txt`는 pip 전용 파일이라 npm/cargo를 담을 수 없다.  
-> 전체 준비는 위 통합 스크립트를 사용하면 된다.  
-> `setup` 스크립트는 `node`/`cargo`/`python3`(플랫폼별) 미설치 시 OS 패키지 매니저(Windows: winget, macOS: brew/rustup, Linux: apt 가능 시)로 자동 설치를 시도한다.
-> 또한 `OPENCLAW_HOME`, `CARGO_HOME`, `NPM_CONFIG_PREFIX`를 사용자 홈 기준으로 자동 고정/생성해 디렉토리 경로 이슈를 줄인다.
-> Windows에서는 `link.exe`가 없으면 `Microsoft.VisualStudio.2022.BuildTools`(C++ workload + SDK) 자동 설치를 시도한다.
+```bash
+# 중계 서버 (모바일 연동 테스트 시)
+cd services/relay && uv sync --extra dev && uv run python -m oc_relay   # PORT 기본 8787
 
-### 자주 나는 오류 자동 완화
+# 모바일
+cd apps/mobile && flutter pub get && flutter run
+```
 
-- `Port 1420 is already in use`
-  - `npm run dev` 전에 `scripts/ensure-dev-port.mjs`가 1420 점유 프로세스를 자동 정리한다.
-- `link.exe not found`
-  - `.\scripts\setup.ps1`가 MSVC Build Tools를 자동 설치 시도하고, `link.exe` 경로를 PATH에 주입한다.
-
-> **UI만 빠르게 보려면:** `npm run dev` (Tauri 없이 Vite 단독 실행, invoke() 호출 실패함)
-
-### 지금 바로 테스트해볼 질문 10개
-
-> **빠른 스모크 테스트용**  
-> 아래 문장을 앱 내 에이전트 채팅에 그대로 넣어 동작을 확인하세요.
->
-> 1) [하] `열린 통합문서 목록 보여줘`  
->    예상: 열린 파일 개수와 파일명이 채팅에 표시됨
-> 2) [하] `A1:C10 조회해줘`  
->    예상: 읽은 범위 주소와 행/열 개수가 표시됨
-> 3) [하] `C3에 120 입력해줘`  
->    예상: 승인 후 `C3` 셀이 `120`으로 변경됨
-> 4) [하] `B9 값만 읽어줘`  
->    예상: `B9` 단일 셀 값이 읽혀 채팅에 표시됨
-> 5) [중] `B2:D2에 이름,수량,금액 입력`  
->    예상: 승인 후 `B2:D2`에 3개 값이 한 번에 입력됨
-> 6) [중] `H8 999 set`  
->    예상: 영어 compact 명령이 파싱되어 `H8=999`로 반영됨
-> 7) [중] `A열에서 50 이상인 셀만 노란색 배경 적용`  
->    예상: 조건에 맞는 셀만 노란색으로 강조되고 변경 개수가 표시됨
-> 8) [중] `D:D 컬럼에서 0 이하 숫자는 파란색 표시`  
->    예상: 0 이하 값만 파란색으로 강조됨
-> 9) [상] `J1에 수식 =SUM(A1:A10) 적용`  
->    예상: 승인 후 `J1`에 SUM 수식이 설정됨
-> 10) [상] `K2:K20에 formula =IF(A2>0,"Y","N") set`  
->    예상: 범위 전체에 IF 수식이 적용됨
-
-### LocalAISetupWizard (Windows 자동 설치 흐름)
-
-- Ollama가 없으면 Wizard가 `winget`으로 자동 설치를 시도
-- 설치 후 Ollama 프로세스를 자동 실행
-- 선택 모델(`skt/A.X-4.0-Light:latest`, `qwen3:8b`)을 자동 pull
-- AI 대화 테스트에서 OpenClaw 게이트웨이 503 발생 시 자동 재기동 후 재시도
-- `npm run tauri:dev` 환경에서 sidecar가 꺼져 있으면 dev 포트(`19532`)에 자동 기동 후 재시도
+실기기 테스트에서는 데스크톱 페어링 화면의 relay 주소를 `127.0.0.1` 대신 LAN IP로 바꿔야 한다.
 
 ---
+
+## 커밋/푸시 전 체크 (CI 미러)
+
+`.github/workflows/pr-check.yml`의 4개 잡을 그대로 미러링한다. `lefthook`이 pre-commit(lint)·pre-push(test)로 자동 실행하지만, PR 전 한 번 직접 돌리는 걸 권한다.
+
+```bash
+# Rust
+cd apps/desktop/src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings
+
+# Python 사이드카
+cd services/sidecar && uvx ruff check . && uv run pytest -q
+
+# Frontend
+cd apps/desktop && npm run test:unit --if-present
+
+# Flutter 모바일 (CI는 3.44.6 고정)
+cd apps/mobile && flutter pub get --enforce-lockfile && flutter analyze && flutter test
+```
+
+- `cargo fmt --check`가 가장 자주 떨어진다. `--all-targets -- -D warnings`라 테스트 코드 경고까지 잡힌다.
+- CI는 `PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring`으로 keyring을 no-op 처리한다(macOS 로컬은 실제 Keychain 사용) — 테스트가 OS Keychain에 부수효과를 남기지 않는지 확인할 것.
+- CI에 없는 검증은 수동으로: `cd services/relay && uv run pytest -q`, `scripts/verify-local-stack.ps1`(로컬 스택 스모크), `scripts/verify-excel-live-e2e.mjs`(Windows + Excel 필요).
+- 프로토콜 스키마를 고쳤으면 `cd packages/protocol/python && uv run python ../scripts/export_schema.py` 재생성 후 diff가 비어야 한다.
+
+---
+
+## 핵심 설계 원칙
+
+1. **상태는 모듈이 소유** — 도메인 로직·상태는 `lib/` 모듈 안에, UI는 store 구독만
+2. **표시와 데이터 분리** — `lib/*.js`(데이터) → `components/ui/*.jsx`(primitive) → 도메인 UI(조합)
+3. **중복 fetch 없음** — 같은 데이터는 중앙 store/manager 1곳에서
+4. **IPC 단일 진입점** — 모든 Tauri invoke는 `lib/api.js` 경유
+5. **계약은 SSOT 하나** — 프로토콜은 `packages/protocol`, Excel 함수 명세는 `excel_tool_schemas.py`, 권한은 `tool_registry.py`
+6. **브랜드 색은 SVG가 원본** — `assets/brand-logo-*.svg` / `assets/brand-wordmark.svg`의 값을 코드로 옮길 뿐, 새 색을 코드에서 짓지 않는다
+
+상세 규칙·컨벤션은 `CLAUDE.md`. 제품 tier·수익화 기획은 `docs/product/`(로컬 전용, 버전관리 제외).
+
+---
+
+# 데모 브랜치 부록 (openclaw_jinh_demo)
+
+> 아래는 엑셀 에이전트 데모 브랜치의 운영 문서다 — 질문 예시·측정 하네스(배터리/블라인드
+> 게이트/야간 게이트)·플래너 SFT 학습 파이프라인. 경로는 모노레포 기준
+> (`services/sidecar/`, `apps/desktop/`)으로 갱신돼 있다. 규율의 원문은 CLAUDE.md가 소유한다.
 
 ## Excel Live 질문 예시
 
@@ -400,7 +276,7 @@ npm run tauri:dev
 
 전체 재현 각본(8개 데모 대시보드를 대화만으로 만드는 41~61턴, **붙여넣기 흐름판**)은
 `docs/사람말투_대화전록_8예시.md`(사람 → 모델 답변 전록, 각 5라운드 연속 100%), 각본 JSON은
-`python-sidecar/scenarios/dialogue/dialogue_ex1~8.json`, 러너는 `python-sidecar/scripts/run_dialogue.py`(HUMAN_REPEAT=5).
+`services/sidecar/scenarios/dialogue/dialogue_ex1~8.json`, 러너는 `services/sidecar/scripts/run_dialogue.py`(HUMAN_REPEAT=5).
 옛 좌표판은 `docs/example*_재현_대화_*.md`·`docs/example1_사람말투판_45턴.md`.
 
 **새 자료 14종(example_9~22) × 원문/변형 28본**(2026-08-19): 코드를 못 본 작성자 14명이 이미지만 보고 쓴 각본 —
@@ -431,7 +307,7 @@ npm run tauri:dev
 ### 강건성 게이트 — "한 번 되는 것"이 아니라 "여러 번 100%"
 
 ```powershell
-cd python-sidecar
+cd services/sidecar
 # 사람 말투 48문장 × 3회 반복 · GUI 조건(workbook_id 없음) · 파일 상태로 판정
 $env:ROBUST_REPEAT="3"; $env:EXCEL_LIVE_ENGINE="file"; & $PY scripts\run_human_robustness.py
 ```
@@ -500,8 +376,8 @@ $env:ROBUST_REPEAT="3"; $env:EXCEL_LIVE_ENGINE="file"; & $PY scripts\run_human_r
 ```bash
 # 큐 → 학습 후보 + 사람이 볼 미해결 목록
 python scripts/build_sft_from_escalations.py \
-    --output ../datasets/distill/excel_escalation_harvest_v1.jsonl \
-    --unsolved-output ../logs/planner_unsolved.jsonl
+    --output ../../datasets/distill/excel_escalation_harvest_v1.jsonl \
+    --unsolved-output ../../logs/planner_unsolved.jsonl
 ```
 
 되묻기로 끝난 턴은 정답으로 수확하지 않는다 — 그걸 학습하면 "어려우면 물어봐라"를
@@ -532,7 +408,7 @@ python scripts/triage_real_usage.py     # 실사용 턴만 골라 실패 유형�
 
 ```powershell
 $env:OFFICE_CLAW_TRACE_TESTS = "1"; uv run pytest -q
-python scripts/show_turns.py --log ../logs/test-runs/chat_log.jsonl --failed
+python scripts/show_turns.py --log ../../logs/test-runs/chat_log.jsonl --failed
 ```
 
 ```
@@ -669,7 +545,7 @@ LLM이 돌려준 텍스트에서 계획 JSON을 꺼내는 일은 **두 겹**으�
 `json_only`를 켠 것이 계획을 바꾸지는 않는지 같은 모델로 A/B 한다.
 
 ```powershell
-cd python-sidecar
+cd services/sidecar
 uv run python scripts/ab_json_only.py --limit 40   # logs/ab_json_only.json
 uv run python scripts/probe_json_format.py         # 서버가 response_format을 받는지
 ```
@@ -693,7 +569,7 @@ xlwings COM 호출은 `max_workers=1` executor 하나로만 나간다. `asyncio.
   합쳐서 잰다. 매달린 COM 호출을 끊을 방법이 없으면 상한이 의미가 없다.
 
 ```powershell
-cd python-sidecar
+cd services/sidecar
 uv run pytest tests/test_event_loop_block.py -q
 ```
 
@@ -756,7 +632,7 @@ uv run pytest tests/test_event_loop_block.py -q
 | `multi` | 12 | 두 단계 이상 |
 | `colloquial` | 20 | 구어체·오타·생략 |
 
-승격 조건은 `python-sidecar/config/planner_gate_thresholds.json`에 근거와 함께 있다.
+승격 조건은 `services/sidecar/config/planner_gate_thresholds.json`에 근거와 함께 있다.
 그중 두 가지가 설계상 중요하다.
 
 - **되묻기는 총량이 아니라 방향으로 본다.** 모호할 때 묻는 것(`clarify_recall`)은
@@ -864,20 +740,20 @@ UTF-8 **BOM 포함**으로 저장한다.
 Excel Live 테스트 세트는 간소화된 문서 + 러프 스모크 스크립트로 운영:
 
 - `엑셀 작업 예시.md`
-- `python-sidecar/scripts/smoke_excel_live_nl.py`
-- `python-sidecar/scripts/smoke_excel_ko_hard_tasks.py` (한국어 고난도 작업 E2E/엔진 점검)
+- `services/sidecar/scripts/smoke_excel_live_nl.py`
+- `services/sidecar/scripts/smoke_excel_ko_hard_tasks.py` (한국어 고난도 작업 E2E/엔진 점검)
 - `datasets/excel_complex_scenarios_v1.json` (복잡 작업 30시나리오 팩)
-- `python-sidecar/scripts/verify_excel_complex_scenarios.py` (오라클 기반 자동 검증)
+- `services/sidecar/scripts/verify_excel_complex_scenarios.py` (오라클 기반 자동 검증)
 
 한국어 입력 우선 distillation 샘플 생성 예시:
 
 ```bash
-cd python-sidecar
+cd services/sidecar
 uv run python scripts/build_excel_distill_jsonl.py \
-  --all-events ../logs/all_events.jsonl \
+  --all-events ../../logs/all_events.jsonl \
   --preferred-locale ko \
   --drop-non-preferred-locale \
-  --output ../logs/excel_distill_ko_only_sample.jsonl \
+  --output ../../logs/excel_distill_ko_only_sample.jsonl \
   --limit-per-source 200 \
   --stats
 ```
@@ -931,17 +807,17 @@ v4 → v5 분포 변화 (`scripts/audit_planner_action_coverage.py`):
 ```bash
 # 학습셋 재생성
 python scripts/build_planner_sft_jsonl.py \
-    --input ../datasets/distill/excel_distill_v1_verified_augmented.jsonl \
-            ../datasets/distill/planner_augment_v3.jsonl \
-            ../datasets/distill/excel_hard_manual_v1.jsonl \
-            ../datasets/distill/excel_new_tools_manual_v1.jsonl \
-            ../datasets/distill/excel_scenario_report_extract_v1.jsonl \
-    --output ../datasets/train/planner_sft_v5_train.jsonl \
+    --input ../../datasets/distill/excel_distill_v1_verified_augmented.jsonl \
+            ../../datasets/distill/planner_augment_v3.jsonl \
+            ../../datasets/distill/excel_hard_manual_v1.jsonl \
+            ../../datasets/distill/excel_new_tools_manual_v1.jsonl \
+            ../../datasets/distill/excel_scenario_report_extract_v1.jsonl \
+    --output ../../datasets/train/planner_sft_v5_train.jsonl \
     --with-clarify --with-coverage --coverage-per-action 16 --max-per-action 40
 
 # 분포 감사
 python scripts/audit_planner_action_coverage.py \
-    --jsonl ../datasets/train/planner_sft_v5_train.jsonl --output ../scratch/coverage_v5.json
+    --jsonl ../../datasets/train/planner_sft_v5_train.jsonl --output ../scratch/coverage_v5.json
 ```
 
 #### 학습/검증 분할 — 자동화 트래픽을 먼저 걷어낸다
@@ -957,14 +833,14 @@ v5 검증셋 34건 중 21건이 실제로 pytest 세션이었다.
 
 ```bash
 # 로그에 누구 트래픽이 얼마나 쌓였는지
-uv run python scripts/report_traffic_origin.py ../logs/all_events.jsonl
+uv run python scripts/report_traffic_origin.py ../../logs/all_events.jsonl
 
 # 오염 제거 + 중복 제거 + 출처×액션 층화 분할
 uv run python scripts/split_planner_sft.py \
-    --input ../datasets/train/planner_sft_v5_train.jsonl \
-            ../datasets/train/planner_sft_v5_test.jsonl \
-    --train-out ../datasets/train/planner_sft_v6_train.jsonl \
-    --test-out ../datasets/train/planner_sft_v6_test.jsonl
+    --input ../../datasets/train/planner_sft_v5_train.jsonl \
+            ../../datasets/train/planner_sft_v5_test.jsonl \
+    --train-out ../../datasets/train/planner_sft_v6_train.jsonl \
+    --test-out ../../datasets/train/planner_sft_v6_test.jsonl
 ```
 
 분할은 지시문이 양쪽에 걸치지 않고, 검증셋에 중복이 없고, 검증에만 있고 학습에
@@ -997,7 +873,7 @@ uv run python scripts/split_planner_sft.py \
   - 위험 작업(삭제/덮어쓰기/매크로/외부 링크/개인정보)은 승인 후 실행
   - 검증기는 수식 샘플/행열 일치/차트 소스 범위/원본 보존 여부를 확인
 - 스모크 입력 보강:
-  - `python-sidecar/scripts/smoke_excel_live_nl.py`에 권한/복구/성능/버전/교육형 단일턴·멀티턴 케이스를 추가해 회귀 점검 범위를 넓힘
+  - `services/sidecar/scripts/smoke_excel_live_nl.py`에 권한/복구/성능/버전/교육형 단일턴·멀티턴 케이스를 추가해 회귀 점검 범위를 넓힘
 - 데이터셋 스키마/샘플:
   - `docs/EXCEL_LIVE_ROUTER_DATASET_SCHEMA.md`
   - `docs/EXCEL_LIVE_ROUTER_DATASET_SAMPLE.json`
@@ -1005,22 +881,3 @@ uv run python scripts/split_planner_sft.py \
 ### CI 사전 체크 (PR 전 필수)
 
 ```powershell
-# Rust
-cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings
-
-# Python
-cd python-sidecar && uvx ruff check . && uv run pytest -q
-
-# Frontend
-npm run test:unit --if-present
-```
-
----
-
-## 핵심 설계 원칙
-
-1. **상태는 모듈이 소유** — 도메인 로직·상태는 `lib/` 모듈 안에, UI는 store 구독만
-2. **표시와 데이터 분리** — `src/lib/*.js` (데이터) → `src/components/ui/*.jsx` (primitive) → 도메인 UI (조합)
-3. **중복 fetch 없음** — 같은 데이터는 중앙 store/manager 1곳에서 관리
-4. **IPC 단일 진입점** — 모든 Tauri invoke는 `src/lib/api.js`를 경유
-5. **보안 계층** — Keyring·Audit은 Rust 경로(`keyring_svc.rs`, `audit.rs`) 우선 사용

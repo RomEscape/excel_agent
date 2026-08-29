@@ -37,6 +37,9 @@
 
 ## 2. 명령어 — 복붙용
 
+> **모노레포 구조 (2026-07 `feat/monorepo-relay`)**: 데스크톱 앱 = `apps/desktop/`(프론트엔드 + `src-tauri/`), Python 사이드카 = `services/sidecar/`, 중계 서버 = `services/relay/`, 공용 계약·코드 = `packages/`(`protocol`·`py-shared`). 경로 매핑: `src/`→`apps/desktop/src/`, `src-tauri/`→`apps/desktop/src-tauri/`, `python-sidecar/`→`services/sidecar/`. 아래 표의 파일 경로도 이 접두사 기준으로 읽는다.
+
+
 ### 이 환경의 파이썬
 
 시스템 파이썬도 `uv`도 없다. **동작하는 인터프리터는 하나뿐이다.**
@@ -52,7 +55,7 @@ $env:PYTHONUTF8 = "1"
 ### 실행
 
 ```powershell
-npm run tauri:dev        # 전체 앱 (Rust + Vite + webview). 개발 시 기본
+cd apps/desktop; npm run tauri:dev        # 전체 앱 (Rust + Vite + webview). 개발 시 기본
 npm run dev              # vite만. UI 레이아웃 확인용 — invoke()는 전부 실패한다
 ```
 
@@ -64,34 +67,108 @@ npm run dev              # vite만. UI 레이아웃 확인용 — invoke()는 �
 ```powershell
 Get-CimInstance Win32_Process | ? { $_.CommandLine -match 'office_claw_sidecar' } |
   % { Stop-Process -Id $_.ProcessId -Force }
-cd python-sidecar; & $PY -m office_claw_sidecar --port 19532 --auth-token dev-token
+cd services/sidecar; & $PY -m office_claw_sidecar --port 19532 --auth-token dev-token
 ```
+
+> **윈도우 네이티브 빌드 / 배포**: 상세 절차는 [`docs/build-and-release.md`](docs/build-and-release.md) (개발용/배포용 구분). 반복되는 함정 2가지 — (1) `tauri dev`도 `externalBin`(`binaries/office-claw-sidecar-<target>[.exe]`) 파일이 **존재**해야 빌드 통과(없으면 빈 placeholder 생성). (2) dev 모드 사이드카는 `services/sidecar/.venv`로 뜬다 → 윈도우는 `uv sync`로 venv 생성 필요(WindowsApps `python`은 가짜 스텁). 배포용 단일 설치파일은 `tauri build`/릴리스 CI가 PyInstaller 사이드카·WebView2를 번들하며 — **빌드 툴체인(Rust/MSVC/Node)은 `.exe`에 안 들어간다.**
+
+> **2026-08 배포 타깃 노트**: 릴리스는 **Apple Silicon macOS + Windows x64 두 개만** 만든다(`release.yml` 매트릭스). Intel Mac은 의도적으로 뺐다 — macOS 러너는 GitHub Actions 청구 분이 **10배 배율**이라 Intel 잡 하나가 릴리스당 약 180분을 먹고, 그것만 빼도 릴리스 비용이 절반 가까이 준다. 되살리려면 매트릭스와 **랜딩 페이지 다운로드 버튼을 함께** 늘려야 한다 — 브라우저는 Apple Silicon과 Intel Mac을 구분하지 못하므로(Safari가 호환성 때문에 Apple Silicon에서도 userAgent에 "Intel Mac OS X"를 넣는다) 자동 판별이 불가능하고 버튼을 나눠야 한다.
+>
+> 자산 이름은 `releaseAssetNamePattern: kimdaeri-[platform]-[arch][ext]`로 **버전을 뺀다.** 랜딩 페이지가 `releases/latest/download/<고정이름>`을 영구 URL로 쓰기 때문이다 — 버전이 들어가면 릴리스마다 (다른 저장소에 있는) 랜딩 페이지를 고쳐야 한다. 기본 이름은 `productName`인 한글 `김대리`가 들어가 URL 인코딩도 지저분해진다.
+>
+> **랜딩 페이지는 아티팩트 실제 주소를 하드코딩하지 않는다.** 자기 도메인의 `/download/mac`·`/download/windows`만 가리키고, CloudFront Function이 302로 실제 위치(GitHub Releases)로 넘긴다. 저장 백엔드를 옮겨도 랜딩 페이지를 안 고쳐도 되게 하려는 것이다.
 
 ### 커밋 전 검사 (CI 미러)
 
 ```powershell
-cd src-tauri;      cargo fmt --check; cargo clippy --all-targets -- -D warnings
-cd python-sidecar; .\.venv\Scripts\ruff.exe check .; & $PY -m pytest -q
+cd apps/desktop/src-tauri;      cargo fmt --check; cargo clippy --all-targets -- -D warnings
+cd services/sidecar; .\.venv\Scripts\ruff.exe check .; & $PY -m pytest -q
 cd ..;             npm run lint --if-present; npm run test:unit --if-present
 ```
 
 `cargo fmt --check`가 가장 자주 떨어진다. clippy는 `--all-targets -- -D warnings`로 돌려야 CI와 같다.
+
+### 커밋 전 검사 — bash/macOS (CI 미러 원본, dev 병합 2026-08-29)
+
+`.github/workflows/pr-check.yml`에 정의된 4개 잡(`rust-check`, `python-check`, `frontend-check`, `flutter-check`)을 그대로 미러링한다. **커밋 전 영역별로 해당 명령을 직접 돌려 통과 확인.** 빠뜨리고 푸시하면 GitHub Actions에서 떨어진다.
+
+#### Rust (`apps/desktop/src-tauri/`)
+
+```bash
+cd apps/desktop/src-tauri
+cargo fmt --check                          # 또는 자동 적용: cargo fmt
+cargo clippy --all-targets -- -D warnings  # -D warnings = 경고를 에러로 승격
+```
+
+- `cargo fmt --check` 가 가장 자주 떨어지는 항목 — fmt 기본 스타일과 다른 코드를 그대로 푸시하면 즉시 실패.
+- `cargo clippy --no-deps` 만 돌리면 안 됨 — CI는 `--all-targets -- -D warnings`라서 테스트 코드의 경고까지 잡힘.
+- (참고) CI는 `binaries/office-claw-sidecar-*` 더미 파일을 만들고 clippy를 돌린다. 로컬은 PyInstaller 산출물이 있으면 그걸 쓰고, 없으면 동일하게 더미를 만들거나 `cargo check`로 컴파일 가능 여부만 봐도 됨.
+
+#### Python (`services/sidecar/`)
+
+```bash
+cd services/sidecar
+uvx ruff check .                           # lint
+uv run pytest -q                           # unit tests
+```
+
+- `uv`가 없으면: `brew install uv` (또는 `astral.sh/setup-uv`의 설치 스크립트).
+- 의존성 변경 시 `uv sync --frozen --extra dev` 한 번 더 (CI는 lockfile 고정).
+- macOS 로컬은 OS Keychain 백엔드가 있어 keyring 호출이 실제 동작 — CI는 `PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring` 환경변수로 no-op 처리한다는 점이 다름. 테스트가 OS Keychain에 부수효과를 남기지 않는지 확인할 것.
+
+#### Frontend (`apps/desktop`)
+
+```bash
+cd apps/desktop
+npm ci                                     # CI와 동일하게 lockfile 고정 설치
+npm run lint --if-present                  # lint 스크립트 존재 시
+npm run test:unit --if-present             # 현재: node --test src/lib/*.test.js
+```
+
+- 빠른 확인이면 `npm run build`만 돌려도 import 경로 깨짐은 잡힘.
+
+#### Flutter 모바일 (`apps/mobile`)
+
+```bash
+cd apps/mobile
+flutter pub get --enforce-lockfile         # CI와 동일하게 lockfile 고정 설치
+flutter analyze                            # 정적 분석 (경고도 실패로 잡힘)
+flutter test                               # unit tests
+```
+
+- CI는 Flutter **3.44.6**으로 고정돼 있다. 로컬 SDK가 다르면 analyze 결과가 갈릴 수 있으니 `flutter --version`으로 맞출 것. 올릴 때는 `pr-check.yml`의 `flutter-version`과 같이 올린다.
+- `dart format --set-exit-if-changed`는 **CI에 넣지 않았다** — 기존 파일 다수가 이미 미준수라 켜는 순간 전부 빨개진다. 넣으려면 먼저 `dart format .`으로 전체를 한 번 정리하는 별도 커밋이 필요하다. 그전까지는 새로 만드는 파일만 `dart format <파일>`로 맞춘다.
+- 빌드(APK/IPA)는 CI에서 돌리지 않는다. iOS 빌드는 macOS 러너가 필요하고 서명까지 얽혀서 PR 게이트에는 과하다.
+
+#### 한 번에 다 — 추천 alias
+
+`.zshrc` / `.bashrc`에:
+
+```bash
+alias oc-precheck='cd /Users/skim/Desktop/project/office_claw && \
+  (cd apps/desktop/src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings) && \
+  (cd services/sidecar && uvx ruff check . && uv run pytest -q) && \
+  (cd apps/desktop && npm run test:unit --if-present) && \
+  (cd apps/mobile && flutter analyze && flutter test)'
+```
+
+PR 만들기 직전 `oc-precheck` 한 번 — 넷 다 통과하면 CI도 통과.
 
 ### 로그 보기
 
 `logs/chat_log.jsonl`을 에디터로 직접 열지 말 것 — 한 턴이 2KB짜리 한 줄이라 눈으로 못 쫓는다.
 
 ```powershell
-& $PY python-sidecar\scripts\show_turns.py -n 5                 # 최근 5턴
-& $PY python-sidecar\scripts\show_turns.py --failed -n 8        # 깨진 턴만
-& $PY python-sidecar\scripts\show_turns.py --follow             # 실시간
-& $PY python-sidecar\scripts\show_turns.py --grep "정렬" -n 3   # 문장으로 찾기
+& $PY services\sidecar\scripts\show_turns.py -n 5                 # 최근 5턴
+& $PY services\sidecar\scripts\show_turns.py --failed -n 8        # 깨진 턴만
+& $PY services\sidecar\scripts\show_turns.py --follow             # 실시간
+& $PY services\sidecar\scripts\show_turns.py --grep "정렬" -n 3   # 문장으로 찾기
 ```
 
 한 턴에 모델을 여러 번 부르는 경로(재계획·관측 루프)는 `show_turns.py`로 부족하다 — **첫 호출만** 보여 준다.
 
 ```powershell
-& $PY python-sidecar\scripts\dump_turn_llm_calls.py logs\diagnostics\<실행id>.jsonl <turn_id> logs\turn.txt
+& $PY services\sidecar\scripts\dump_turn_llm_calls.py logs\diagnostics\<실행id>.jsonl <turn_id> logs\turn.txt
 ```
 
 ### 진행률 보기
@@ -127,7 +204,7 @@ Get-Content logs\nightly\LATEST.md -TotalCount 20   # 세션 시작 시
 ### 측정
 
 ```powershell
-cd python-sidecar
+cd services/sidecar
 & $PY scripts\run_command_diagnostics.py -n 3 --label before-<작업이름>   # 고치기 전
 & $PY scripts\run_command_diagnostics.py -n 3 --label after-<작업이름>    # 고친 뒤
 ```
@@ -135,12 +212,12 @@ cd python-sidecar
 플래너 모델 회귀 평가(154건 × 2모델, 약 15분):
 
 ```powershell
-cd python-sidecar
-& $PY scripts\eval_ax7b_shadow.py --input-jsonl ..\datasets\eval\planner_eval_v1.jsonl `
-  --output-json ..\logs\eval_shadow.json `
+cd services/sidecar
+& $PY scripts\eval_ax7b_shadow.py --input-jsonl ..\..\datasets\eval\planner_eval_v1.jsonl `
+  --output-json ..\..\logs\eval_shadow.json `
   --baseline-model ax7bplanner-v3:latest --candidate-model <후보>
-& $PY scripts\eval_release_gate.py --shadow-report ..\logs\eval_shadow.json `
-  --output-json ..\logs\eval_gate.json --thresholds-json config\planner_gate_thresholds.json
+& $PY scripts\eval_release_gate.py --shadow-report ..\..\logs\eval_shadow.json `
+  --output-json ..\..\logs\eval_gate.json --thresholds-json config\planner_gate_thresholds.json
 ```
 
 ---
@@ -186,7 +263,7 @@ cd python-sidecar
 3. **새 도메인이면 모듈 세트를 만든다.** `store/<domain>Store.js` → `lib/<domain>Manager.js` →
    `hooks/use<Domain>.js` → 그다음에 UI.
 4. **중복 fetch 금지.** 같은 데이터를 여러 컴포넌트가 각각 가져오지 않는다.
-5. **Rust도 같다.** `src-tauri/src/`에 도메인별 모듈, IPC는 `ipc.rs`에서 얇게 노출.
+5. **Rust도 같다.** `apps/desktop/src-tauri/src/`에 도메인별 모듈, IPC는 `ipc.rs`에서 얇게 노출.
 
 ### 안티패턴
 

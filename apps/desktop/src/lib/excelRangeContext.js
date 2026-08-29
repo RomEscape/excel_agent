@@ -109,3 +109,34 @@ export function toOutboundCommand(rawInput) {
   const cleaned = stripContextBlock(trimmed);
   return applyRangeToCommand(cleaned, rangeRef) || cleaned || trimmed;
 }
+
+// ─── 이하: 붙여넣기 흐름의 값 나열 감지(데모 브랜치) — WorkspacePage가 쓴다 ───
+
+const CELL_OR_RANGE =
+  /\b([A-Z]{1,3}\d{1,7}:[A-Z]{1,3}\d{1,7}|[A-Z]{1,3}:[A-Z]{1,3}|[A-Z]{1,3}\d{1,7})\b/i;
+const TARGET_RANGE =
+  /\b[A-Z]{1,3}\d{1,7}:[A-Z]{1,3}\d{1,7}\b|\b[A-Z]{1,3}\d{1,7}\s*(?:에다가|에다|에|부터|까지)/i;
+const WRITE_VERB_END =
+  /(입력|기록|넣어|채워|써|적어)\s*(?:해)?\s*(?:줘요|줘|주세요|주라|줄래|놔|둬|봐|조)?\s*[~.!?…]*\s*$/;
+
+/** 값 나열(쉼표·세미콜론·탭·줄바꿈 셋 이상) + 쓰기 동사로 끝나는 문장인가. */
+export function looksLikeValueListWrite(text) {
+  const t = String(text ?? "");
+  const separators = (t.match(/[,;\t\n]/g) || []).length;
+  return separators >= 3 && WRITE_VERB_END.test(t);
+}
+
+/** 문장이 범위를 **직접** 지목하는가. */
+export function hasExplicitRangeInCommand(cmd) {
+  const text = String(cmd ?? "");
+  if (looksLikeValueListWrite(text)) return TARGET_RANGE.test(text);
+  return CELL_OR_RANGE.test(text);
+}
+
+/** "여기/이 범위"라고만 했으면 붙여넣기 태그의 범위를 문장 앞에 붙인다. */
+export function applyRangeContextToCommand(cmd, rangeRef) {
+  const text = String(cmd ?? "").trim();
+  if (!rangeRef || !text || hasExplicitRangeInCommand(text)) return text;
+  if (!/(이\s*범위|해당\s*범위|복사한\s*범위|선택한\s*범위|여기)/i.test(text)) return text;
+  return `${rangeRef} ${text}`;
+}

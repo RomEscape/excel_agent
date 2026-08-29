@@ -14,6 +14,10 @@ audit = AuditService()
 
 OLLAMA_BASE_URL = "http://localhost:11434"
 
+# 호출자가 예산을 안 주면 쓰는 값. 예산을 주는 쪽(플래너)은 자기 `wait_for`보다
+# 짧게 줘서 소켓이 먼저 끊기게 한다.
+DEFAULT_HTTP_TIMEOUT_SECONDS = 120.0
+
 
 class OllamaService:
     """Communicate with the local Ollama server via the OpenAI-compatible API."""
@@ -25,10 +29,23 @@ class OllamaService:
         )
 
     async def chat_messages(
-        self, messages: list[dict], model: str = "llama3.2"
+        self,
+        messages: list[dict],
+        model: str = "llama3.2",
+        temperature: float | None = None,
+        json_only: bool = False,
+        json_schema: dict | None = None,
+        timeout: float | None = None,
     ) -> str:
         """Send a full conversation history to Ollama and return the reply text."""
-        reply = await self.chat_completions(messages, model=model)
+        reply = await self.chat_completions(
+            messages,
+            model=model,
+            temperature=temperature,
+            json_only=json_only,
+            json_schema=json_schema,
+            timeout=timeout,
+        )
         return reply.get("content") or ""
 
     async def chat_completions(
@@ -37,11 +54,22 @@ class OllamaService:
         model: str = "llama3.2",
         tools: list[dict] | None = None,
         temperature: float | None = None,
+        json_only: bool = False,
+        json_schema: dict | None = None,
+        timeout: float | None = None,
     ) -> dict[str, Any]:
         """
         OpenAI 호환 엔드포인트(/v1/chat/completions)로 대화를 전송한다.
 
         tools가 주어지면 LLM이 함수 호출(tool_calls)로 응답할 수 있다.
+
+        json_only=True면 디코딩을 JSON 문법으로 제한한다(Ollama의 `format: "json"`).
+        계획 수립처럼 결과를 반드시 파싱해야 하는 호출에만 쓴다. 응답 앞뒤에 설명이나
+        사고 과정이 붙는 것을 애초에 막는 쪽이, 붙은 뒤에 파서로 걷어내는 것보다 낫다.
+
+        timeout은 호출자가 자기 예산보다 **짧게** 줘야 한다. 바깥에서
+        `asyncio.wait_for`로만 끊으면 HTTP 요청은 백그라운드에 그대로 살아 있어
+        Ollama에 부하가 쌓인다. 소켓 쪽이 먼저 끊겨야 요청이 실제로 끝난다.
 
         반환:
           {
@@ -68,8 +96,19 @@ class OllamaService:
             payload["tools"] = tools
         if temperature is not None:
             payload["temperature"] = temperature
+        if json_schema is not None:
+            # 스키마 강제 디코딩 — 어휘 밖 액션·형식 붕괴가 토큰 수준에서 불가능해진다.
+            # 2026-08-18 로컬 실측: ax4-light + /v1/chat/completions에서 enum 강제 확인.
+            # 주의: 스키마는 형식만 보장한다. 의미(어떤 task가 맞는가)는 프롬프트 몫이므로
+            # 프롬프트의 task 한국어 설명을 지우면 안 된다.
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "structured", "schema": json_schema, "strict": True},
+            }
+        elif json_only:
+            payload["response_format"] = {"type": "json_object"}
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=timeout or DEFAULT_HTTP_TIMEOUT_SECONDS) as client:
             resp = await client.post(
                 f"{OLLAMA_BASE_URL}/v1/chat/completions",
                 json=payload,

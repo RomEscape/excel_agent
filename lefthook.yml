@@ -13,35 +13,44 @@ pre-commit:
   parallel: true
   commands:
     rust-fmt:
-      glob: "src-tauri/**/*.rs"
-      root: "src-tauri/"
+      glob: "apps/desktop/src-tauri/**/*.rs"
+      root: "apps/desktop/src-tauri/"
       run: cargo fmt --check
     python-lint:
-      glob: "python-sidecar/**/*.py"
-      root: "python-sidecar/"
-      # uv가 없는 개발기(2026-08-16 Windows 실측)에서는 `uvx`가 없어 훅이 통째로 실패했다.
+      glob: "services/sidecar/**/*.py"
+      root: "services/sidecar/"
+      # uv가 없는 개발기(2026-08-16 Windows 실측)에서는 uvx가 없어 훅이 통째로 실패했다.
       run: if command -v uvx >/dev/null 2>&1; then uvx ruff check .; else ./.venv/Scripts/ruff.exe check .; fi
     frontend-lint:
-      glob: "src/**/*.{ts,tsx,js,jsx}"
+      glob: "apps/desktop/src/**/*.{ts,tsx,js,jsx}"
+      root: "apps/desktop/"
       run: npm run lint --if-present
     devlog-guard:
-      run: cd python-sidecar && sh ../scripts/py-run.sh scripts/append_devlog_from_reports.py --devlog ../개발일지.md --complex-report ../logs/excel_complex_verify_report.json --release-gate ../logs/eval_release_gate.json --from-staged --skip-if-devlog-staged && node ../scripts/check-devlog-update.mjs --staged
+      run: cd services/sidecar && sh ../scripts/py-run.sh scripts/append_devlog_from_reports.py --devlog ../개발일지.md --complex-report ../logs/excel_complex_verify_report.json --release-gate ../logs/eval_release_gate.json --from-staged --skip-if-devlog-staged && node ../scripts/check-devlog-update.mjs --staged
     # 커밋마다 도는 **빠른 회귀 핀**(약 2초). 전체 pytest는 4~5분이라 pre-push 몫이고,
     # 이 파일에는 실측으로 잡은 파괴·오실행 핀이 모여 있어 되돌아가는 걸 즉시 막는다
     # (2026-08-22 결정 5: 게이트 자동화의 가장 앞단).
     python-pins:
-      glob: "python-sidecar/**/*.py"
-      root: "python-sidecar/"
+      glob: "services/sidecar/**/*.py"
+      root: "services/sidecar/"
       run: sh ../scripts/py-run.sh -m pytest -q tests/test_battery_regressions.py
+    mobile-analyze:
+      glob: "apps/mobile/**/*.dart"
+      root: "apps/mobile/"
+      run: flutter analyze
 
 pre-push:
   parallel: true
   commands:
     rust-clippy:
-      root: "src-tauri/"
+      root: "apps/desktop/src-tauri/"
       run: cargo clippy --all-targets -- -D warnings
     python-test:
-      root: "python-sidecar/"
+      root: "services/sidecar/"
       run: sh ../scripts/py-run.sh -m pytest -q
     frontend-test:
+      root: "apps/desktop/"
       run: npm run test:unit --if-present
+    mobile-test:
+      root: "apps/mobile/"
+      run: flutter test

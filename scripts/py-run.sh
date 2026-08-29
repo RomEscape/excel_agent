@@ -20,10 +20,10 @@ fi
 for candidate in \
     "$LOCALAPPDATA/officeclaw/venvs/python-sidecar/Scripts/python.exe" \
     "$HOME/.cache/officeclaw/venvs/python-sidecar/bin/python" \
-    "python-sidecar/.venv/Scripts/python.exe" \
-    "python-sidecar/.venv/bin/python" \
-    "../python-sidecar/.venv/Scripts/python.exe" \
-    "../python-sidecar/.venv/bin/python" \
+    "services/sidecar/.venv/Scripts/python.exe" \
+    "services/sidecar/.venv/bin/python" \
+    "../../services/sidecar/.venv/Scripts/python.exe" \
+    "../../services/sidecar/.venv/bin/python" \
     ".venv/Scripts/python.exe" \
     ".venv/bin/python"
 do

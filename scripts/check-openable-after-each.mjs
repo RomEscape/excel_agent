@@ -16,8 +16,8 @@ copyFileSync(source, workbook);
 function excelCanOpen() {
   try {
     const out = execFileSync(
-      "python-sidecar/.venv/Scripts/python.exe",
-      ["python-sidecar/scripts/open_with_excel.py", workbook],
+      "services/sidecar/.venv/Scripts/python.exe",
+      ["services/sidecar/scripts/open_with_excel.py", workbook],
       { encoding: "utf-8" },
     );
     return out.trim();
