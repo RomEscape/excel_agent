@@ -22,6 +22,8 @@ PyInstaller 는 **분석은 소스로** 하되(그래야 fastapi·uvicorn·xlwin
     pyinstaller --noconfirm sidecar-hardened.spec   # optimize 는 spec 안에 있다
 """
 
+import sys
+
 import glob
 import os
 
@@ -44,7 +46,15 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[],
-    hiddenimports=["office_claw_sidecar", "uvicorn", "fastapi"],
+    # xlwings의 플랫폼 백엔드는 우리 코드가 직접 import하지 않아 정적 분석이
+    # 놓칠 수 있다(main._smoke_test가 존재하는 이유). 번들에 명시로 싣는다
+    # (2026-08-30 macOS 감사 — spec에 빠져 있던 것을 실측 확인).
+    hiddenimports=["office_claw_sidecar", "uvicorn", "fastapi"]
+    + (
+        ["appscript", "aem", "mactypes"]
+        if sys.platform == "darwin"
+        else ["pythoncom", "win32com", "win32timezone"]
+    ),
     hookspath=[],
     runtime_hooks=[],
     excludes=[],
