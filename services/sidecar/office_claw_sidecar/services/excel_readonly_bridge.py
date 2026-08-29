@@ -30,6 +30,8 @@
 
 from __future__ import annotations
 
+import sys
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -109,4 +111,10 @@ def looks_like_com_write_refusal(exc: BaseException) -> bool:
             for item in arg:
                 if isinstance(item, int) and item in _COM_WRITE_REFUSAL_CODES:
                     return True
+    if sys.platform == "darwin":
+        # appscript CommandError에는 COM HRESULT가 없다 — macOS에서 이 그물이
+        # 한 번도 발동하지 않았다(2026-08-30 감사). 오류 문구로 좁혀 판별한다.
+        text = str(exc).lower()
+        if any(k in text for k in ("read only", "read-only", "읽기 전용", "protected", "locked")):
+            return True
     return False

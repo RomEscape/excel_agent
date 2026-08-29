@@ -6459,3 +6459,71 @@ class TestScoreSynonymWordBoundary:
                     continue
                 m = [x["header"] for x in find_header_mentions(r["text"], self.HEADERS)]
                 assert "점수" not in m, r["text"]
+
+
+class TestMacFormatObservabilityIsHonest:
+    """macOS 감사(2026-08-30): 서식 관측이 안 되면 False로 지어내지 말고 판정을 보류한다.
+
+    COM 전용 관측(테두리·병합·틀고정)이 macOS에서 전맹이라, 성공한 테두리를 검증기가
+    실패로 오판해 자동 롤백까지 갈 수 있었다. 스냅샷은 관측 불가를 None으로 말하고,
+    검증기는 None이면 판정하지 않는다(못 봤으면 모른다고 한다).
+    """
+
+    class _SnapService:
+        def __init__(self, snap):
+            self._snap = snap
+
+        def get_format_snapshot(self, workbook_id, sheet_name, range_ref):
+            return dict(self._snap)
+
+    def _verify(self, action, params, snap):
+        from office_claw_sidecar.services.excel_result_verifier import _verify_format_effect
+
+        return _verify_format_effect(
+            action, params, {"address": "A1:B2"},
+            service=self._SnapService(snap), workbook_id="wb.xlsx", sheet_name="S",
+        )
+
+    def test_테두리_관측_불가면_보류(self):
+        v = self._verify("excel_live.apply_border", {"line_style": "continuous", "target_range": "A1:B2"}, {"borders": None})
+        assert v is None
+
+    def test_테두리_관측_됐고_없으면_여전히_실패(self):
+        v = self._verify("excel_live.apply_border", {"line_style": "continuous", "target_range": "A1:B2"}, {"borders": [[False, False]]})
+        assert v is not None and v[0] is False
+
+    def test_병합_관측_불가면_보류(self):
+        v = self._verify("excel_live.merge_cells", {"target_range": "A1:B2"}, {"merged": None})
+        assert v is None
+
+    def test_틀고정_관측_불가면_보류(self):
+        v = self._verify("excel_live.freeze_panes", {"freeze_at": "A2"}, {"freeze_panes": None})
+        assert v is None
+
+    def test_틀고정_관측_됐고_비었으면_여전히_실패(self):
+        v = self._verify("excel_live.freeze_panes", {"freeze_at": "A2"}, {"freeze_panes": ""})
+        assert v is not None and v[0] is False
+
+
+class TestMacWriteRefusalDetection:
+    """macOS 감사(2026-08-30): 읽기전용 우회 그물이 COM HRESULT에만 반응해 macOS에서
+    한 번도 발동하지 않았다 — darwin에서는 오류 문구로도 판별한다."""
+
+    def test_darwin에서는_문구로_판별한다(self, monkeypatch):
+        import sys
+
+        from office_claw_sidecar.services import excel_readonly_bridge as b
+
+        monkeypatch.setattr(sys, "platform", "darwin")
+        assert b.looks_like_com_write_refusal(RuntimeError("Excel got an error: workbook is read only"))
+        assert b.looks_like_com_write_refusal(RuntimeError("sheet is protected"))
+        assert not b.looks_like_com_write_refusal(RuntimeError("range out of bounds"))
+
+    def test_windows_판별은_그대로_정수_코드다(self, monkeypatch):
+        import sys
+
+        from office_claw_sidecar.services import excel_readonly_bridge as b
+
+        monkeypatch.setattr(sys, "platform", "win32")
+        assert b.looks_like_com_write_refusal(Exception(-2146827284))
+        assert not b.looks_like_com_write_refusal(RuntimeError("workbook is read only"))

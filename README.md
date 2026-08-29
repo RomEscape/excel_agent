@@ -192,6 +192,29 @@ cd apps/mobile && flutter pub get && flutter run
 
 ---
 
+### macOS 첫 구동 체크리스트 (2026-08-30 기준)
+
+> ⚠ **macOS 실기 검증은 아직 안 됐다** — 아래는 코드·감사 기준의 절차다.
+> 첫 구동에서 어긋나는 항목은 개발일지에 실측으로 남겨 달라.
+
+1. **도구**: `brew install uv node ollama` + [rustup.rs](https://rustup.rs) + Xcode CLT.
+   (Ollama는 공식 Ollama.app도 됨 — 설치 마법사가 탐지한다)
+2. **한 번에 기동**: `bash scripts/dev.sh` — venv 기본 경로·tauri 사이드카
+   placeholder(darwin 트리플)·의존성 설치까지 처리한다.
+3. **모델 준비** — 없으면 오류 대신 "플래너가 조용히 죽는" 저하가 된다:
+   - `ollama pull skt/A.X-4.0-Light:latest`
+   - 플래너는 커스텀 SFT라 **pull 불가** — 윈도우 개발기의
+     `artifacts/ax7b-planner-v3-f16.gguf`(14.5GB)를 같은 경로로 옮긴 뒤
+     `ollama create ax7bplanner-v3 -f deploy/ollama/Modelfile.ax7b-planner-v3 --quantize q4_K_M`
+   - 확인: `curl -H "Authorization: Bearer dev-token" localhost:19532/health` 의
+     `missing_models`가 `[]`여야 한다.
+4. **자동화 권한**: 첫 엑셀 제어 명령에서 macOS가 "Excel 제어 허용?" 팝업을 띄운다
+   (시스템 설정 → 개인정보 보호 → 자동화). 거부하면 모든 라이브 명령이 실패한다.
+5. **알려진 macOS 한계**(코드가 명확한 오류로 거절): 조건부 서식(데이터 막대·색조·
+   수식 CF)·차트·표 변환·시트 보호·유효성 검사·매크로 등 COM 전용 액션.
+   값·수식·정렬·테두리·색칠 등 핵심 경로는 크로스플랫폼 API로 동작 설계.
+   라이브 제어가 급하지 않으면 `EXCEL_LIVE_ENGINE=file`로 파일 엔진 사용 가능.
+
 ## 커밋/푸시 전 체크 (CI 미러)
 
 `.github/workflows/pr-check.yml`의 4개 잡을 그대로 미러링한다. `lefthook`이 pre-commit(lint)·pre-push(test)로 자동 실행하지만, PR 전 한 번 직접 돌리는 걸 권한다.

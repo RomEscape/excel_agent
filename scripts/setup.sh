@@ -5,8 +5,8 @@ set -euo pipefail 2>/dev/null || set -eu
 SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-SIDECAR_DIR="$PROJECT_DIR/python-sidecar"
-TAURI_DIR="$PROJECT_DIR/src-tauri"
+SIDECAR_DIR="$PROJECT_DIR/services/sidecar"  # 모노레포 이행(2026-08-30): python-sidecar → services/sidecar
+TAURI_DIR="$PROJECT_DIR/apps/desktop/src-tauri"  # 모노레포 이행: src-tauri → apps/desktop/src-tauri
 DRY_RUN="${DRY_RUN:-0}"
 BUILD_SIDECAR="${BUILD_SIDECAR:-1}"
 AUTO_INSTALL_TOOLS="${AUTO_INSTALL_TOOLS:-1}"

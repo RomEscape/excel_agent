@@ -8,7 +8,9 @@
 # held-out 18건 체크포인트 비교: checkpoint-375 / 최종본 seq 일치 67% (125: 56%, 250: 50%)
 #
 # 등록: ollama create ax7bplanner-v3 -f deploy/ollama/Modelfile.ax7b-planner-v3 --quantize q4_K_M
-FROM C:\Users\asdjj\OneDrive\바탕 화면\동화책 프로젝트\officeclaw\artifacts\ax7b-planner-v3-f16.gguf
+# FROM은 Modelfile 위치 기준 상대경로다 — 절대경로(윈도우 개발기 전용)를 쓰면
+# 다른 머신(macOS 이전 포함)에서 등록이 불성립한다(2026-08-30 감사).
+FROM ../../artifacts/ax7b-planner-v3-f16.gguf
 
 # 플래너 프롬프트 실측 1931~2095토큰 + 계획 JSON 출력. 여유를 둬 8192.
 PARAMETER num_ctx 8192

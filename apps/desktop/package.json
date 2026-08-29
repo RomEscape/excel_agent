@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev:pre": "node ./scripts/ensure-dev-port.mjs 1420",
+    "dev:pre": "node ../../scripts/ensure-dev-port.mjs 1420",
     "dev": "npm run dev:pre && vite --port 1420 --strictPort",
     "build": "vite build",
     "lint": "eslint .",

@@ -27,7 +27,9 @@ def build() -> None:
     print("=== Building Office Claw Sidecar ===")
 
     # Run PyInstaller
-    spec_file = SIDECAR_DIR / "office_claw_sidecar.spec"
+    # office_claw_sidecar.spec은 의도적으로 삭제됐다(docs/build-and-release.md '버린 것').
+    # git이 추적하는 유일한 spec은 하드닝 빌드용 sidecar-hardened.spec이다(2026-08-30 감사).
+    spec_file = SIDECAR_DIR / "sidecar-hardened.spec"
     if not spec_file.exists():
         print(f"ERROR: Spec file not found: {spec_file}")
         sys.exit(1)

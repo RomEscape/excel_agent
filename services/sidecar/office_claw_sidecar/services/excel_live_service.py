@@ -455,34 +455,48 @@ class ExcelLiveService:
                 except Exception:
                     fill_row.append(None)
                 try:
-                    bold_row.append(bool(cell.api.Font.Bold))
+                    # 고수준 font.bold — COM(cell.api.Font.Bold)은 macOS에서
+                    # AttributeError로 굵기 관측이 전맹이었다(2026-08-30 감사).
+                    bold_row.append(bool(cell.font.bold))
                 except Exception:
                     bold_row.append(False)
                 try:
                     color_row.append(_hex(cell.font.color))
                 except Exception:
                     color_row.append(None)
-                try:
-                    # xlEdgeLeft=7 … xlEdgeRight=10, LineStyle -4142 == none
-                    border_row.append(
-                        any(cell.api.Borders(idx).LineStyle != -4142 for idx in (7, 8, 9, 10))
-                    )
-                except Exception:
+                if sys.platform == "darwin":
+                    # COM Borders는 macOS에서 못 읽는다 — False로 지어내면 성공한
+                    # 테두리를 검증기가 실패로 오판한다(2026-08-30 감사). 관측 불가는
+                    # 관측 불가라고 말한다(범위 전체를 None으로, 아래에서 처리).
                     border_row.append(False)
+                else:
+                    try:
+                        # xlEdgeLeft=7 … xlEdgeRight=10, LineStyle -4142 == none
+                        border_row.append(
+                            any(cell.api.Borders(idx).LineStyle != -4142 for idx in (7, 8, 9, 10))
+                        )
+                    except Exception:
+                        border_row.append(False)
             number_formats.append(nf_row)
             fills.append(fill_row)
             bold.append(bold_row)
             font_colors.append(color_row)
             borders.append(border_row)
         try:
-            merged = [str(a.address).replace("$", "") for a in rng.api.MergeArea] if rng.api.MergeCells else []
+            # 고수준 merge_cells/merge_area — COM MergeArea는 macOS에서 못 읽어
+            # 병합 관측이 전맹이었다(2026-08-30 감사).
+            merged = [str(rng.merge_area.address).replace("$", "")] if rng.merge_cells else []
         except Exception:
-            merged = []
-        try:
-            freeze = str(sheet.api.Application.ActiveWindow.SplitRow or 0)
-            freeze = f"A{int(freeze) + 1}" if freeze and int(freeze) > 0 else ""
-        except Exception:
-            freeze = ""
+            # 못 읽었으면 '없음'이 아니라 '모름'이다 — 검증기가 판정을 보류한다.
+            merged = None
+        if sys.platform == "darwin":
+            freeze = None  # COM ActiveWindow은 macOS에서 못 읽는다 — 관측 불가.
+        else:
+            try:
+                freeze = str(sheet.api.Application.ActiveWindow.SplitRow or 0)
+                freeze = f"A{int(freeze) + 1}" if freeze and int(freeze) > 0 else ""
+            except Exception:
+                freeze = ""
         try:
             chart_count = len(sheet.charts)
         except Exception:
@@ -494,7 +508,7 @@ class ExcelLiveService:
             "fills": fills,
             "bold": bold,
             "font_colors": font_colors,
-            "borders": borders,
+            "borders": None if sys.platform == "darwin" else borders,
             "merged": merged,
             "freeze_panes": freeze,
             "chart_count": chart_count,
@@ -774,12 +788,18 @@ class ExcelLiveService:
         wb = self._find_workbook(target_id)
         sheet = self._find_sheet(wb, sheet_name)
         rng = sheet.range(range_ref)
-        try:
-            # Formula2가 동적 배열(SEQUENCE·FILTER 등)의 스필을 보존한다.
-            # 구형 Formula 속성은 암시적 교차(@)로 강등시킨다.
-            rng.api.Formula2 = formula_a1
-        except Exception:
+        if sys.platform == "darwin":
+            # macOS의 .api는 appscript 참조라 COM 속성 '대입'이 예외 없이 파이썬
+            # 인스턴스 속성만 만든다 — 수식이 안 들어갔는데 성공으로 보고되는
+            # 미검출 오실행(2026-08-30 감사). 고수준 API가 Apple Event를 실제로 보낸다.
             rng.formula = formula_a1
+        else:
+            try:
+                # Formula2가 동적 배열(SEQUENCE·FILTER 등)의 스필을 보존한다.
+                # 구형 Formula 속성은 암시적 교차(@)로 강등시킨다.
+                rng.api.Formula2 = formula_a1
+            except Exception:
+                rng.formula = formula_a1
 
         values = self._normalize_values(rng.options(ndim=2).value)
         row_count = len(values)
@@ -1074,6 +1094,25 @@ class ExcelLiveService:
         """범위 안의 오류 셀을 {오류 종류: [셀 주소…]}로 보고한다.
 
         수식 사후 검증용(감사 B3): `formula_applied_cells>0`은 "넣었다"만 말할 뿐
+        if sys.platform == "darwin":
+            # COM 오류 정수(-2146826281 등)와 rng.api.Value는 Windows 전용 —
+            # macOS에서는 이 검출이 조용히 꺼져 #NAME?·#REF! 수식이 성공으로
+            # 보고됐다(2026-08-30 감사). AppleScript는 오류 셀을 문자열로 주므로
+            # 파일 엔진(excel_live_file_service)과 같은 문자열 대조로 센다.
+            wb = self._find_workbook(workbook_id or self._selected_workbook_id)
+            sheet = self._find_sheet(wb, sheet_name)
+            rng = sheet.range(range_ref)
+            values = self._normalize_values(rng.options(ndim=2).value)
+            error_texts = {
+                "#DIV/0!", "#N/A", "#NAME?", "#NULL!", "#NUM!", "#REF!", "#VALUE!", "#SPILL!",
+            }
+            count = sum(
+                1
+                for row in values
+                for v in row
+                if isinstance(v, str) and v.strip().upper() in error_texts
+            )
+            return {"error_cells": count, "address": str(rng.address)}
         "#NAME?이 떴다"는 못 본다. COM 원시값의 오류 코드를 직접 읽는다.
         """
         from openpyxl.utils import get_column_letter
@@ -2936,6 +2975,40 @@ class ExcelLiveService:
         하나가 없다고 전체를 포기하면 나머지 방어까지 사라진다.
         """
         flags: dict[str, Any] = {"sheet_name": sheet_name or ""}
+
+        if sys.platform == "darwin":
+            # PascalCase COM 속성(ReadOnly 등)은 appscript에서 전부 실패해 보호
+            # 플래그가 조용히 전부 False였다 — 읽기전용·보호 시트 편집 차단 가드
+            # 무력화(2026-08-30 감사). appscript 소문자 속성으로 같은 계약을 채운다.
+            def _mac_flag(obj: Any, name: str) -> bool:
+                try:
+                    ref = getattr(obj.api, name)
+                    value = ref.get() if hasattr(ref, "get") else ref
+                    return bool(value)
+                except Exception:
+                    return False
+
+            try:
+                wb = self._resolve_workbook(workbook_id)
+            except Exception:
+                return flags
+            flags["workbook_read_only"] = _mac_flag(wb, "read_only")
+            flags["structure_protected"] = _mac_flag(wb, "protect_structure")
+            flags["marked_final"] = False  # macOS Excel에 대응 속성 없음
+            try:
+                full = str(getattr(wb, "fullname", "") or "")
+                flags["path_unwritable"] = bool(
+                    full and os.path.isabs(full) and os.path.exists(full) and not os.access(full, os.W_OK)
+                )
+            except Exception:
+                flags["path_unwritable"] = False
+            try:
+                ws = self._find_sheet(wb, sheet_name) if sheet_name else wb.sheets.active
+                flags["sheet_protected"] = _mac_flag(ws, "protect_contents")
+                flags["sheet_name"] = str(getattr(ws, "name", sheet_name or ""))
+            except Exception:
+                pass
+            return flags
 
         def _flag(obj: Any, name: str) -> bool:
             try:

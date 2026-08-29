@@ -596,6 +596,8 @@ def _verify_format_effect(
         snap = _format_snapshot(service, workbook_id, sheet, target)
         if snap is None:
             return None
+        if snap.get("borders") is None:
+            return None  # 관측 불가(macOS 등) — 못 봤으면 판정하지 않는다.
         if not any(bool(b) for b in _flat(snap.get("borders"))):
             return False, "border_not_applied:테두리가 그려진 칸이 없습니다"
         return None
@@ -604,6 +606,8 @@ def _verify_format_effect(
         snap = _format_snapshot(service, workbook_id, sheet, target)
         if snap is None:
             return None
+        if snap.get("merged") is None:
+            return None  # 관측 불가 — 못 봤으면 판정하지 않는다.
         merged = {str(m).replace("$", "").upper() for m in (snap.get("merged") or [])}
         if target and target.upper() not in merged:
             return False, f"merge_not_applied:{target} 병합이 확인되지 않습니다"
@@ -614,6 +618,8 @@ def _verify_format_effect(
         snap = _format_snapshot(service, workbook_id, sheet, "A1:A1")
         if snap is None:
             return None
+        if snap.get("freeze_panes") is None:
+            return None  # 관측 불가 — 못 봤으면 판정하지 않는다.
         got = str(snap.get("freeze_panes") or "").strip()
         released = want in {"해제", "none", ""}
         if released:
