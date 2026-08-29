@@ -9,7 +9,7 @@
     "outcome": "OK",
     "action": "excel_live.dedupe_rows",
     "detail": "사용자 요청 실행",
-    "secs": 16.0
+    "secs": 21.1
   },
   {
     "task": "dedupe",
@@ -18,10 +18,11 @@
       "excel_live.dedupe_rows",
       "excel_live.find_duplicates"
     ],
-    "outcome": "ASK",
+    "expect_ask": true,
+    "outcome": "OK",
     "action": "excel_live.dedupe",
     "detail": "중복 기준 열을 알려주세요. 예: 전화번호 기준",
-    "secs": 6.0
+    "secs": 7.0
   },
   {
     "task": "dedupe",
@@ -30,14 +31,15 @@
       "excel_live.dedupe_rows",
       "excel_live.find_duplicates"
     ],
-    "outcome": "ASK",
+    "expect_ask": true,
+    "outcome": "OK",
     "action": "excel_live.dedupe",
     "detail": "중복 기준 열을 알려주세요. 예: 전화번호 기준",
-    "secs": 3.4
+    "secs": 4.1
   },
   {
     "task": "dedupe",
-    "text": "이름 기준으로 중복 제거",
+    "text": "담당자 기준으로 중복 제거",
     "expect": [
       "excel_live.dedupe_rows",
       "excel_live.find_duplicates"
@@ -45,7 +47,7 @@
     "outcome": "OK",
     "action": "excel_live.dedupe_rows",
     "detail": "사용자 요청 실행",
-    "secs": 14.8
+    "secs": 23.8
   },
   {
     "task": "dedupe",
@@ -57,7 +59,7 @@
     "outcome": "PLAN_BAD",
     "action": "excel_live.find_duplicates",
     "detail": "중복 행이 남아 있음",
-    "secs": 9.4
+    "secs": 13.6
   },
   {
     "task": "dedupe_with_note",
@@ -69,7 +71,7 @@
     "outcome": "OK",
     "action": "excel_live.dedupe_rows",
     "detail": "사용자 요청 실행",
-    "secs": 15.4
+    "secs": 24.0
   },
   {
     "task": "dedupe_with_note",
@@ -78,10 +80,11 @@
       "excel_live.dedupe_rows",
       "excel_live.find_duplicates"
     ],
-    "outcome": "ASK",
+    "expect_ask": true,
+    "outcome": "OK",
     "action": "excel_live.dedupe",
     "detail": "중복 기준 열을 알려주세요. 예: 전화번호 기준",
-    "secs": 3.6
+    "secs": 4.2
   },
   {
     "task": "filter",
@@ -92,7 +95,7 @@
     "outcome": "OK",
     "action": "excel_live.filter_rows",
     "detail": "의도 정규화 기반 계획",
-    "secs": 12.6
+    "secs": 22.7
   },
   {
     "task": "filter",
@@ -103,7 +106,7 @@
     "outcome": "OK",
     "action": "excel_live.filter_rows",
     "detail": "의도 정규화 기반 계획",
-    "secs": 13.0
+    "secs": 21.2
   },
   {
     "task": "filter",
@@ -114,7 +117,7 @@
     "outcome": "OK",
     "action": "excel_live.filter_rows",
     "detail": "의도 정규화 기반 계획",
-    "secs": 13.0
+    "secs": 21.6
   },
   {
     "task": "filter",
@@ -125,7 +128,7 @@
     "outcome": "OK",
     "action": "excel_live.filter_rows",
     "detail": "의도 정규화 기반 계획",
-    "secs": 12.9
+    "secs": 21.0
   },
   {
     "task": "filter",
@@ -136,7 +139,7 @@
     "outcome": "OK",
     "action": "excel_live.filter_rows",
     "detail": "의도 정규화 기반 계획",
-    "secs": 12.9
+    "secs": 19.4
   },
   {
     "task": "pivot",
@@ -147,7 +150,7 @@
     "outcome": "OK",
     "action": "excel_live.pivot_table",
     "detail": "대화 슬롯 기반 pivot 실행 계획",
-    "secs": 12.3
+    "secs": 17.2
   },
   {
     "task": "pivot",
@@ -158,7 +161,7 @@
     "outcome": "OK",
     "action": "excel_live.pivot_table",
     "detail": "사용자 요청 실행",
-    "secs": 11.5
+    "secs": 15.9
   },
   {
     "task": "pivot",
@@ -170,7 +173,7 @@
     "outcome": "OK",
     "action": "excel_live.pivot_table",
     "detail": "학습 데이터 정답 플랜",
-    "secs": 12.6
+    "secs": 19.1
   },
   {
     "task": "pivot",
@@ -181,7 +184,7 @@
     "outcome": "OK",
     "action": "excel_live.pivot_table",
     "detail": "대화 슬롯 기반 pivot 실행 계획",
-    "secs": 4.8
+    "secs": 8.1
   },
   {
     "task": "pivot",
@@ -192,7 +195,7 @@
     "outcome": "OK",
     "action": "excel_live.pivot_table",
     "detail": "대화 슬롯 기반 pivot 실행 계획",
-    "secs": 11.3
+    "secs": 18.1
   },
   {
     "task": "group_by_read",
@@ -205,7 +208,7 @@
     "outcome": "OK",
     "action": "excel_live.pivot_table",
     "detail": "대화 슬롯 기반 pivot 실행 계획",
-    "secs": 9.2
+    "secs": 11.1
   },
   {
     "task": "group_by_read",
@@ -217,7 +220,7 @@
     "outcome": "ASK",
     "action": "excel_live.pivot",
     "detail": "집계할 값 열이 필요합니다. 예: 매출",
-    "secs": 3.7
+    "secs": 5.4
   },
   {
     "task": "group_by_read",
@@ -229,7 +232,7 @@
     "outcome": "OK",
     "action": "excel_live.pivot_table",
     "detail": "대화 슬롯 기반 pivot 실행 계획",
-    "secs": 11.1
+    "secs": 11.8
   },
   {
     "task": "read_stat",
@@ -238,10 +241,10 @@
       "excel_live.calculate_column_stat",
       "excel_live.read_range"
     ],
-    "outcome": "ASK",
-    "action": "excel_live.clarify",
-    "detail": "계산 기준 열을 알려주세요. 예: B열 수량, C열 단가, 결과 D열. 조건 계산이면 기준값도 알려주세요.",
-    "secs": 5.7
+    "outcome": "OK",
+    "action": "excel_live.calculate_column_stat",
+    "detail": "의도 정규화 기반 계획",
+    "secs": 9.1
   },
   {
     "task": "read_stat",
@@ -251,9 +254,9 @@
       "excel_live.read_range"
     ],
     "outcome": "OK",
-    "action": "excel_live.read_range",
-    "detail": "범위를 지목한 단순 조회",
-    "secs": 9.1
+    "action": "excel_live.calculate_column_stat",
+    "detail": "의도 정규화 기반 계획",
+    "secs": 9.3
   },
   {
     "task": "read_stat",
@@ -262,10 +265,10 @@
       "excel_live.calculate_column_stat",
       "excel_live.read_range"
     ],
-    "outcome": "MISREAD",
-    "action": "excel_live.sort_range",
-    "detail": "대화 슬롯 기반 sort 실행 계획",
-    "secs": 16.8
+    "outcome": "OK",
+    "action": "excel_live.calculate_column_stat",
+    "detail": "의도 정규화 기반 계획",
+    "secs": 9.2
   },
   {
     "task": "read_stat",
@@ -274,10 +277,10 @@
       "excel_live.calculate_column_stat",
       "excel_live.read_range"
     ],
-    "outcome": "MISREAD",
-    "action": "excel_live.not_excel_request",
-    "detail": "엑셀 작업으로 볼 수 없는 요청입니다.",
-    "secs": 5.7
+    "outcome": "OK",
+    "action": "excel_live.read_range",
+    "detail": "의도 정규화 기반 계획",
+    "secs": 8.3
   },
   {
     "task": "delete_sheet",
@@ -299,7 +302,7 @@
     "outcome": "OK",
     "action": "excel_live.delete_sheet",
     "detail": "사용자 요청 실행",
-    "secs": 3.7
+    "secs": 5.2
   },
   {
     "task": "delete_sheet",
@@ -332,7 +335,7 @@
     "outcome": "OK",
     "action": "excel_live.drop_column",
     "detail": "의도 정규화 기반 계획",
-    "secs": 10.7
+    "secs": 14.4
   },
   {
     "task": "drop_column",
@@ -343,7 +346,7 @@
     "outcome": "OK",
     "action": "excel_live.drop_column",
     "detail": "의도 정규화 기반 계획",
-    "secs": 11.1
+    "secs": 13.5
   },
   {
     "task": "drop_column",
@@ -354,7 +357,7 @@
     "outcome": "OK",
     "action": "excel_live.drop_column",
     "detail": "의도 정규화 기반 계획",
-    "secs": 10.9
+    "secs": 14.1
   },
   {
     "task": "drop_column",
@@ -365,7 +368,7 @@
     "outcome": "OK",
     "action": "excel_live.drop_column",
     "detail": "의도 정규화 기반 계획",
-    "secs": 11.2
+    "secs": 13.8
   },
   {
     "task": "add_column",
@@ -376,7 +379,7 @@
     "outcome": "OK",
     "action": "excel_live.add_column",
     "detail": "의도 정규화 기반 계획",
-    "secs": 11.1
+    "secs": 13.4
   },
   {
     "task": "add_column",
@@ -384,10 +387,10 @@
     "expect": [
       "excel_live.add_column"
     ],
-    "outcome": "MISREAD",
-    "action": "excel_live.read_range",
-    "detail": "범위를 지목한 단순 조회",
-    "secs": 9.7
+    "outcome": "OK",
+    "action": "excel_live.add_column",
+    "detail": "사용자 요청 실행",
+    "secs": 13.7
   },
   {
     "task": "add_column",
@@ -398,7 +401,7 @@
     "outcome": "OK",
     "action": "excel_live.add_column",
     "detail": "의도 정규화 기반 계획",
-    "secs": 11.1
+    "secs": 13.3
   },
   {
     "task": "add_column",
@@ -409,7 +412,7 @@
     "outcome": "OK",
     "action": "excel_live.add_column",
     "detail": "의도 정규화 기반 계획",
-    "secs": 11.1
+    "secs": 13.2
   },
   {
     "task": "rename_column",
@@ -431,7 +434,7 @@
     "outcome": "OK",
     "action": "excel_live.rename_column",
     "detail": "의도 정규화 기반 계획",
-    "secs": 1.2
+    "secs": 1.3
   },
   {
     "task": "rename_column",
@@ -466,7 +469,7 @@
     "outcome": "OK",
     "action": "excel_live.unmerge_cells",
     "detail": "의도 정규화 기반 계획",
-    "secs": 10.8
+    "secs": 12.9
   },
   {
     "task": "unmerge",
@@ -477,7 +480,7 @@
     "outcome": "OK",
     "action": "excel_live.unmerge_cells",
     "detail": "의도 정규화 기반 계획",
-    "secs": 11.2
+    "secs": 13.4
   },
   {
     "task": "unmerge",
@@ -488,7 +491,7 @@
     "outcome": "OK",
     "action": "excel_live.unmerge_cells",
     "detail": "사용자 요청 실행",
-    "secs": 18.2
+    "secs": 21.7
   },
   {
     "task": "unmerge",
@@ -499,7 +502,7 @@
     "outcome": "OK",
     "action": "excel_live.unmerge_cells",
     "detail": "의도 정규화 기반 계획",
-    "secs": 11.2
+    "secs": 13.2
   },
   {
     "task": "color_scale",
@@ -510,7 +513,7 @@
     "outcome": "OK",
     "action": "excel_live.apply_color_scale",
     "detail": "빠른 규칙 기반 실행 계획",
-    "secs": 9.6
+    "secs": 11.9
   },
   {
     "task": "color_scale",
@@ -522,7 +525,7 @@
     "outcome": "OK",
     "action": "excel_live.apply_color_scale",
     "detail": "빠른 규칙 기반 실행 계획",
-    "secs": 9.7
+    "secs": 12.0
   },
   {
     "task": "color_scale",
@@ -533,7 +536,7 @@
     "outcome": "OK",
     "action": "excel_live.apply_color_scale",
     "detail": "빠른 규칙 기반 실행 계획",
-    "secs": 9.7
+    "secs": 12.1
   },
   {
     "task": "color_scale",
@@ -544,7 +547,7 @@
     "outcome": "OK",
     "action": "excel_live.apply_color_scale",
     "detail": "빠른 규칙 기반 실행 계획",
-    "secs": 9.7
+    "secs": 12.0
   },
   {
     "task": "reset_all",
@@ -555,7 +558,7 @@
     "outcome": "OK",
     "action": "excel_live.clear_range",
     "detail": "빠른 규칙 기반 실행 계획",
-    "secs": 17.4
+    "secs": 21.7
   },
   {
     "task": "reset_all",
@@ -567,7 +570,7 @@
     "outcome": "OK",
     "action": "excel_live.apply_border",
     "detail": "빠른 규칙 기반 실행 계획",
-    "secs": 9.7
+    "secs": 11.8
   },
   {
     "task": "reset_all",
@@ -578,7 +581,7 @@
     "outcome": "OK",
     "action": "excel_live.clear_range",
     "detail": "빠른 규칙 기반 실행 계획",
-    "secs": 17.3
+    "secs": 21.1
   },
   {
     "task": "create_table_oneshot",
@@ -602,7 +605,7 @@
     "outcome": "OK",
     "action": "excel_live.write_range",
     "detail": "대화 슬롯 기반 표 생성 계획",
-    "secs": 17.4
+    "secs": 21.2
   },
   {
     "task": "create_table_oneshot",
@@ -614,7 +617,7 @@
     "outcome": "OK",
     "action": "excel_live.write_range",
     "detail": "대화 슬롯 기반 표 생성 계획",
-    "secs": 17.3
+    "secs": 21.1
   },
   {
     "task": "valueless_write",
@@ -670,7 +673,7 @@
     "outcome": "OK",
     "action": "excel_live.set_data_validation",
     "detail": "빠른 규칙 기반 실행 계획",
-    "secs": 9.6
+    "secs": 11.8
   },
   {
     "task": "data_validation",
@@ -681,7 +684,7 @@
     "outcome": "OK",
     "action": "excel_live.set_data_validation",
     "detail": "사용자 요청 실행",
-    "secs": 13.6
+    "secs": 15.7
   },
   {
     "task": "data_validation",
@@ -692,7 +695,7 @@
     "outcome": "OK",
     "action": "excel_live.set_data_validation",
     "detail": "원문 근거가 없는 단계를 덜어낸 계획",
-    "secs": 13.6
+    "secs": 15.7
   },
   {
     "task": "protect",
@@ -703,7 +706,7 @@
     "outcome": "OK",
     "action": "excel_live.protect_sheet",
     "detail": "사용자 요청 실행",
-    "secs": 13.0
+    "secs": 15.1
   },
   {
     "task": "protect",
@@ -714,7 +717,7 @@
     "outcome": "OK",
     "action": "excel_live.protect_sheet",
     "detail": "사용자 요청 실행",
-    "secs": 12.9
+    "secs": 15.0
   },
   {
     "task": "comment",
@@ -722,10 +725,10 @@
     "expect": [
       "excel_live.add_cell_comment"
     ],
-    "outcome": "MISREAD",
-    "action": "excel_live.read_range",
-    "detail": "범위를 지목한 단순 조회",
-    "secs": 9.6
+    "outcome": "OK",
+    "action": "excel_live.add_cell_comment",
+    "detail": "의도 정규화 기반 계획",
+    "secs": 13.0
   },
   {
     "task": "comment",
@@ -733,10 +736,10 @@
     "expect": [
       "excel_live.add_cell_comment"
     ],
-    "outcome": "ASK",
-    "action": "excel_live.filter",
-    "detail": "어떤 열을 기준으로 필터할까요? 예: 상태 열",
-    "secs": 3.7
+    "outcome": "OK",
+    "action": "excel_live.add_cell_comment",
+    "detail": "사용자 요청 실행",
+    "secs": 15.4
   },
   {
     "task": "excel_table",
@@ -747,7 +750,7 @@
     "outcome": "OK",
     "action": "excel_live.convert_to_excel_table",
     "detail": "빠른 규칙 기반 실행 계획",
-    "secs": 9.7
+    "secs": 11.7
   },
   {
     "task": "excel_table",
@@ -758,7 +761,7 @@
     "outcome": "OK",
     "action": "excel_live.convert_to_excel_table",
     "detail": "빠른 규칙 기반 실행 계획",
-    "secs": 9.6
+    "secs": 11.8
   },
   {
     "task": "named_range",
@@ -766,10 +769,10 @@
     "expect": [
       "excel_live.define_named_range"
     ],
-    "outcome": "ASK",
-    "action": "excel_live.create_table",
-    "detail": "매출표는 월별/상품별 중 어떤 기준으로 정리할까요?",
-    "secs": 0.1
+    "outcome": "OK",
+    "action": "excel_live.define_named_range",
+    "detail": "사용자 요청 실행",
+    "secs": 3.8
   },
   {
     "task": "named_range",
@@ -777,9 +780,9 @@
     "expect": [
       "excel_live.define_named_range"
     ],
-    "outcome": "ASK",
-    "action": "excel_live.create_table",
-    "detail": "매출표는 월별/상품별 중 어떤 기준으로 정리할까요?",
-    "secs": 0.0
+    "outcome": "OK",
+    "action": "excel_live.define_named_range",
+    "detail": "원문 근거가 있는 규칙 해석",
+    "secs": 3.4
   }
 ]

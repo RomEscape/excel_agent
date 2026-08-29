@@ -6408,3 +6408,54 @@ class TestFabricatedWriteValueAsksInsteadOfInventing:
         assert _fabricated_write_value_problem("'입력'을 전체 셀에 채워줘", self._plan(fab), "s") == ""
         assert _fabricated_write_value_problem("B2:D2에 이름,수량,금액 입력", self._plan([["이름", "수량", "금액"]]), "s") == ""
         assert _fabricated_write_value_problem("C1:F6 전부 0으로 채워줘", self._plan([["0"] * 4]), "s") == ""
+
+
+class TestScoreSynonymWordBoundary:
+    """'성적'은 점수다 — 단, 성적부·성적표로 이어지면 다른 대상이다(2026-08-30 게이트 ❌ 해소).
+
+    2026-08-27에 성적부 오염으로 되돌렸던 동의어를 낱말 경계(_REFERENT_SHIFT_SUFFIXES)와
+    함께 재도입. 코퍼스 전수 실측: 교차시트 12문장 전부 점수 미지목, 사고 문장 [점수].
+    """
+
+    HEADERS = ["이름", "점수", "결석", "지각", "합계"]
+
+    def test_성적은_점수로_확정된다(self):
+        from office_claw_sidecar.services.excel_header_lexicon import resolve_header
+
+        assert resolve_header("성적", self.HEADERS) == "점수"
+
+    def test_게이트_사고_문장은_점수를_지목한다(self):
+        from office_claw_sidecar.services.excel_header_lexicon import find_header_mentions
+
+        m = [x["header"] for x in find_header_mentions("성적 좋은 애들이 위로 오게 정렬", self.HEADERS)]
+        assert m == ["점수"]
+        m2 = [x["header"] for x in find_header_mentions("성적이 좋은 순서로", self.HEADERS)]
+        assert m2 == ["점수"]  # 조사는 경계를 끊는다
+
+    def test_성적부_성적표는_지목이_아니다(self):
+        from office_claw_sidecar.services.excel_header_lexicon import find_header_mentions
+
+        for text in (
+            "A2에 성적부 결석 합계 넣어줘",
+            "성적부결석합계 A2",  # 붙임말도 막아야 한다
+            "성적표 만들어줘",
+        ):
+            m = [x["header"] for x in find_header_mentions(text, self.HEADERS)]
+            assert "점수" not in m, text
+
+    def test_교차시트_코퍼스_전수(self):
+        import json
+        from pathlib import Path
+
+        from office_claw_sidecar.services.excel_header_lexicon import find_header_mentions
+
+        root = Path(__file__).resolve().parents[3] / "datasets" / "eval"
+        for name in ("blind_paraphrases_v1.jsonl", "guard_cases_v1.jsonl"):
+            for line in (root / name).read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                r = json.loads(line)
+                if r.get("task") != "cross_sheet_keeps_source" or "성적부" not in r.get("text", ""):
+                    continue
+                m = [x["header"] for x in find_header_mentions(r["text"], self.HEADERS)]
+                assert "점수" not in m, r["text"]

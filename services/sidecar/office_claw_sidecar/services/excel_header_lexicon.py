@@ -64,14 +64,20 @@ _CONCEPT_GROUPS: tuple[tuple[str, ...], ...] = (
     ("갱신일", "수정일", "last_updated", "lastupdated", "updated"),
     ("월", "month"),
     ("이름", "성명", "name"),
-    # ⚠ '성적'을 이 그룹에 넣으려다 되돌렸다(2026-08-27). "성적 좋은 애들이 위로"의
-    # 되묻기는 없어지지만, `find_header_mentions`가 부분 문자열로 찾기 때문에 시트
-    # 이름 **성적부** 안의 '성적'까지 점수로 잡는다 — 실측: "A2에 성적부 결석 합계
-    # 넣어줘"가 [점수, 결석] 두 지목이 되어 교차시트 12문장(현재 12/12)이 위험해진다.
-    # 제대로 고치려면 낱말 경계(성적부·성적표 제외)를 사전 검색에 넣어야 한다.
-    ("점수", "score", "point"),
+    # '성적'은 2026-08-27에 성적부 오염으로 되돌렸다가, 2026-08-30 파괴 게이트 ❌
+    # ("성적 좋은 애들이 위로" 되묻기)로 낱말 경계와 함께 재도입했다 —
+    # `_REFERENT_SHIFT_SUFFIXES`가 성적부·성적표류를 지목에서 제외한다.
+    ("점수", "score", "point", "성적"),
     ("결과", "판정", "result", "grade"),
 )
+
+#: 표현 뒤에 이 글자가 붙으면 **다른 지시 대상**이다 — 문서·장부 이름으로 굳은 합성어.
+#: '성적부 결석 합계'의 성적은 점수 열 지목이 아니라 시트(성적부) 이름의 일부다
+#: (2026-08-27 실측: 교차시트 12문장이 [점수] 오지목으로 위험해졌다).
+_REFERENT_SHIFT_SUFFIXES: dict[str, tuple[str, ...]] = {
+    "성적": ("부", "표", "증", "서"),
+}
+
 
 _TOKEN_SPLIT = re.compile(r"[\s_\-./()\[\]]+")
 
@@ -188,7 +194,12 @@ def find_header_mentions(message: str, headers: list[str]) -> list[dict[str, Any
             pattern = re.escape(surface)
             if surface.isascii():
                 pattern = rf"(?<![A-Za-z0-9]){pattern}(?![A-Za-z0-9])"
+            shift_suffixes = _REFERENT_SHIFT_SUFFIXES.get(surface, ())
             for match in re.finditer(pattern, text, re.IGNORECASE):
+                # 한글엔 \b가 없다 — 합성어로 이어지면 다른 대상을 부른 것이다.
+                next_ch = text[match.end() : match.end() + 1]
+                if shift_suffixes and next_ch in shift_suffixes:
+                    continue
                 candidates.append(
                     {
                         "header": header,

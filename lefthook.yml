@@ -26,14 +26,14 @@ pre-commit:
       root: "apps/desktop/"
       run: npm run lint --if-present
     devlog-guard:
-      run: cd services/sidecar && sh ../scripts/py-run.sh scripts/append_devlog_from_reports.py --devlog ../개발일지.md --complex-report ../logs/excel_complex_verify_report.json --release-gate ../logs/eval_release_gate.json --from-staged --skip-if-devlog-staged && node ../scripts/check-devlog-update.mjs --staged
+      run: cd services/sidecar && sh ../../scripts/py-run.sh scripts/append_devlog_from_reports.py --devlog ../../개발일지.md --complex-report ../../logs/excel_complex_verify_report.json --release-gate ../../logs/eval_release_gate.json --from-staged --skip-if-devlog-staged && node ../../scripts/check-devlog-update.mjs --staged
     # 커밋마다 도는 **빠른 회귀 핀**(약 2초). 전체 pytest는 4~5분이라 pre-push 몫이고,
     # 이 파일에는 실측으로 잡은 파괴·오실행 핀이 모여 있어 되돌아가는 걸 즉시 막는다
     # (2026-08-22 결정 5: 게이트 자동화의 가장 앞단).
     python-pins:
       glob: "services/sidecar/**/*.py"
       root: "services/sidecar/"
-      run: sh ../scripts/py-run.sh -m pytest -q tests/test_battery_regressions.py
+      run: sh ../../scripts/py-run.sh -m pytest -q tests/test_battery_regressions.py
     mobile-analyze:
       glob: "apps/mobile/**/*.dart"
       root: "apps/mobile/"
@@ -47,7 +47,7 @@ pre-push:
       run: cargo clippy --all-targets -- -D warnings
     python-test:
       root: "services/sidecar/"
-      run: sh ../scripts/py-run.sh -m pytest -q
+      run: sh ../../scripts/py-run.sh -m pytest -q
     frontend-test:
       root: "apps/desktop/"
       run: npm run test:unit --if-present

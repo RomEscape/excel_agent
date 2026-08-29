@@ -60,6 +60,9 @@ oc-shared = { path = "../../packages/py-shared", editable = true }
 # 값은 그동안 실효로 강제되던 ruff 기본 규칙(E4/E7/E9/F)과 동일하게 유지한다.
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F"]
+# E402: 이 저장소는 무거운 모듈을 함수 근처에서 지연 임포트하는 관용구를 쓴다
+# (스크립트의 sys.path 조정 뒤 임포트 포함, 현재 11곳). 순서를 강제하면 깨진다.
+ignore = ["E402"]
 
 # 배포 대상은 사이드카 패키지 하나다. 이걸 안 적으면 setuptools가 flat-layout에서
 # scripts/·scenarios/·tests/까지 최상위 패키지로 보고 "Multiple top-level packages"
