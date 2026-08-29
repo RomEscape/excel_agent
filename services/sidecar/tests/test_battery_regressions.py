@@ -6583,3 +6583,43 @@ class TestMacGuardsRefuseLoudly:
                 assert "준비 중" not in str(exc), (name, str(exc))
             else:
                 pass  # Excel 상태에 따라 성공할 수도 있다 — 가드 문구만 아니면 된다
+
+
+class TestRunLockUsesPidLiveness:
+    """죽은 프로세스의 자물쇠가 다음 예약까지 게이트를 막던 것(2026-08-30 03:01 실측,
+    CONTROL_C_EXIT로 죽은 예약 게이트의 락). pid 생존 검사가 나이(10h) 기준에 우선한다."""
+
+    @staticmethod
+    def _runlock(tmp_path):
+        import sys
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[3]
+        sys.path.insert(0, str(root / "scripts"))
+        import _run_lock
+
+        return _run_lock
+
+    def test_죽은_pid_락은_즉시_스테일(self, tmp_path):
+        m = self._runlock(tmp_path)
+        lock_path = tmp_path / ".running.lock"
+        lock_path.write_text("nightly-gates pid=999999999", encoding="utf-8")
+        with m.RunLock("probe", path=lock_path) as lock:
+            assert lock.acquired is True
+
+    def test_산_pid_락은_존중한다(self, tmp_path):
+        import os
+
+        m = self._runlock(tmp_path)
+        lock_path = tmp_path / ".running.lock"
+        lock_path.write_text(f"battery pid={os.getpid()}", encoding="utf-8")
+        with m.RunLock("probe", path=lock_path) as lock:
+            assert lock.acquired is False
+            assert "battery" in lock.held_by
+
+    def test_pid_없는_낡은_형식은_나이_폴백(self, tmp_path):
+        m = self._runlock(tmp_path)
+        lock_path = tmp_path / ".running.lock"
+        lock_path.write_text("nightly-gates (구형식)", encoding="utf-8")
+        with m.RunLock("probe", path=lock_path) as lock:
+            assert lock.acquired is False  # 방금 만든 파일 — 10h 폴백이 존중
