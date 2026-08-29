@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _run_lock import RunLock
 
 ROOT = Path(__file__).resolve().parent.parent
-SIDECAR = ROOT / "python-sidecar"
+SIDECAR = ROOT / "services" / "sidecar"
 PY = Path(
     os.environ.get("OFFICECLAW_PY")
     or (Path(os.environ["LOCALAPPDATA"]) / "officeclaw/venvs/python-sidecar/Scripts/python.exe")

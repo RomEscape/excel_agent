@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _run_lock import RunLock
 
 ROOT = Path(__file__).resolve().parent.parent
-SIDECAR = ROOT / "python-sidecar"
+SIDECAR = ROOT / "services" / "sidecar"
 SCENARIOS = SIDECAR / "scenarios/dialogue"
 OUT_DIR = ROOT / "logs/nightly"
 PY = Path(
