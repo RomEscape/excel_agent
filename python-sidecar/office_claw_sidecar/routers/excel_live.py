@@ -3213,7 +3213,8 @@ def _quick_number_format_step(text: str, target: str) -> dict[str, Any] | None:
     if re.search(r"(색|칠해|강조|빨갛|파랗|노랗|highlight)", lowered) and _message_states_condition(text):
         return None
     # 값에 바로 붙은 단위어("80퍼센트")는 서식 요청의 근거가 아니다 — 뗀 뒤에 판정한다.
-    stripped = re.sub(r"\d+(?:\.\d+)?\s*(?:퍼센트|%)", " ", lowered)
+    # 셀 참조 꼬리(D2:D5)의 숫자는 값이 아니다 — 영문자·콜론 뒤 숫자는 남긴다.
+    stripped = re.sub(r"(?<![A-Za-z:])\d+(?:\.\d+)?\s*(?:퍼센트|%)", " ", lowered)
     # "소수점 두 자리로 보여줘"가 read_range로 샜다(2026-08-17 실측) — '보여줘'가
     # 읽기로 해석된 탓이다. 자릿수·서식 어휘가 있으면 표시 형식 요청으로 본다.
     if not re.search(
