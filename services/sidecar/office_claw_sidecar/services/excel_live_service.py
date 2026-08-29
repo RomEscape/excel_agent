@@ -1060,7 +1060,10 @@ class ExcelLiveService:
         # 아래에서 위로 지워야 남은 행의 번호가 밀리지 않는다.
         for row_index in reversed(doomed_rows):
             try:
-                sheet.api.Rows(row_index).Delete()
+                if sys.platform == "darwin":
+                    sheet.range(f"{row_index}:{row_index}").delete()  # 고수준(양 플랫폼)
+                else:
+                    sheet.api.Rows(row_index).Delete()
             except Exception as exc:  # pragma: no cover - COM 환경 의존
                 raise ExcelLiveError(f"행 삭제 실패: {exc}") from exc
 
@@ -1259,14 +1262,34 @@ class ExcelLiveService:
             cols = list(range(1, col_count + 1))
 
         before_rows = max(0, len(values) - 1 if has_header else len(values))
-        api_range = getattr(rng, "api", None)
-        if api_range is None:
-            raise ExcelLiveError("중복 제거를 실행할 수 없습니다. Excel API 객체를 찾지 못했습니다.")
-        try:
-            # xlYes=1, xlNo=2
-            api_range.RemoveDuplicates(Columns=cols, Header=1 if has_header else 2)
-        except Exception as exc:  # pragma: no cover - COM 환경 의존
-            raise ExcelLiveError(f"중복 제거 실패: {exc}") from exc
+        if sys.platform == "darwin":
+            # COM RemoveDuplicates는 macOS에 대응물이 없다(2026-08-30 감사).
+            # 파일 엔진과 같은 의미로 파이썬에서 판정하고, 아래→위로 지운다.
+            col_pad = [row + [None] * (col_count - len(row)) for row in values]
+            start_row = int(getattr(rng, "row", 1) or 1)
+            body_offset = 1 if has_header else 0
+            seen: set[tuple] = set()
+            doomed: list[int] = []
+            for offset, row in enumerate(col_pad[body_offset:]):
+                key = tuple(str(row[c - 1]).strip() if row[c - 1] is not None else "" for c in cols)
+                if key in seen:
+                    doomed.append(start_row + body_offset + offset)
+                else:
+                    seen.add(key)
+            try:
+                for row_index in reversed(doomed):
+                    sheet.range(f"{row_index}:{row_index}").delete()
+            except Exception as exc:  # pragma: no cover - 실행 환경 의존
+                raise ExcelLiveError(f"중복 제거 실패: {exc}") from exc
+        else:
+            api_range = getattr(rng, "api", None)
+            if api_range is None:
+                raise ExcelLiveError("중복 제거를 실행할 수 없습니다. Excel API 객체를 찾지 못했습니다.")
+            try:
+                # xlYes=1, xlNo=2
+                api_range.RemoveDuplicates(Columns=cols, Header=1 if has_header else 2)
+            except Exception as exc:  # pragma: no cover - COM 환경 의존
+                raise ExcelLiveError(f"중복 제거 실패: {exc}") from exc
 
         after_values = self._normalize_values(rng.options(ndim=2).value)
         after_rows = max(0, len(after_values) - 1 if has_header else len(after_values))
@@ -1350,9 +1373,16 @@ class ExcelLiveService:
         wb = self._find_workbook(target_id)
         ws = self._find_sheet(wb, sheet_name)
         try:
-            deleted = int(ws.api.ChartObjects().Count)
-            if deleted:
-                ws.api.ChartObjects().Delete()
+            if sys.platform == "darwin":
+                # COM ChartObjects는 macOS에서 즉사(2026-08-30 감사) — 고수준 charts.
+                charts = list(ws.charts)
+                deleted = len(charts)
+                for chart in charts:
+                    chart.delete()
+            else:
+                deleted = int(ws.api.ChartObjects().Count)
+                if deleted:
+                    ws.api.ChartObjects().Delete()
         except Exception as exc:  # pragma: no cover - COM 환경 의존
             raise ExcelLiveError(f"차트 삭제 실패: {exc}") from exc
         return {"deleted": deleted, "no_change": deleted == 0, "sheet": str(ws.name)}
@@ -1375,16 +1405,29 @@ class ExcelLiveService:
         src_rng = self._resolve_target_range(src_ws, source_range)
         out_ws = self._find_or_create_sheet(wb, output_sheet or sheet_name)
         try:
-            # xlwings Chart.api가 튜플인 버전이 있어 COM ChartObjects로 직접 만든다.
             left = float(src_rng.left) + float(src_rng.width) + 20
             top = float(src_rng.top)
-            chart_object = out_ws.api.ChartObjects().Add(Left=left, Top=top, Width=520, Height=320)
-            chart = chart_object.Chart
-            chart.SetSourceData(src_rng.api)
-            chart.ChartType = self._chart_type_to_excel(chart_type)
-            chart.HasTitle = True
-            chart.ChartTitle.Text = str(title or "데이터 차트")
-            chart_name = str(chart_object.Name)
+            if sys.platform == "darwin":
+                # COM ChartObjects는 macOS에서 즉사(2026-08-30 감사) — 고수준 charts.add.
+                # 제목 API는 고수준에 없어 차트 이름으로 대신 남긴다.
+                chart_obj = out_ws.charts.add(left=left, top=top, width=520, height=320)
+                chart_obj.set_source_data(src_rng)
+                chart_obj.chart_type = self._chart_type_to_xlwings(chart_type)
+                if title:
+                    try:
+                        chart_obj.name = str(title)[:31]
+                    except Exception:
+                        pass
+                chart_name = str(chart_obj.name)
+            else:
+                # xlwings Chart.api가 튜플인 버전이 있어 COM ChartObjects로 직접 만든다.
+                chart_object = out_ws.api.ChartObjects().Add(Left=left, Top=top, Width=520, Height=320)
+                chart = chart_object.Chart
+                chart.SetSourceData(src_rng.api)
+                chart.ChartType = self._chart_type_to_excel(chart_type)
+                chart.HasTitle = True
+                chart.ChartTitle.Text = str(title or "데이터 차트")
+                chart_name = str(chart_object.Name)
         except Exception as exc:  # pragma: no cover - COM 환경 의존
             raise ExcelLiveError(f"차트 생성 실패: {exc}") from exc
         return {
@@ -1417,18 +1460,32 @@ class ExcelLiveService:
         _xl_align = {"left": -4131, "center": -4108, "right": -4152, "justify": -4130}.get(
             _ALIGN_WORDS.get(str(align or "").strip().lower()) or ""
         )
-        if _xl_align is not None:
-            rng.api.HorizontalAlignment = _xl_align
-        font = rng.api.Font
-        if bold is not None:
-            font.Bold = bool(bold)
-        if name:
-            font.Name = str(name)
-        if size is not None:
-            font.Size = float(size)
-        if color:
-            red, green, blue = self._hex_to_rgb(color)
-            font.Color = red + (green << 8) + (blue << 16)
+        if sys.platform == "darwin":
+            # COM Font/HorizontalAlignment는 macOS에서 읽기 즉사·대입 무음 no-op다
+            # (2026-08-30 감사). 글꼴 속성은 고수준 API(양 플랫폼 공통)로 처리한다.
+            if _xl_align is not None:
+                raise ExcelLiveError("텍스트 맞춤(정렬)은 아직 Windows에서만 지원됩니다 — macOS 지원은 준비 중입니다.")
+            if bold is not None:
+                rng.font.bold = bool(bold)
+            if name:
+                rng.font.name = str(name)
+            if size is not None:
+                rng.font.size = float(size)
+            if color:
+                rng.font.color = self._hex_to_rgb(color)
+        else:
+            if _xl_align is not None:
+                rng.api.HorizontalAlignment = _xl_align
+            font = rng.api.Font
+            if bold is not None:
+                font.Bold = bool(bold)
+            if name:
+                font.Name = str(name)
+            if size is not None:
+                font.Size = float(size)
+            if color:
+                red, green, blue = self._hex_to_rgb(color)
+                font.Color = red + (green << 8) + (blue << 16)
         shape = getattr(rng, "shape", None)
         if isinstance(shape, tuple) and len(shape) >= 2:
             changed = max(1, int(shape[0] or 1)) * max(1, int(shape[1] or 1))
@@ -1475,17 +1532,30 @@ class ExcelLiveService:
         _wb, sheet = self._open_target(workbook_id, sheet_name)
         rng = self._resolve_target_range(sheet, target_range)
         # 병합은 왼쪽 위 값만 남긴다 — Excel이 경고창을 띄우지 않게 DisplayAlerts를 잠깐 끈다.
-        app_api = getattr(getattr(sheet, "book", None), "app", None)
-        api = getattr(app_api, "api", None)
-        prev = None
-        try:
-            if api is not None:
-                prev = api.DisplayAlerts
-                api.DisplayAlerts = False
-            rng.merge()
-        finally:
-            if api is not None and prev is not None:
-                api.DisplayAlerts = prev
+        app_obj = getattr(getattr(sheet, "book", None), "app", None)
+        if sys.platform == "darwin":
+            # COM DisplayAlerts 읽기는 macOS에서 즉사해 병합 전체가 불능이었다
+            # (2026-08-30 감사). 고수준 display_alerts는 양 플랫폼 공통이다.
+            prev = None
+            try:
+                if app_obj is not None:
+                    prev = app_obj.display_alerts
+                    app_obj.display_alerts = False
+                rng.merge()
+            finally:
+                if app_obj is not None and prev is not None:
+                    app_obj.display_alerts = prev
+        else:
+            api = getattr(app_obj, "api", None)
+            prev = None
+            try:
+                if api is not None:
+                    prev = api.DisplayAlerts
+                    api.DisplayAlerts = False
+                rng.merge()
+            finally:
+                if api is not None and prev is not None:
+                    api.DisplayAlerts = prev
         return {"merged": True, "address": str(rng.address)}
 
     def unmerge_cells(self, workbook_id: str | None, sheet_name: str, target_range: str) -> dict[str, Any]:
@@ -1493,13 +1563,20 @@ class ExcelLiveService:
         rng = self._resolve_target_range(sheet, target_range)
         merged_before = 0
         try:
-            merged_before = 1 if bool(rng.api.MergeCells) else 0
+            if sys.platform == "darwin":
+                merged_before = 1 if bool(rng.merge_cells) else 0  # 고수준(양 플랫폼)
+            else:
+                merged_before = 1 if bool(rng.api.MergeCells) else 0
         except Exception:
             merged_before = 0
         rng.unmerge()
         return {"unmerged_ranges": merged_before, "address": str(rng.address)}
 
     def freeze_panes(self, workbook_id: str | None, sheet_name: str, freeze_at: str | None = None) -> dict[str, Any]:
+        if sys.platform == "darwin":
+            # COM 전용 경로 — macOS에서는 깊은 AttributeError 대신 명확히 거절한다
+            # (2026-08-30 macOS 감사, 조용한 오동작보다 시끄러운 거절).
+            raise ExcelLiveError("틀 고정은(는) COM 전용이라 아직 Windows에서만 지원됩니다 — macOS 지원은 준비 중입니다.")
         wb, sheet = self._open_target(workbook_id, sheet_name)
         cell_ref = str(freeze_at or "A2").strip().upper() or "A2"
         window = wb.app.api.ActiveWindow
@@ -1614,6 +1691,10 @@ class ExcelLiveService:
         orientation: str | None = None,
         fit_to_page: bool | None = None,
     ) -> dict[str, Any]:
+        if sys.platform == "darwin":
+            # COM 전용 경로 — macOS에서는 깊은 AttributeError 대신 명확히 거절한다
+            # (2026-08-30 macOS 감사, 조용한 오동작보다 시끄러운 거절).
+            raise ExcelLiveError("인쇄 설정은(는) COM 전용이라 아직 Windows에서만 지원됩니다 — macOS 지원은 준비 중입니다.")
         _wb, sheet = self._open_target(workbook_id, sheet_name)
         setup = sheet.api.PageSetup
         if print_area:
@@ -1645,6 +1726,10 @@ class ExcelLiveService:
     def add_cell_comment(
         self, workbook_id: str | None, sheet_name: str, target_range: str, text: str, author: str = "OfficeClaw AI"
     ) -> dict[str, Any]:
+        if sys.platform == "darwin":
+            # COM 전용 경로 — macOS에서는 깊은 AttributeError 대신 명확히 거절한다
+            # (2026-08-30 macOS 감사, 조용한 오동작보다 시끄러운 거절).
+            raise ExcelLiveError("셀 메모은(는) COM 전용이라 아직 Windows에서만 지원됩니다 — macOS 지원은 준비 중입니다.")
         if not str(text or "").strip():
             raise ExcelLiveError("add_cell_comment.text가 비어 있습니다.")
         _wb, sheet = self._open_target(workbook_id, sheet_name)
@@ -1816,7 +1901,10 @@ class ExcelLiveService:
         index, name = self._pick_column(column, header, width)
         _wb, sheet = self._open_target(workbook_id, sheet_name)
         letter = self._col_letter(index + 1)
-        sheet.range(f"{letter}:{letter}").api.Delete()
+        if sys.platform == "darwin":
+            sheet.range(f"{letter}:{letter}").delete()  # 고수준(양 플랫폼) — COM Delete는 macOS 즉사
+        else:
+            sheet.range(f"{letter}:{letter}").api.Delete()
         return {"dropped_column": name or letter, "remaining_columns": max(0, width - 1)}
 
     def rename_column(
@@ -1857,7 +1945,12 @@ class ExcelLiveService:
             first.formula = formula_a1
             if len(body) > 1:
                 block = sheet.range(f"{letter}2:{letter}{1 + len(body)}")
-                first.api.AutoFill(block.api, 0)  # xlFillDefault
+                if sys.platform == "darwin":
+                    # COM AutoFill은 macOS 즉사(2026-08-30 감사). 범위에 수식을
+                    # 대입하면 Excel이 행마다 상대 참조를 옮겨 준다 — 같은 의미다.
+                    block.formula = formula_a1
+                else:
+                    first.api.AutoFill(block.api, 0)  # xlFillDefault
             filled = len(body)
         return {"column": letter, "name": label, "formula_filled_cells": filled}
 
@@ -1922,6 +2015,10 @@ class ExcelLiveService:
         table_name: str = "",
         has_header: bool = True,
     ) -> dict[str, Any]:
+        if sys.platform == "darwin":
+            # COM 전용 경로 — macOS에서는 깊은 AttributeError 대신 명확히 거절한다
+            # (2026-08-30 macOS 감사, 조용한 오동작보다 시끄러운 거절).
+            raise ExcelLiveError("엑셀 표 변환은(는) COM 전용이라 아직 Windows에서만 지원됩니다 — macOS 지원은 준비 중입니다.")
         target_id = workbook_id or self._selected_workbook_id
         if not target_id:
             raise WorkbookNotFoundError("workbook_id가 필요합니다.")
@@ -2129,6 +2226,10 @@ class ExcelLiveService:
         unlock_range: str | None = None,
     ) -> dict[str, Any]:
         """시트 보호/잠금 설정을 적용한다."""
+        if sys.platform == "darwin":
+            # COM 전용 경로 — macOS에서는 깊은 AttributeError 대신 명확히 거절한다
+            # (2026-08-30 macOS 감사, 조용한 오동작보다 시끄러운 거절).
+            raise ExcelLiveError("시트 보호은(는) COM 전용이라 아직 Windows에서만 지원됩니다 — macOS 지원은 준비 중입니다.")
         target_id = workbook_id or self._selected_workbook_id
         if not target_id:
             raise WorkbookNotFoundError("workbook_id가 필요합니다.")
@@ -2193,6 +2294,10 @@ class ExcelLiveService:
         error_message: str | None = None,
     ) -> dict[str, Any]:
         """입력 유효성(드롭다운/숫자/날짜 제한)을 설정한다."""
+        if sys.platform == "darwin":
+            # COM 전용 경로 — macOS에서는 깊은 AttributeError 대신 명확히 거절한다
+            # (2026-08-30 macOS 감사, 조용한 오동작보다 시끄러운 거절).
+            raise ExcelLiveError("입력 유효성 검사은(는) COM 전용이라 아직 Windows에서만 지원됩니다 — macOS 지원은 준비 중입니다.")
         target_id = workbook_id or self._selected_workbook_id
         if not target_id:
             raise WorkbookNotFoundError("workbook_id가 필요합니다.")
@@ -2389,6 +2494,10 @@ class ExcelLiveService:
 
     def refresh_power_query(self, workbook_id: str | None) -> dict[str, Any]:
         """통합문서의 연결/쿼리를 새로고침한다(RefreshAll)."""
+        if sys.platform == "darwin":
+            # COM 전용 경로 — macOS에서는 깊은 AttributeError 대신 명확히 거절한다
+            # (2026-08-30 macOS 감사, 조용한 오동작보다 시끄러운 거절).
+            raise ExcelLiveError("macOS Excel에는 Power Query가 없습니다 — 이 작업은 Windows에서만 가능합니다.")
         target_id = workbook_id or self._selected_workbook_id
         if not target_id:
             raise WorkbookNotFoundError("workbook_id가 필요합니다.")
@@ -2417,6 +2526,10 @@ class ExcelLiveService:
         실행된 대상이 다르면 승인 자체가 무의미하다. `'파일명'!매크로` 형태로
         대상을 못 박는다.
         """
+        if sys.platform == "darwin":
+            # COM 전용 경로 — macOS에서는 깊은 AttributeError 대신 명확히 거절한다
+            # (2026-08-30 macOS 감사, 조용한 오동작보다 시끄러운 거절).
+            raise ExcelLiveError("VBA 매크로 실행은(는) COM 전용이라 아직 Windows에서만 지원됩니다 — macOS 지원은 준비 중입니다.")
         target_id = workbook_id or self._selected_workbook_id
         if not target_id:
             raise WorkbookNotFoundError("workbook_id가 필요합니다.")
@@ -3381,6 +3494,16 @@ class ExcelLiveService:
             if str(getattr(sheet, "name", "") or "").strip().lower() == target.lower():
                 return sheet
         return workbook.sheets.add(name=target)
+
+    @staticmethod
+    def _chart_type_to_xlwings(chart_type: str) -> str:
+        """xlwings 고수준 chart_type 이름 매핑 — `_chart_type_to_excel`과 같은 어휘."""
+        normalized = str(chart_type or "line").strip().lower()
+        if normalized in {"bar", "column"}:
+            return "column_clustered"
+        if normalized in {"pie", "donut"}:
+            return "pie"
+        return "line"
 
     @staticmethod
     def _chart_type_to_excel(chart_type: str) -> int:

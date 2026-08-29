@@ -23,6 +23,40 @@ use serde_json::Value;
 use std::time::Duration;
 use tokio::process::Command;
 
+/// `openclaw` 실행 파일 경로 해석.
+///
+/// macOS GUI(Finder/Dock) 실행 앱은 launchd의 최소 PATH만 상속받아 npm-global·
+/// homebrew의 openclaw를 못 찾는다(2026-08-30 macOS 감사 — openclaw.rs는 로그인 셸
+/// 폴백이 있는데 이 모듈만 없어 게이트웨이 호출이 GUI에서 SpawnFailed였다).
+/// 셸 문자열 재조립은 인자 검증을 무의미하게 하므로, 로그인 셸에는 **경로만** 묻고
+/// 구조화 인자는 그대로 둔다. 결과는 프로세스 수명 동안 캐시한다.
+#[cfg(not(target_os = "windows"))]
+fn resolve_openclaw_bin() -> String {
+    use std::sync::OnceLock;
+    static BIN: OnceLock<String> = OnceLock::new();
+    BIN.get_or_init(|| {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        if let Ok(out) = std::process::Command::new(&shell)
+            .args(["-lc", "command -v openclaw"])
+            .output()
+        {
+            if out.status.success() {
+                let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !path.is_empty() {
+                    return path;
+                }
+            }
+        }
+        "openclaw".to_string()
+    })
+    .clone()
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_openclaw_bin() -> String {
+    "openclaw".to_string()
+}
+
 const DEFAULT_TIMEOUT_MS: u64 = 30_000;
 const AGENT_TIMEOUT_MS: u64 = 120_000;
 
@@ -91,7 +125,7 @@ pub async fn gateway_call(
     opts: &CallOpts,
 ) -> Result<Value, OpenClawCliError> {
     validate_method(method)?;
-    let mut cmd = Command::new("openclaw");
+    let mut cmd = Command::new(resolve_openclaw_bin());
     cmd.args(["gateway", "call", method, "--json"]);
 
     if let Some(p) = params {
@@ -114,7 +148,7 @@ pub async fn agent_turn(req: &AgentTurnRequest) -> Result<Value, OpenClawCliErro
         ));
     }
 
-    let mut cmd = Command::new("openclaw");
+    let mut cmd = Command::new(resolve_openclaw_bin());
     cmd.args(["agent", "--json", "-m", &req.message]);
 
     if let Some(a) = &req.agent {

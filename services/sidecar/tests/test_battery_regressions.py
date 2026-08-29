@@ -6527,3 +6527,59 @@ class TestMacWriteRefusalDetection:
         monkeypatch.setattr(sys, "platform", "win32")
         assert b.looks_like_com_write_refusal(Exception(-2146827284))
         assert not b.looks_like_com_write_refusal(RuntimeError("workbook is read only"))
+
+
+class TestMacGuardsRefuseLoudly:
+    """macOS P1(2026-08-30): COM 전용 액션은 darwin에서 첫 줄에 명확히 거절한다.
+
+    가드가 통합문서 조회보다 먼저라 Windows에서도 monkeypatch로 검증된다.
+    고수준 대체가 설계된 액션(차트·병합·글꼴·중복 제거·행/열 삭제·수식 채움)은
+    여기 없어야 한다 — 가드 목록이 늘면 대체 설계가 후퇴한 것이다.
+    """
+
+    GUARDED = [
+        ("freeze_panes", {"workbook_id": "wb", "sheet_name": "S"}),
+        ("convert_to_excel_table", {"workbook_id": "wb", "sheet_name": "S", "target_range": "A1:B2"}),
+        ("protect_sheet", {"workbook_id": "wb", "sheet_name": "S"}),
+        ("set_data_validation", {"workbook_id": "wb", "sheet_name": "S", "target_range": "A1"}),
+        ("set_print_area", {"workbook_id": "wb", "sheet_name": "S"}),
+        ("add_cell_comment", {"workbook_id": "wb", "sheet_name": "S", "target_range": "A1", "text": "메모"}),
+        ("run_vba_macro", {"workbook_id": "wb", "macro_name": "Do"}),
+        ("refresh_power_query", {"workbook_id": "wb"}),
+    ]
+
+    def _svc(self):
+        from office_claw_sidecar.services.excel_live_service import ExcelLiveService
+
+        return ExcelLiveService()
+
+    def test_darwin에서_가드가_명확히_거절한다(self, monkeypatch):
+        import sys
+
+        from office_claw_sidecar.services import excel_live_service as m
+
+        monkeypatch.setattr(m.sys, "platform", "darwin", raising=False)
+        _ = sys  # noqa: F841
+        svc = self._svc()
+        from office_claw_sidecar.services.excel_live_service import ExcelLiveError
+
+        for name, kwargs in self.GUARDED:
+            try:
+                getattr(svc, name)(**kwargs)
+            except ExcelLiveError as exc:
+                assert ("준비 중" in str(exc)) or ("Power Query" in str(exc)), (name, str(exc))
+            else:
+                raise AssertionError(f"{name}: darwin 가드가 발동하지 않았다")
+
+    def test_windows에서는_가드_문구로_거절하지_않는다(self, monkeypatch):
+        from office_claw_sidecar.services import excel_live_service as m
+
+        monkeypatch.setattr(m.sys, "platform", "win32", raising=False)
+        svc = self._svc()
+        for name, kwargs in self.GUARDED:
+            try:
+                getattr(svc, name)(**kwargs)
+            except Exception as exc:
+                assert "준비 중" not in str(exc), (name, str(exc))
+            else:
+                pass  # Excel 상태에 따라 성공할 수도 있다 — 가드 문구만 아니면 된다

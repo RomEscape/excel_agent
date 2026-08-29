@@ -3,8 +3,8 @@ use std::sync::Mutex;
 use std::time::Duration;
 use tauri::State;
 
-use crate::sidecar::SidecarState;
 use crate::openclaw::OpenClawState;
+use crate::sidecar::SidecarState;
 
 /// Helper to build the sidecar URL.
 fn sidecar_url(state: &SidecarState, path: &str) -> String {
@@ -1159,7 +1159,6 @@ fn downloads_dir() -> Result<std::path::PathBuf, String> {
 /// 이 값을 바꿀 때는 `src/lib/requestPolicy.js`의 `IPC_CEILING_MS`도 같이 바꿔야 한다.
 /// 프론트는 여기보다 더 오래 기다려야 Rust의 오류 메시지가 그대로 올라온다.
 const EXCEL_QUEUE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(200);
-
 
 /// Helper to create a client with auth.
 fn client_with_auth(state: &SidecarState) -> (reqwest::Client, String) {
