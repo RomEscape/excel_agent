@@ -1926,6 +1926,13 @@ class ExcelLiveService:
             raise WorkbookNotFoundError("workbook_id가 필요합니다.")
         sheet = self._find_sheet(self._find_workbook(target_id), sheet_name)
         rng = self._resolve_target_range(sheet, target_range)
+        # 조건부 서식 규칙은 COM(FormatConditions) 전용 — macOS AppleScript api에는
+        # 대응물이 없어 깊은 AttributeError로 죽는다. 명확히 말하고 물러난다
+        # (dev 병합의 색 정책과 같은 취지: 조용한 오동작보다 시끄러운 거절).
+        if sys.platform == "darwin":
+            raise ExcelLiveError(
+                "조건부 서식 규칙은 아직 Windows에서만 지원됩니다 — macOS 지원은 준비 중입니다."
+            )
         condition = rng.api.FormatConditions.Add(Type=2, Formula1=formula_text)
         red, green, blue = self._hex_to_rgb(fill_color)
         condition.Interior.Color = red + (green << 8) + (blue << 16)
@@ -1949,6 +1956,13 @@ class ExcelLiveService:
             raise WorkbookNotFoundError("workbook_id가 필요합니다.")
         sheet = self._find_sheet(self._find_workbook(target_id), sheet_name)
         rng = self._resolve_target_range(sheet, target_range)
+        # 조건부 서식 규칙은 COM(FormatConditions) 전용 — macOS AppleScript api에는
+        # 대응물이 없어 깊은 AttributeError로 죽는다. 명확히 말하고 물러난다
+        # (dev 병합의 색 정책과 같은 취지: 조용한 오동작보다 시끄러운 거절).
+        if sys.platform == "darwin":
+            raise ExcelLiveError(
+                "조건부 서식 규칙은 아직 Windows에서만 지원됩니다 — macOS 지원은 준비 중입니다."
+            )
         scale = rng.api.FormatConditions.AddColorScale(3)
         for index, hex_code in ((1, min_color), (2, mid_color), (3, max_color)):
             red, green, blue = self._hex_to_rgb(hex_code)
@@ -1968,6 +1982,13 @@ class ExcelLiveService:
             raise WorkbookNotFoundError("workbook_id가 필요합니다.")
         sheet = self._find_sheet(self._find_workbook(target_id), sheet_name)
         rng = self._resolve_target_range(sheet, target_range)
+        # 조건부 서식 규칙은 COM(FormatConditions) 전용 — macOS AppleScript api에는
+        # 대응물이 없어 깊은 AttributeError로 죽는다. 명확히 말하고 물러난다
+        # (dev 병합의 색 정책과 같은 취지: 조용한 오동작보다 시끄러운 거절).
+        if sys.platform == "darwin":
+            raise ExcelLiveError(
+                "조건부 서식 규칙은 아직 Windows에서만 지원됩니다 — macOS 지원은 준비 중입니다."
+            )
         bar = rng.api.FormatConditions.AddDatabar()
         red, green, blue = self._hex_to_rgb(color)
         bar.BarColor.Color = red + (green << 8) + (blue << 16)

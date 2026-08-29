@@ -23,6 +23,8 @@ dependencies = [
     "websockets>=12.0",
     "xlwings>=0.33.0",
     "pywin32>=306; platform_system == 'Windows'",
+    # macOS의 xlwings 백엔드(AppleEvents). 스모크 테스트(main._smoke_test)가 darwin에서 요구한다.
+    "appscript>=1.2; platform_system == 'Darwin'",
     # 모노레포 공용 계약 (와이어 프로토콜 + 코덱)
     "oc-protocol",
     "oc-shared",
