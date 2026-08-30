@@ -6673,3 +6673,72 @@ class TestIntentFirstRulePlanSerialization:
         assert out[0]["params"] == {"range_ref": "B7"}
         assert out[1]["action"] == "excel_live.write_range"
         assert _plan_steps_as_dicts([]) == []
+
+
+class TestCrossSheetAggregateRestoredLayerAgnostic:
+    """무자격 SUM이 원본 시트에 낙하하던 것(2026-08-30 INTENT_FIRST 파괴 게이트 3건 —
+    성적부 A2의 학생 이름이 수식으로 덮임). 승인 직전에 크로스시트 규칙 빌더로 복원한다."""
+
+    @staticmethod
+    def _setup(tmp_path, monkeypatch):
+        from openpyxl import Workbook
+
+        from office_claw_sidecar.services import excel_live_file_service as fs
+        from office_claw_sidecar.services import excel_live_service as ls
+        from office_claw_sidecar.services.excel_live_service import get_excel_live_service
+
+        p = tmp_path / "g.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "성적부"
+        ws.append(["학생", "점수", "결석"])
+        for row in (["김민준", 88, 1], ["이서연", 94, 0], ["박지호", 71, 3], ["최수아", 83, 2]):
+            ws.append(row)
+        wb.create_sheet("요약")
+        wb.save(p)
+        fs.WORKSPACE_ROOT = tmp_path
+        ls._excel_live_service = None
+        ls._excel_live_service_engine = None
+        monkeypatch.setenv("EXCEL_LIVE_ENGINE", "file")  # 핀은 환경과 무관해야 한다
+        svc = get_excel_live_service()
+        svc.select_workbook(str(p))
+        svc.select_sheet(None, "성적부")
+        return str(p)
+
+    def _plan(self):
+        from office_claw_sidecar.routers.excel_live import PlanStep
+
+        return [PlanStep(action="excel_live.set_formula", params={"range_ref": "A2", "formula_a1": "=SUM(C2:C5)"}, reason="의도")]
+
+    def test_실사고_3문형이_복원된다(self, tmp_path, monkeypatch):
+        from office_claw_sidecar.routers.excel_live import _restore_cross_sheet_aggregate
+
+        p = self._setup(tmp_path, monkeypatch)
+        for msg in (
+            "성적부 결석 다 더한 값을 A2에 넣어 주세요",
+            "ㅇㅇ 성적부 결석 합 A2",
+            "A2에 성적부 결석 합계 수식으로 넣어줘, 나중에도 연동되게",
+        ):
+            plan = self._plan()
+            _restore_cross_sheet_aggregate(msg, plan, p, "요약")
+            pr = plan[0].params
+            assert pr.get("sheet_name") == "요약", msg
+            assert pr.get("formula_a1") == "=SUM('성적부'!C2:C5)", msg
+
+    def test_자격_수식과_시트_지정은_건드리지_않는다(self, tmp_path, monkeypatch):
+        from office_claw_sidecar.routers.excel_live import PlanStep, _restore_cross_sheet_aggregate
+
+        p = self._setup(tmp_path, monkeypatch)
+        plan = [PlanStep(action="excel_live.set_formula", params={"range_ref": "A2", "formula_a1": "=SUM('성적부'!C2:C5)", "sheet_name": "요약"}, reason="r")]
+        before = dict(plan[0].params)
+        _restore_cross_sheet_aggregate("성적부 결석 합계 A2", plan, p, "요약")
+        assert plan[0].params == before
+
+    def test_크로스시트_아닌_수식은_무발동(self, tmp_path, monkeypatch):
+        from office_claw_sidecar.routers.excel_live import _restore_cross_sheet_aggregate
+
+        p = self._setup(tmp_path, monkeypatch)
+        plan = self._plan()
+        _restore_cross_sheet_aggregate("C열 합계를 A2에 넣어줘", plan, p, "요약")
+        # 시트를 원본으로 지목하지 않은 문장 — 빌더가 확신 못 하면 손대지 않는다
+        assert plan[0].params.get("formula_a1") == "=SUM(C2:C5)"

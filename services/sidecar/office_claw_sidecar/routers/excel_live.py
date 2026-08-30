@@ -11087,6 +11087,65 @@ def _first_row_headers(workbook_id: str | None, sheet_name: str | None) -> list[
     return [str(h or "").strip() for h in (rows[0] if rows else []) if str(h or "").strip()]
 
 
+_UNQUALIFIED_AGG_FORMULA = re.compile(
+    r"^=\s*(?:SUM|AVERAGE|COUNT|COUNTA|MAX|MIN)\s*\(", re.IGNORECASE
+)
+
+
+def _restore_cross_sheet_aggregate(
+    message: str, plan: list[PlanStep], workbook_id: str | None, sheet_name: str | None
+) -> None:
+    """무자격 집계 수식 계획을 크로스시트 규칙과 같은 형태로 복원한다 — 층을 가리지 않는다.
+
+    의도층·플래너가 시트 자격 없는 =SUM(...)을 시트 미지정으로 방출하면 활성(원본)
+    시트에 낙하해 원본을 덮는다(2026-08-30 INTENT_FIRST 파괴 게이트 실측 3건:
+    성적부 A2의 학생 이름이 수식으로 바뀜). 규칙 빌더가 같은 문장에서 정답
+    (=SUM('원본'!구간) + 대상 시트 고정)을 만들 수 있으면 그 계획으로 교체한다.
+    빌더가 못 만들면 손대지 않는다 — 복원은 확신 있을 때만.
+    """
+    if len(plan) != 1 or plan[0].action != "excel_live.set_formula":
+        return
+    params = plan[0].params if isinstance(plan[0].params, dict) else {}
+    formula = str(params.get("formula_a1") or "")
+    if "!" in formula or not _UNQUALIFIED_AGG_FORMULA.match(formula):
+        return
+    if str(params.get("sheet_name") or "").strip():
+        return  # 층이 시트를 지정했으면 그 판단을 존중한다(검증은 다른 가드가 한다).
+    try:
+        svc = get_excel_live_service()
+        wb_id = _resolve_workbook_id(svc, workbook_id)
+        names_payload = svc.list_sheets(wb_id)
+        sheet_names = [str(n) for n in ((names_payload or {}).get("sheets") or [])]
+
+        def _reader(sheet: str) -> tuple[str, list]:
+            ref = str(svc.get_used_range_ref(wb_id, sheet) or "")
+            data = svc.read_range(wb_id, sheet, ref)
+            return ref, (data.get("values") if isinstance(data, dict) else [])
+
+        cross_steps = build_cross_sheet_aggregate_plan(message, _reader, sheet_names)
+    except Exception:
+        return
+    if not cross_steps:
+        return
+    try:
+        target_sheet = _resolve_sheet_name(svc, wb_id, sheet_name)
+    except Exception:
+        target_sheet = ""
+    if target_sheet:
+        for step in cross_steps:
+            step.setdefault("params", {})["sheet_name"] = target_sheet
+    rebuilt = _normalize_plan_or_empty(cross_steps)
+    if not rebuilt:
+        return
+    trace_note(
+        "cross_sheet_restored",
+        was=formula[:40],
+        now=str((rebuilt[0].params or {}).get("formula_a1") or "")[:40],
+        sheet=str((rebuilt[0].params or {}).get("sheet_name") or ""),
+    )
+    plan[:] = rebuilt
+
+
 def _restore_sort_metric(
     message: str, plan: list[PlanStep], workbook_id: str | None, sheet_name: str | None
 ) -> None:
@@ -11357,6 +11416,8 @@ def _plan_approval_gate(
     # 기준 열을 **검사하기 전에** 바로잡는다 — "X 많은 Y부터"의 지표가 확정되면
     # 그것이 사용자가 말한 기준이다(층을 가리지 않고 여기서 한 번에).
     _restore_sort_metric(req.message, plan, req.workbook_id, plan_sheet or req.sheet_name)
+    # 크로스시트 집계 복원 — 무자격 SUM이 원본 시트에 낙하하는 것을 층 무관하게 막는다.
+    _restore_cross_sheet_aggregate(req.message, plan, req.workbook_id, plan_sheet or req.sheet_name)
     if not target_problem:
         key_problem = _key_column_problem(req.workbook_id, plan_sheet or req.sheet_name, plan)
         if key_problem:
