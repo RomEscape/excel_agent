@@ -303,6 +303,28 @@ async def run_once(round_no: int) -> list[dict]:
     return log
 
 
+def _acquire_battery_lock():
+    """게이트·다른 배터리와의 동시 실행을 자물쇠로 막는다(pid 생존 검사 포함).
+
+    2026-08-30 실측: 파이프에 물린 러너가 고아로 살아남아 두 프로세스가 같은
+    워크북을 두드렸고, 팔A 측정 전체가 오염됐다. 규율(CLAUDE.md)이 아니라
+    코드가 막아야 한다. 자물쇠 구현은 루트 scripts/_run_lock.py 한 곳뿐이다.
+    """
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[3]
+    sys.path.insert(0, str(root / "scripts"))
+    from _run_lock import RunLock
+
+    lock = RunLock("dialogue-battery").__enter__()
+    if not lock.acquired:
+        print(f"!! 동시 실행 금지: 자물쇠를 쥔 쪽 → {lock.held_by}", flush=True)
+        print("   (게이트나 다른 배터리가 도는 중이다. 끝난 뒤 다시 실행하라.)", flush=True)
+        raise SystemExit(3)
+    return lock
+
+
 async def main() -> None:
     repeat = max(1, int(os.environ.get("HUMAN_REPEAT", "1")))
     logs = [await run_once(r) for r in range(1, repeat + 1)]
@@ -323,4 +345,8 @@ from office_claw_sidecar.services import decision_trace as _dt
 
 # 배터리 턴을 사람이 친 명령과 가를 출처 태그(2026-08-19 로그 감사: 실사용 로그의 source가 전부 비어 있었다).
 _dt.source(kind="script", name="run_dialogue", scenario=SCENARIO.stem).__enter__()
-asyncio.run(main())
+_battery_lock = _acquire_battery_lock()
+try:
+    asyncio.run(main())
+finally:
+    _battery_lock.__exit__(None, None, None)
