@@ -6655,3 +6655,21 @@ class TestIntentCreateSheetRecoversNameFromMessage:
         out = self._plan("정산 시트 만들어줘", option="정산")
         assert out is not None
         assert out["action_plan"][0]["params"]["sheet_name"] == "정산"
+
+
+class TestIntentFirstRulePlanSerialization:
+    """실험 컨텍스트의 규칙 계획 직렬화 — dict(PlanStep) TypeError가 규칙 계획이
+    있는 모든 턴을 죽였다(2026-08-30 재검증 B' 54/163). dict·PlanStep 혼재를 견딘다."""
+
+    def test_planstep과_dict_혼재를_견딘다(self):
+        from office_claw_sidecar.routers.excel_live import PlanStep, _plan_steps_as_dicts
+
+        mixed = [
+            PlanStep(action="excel_live.set_formula", params={"range_ref": "B7"}, reason="r"),
+            {"action": "excel_live.write_range", "params": {"start_cell": "A7"}, "reason": ""},
+        ]
+        out = _plan_steps_as_dicts(mixed)
+        assert out[0]["action"] == "excel_live.set_formula"
+        assert out[0]["params"] == {"range_ref": "B7"}
+        assert out[1]["action"] == "excel_live.write_range"
+        assert _plan_steps_as_dicts([]) == []

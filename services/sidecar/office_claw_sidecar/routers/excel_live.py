@@ -4864,6 +4864,25 @@ def _score_command_complexity(
     return score
 
 
+def _plan_steps_as_dicts(steps: list[Any]) -> list[dict[str, Any]]:
+    """PlanStep 데이터클래스·dict 혼재 계획을 직렬화한다.
+
+    dict(PlanStep)은 TypeError다 — 실험 컨텍스트 조립에서 이걸로 규칙 계획이 있는
+    모든 턴이 죽었다(2026-08-30 재검증 B' 54/163 실측).
+    """
+    out: list[dict[str, Any]] = []
+    for s in steps or []:
+        if isinstance(s, dict):
+            out.append(dict(s))
+        else:
+            out.append({
+                "action": str(getattr(s, "action", "") or ""),
+                "params": dict(getattr(s, "params", None) or {}),
+                "reason": str(getattr(s, "reason", "") or ""),
+            })
+    return out
+
+
 def _intent_first_enabled() -> bool:
     """통역 AI를 규칙표보다 앞에 세우는 실험 스위치().
 
@@ -9844,7 +9863,7 @@ async def _run_command(
         # 실험(intent_first)이 강제한 턴에서 의도층이 물러나면 이 규칙 계획으로
         # 복귀한다 — 플래너 폴백은 실험 변수 밖의 회귀를 만든다(2026-08-30 두 팔).
         "intent_first_rule_plan": (
-            [dict(s) for s in quick_plan_for_parse]
+            _plan_steps_as_dicts(quick_plan_for_parse)
             if llm_decision_reason == "intent_first_experiment" and quick_plan_for_parse
             else None
         ),

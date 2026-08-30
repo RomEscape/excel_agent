@@ -12,7 +12,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "엑셀 변경 작업을 실행합니다. — 지역성과 시트",
-  "secs": 11.9,
+  "secs": 13.7,
   "parts": 1,
   "context_range": ""
  },
@@ -46,7 +46,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A1:F6 · 값 36개 기록",
-  "secs": 28.3,
+  "secs": 17.6,
   "parts": 1,
   "context_range": "A1:F6"
  },
@@ -57,13 +57,13 @@
   "paste": "",
   "ui": {},
   "expect": "ok",
-  "action": "excel_live.create_table",
-  "ok": false,
-  "why": "되묻기",
-  "asked": true,
+  "action": "excel_live.write_range",
+  "ok": true,
+  "why": "",
+  "asked": false,
   "interpretation": false,
-  "reply": "표 크기와 헤더를 알려주세요. 예: 5*5 또는 4행 3열, 금액, 장소, 날짜, 요건, 비고 (기준 셀 미지정 시 A1에서 생성)",
-  "secs": 8.9,
+  "reply": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
+  "secs": 62.2,
   "parts": 1,
   "context_range": "A1:F6"
  },
@@ -74,15 +74,15 @@
   "paste": "",
   "ui": {},
   "expect": "ok",
-  "action": "excel_live.create_table",
-  "ok": false,
-  "why": "되묻기",
-  "asked": true,
+  "action": "excel_live.write_range",
+  "ok": true,
+  "why": "",
+  "asked": false,
   "interpretation": false,
-  "reply": "표 크기와 헤더를 알려주세요. 예: 5*5 또는 4행 3열, 금액, 장소, 날짜, 요건, 비고 (기준 셀 미지정 시 A1에서 생성) (다음 답변에도 크기가 없으면 기본값으로 만들게요)",
-  "secs": 0.0,
+  "reply": "1. 수식 적용 — B8 · 수식 1칸\n2. 수식 적용 — C8 · 수식 1칸\n3. 수식 적용 — D8 · 수식 1칸\n4. 수식 적용 — E8 · 수식 1칸\n5. 수식 적용 — F8 · 수식 1칸\n6. 값 입력 — A8 · 값 1개 기록",
+  "secs": 61.3,
   "parts": 1,
-  "context_range": "A1:F6"
+  "context_range": "A7"
  },
  {
   "turn": 6,
@@ -96,10 +96,10 @@
   "why": "",
   "asked": false,
   "interpretation": true,
-  "reply": "배경색 변경 — A1:F6 · 36개 셀",
-  "secs": 14.7,
+  "reply": "배경색 변경 — A8 · 1개 셀",
+  "secs": 13.6,
   "parts": 1,
-  "context_range": "A1:F6"
+  "context_range": "A8"
  },
  {
   "turn": 7,
@@ -112,11 +112,11 @@
   "ok": true,
   "why": "",
   "asked": false,
-  "interpretation": true,
-  "reply": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 16.5,
+  "interpretation": false,
+  "reply": "테두리 적용 — A1:F8 · 48개 셀",
+  "secs": 13.6,
   "parts": 1,
-  "context_range": "A1:F6"
+  "context_range": "A8"
  },
  {
   "turn": 8,
@@ -130,10 +130,10 @@
   "why": "",
   "asked": false,
   "interpretation": false,
-  "reply": "1. 표시 형식 — B2:B6\n2. 표시 형식 — C2:C6",
-  "secs": 16.6,
+  "reply": "1. 표시 형식 — B2:B8\n2. 표시 형식 — C2:C8",
+  "secs": 15.0,
   "parts": 1,
-  "context_range": "A1:F6"
+  "context_range": "A1:F8"
  },
  {
   "turn": 9,
@@ -148,9 +148,9 @@
   "asked": true,
   "interpretation": false,
   "reply": "어떤 열 기준으로 정렬할까요? 예: 매출 열 기준 내림차순",
-  "secs": 1.2,
+  "secs": 1.4,
   "parts": 1,
-  "context_range": "C2:C6"
+  "context_range": "C2:C8"
  },
  {
   "turn": 10,
@@ -164,10 +164,10 @@
   "why": "",
   "asked": false,
   "interpretation": true,
-  "reply": "정렬 — A1:F6",
-  "secs": 23.0,
+  "reply": "정렬 — A1:F8",
+  "secs": 20.7,
   "parts": 1,
-  "context_range": "C2:C6"
+  "context_range": "C2:C8"
  },
  {
   "turn": 11,
@@ -182,9 +182,9 @@
   "asked": false,
   "interpretation": true,
   "reply": "엑셀 변경 작업을 실행합니다. — 배송추이 시트",
-  "secs": 12.1,
+  "secs": 11.2,
   "parts": 1,
-  "context_range": "A1:F6"
+  "context_range": "A1:F8"
  },
  {
   "turn": 12,
@@ -199,7 +199,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A1:C9 · 값 27개 기록",
-  "secs": 27.0,
+  "secs": 17.6,
   "parts": 1,
   "context_range": "A1:C9"
  },
@@ -216,7 +216,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "글자 서식 — A1:C9 · 27개 셀",
-  "secs": 15.6,
+  "secs": 13.9,
   "parts": 1,
   "context_range": "A1:C9"
  },
@@ -233,7 +233,7 @@
   "asked": true,
   "interpretation": false,
   "reply": "차트 종류를 선택해 주세요. 예: 선 그래프 / 막대 그래프 / 원형 차트",
-  "secs": 3.5,
+  "secs": 5.8,
   "parts": 1,
   "context_range": "A1:C9"
  },
@@ -250,7 +250,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "차트를 생성합니다. — A1:C9",
-  "secs": 13.6,
+  "secs": 12.4,
   "parts": 1,
   "context_range": "A1:C9"
  },
@@ -261,13 +261,13 @@
   "paste": "",
   "ui": {},
   "expect": "ok",
-  "action": "excel_live.apply_data_bar",
+  "action": "excel_live.create_chart",
   "ok": true,
   "why": "",
   "asked": false,
-  "interpretation": true,
-  "reply": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — E2:E181",
-  "secs": 17.6,
+  "interpretation": false,
+  "reply": "차트를 생성합니다. — A1:C9",
+  "secs": 13.8,
   "parts": 1,
   "context_range": "A1:C9"
  },
@@ -284,9 +284,9 @@
   "asked": false,
   "interpretation": true,
   "reply": "엑셀 변경 작업을 실행합니다. — 노선 시트",
-  "secs": 12.2,
+  "secs": 11.3,
   "parts": 1,
-  "context_range": "E2:E181"
+  "context_range": "A1:C9"
  },
  {
   "turn": 18,
@@ -301,7 +301,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A1:C6 · 값 18개 기록",
-  "secs": 10.7,
+  "secs": 0.3,
   "parts": 1,
   "context_range": "A1:C6"
  },
@@ -318,7 +318,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "글자 서식 — A1:C6 · 18개 셀",
-  "secs": 14.7,
+  "secs": 14.1,
   "parts": 1,
   "context_range": "A1:C6"
  },
@@ -335,7 +335,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B6",
-  "secs": 13.3,
+  "secs": 12.4,
   "parts": 1,
   "context_range": "A1:C6"
  },
@@ -352,7 +352,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — C2:C6",
-  "secs": 13.4,
+  "secs": 12.4,
   "parts": 1,
   "context_range": "B2:B6"
  },
@@ -367,9 +367,9 @@
   "ok": true,
   "why": "",
   "asked": false,
-  "interpretation": true,
+  "interpretation": false,
   "reply": "테두리 적용 — A1:C6 · 18개 셀",
-  "secs": 17.0,
+  "secs": 14.1,
   "parts": 1,
   "context_range": "C2:C6"
  },
@@ -386,7 +386,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "엑셀 변경 작업을 실행합니다. — 창고재고 시트",
-  "secs": 12.1,
+  "secs": 11.6,
   "parts": 1,
   "context_range": "A1:C6"
  },
@@ -403,7 +403,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A1:D5 · 값 20개 기록",
-  "secs": 20.2,
+  "secs": 18.1,
   "parts": 1,
   "context_range": ""
  },
@@ -420,7 +420,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "글자 서식 — A1:D5 · 20개 셀",
-  "secs": 15.6,
+  "secs": 14.4,
   "parts": 1,
   "context_range": "A1:D5"
  },
@@ -437,7 +437,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "표시 형식 — C2:C5",
-  "secs": 14.1,
+  "secs": 12.9,
   "parts": 1,
   "context_range": "A1:D5"
  },
@@ -452,9 +452,9 @@
   "ok": true,
   "why": "",
   "asked": false,
-  "interpretation": true,
-  "reply": "차트를 생성합니다. — A1:B5",
-  "secs": 17.8,
+  "interpretation": false,
+  "reply": "차트를 생성합니다. — A1:D5",
+  "secs": 14.3,
   "parts": 1,
   "context_range": "C2:C5"
  },
@@ -469,11 +469,11 @@
   "ok": true,
   "why": "",
   "asked": false,
-  "interpretation": true,
+  "interpretation": false,
   "reply": "테두리 적용 — A1:D5 · 20개 셀",
-  "secs": 18.8,
+  "secs": 14.1,
   "parts": 1,
-  "context_range": "A1:B5"
+  "context_range": "A1:D5"
  },
  {
   "turn": 29,
@@ -488,7 +488,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "엑셀 변경 작업을 실행합니다. — 기사성과 시트",
-  "secs": 12.6,
+  "secs": 11.7,
   "parts": 1,
   "context_range": "A1:D5"
  },
@@ -505,7 +505,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A1:E6 · 값 30개 기록",
-  "secs": 25.0,
+  "secs": 17.9,
   "parts": 1,
   "context_range": "A1:E6"
  },
@@ -522,7 +522,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "글자 서식 — A1:E6 · 30개 셀",
-  "secs": 14.8,
+  "secs": 14.4,
   "parts": 1,
   "context_range": "A1:E6"
  },
@@ -537,9 +537,9 @@
   "ok": true,
   "why": "",
   "asked": false,
-  "interpretation": true,
+  "interpretation": false,
   "reply": "테두리 적용 — A1:E6 · 30개 셀",
-  "secs": 17.4,
+  "secs": 14.1,
   "parts": 1,
   "context_range": "A1:E6"
  },
@@ -556,7 +556,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "엑셀 변경 작업을 실행합니다. — 지연경고 시트",
-  "secs": 12.6,
+  "secs": 11.5,
   "parts": 1,
   "context_range": "A1:E6"
  },
@@ -573,7 +573,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A1:E6 · 값 30개 기록",
-  "secs": 36.2,
+  "secs": 17.7,
   "parts": 1,
   "context_range": "A1:E6"
  },
@@ -590,7 +590,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "배경색 변경 — A1:E6 · 30개 셀",
-  "secs": 15.4,
+  "secs": 14.2,
   "parts": 1,
   "context_range": "A1:E6"
  },
@@ -607,7 +607,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "조건부 강조 — E2:E6 · 4개 셀",
-  "secs": 14.2,
+  "secs": 12.9,
   "parts": 1,
   "context_range": "A1:E6"
  },
@@ -622,9 +622,9 @@
   "ok": true,
   "why": "",
   "asked": false,
-  "interpretation": true,
+  "interpretation": false,
   "reply": "테두리 적용 — A1:E6 · 30개 셀",
-  "secs": 18.1,
+  "secs": 14.0,
   "parts": 1,
   "context_range": "E2:E6"
  },
@@ -641,7 +641,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "엑셀 변경 작업을 실행합니다. — 대시보드 시트",
-  "secs": 13.4,
+  "secs": 11.5,
   "parts": 1,
   "context_range": "A1:E6"
  },
@@ -656,9 +656,9 @@
   "ok": true,
   "why": "",
   "asked": false,
-  "interpretation": true,
+  "interpretation": false,
   "reply": "값 입력 — A1 · 값 1개 기록",
-  "secs": 20.8,
+  "secs": 17.9,
   "parts": 1,
   "context_range": ""
  },
@@ -673,9 +673,9 @@
   "ok": true,
   "why": "",
   "asked": false,
-  "interpretation": true,
+  "interpretation": false,
   "reply": "셀 병합 — A1:H1",
-  "secs": 20.0,
+  "secs": 17.1,
   "parts": 1,
   "context_range": ""
  },
@@ -692,7 +692,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "글자 서식 — A1 · 1개 셀",
-  "secs": 15.5,
+  "secs": 14.3,
   "parts": 1,
   "context_range": "A1:H1"
  },
@@ -709,7 +709,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A3:F3 · 값 6개 기록",
-  "secs": 22.5,
+  "secs": 17.9,
   "parts": 1,
   "context_range": "A3:F3"
  },
@@ -726,7 +726,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "값 입력 — A4 · 값 1개 기록",
-  "secs": 23.1,
+  "secs": 21.7,
   "parts": 1,
   "context_range": ""
  },
@@ -743,7 +743,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "값 입력 — B4 · 값 1개 기록",
-  "secs": 23.6,
+  "secs": 21.7,
   "parts": 1,
   "context_range": ""
  },
@@ -760,7 +760,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — C4:D4 · 값 2개 기록",
-  "secs": 23.4,
+  "secs": 17.9,
   "parts": 1,
   "context_range": "C4:D4"
  },
@@ -777,7 +777,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "값 입력 — E4 · 값 1개 기록",
-  "secs": 23.3,
+  "secs": 22.3,
   "parts": 1,
   "context_range": ""
  },
@@ -794,7 +794,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "배경색 변경 — A3:F3 · 6개 셀",
-  "secs": 15.3,
+  "secs": 14.4,
   "parts": 1,
   "context_range": ""
  },
@@ -811,7 +811,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "머리글 행/열을 고정합니다.",
-  "secs": 15.0,
+  "secs": 14.3,
   "parts": 1,
   "context_range": "A3:F3"
  },
@@ -828,7 +828,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F4",
-  "secs": 16.1,
+  "secs": 14.5,
   "parts": 1,
   "context_range": "A3:F3"
  },
@@ -860,9 +860,9 @@
   "ok": true,
   "why": "",
   "asked": false,
-  "interpretation": true,
-  "reply": "이렇게 이해했어요:\n엑셀 변경 작업을 실행합니다.\n\n해석이 다르면 취소하고 원하시는 작업을 다시 말씀해 주세요.",
-  "secs": 14.7,
+  "interpretation": false,
+  "reply": "실험 폴백: 의도층 물러남 — 규칙 계획 복귀",
+  "secs": 6.7,
   "parts": 1,
   "context_range": "A1:F4"
  }
