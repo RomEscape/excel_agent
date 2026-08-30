@@ -8,7 +8,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 59.4
+  "secs": 177.4
  },
  {
   "idx": 2,
@@ -19,7 +19,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 59.1
+  "secs": 181.1
  },
  {
   "idx": 3,
@@ -30,7 +30,7 @@
   "card": false,
   "action": "excel_live.clarify",
   "detail": "B7/F7 SUM 없음",
-  "secs": 5.1
+  "secs": 13.6
  },
  {
   "idx": 4,
@@ -41,7 +41,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 59.5
+  "secs": 178.6
  },
  {
   "idx": 5,
@@ -52,7 +52,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 59.5
+  "secs": 179.4
  },
  {
   "idx": 6,
@@ -63,7 +63,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 60.5
+  "secs": 178.5
  },
  {
   "idx": 7,
@@ -74,7 +74,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 60.3
+  "secs": 180.6
  },
  {
   "idx": 8,
@@ -85,7 +85,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 59.5
+  "secs": 181.4
  },
  {
   "idx": 9,
@@ -96,7 +96,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B8 · 수식 1칸\n2. 수식 적용 — C8 · 수식 1칸\n3. 수식 적용 — D8 · 수식 1칸\n4. 수식 적용 — E8 · 수식 1칸\n5. 수식 적용 — F8 · 수식 1칸\n6. 값 입력 — A8 · 값 1개 기록",
-  "secs": 59.7
+  "secs": 173.6
  },
  {
   "idx": 10,
@@ -107,7 +107,7 @@
   "card": false,
   "action": "excel_live.clarify",
   "detail": "B8 AVERAGE 없음",
-  "secs": 9.6
+  "secs": 8.7
  },
  {
   "idx": 11,
@@ -118,7 +118,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B8 · 수식 1칸\n2. 수식 적용 — C8 · 수식 1칸\n3. 수식 적용 — D8 · 수식 1칸\n4. 수식 적용 — E8 · 수식 1칸\n5. 수식 적용 — F8 · 수식 1칸\n6. 값 입력 — A8 · 값 1개 기록",
-  "secs": 59.6
+  "secs": 174.5
  },
  {
   "idx": 12,
@@ -129,7 +129,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B8 · 수식 1칸\n2. 수식 적용 — C8 · 수식 1칸\n3. 수식 적용 — D8 · 수식 1칸\n4. 수식 적용 — E8 · 수식 1칸\n5. 수식 적용 — F8 · 수식 1칸\n6. 값 입력 — A8 · 값 1개 기록",
-  "secs": 59.8
+  "secs": 174.8
  },
  {
   "idx": 13,
@@ -140,7 +140,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B8 · 수식 1칸\n2. 수식 적용 — C8 · 수식 1칸\n3. 수식 적용 — D8 · 수식 1칸\n4. 수식 적용 — E8 · 수식 1칸\n5. 수식 적용 — F8 · 수식 1칸\n6. 값 입력 — A8 · 값 1개 기록",
-  "secs": 60.7
+  "secs": 173.5
  },
  {
   "idx": 14,
@@ -151,7 +151,7 @@
   "card": false,
   "action": "excel_live.clarify",
   "detail": "B8 AVERAGE 없음",
-  "secs": 5.8
+  "secs": 9.2
  },
  {
   "idx": 15,
@@ -162,7 +162,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B8 · 수식 1칸\n2. 수식 적용 — C8 · 수식 1칸\n3. 수식 적용 — D8 · 수식 1칸\n4. 수식 적용 — E8 · 수식 1칸\n5. 수식 적용 — F8 · 수식 1칸\n6. 값 입력 — A8 · 값 1개 기록",
-  "secs": 60.2
+  "secs": 175.3
  },
  {
   "idx": 16,
@@ -173,18 +173,18 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B8 · 수식 1칸\n2. 수식 적용 — C8 · 수식 1칸\n3. 수식 적용 — D8 · 수식 1칸\n4. 수식 적용 — E8 · 수식 1칸\n5. 수식 적용 — F8 · 수식 1칸\n6. 값 입력 — A8 · 값 1개 기록",
-  "secs": 59.4
+  "secs": 173.8
  },
  {
   "idx": 17,
   "task": "header_navy",
   "text": "첫줄 머리글 남색 바탕에 흰글씨 볼드로 해",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.set_font",
-  "detail": "1. 배경색 변경 — A1:F1 · 6개 셀\n2. 글자 서식 — A1:F1 · 6개 셀",
-  "secs": 14.9
+  "outcome": "WRONG",
+  "card": true,
+  "action": "excel_live.fill_range",
+  "detail": "굵게를 요청했는데 bold=False",
+  "secs": 37.2
  },
  {
   "idx": 18,
@@ -195,7 +195,7 @@
   "card": true,
   "action": "excel_live.fill_range",
   "detail": "배경색 변경 — A1:F6 · 36개 셀",
-  "secs": 13.6
+  "secs": 37.2
  },
  {
   "idx": 19,
@@ -206,7 +206,7 @@
   "card": false,
   "action": "excel_live.set_font",
   "detail": "1. 배경색 변경 — A1:F1 · 6개 셀\n2. 글자 서식 — A1:F1 · 6개 셀",
-  "secs": 14.9
+  "secs": 44.7
  },
  {
   "idx": 20,
@@ -217,7 +217,7 @@
   "card": false,
   "action": "excel_live.set_font",
   "detail": "1. 배경색 변경 — A1:F1 · 6개 셀\n2. 글자 서식 — A1:F1 · 6개 셀",
-  "secs": 15.0
+  "secs": 44.5
  },
  {
   "idx": 21,
@@ -228,7 +228,7 @@
   "card": false,
   "action": "excel_live.set_font",
   "detail": "1. 배경색 변경 — A1:F1 · 6개 셀\n2. 글자 서식 — A1:F1 · 6개 셀",
-  "secs": 15.0
+  "secs": 44.2
  },
  {
   "idx": 22,
@@ -239,29 +239,29 @@
   "card": false,
   "action": "excel_live.set_font",
   "detail": "1. 배경색 변경 — A1:F1 · 6개 셀\n2. 글자 서식 — A1:F1 · 6개 셀",
-  "secs": 14.8
+  "secs": 44.5
  },
  {
   "idx": 23,
   "task": "header_navy",
   "text": "아 그리고 제목줄은 남색 칠하고 글자 흰색 굵게",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.set_font",
-  "detail": "1. 배경색 변경 — A1:F1 · 6개 셀\n2. 글자 서식 — A1:F1 · 6개 셀",
-  "secs": 14.8
+  "outcome": "WRONG",
+  "card": true,
+  "action": "excel_live.fill_range",
+  "detail": "굵게를 요청했는데 bold=False",
+  "secs": 37.4
  },
  {
   "idx": 24,
   "task": "header_navy",
   "text": "ㅋㅋ 머리글 좀 있어보이게 남색 배경 흰 글씨 볼드로",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.set_font",
-  "detail": "1. 배경색 변경 — A1:F1 · 6개 셀\n2. 글자 서식 — A1:F1 · 6개 셀",
-  "secs": 14.9
+  "outcome": "WRONG",
+  "card": true,
+  "action": "excel_live.fill_range",
+  "detail": "굵게를 요청했는데 bold=False",
+  "secs": 36.7
  },
  {
   "idx": 25,
@@ -272,7 +272,7 @@
   "card": false,
   "action": "excel_live.apply_border",
   "detail": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 12.4
+  "secs": 37.2
  },
  {
   "idx": 26,
@@ -283,7 +283,7 @@
   "card": false,
   "action": "excel_live.apply_border",
   "detail": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 12.3
+  "secs": 37.0
  },
  {
   "idx": 27,
@@ -294,7 +294,7 @@
   "card": true,
   "action": "excel_live.apply_border",
   "detail": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 15.9
+  "secs": 42.4
  },
  {
   "idx": 28,
@@ -305,7 +305,7 @@
   "card": false,
   "action": "excel_live.apply_border",
   "detail": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 12.8
+  "secs": 37.2
  },
  {
   "idx": 29,
@@ -316,7 +316,7 @@
   "card": false,
   "action": "excel_live.apply_border",
   "detail": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 12.7
+  "secs": 37.7
  },
  {
   "idx": 30,
@@ -327,7 +327,7 @@
   "card": true,
   "action": "excel_live.apply_border",
   "detail": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 15.9
+  "secs": 40.0
  },
  {
   "idx": 31,
@@ -338,7 +338,7 @@
   "card": false,
   "action": "excel_live.apply_border",
   "detail": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 12.6
+  "secs": 37.4
  },
  {
   "idx": 32,
@@ -349,7 +349,7 @@
   "card": false,
   "action": "excel_live.apply_border",
   "detail": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 12.7
+  "secs": 37.8
  },
  {
   "idx": 33,
@@ -360,7 +360,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "1. 표시 형식 — B2:B6\n2. 표시 형식 — C2:C6",
-  "secs": 15.3
+  "secs": 43.3
  },
  {
   "idx": 34,
@@ -371,7 +371,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "표시 형식 — A1:F6",
-  "secs": 12.6
+  "secs": 37.7
  },
  {
   "idx": 35,
@@ -382,7 +382,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "1. 표시 형식 — B2:B6\n2. 표시 형식 — C2:C6",
-  "secs": 15.0
+  "secs": 42.5
  },
  {
   "idx": 36,
@@ -393,7 +393,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "1. 표시 형식 — B2:B6\n2. 표시 형식 — C2:C6",
-  "secs": 15.1
+  "secs": 44.3
  },
  {
   "idx": 37,
@@ -404,7 +404,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "1. 표시 형식 — B2:B6\n2. 표시 형식 — C2:C6",
-  "secs": 15.0
+  "secs": 45.2
  },
  {
   "idx": 38,
@@ -415,7 +415,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "1. 표시 형식 — B2:B6\n2. 표시 형식 — C2:C6",
-  "secs": 14.9
+  "secs": 45.7
  },
  {
   "idx": 39,
@@ -426,7 +426,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "1. 표시 형식 — B2:B6\n2. 표시 형식 — C2:C6",
-  "secs": 14.8
+  "secs": 45.7
  },
  {
   "idx": 40,
@@ -437,7 +437,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "1. 표시 형식 — B2:B6\n2. 표시 형식 — C2:C6",
-  "secs": 14.8
+  "secs": 45.2
  },
  {
   "idx": 41,
@@ -448,7 +448,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F6",
-  "secs": 21.1
+  "secs": 66.6
  },
  {
   "idx": 42,
@@ -459,7 +459,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F6",
-  "secs": 20.8
+  "secs": 62.3
  },
  {
   "idx": 43,
@@ -470,7 +470,7 @@
   "card": false,
   "action": "excel_live.sort",
   "detail": "정렬 안 됨 A2=수도권",
-  "secs": 1.1
+  "secs": 1.6
  },
  {
   "idx": 44,
@@ -481,7 +481,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F6",
-  "secs": 21.0
+  "secs": 62.7
  },
  {
   "idx": 45,
@@ -492,7 +492,7 @@
   "card": false,
   "action": "excel_live.sort",
   "detail": "정렬 안 됨 A2=수도권",
-  "secs": 1.2
+  "secs": 2.2
  },
  {
   "idx": 46,
@@ -503,7 +503,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F6",
-  "secs": 23.3
+  "secs": 69.8
  },
  {
   "idx": 47,
@@ -514,7 +514,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F6",
-  "secs": 23.5
+  "secs": 69.7
  },
  {
   "idx": 48,
@@ -525,7 +525,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F6",
-  "secs": 21.1
+  "secs": 59.3
  },
  {
   "idx": 49,
@@ -536,7 +536,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F7",
-  "secs": 21.0
+  "secs": 56.3
  },
  {
   "idx": 50,
@@ -547,7 +547,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F7",
-  "secs": 21.1
+  "secs": 56.3
  },
  {
   "idx": 51,
@@ -559,7 +559,7 @@
   "card": false,
   "action": "excel_live.clarify",
   "detail": "A7=합계 / 정렬=False",
-  "secs": 13.5
+  "secs": 27.4
  },
  {
   "idx": 52,
@@ -570,7 +570,7 @@
   "card": false,
   "action": "excel_live.clarify",
   "detail": "A7=합계 / 정렬=False",
-  "secs": 8.6
+  "secs": 9.3
  },
  {
   "idx": 53,
@@ -581,7 +581,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F7",
-  "secs": 21.3
+  "secs": 57.0
  },
  {
   "idx": 54,
@@ -592,7 +592,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F7",
-  "secs": 21.5
+  "secs": 57.5
  },
  {
   "idx": 55,
@@ -603,7 +603,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F7",
-  "secs": 21.7
+  "secs": 57.6
  },
  {
   "idx": 56,
@@ -614,18 +614,18 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F7",
-  "secs": 21.2
+  "secs": 57.9
  },
  {
   "idx": 57,
   "task": "new_sheet",
   "text": "요약이라는 시트 하나 새로 만들어",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.create_sheet",
   "detail": "엑셀 변경 작업을 실행합니다. — 요약 시트",
-  "secs": 5.1
+  "secs": 30.0
  },
  {
   "idx": 58,
@@ -636,73 +636,73 @@
   "card": false,
   "action": "excel_live.create_sheet",
   "detail": "엑셀 변경 작업을 실행합니다. — 요약 시트",
-  "secs": 5.1
+  "secs": 15.1
  },
  {
   "idx": 59,
   "task": "new_sheet",
   "text": "새 시트 파줘 이름은 요약",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.create_sheet",
   "detail": "엑셀 변경 작업을 실행합니다. — 요약 시트",
-  "secs": 5.1
+  "secs": 29.5
  },
  {
   "idx": 60,
   "task": "new_sheet",
   "text": "여기다 요약 탭 하나 추가해봐",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.create_sheet",
   "detail": "엑셀 변경 작업을 실행합니다. — 요약 시트",
-  "secs": 5.1
+  "secs": 28.8
  },
  {
   "idx": 61,
   "task": "new_sheet",
   "text": "요약 시트 하나 맏드러 새루",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "WRONG",
+  "card": true,
   "action": "excel_live.create_sheet",
-  "detail": "엑셀 변경 작업을 실행합니다. — 요약 시트",
-  "secs": 5.1
+  "detail": "시트=['지역성과', '새루']",
+  "secs": 28.9
  },
  {
   "idx": 62,
   "task": "new_sheet",
   "text": "요약이란 이름으로 씨트 추가해 빨ㄹ리",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.create_sheet",
   "detail": "엑셀 변경 작업을 실행합니다. — 요약 시트",
-  "secs": 5.1
+  "secs": 28.7
  },
  {
   "idx": 63,
   "task": "new_sheet",
   "text": "아 그리고 요약 시트도 하나 만들어놔",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.create_sheet",
   "detail": "엑셀 변경 작업을 실행합니다. — 요약 시트",
-  "secs": 5.1
+  "secs": 28.9
  },
  {
   "idx": 64,
   "task": "new_sheet",
   "text": "ㅇㅇ 새 탭 추가, 이름 요약으로",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.create_sheet",
   "detail": "엑셀 변경 작업을 실행합니다. — 요약 시트",
-  "secs": 5.0
+  "secs": 28.8
  },
  {
   "idx": 65,
@@ -713,7 +713,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — H1 · 값 1개 기록",
-  "secs": 17.3
+  "secs": 47.9
  },
  {
   "idx": 66,
@@ -724,7 +724,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — H1 · 값 1개 기록",
-  "secs": 17.3
+  "secs": 47.6
  },
  {
   "idx": 67,
@@ -735,7 +735,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — H1 · 값 1개 기록",
-  "secs": 17.3
+  "secs": 47.6
  },
  {
   "idx": 68,
@@ -746,7 +746,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — H1 · 값 1개 기록",
-  "secs": 17.3
+  "secs": 47.8
  },
  {
   "idx": 69,
@@ -757,7 +757,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — H1 · 값 1개 기록",
-  "secs": 17.2
+  "secs": 48.2
  },
  {
   "idx": 70,
@@ -768,7 +768,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — H1 · 값 1개 기록",
-  "secs": 17.5
+  "secs": 47.8
  },
  {
   "idx": 71,
@@ -779,7 +779,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — H1 · 값 1개 기록",
-  "secs": 17.5
+  "secs": 48.1
  },
  {
   "idx": 72,
@@ -790,7 +790,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — H1 · 값 1개 기록",
-  "secs": 17.3
+  "secs": 47.8
  },
  {
   "idx": 73,
@@ -801,7 +801,7 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — H1:M1",
-  "secs": 14.9
+  "secs": 45.1
  },
  {
   "idx": 74,
@@ -812,7 +812,7 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — H1:M1",
-  "secs": 14.8
+  "secs": 43.1
  },
  {
   "idx": 75,
@@ -823,7 +823,7 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — H1:M1",
-  "secs": 14.9
+  "secs": 28.5
  },
  {
   "idx": 76,
@@ -834,7 +834,7 @@
   "card": true,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — H1:M1",
-  "secs": 20.3
+  "secs": 52.3
  },
  {
   "idx": 77,
@@ -845,18 +845,18 @@
   "card": true,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — H1:M1",
-  "secs": 18.4
+  "secs": 58.0
  },
  {
   "idx": 78,
   "task": "merge_title",
   "text": "H1 M1 셀 함쳐서 하나로 맏들어",
   "persona": "A_팀장",
-  "outcome": "PASS_CARD",
-  "card": true,
-  "action": "excel_live.merge_cells",
-  "detail": "셀 병합 — H1:M1",
-  "secs": 18.4
+  "outcome": "ASK",
+  "card": false,
+  "action": "excel_live.clarify",
+  "detail": "병합=[]",
+  "secs": 29.2
  },
  {
   "idx": 79,
@@ -867,7 +867,7 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — H1:M1",
-  "secs": 15.2
+  "secs": 69.0
  },
  {
   "idx": 80,
@@ -878,95 +878,95 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — H1:M1",
-  "secs": 15.1
+  "secs": 50.1
  },
  {
   "idx": 81,
   "task": "freeze_top",
   "text": "첫 줄 틀고정 해줘 스크롤해도 보이게",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.freeze_panes",
   "detail": "머리글 행/열을 고정합니다.",
-  "secs": 12.7
+  "secs": 42.5
  },
  {
   "idx": 82,
   "task": "freeze_top",
   "text": "첫줄 고정",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.freeze_panes",
   "detail": "머리글 행/열을 고정합니다.",
-  "secs": 12.8
+  "secs": 52.9
  },
  {
   "idx": 83,
   "task": "freeze_top",
   "text": "고정해 머리글 줄, 내려도 안 사라지게",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.freeze_panes",
   "detail": "머리글 행/열을 고정합니다.",
-  "secs": 12.6
+  "secs": 38.2
  },
  {
   "idx": 84,
   "task": "freeze_top",
   "text": "여기 맨 윗줄 스크롤해도 안 없어지게 고정해",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.freeze_panes",
   "detail": "머리글 행/열을 고정합니다.",
-  "secs": 12.5
+  "secs": 37.3
  },
  {
   "idx": 85,
   "task": "freeze_top",
   "text": "첫줄 틀고졍 해라 스크롤해도 보이계",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.freeze_panes",
   "detail": "머리글 행/열을 고정합니다.",
-  "secs": 12.7
+  "secs": 37.3
  },
  {
   "idx": 86,
   "task": "freeze_top",
   "text": "머리글 줄 고정해줘 빨ㄹ리, 내려도 걔속 보이게",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.freeze_panes",
   "detail": "머리글 행/열을 고정합니다.",
-  "secs": 12.5
+  "secs": 37.2
  },
  {
   "idx": 87,
   "task": "freeze_top",
   "text": "아 그리고 첫 행은 틀 고정 걸어놔",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.freeze_panes",
   "detail": "머리글 행/열을 고정합니다.",
-  "secs": 12.6
+  "secs": 37.0
  },
  {
   "idx": 88,
   "task": "freeze_top",
   "text": "ㅇㅇ 헤더 줄 틀고정",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.freeze_panes",
   "detail": "머리글 행/열을 고정합니다.",
-  "secs": 12.4
+  "secs": 36.9
  },
  {
   "idx": 89,
@@ -977,7 +977,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — D2:D5 · 2개 셀",
-  "secs": 12.4
+  "secs": 36.2
  },
  {
   "idx": 90,
@@ -988,7 +988,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — D2:D5 · 2개 셀",
-  "secs": 12.5
+  "secs": 37.4
  },
  {
   "idx": 91,
@@ -999,7 +999,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — D2:D5 · 2개 셀",
-  "secs": 12.6
+  "secs": 38.4
  },
  {
   "idx": 92,
@@ -1010,7 +1010,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — D2:D5 · 2개 셀",
-  "secs": 12.4
+  "secs": 38.2
  },
  {
   "idx": 93,
@@ -1021,7 +1021,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — D2:D5 · 2개 셀",
-  "secs": 12.4
+  "secs": 37.9
  },
  {
   "idx": 94,
@@ -1032,7 +1032,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — D2:D5 · 2개 셀",
-  "secs": 12.3
+  "secs": 37.7
  },
  {
   "idx": 95,
@@ -1043,7 +1043,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — D2:D5 · 2개 셀",
-  "secs": 12.6
+  "secs": 37.5
  },
  {
   "idx": 96,
@@ -1054,7 +1054,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — D2:D5 · 2개 셀",
-  "secs": 12.5
+  "secs": 38.5
  },
  {
   "idx": 97,
@@ -1065,7 +1065,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — F2:F6 · 1개 셀",
-  "secs": 12.5
+  "secs": 38.1
  },
  {
   "idx": 98,
@@ -1076,7 +1076,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — F2:F6 · 1개 셀",
-  "secs": 12.4
+  "secs": 38.2
  },
  {
   "idx": 99,
@@ -1087,7 +1087,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — F2:F6 · 1개 셀",
-  "secs": 12.3
+  "secs": 37.8
  },
  {
   "idx": 100,
@@ -1098,7 +1098,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — F2:F6 · 1개 셀",
-  "secs": 12.4
+  "secs": 37.6
  },
  {
   "idx": 101,
@@ -1109,7 +1109,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — F2:F6 · 1개 셀",
-  "secs": 12.5
+  "secs": 37.7
  },
  {
   "idx": 102,
@@ -1120,7 +1120,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — F2:F6 · 1개 셀",
-  "secs": 12.4
+  "secs": 38.1
  },
  {
   "idx": 103,
@@ -1131,7 +1131,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — F2:F6 · 1개 셀",
-  "secs": 12.4
+  "secs": 38.1
  },
  {
   "idx": 104,
@@ -1142,7 +1142,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — F2:F6 · 1개 셀",
-  "secs": 12.4
+  "secs": 38.4
  },
  {
   "idx": 105,
@@ -1153,7 +1153,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.7
+  "secs": 44.4
  },
  {
   "idx": 106,
@@ -1164,7 +1164,7 @@
   "card": true,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 29.9
+  "secs": 81.3
  },
  {
   "idx": 107,
@@ -1175,7 +1175,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.7
+  "secs": 41.0
  },
  {
   "idx": 108,
@@ -1186,7 +1186,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.8
+  "secs": 41.4
  },
  {
   "idx": 109,
@@ -1197,7 +1197,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.8
+  "secs": 40.0
  },
  {
   "idx": 110,
@@ -1208,7 +1208,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.6
+  "secs": 41.6
  },
  {
   "idx": 111,
@@ -1219,7 +1219,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.5
+  "secs": 41.4
  },
  {
   "idx": 112,
@@ -1230,7 +1230,7 @@
   "card": false,
   "action": "excel_live.chart",
   "detail": "차트 없음",
-  "secs": 3.9
+  "secs": 28.8
  },
  {
   "idx": 113,
@@ -1241,7 +1241,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.6
+  "secs": 42.1
  },
  {
   "idx": 114,
@@ -1250,9 +1250,9 @@
   "persona": "A_팀장",
   "outcome": "WRONG",
   "card": true,
-  "action": "excel_live.apply_data_bar",
+  "action": "excel_live.verify_formula_result",
   "detail": "차트 없음",
-  "secs": 16.0
+  "secs": 81.8
  },
  {
   "idx": 115,
@@ -1263,7 +1263,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.5
+  "secs": 42.8
  },
  {
   "idx": 116,
@@ -1274,7 +1274,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.3
+  "secs": 41.4
  },
  {
   "idx": 117,
@@ -1285,7 +1285,7 @@
   "card": false,
   "action": "excel_live.chart",
   "detail": "차트 없음",
-  "secs": 4.1
+  "secs": 8.2
  },
  {
   "idx": 118,
@@ -1296,7 +1296,7 @@
   "card": true,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:B7",
-  "secs": 19.8
+  "secs": 48.8
  },
  {
   "idx": 119,
@@ -1307,7 +1307,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.4
+  "secs": 37.6
  },
  {
   "idx": 120,
@@ -1318,51 +1318,51 @@
   "card": true,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:B7",
-  "secs": 16.5
+  "secs": 40.4
  },
  {
   "idx": 121,
   "task": "delete_charts",
   "text": "시트에 있는 차트 전부 없애",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.delete_charts",
   "detail": "차트 삭제",
-  "secs": 12.4
+  "secs": 26.3
  },
  {
   "idx": 122,
   "task": "delete_charts",
   "text": "차트 삭제",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.delete_charts",
   "detail": "차트 삭제",
-  "secs": 12.4
+  "secs": 15.6
  },
  {
   "idx": 123,
   "task": "delete_charts",
   "text": "지워줘 차트 다, 데이터는 놔두고",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.delete_charts",
   "detail": "차트 삭제",
-  "secs": 12.5
+  "secs": 15.7
  },
  {
   "idx": 124,
   "task": "delete_charts",
   "text": "여기 있는 그래프 저거 다 지워",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.delete_charts",
   "detail": "차트 삭제",
-  "secs": 12.7
+  "secs": 16.1
  },
  {
   "idx": 125,
@@ -1373,18 +1373,18 @@
   "card": true,
   "action": "excel_live.delete_charts",
   "detail": "차트 삭제",
-  "secs": 13.7
+  "secs": 16.2
  },
  {
   "idx": 126,
   "task": "delete_charts",
   "text": "그래프 싹 다 업애줘 빨ㄹ리",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.delete_charts",
   "detail": "차트 삭제",
-  "secs": 12.4
+  "secs": 15.9
  },
  {
   "idx": 127,
@@ -1395,7 +1395,7 @@
   "card": true,
   "action": "excel_live.delete_charts",
   "detail": "차트 삭제",
-  "secs": 13.7
+  "secs": 15.7
  },
  {
   "idx": 128,
@@ -1406,7 +1406,7 @@
   "card": true,
   "action": "excel_live.delete_charts",
   "detail": "차트 삭제",
-  "secs": 13.8
+  "secs": 15.7
  },
  {
   "idx": 129,
@@ -1417,7 +1417,7 @@
   "card": true,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 20.7
+  "secs": 23.5
  },
  {
   "idx": 130,
@@ -1428,7 +1428,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 17.4
+  "secs": 21.1
  },
  {
   "idx": 131,
@@ -1439,7 +1439,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "1. 테두리 적용 — A1:F6 · 36개 셀\n2. 배경색 변경 — A1:F6 · 36개 셀\n3. 내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 22.9
+  "secs": 27.1
  },
  {
   "idx": 132,
@@ -1450,7 +1450,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 17.7
+  "secs": 21.1
  },
  {
   "idx": 133,
@@ -1461,7 +1461,7 @@
   "card": true,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 20.8
+  "secs": 23.4
  },
  {
   "idx": 134,
@@ -1472,7 +1472,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 17.9
+  "secs": 21.1
  },
  {
   "idx": 135,
@@ -1483,7 +1483,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "1. 테두리 적용 — A1:F6 · 36개 셀\n2. 배경색 변경 — A1:F6 · 36개 셀\n3. 내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 22.6
+  "secs": 27.3
  },
  {
   "idx": 136,
@@ -1494,29 +1494,29 @@
   "card": true,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 20.8
+  "secs": 23.3
  },
  {
   "idx": 137,
   "task": "cross_sheet_sum",
   "text": "A2에 지역성과 시트의 주문건수 다 더한 값 넣어",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
+  "outcome": "ASK",
   "card": false,
-  "action": "excel_live.set_formula",
-  "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 15.1
+  "action": "excel_live.clarify",
+  "detail": "요약!A2=None",
+  "secs": 10.2
  },
  {
   "idx": 138,
   "task": "cross_sheet_sum",
   "text": "A2 지역성과 주문건수 합",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.set_formula",
-  "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 2.6
+  "outcome": "WRONG",
+  "card": true,
+  "action": "excel_live.write_range",
+  "detail": "요약!A2=None",
+  "secs": 4.2
  },
  {
   "idx": 139,
@@ -1527,40 +1527,40 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 2.6
+  "secs": 4.1
  },
  {
   "idx": 140,
   "task": "cross_sheet_sum",
   "text": "여기 A2에 지역성과 탭 주문건수 총합 가져다 놔",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "WRONG",
+  "card": true,
   "action": "excel_live.set_formula",
-  "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 2.6
+  "detail": "요약!A2=None",
+  "secs": 4.3
  },
  {
   "idx": 141,
   "task": "cross_sheet_sum",
   "text": "A2에 지역성과 시트 주문건수 합게 너어줘",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.set_formula",
-  "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 15.0
+  "outcome": "WRONG",
+  "card": true,
+  "action": "excel_live.write_range",
+  "detail": "요약!A2='SUM'",
+  "secs": 24.6
  },
  {
   "idx": 142,
   "task": "cross_sheet_sum",
   "text": "지역성과 주문건수 전부 더해서 A2에 넣어라 빨ㄹ리 수식으루",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
+  "outcome": "ASK",
   "card": false,
-  "action": "excel_live.set_formula",
-  "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 2.7
+  "action": "excel_live.clarify",
+  "detail": "요약!A2=None",
+  "secs": 4.2
  },
  {
   "idx": 143,
@@ -1571,18 +1571,18 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 14.9
+  "secs": 18.9
  },
  {
   "idx": 144,
   "task": "cross_sheet_sum",
   "text": "ㅇㅇ A2에 지역성과 주문건수 합계 연결",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
+  "outcome": "ASK",
   "card": false,
-  "action": "excel_live.set_formula",
-  "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 2.6
+  "action": "excel_live.clarify",
+  "detail": "요약!A2=None",
+  "secs": 4.3
  },
  {
   "idx": 145,
@@ -1593,7 +1593,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — A8:B9 · 값 4개 기록",
-  "secs": 17.2
+  "secs": 20.3
  },
  {
   "idx": 146,
@@ -1604,7 +1604,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — A8:B9 · 값 4개 기록",
-  "secs": 17.3
+  "secs": 20.5
  },
  {
   "idx": 147,
@@ -1615,7 +1615,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — A8:B9 · 값 4개 기록",
-  "secs": 17.3
+  "secs": 20.6
  },
  {
   "idx": 148,
@@ -1626,7 +1626,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — A8:B9 · 값 4개 기록",
-  "secs": 17.4
+  "secs": 20.9
  },
  {
   "idx": 149,
@@ -1637,7 +1637,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — A8:B9 · 값 4개 기록",
-  "secs": 17.5
+  "secs": 20.3
  },
  {
   "idx": 150,
@@ -1648,7 +1648,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — A8:B9 · 값 4개 기록",
-  "secs": 17.3
+  "secs": 20.5
  },
  {
   "idx": 151,
@@ -1659,7 +1659,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — A8:B9 · 값 4개 기록",
-  "secs": 17.4
+  "secs": 21.8
  },
  {
   "idx": 152,
@@ -1670,29 +1670,29 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — A8:B9 · 값 4개 기록",
-  "secs": 17.4
+  "secs": 21.8
  },
  {
   "idx": 153,
   "task": "find_replace",
   "text": "수도권이라고 된 거 전부 서울권으로 바꿔",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.find_replace",
   "detail": "찾아 바꾸기 — A1:F6 · 1개 셀 치환",
-  "secs": 17.3
+  "secs": 22.7
  },
  {
   "idx": 154,
   "task": "find_replace",
   "text": "수도권→서울권",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.find_replace",
   "detail": "찾아 바꾸기 — A1:F6 · 1개 셀 치환",
-  "secs": 17.3
+  "secs": 21.8
  },
  {
   "idx": 155,
@@ -1703,29 +1703,29 @@
   "card": false,
   "action": "excel_live.find_replace",
   "detail": "찾아 바꾸기 — A1:F6 · 1개 셀 치환",
-  "secs": 17.8
+  "secs": 22.5
  },
  {
   "idx": 156,
   "task": "find_replace",
   "text": "여기 표에서 수도권을 서울권으로 고쳐",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.find_replace",
   "detail": "찾아 바꾸기 — A1:F6 · 1개 셀 치환",
-  "secs": 17.9
+  "secs": 22.5
  },
  {
   "idx": 157,
   "task": "find_replace",
   "text": "수도권 → 서울권 으로 바꺼라 전부 차자서",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.find_replace",
   "detail": "찾아 바꾸기 — A1:F6 · 1개 셀 치환",
-  "secs": 17.6
+  "secs": 22.3
  },
  {
   "idx": 158,
@@ -1736,7 +1736,7 @@
   "card": true,
   "action": "excel_live.find_replace",
   "detail": "찾아 바꾸기 — A1:F6 · 1개 셀 치환",
-  "secs": 21.3
+  "secs": 22.5
  },
  {
   "idx": 159,
@@ -1747,7 +1747,7 @@
   "card": false,
   "action": "excel_live.clarify",
   "detail": "A2='수도권'",
-  "secs": 10.8
+  "secs": 9.8
  },
  {
   "idx": 160,
@@ -1758,18 +1758,18 @@
   "card": true,
   "action": "excel_live.find_replace",
   "detail": "찾아 바꾸기 — A1:F6 · 1개 셀 치환",
-  "secs": 19.2
+  "secs": 23.1
  },
  {
   "idx": 161,
   "task": "rename_sheet",
   "text": "이 시트 이름 지역별실적으로 바꿔",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.rename_sheet",
-  "detail": "시트 이름을 변경합니다. — 지역성과 시트",
-  "secs": 12.6
+  "outcome": "ERROR",
+  "card": true,
+  "action": "excel_live.pivot_table",
+  "detail": "시트=['지역성과', '지역성과_집계']",
+  "secs": 19.1
  },
  {
   "idx": 162,
@@ -1780,73 +1780,73 @@
   "card": true,
   "action": "excel_live.pivot_table",
   "detail": "시트=['지역성과']",
-  "secs": 23.7
+  "secs": 27.4
  },
  {
   "idx": 163,
   "task": "rename_sheet",
   "text": "지역별실적으로 바꿔줘 지역성과 시트 이름",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.rename_sheet",
   "detail": "시트 이름을 변경합니다. — 지역성과 시트",
-  "secs": 0.1
+  "secs": 4.0
  },
  {
   "idx": 164,
   "task": "rename_sheet",
   "text": "여기 시트 탭 이름 지역별실적으로 고쳐",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
+  "outcome": "ASK",
   "card": false,
-  "action": "excel_live.rename_sheet",
-  "detail": "시트 이름을 변경합니다. — 지역성과 시트",
-  "secs": 12.6
+  "action": "excel_live.clarify",
+  "detail": "시트=['지역성과']",
+  "secs": 10.8
  },
  {
   "idx": 165,
   "task": "rename_sheet",
   "text": "지역성과 씨트 이름 지역별실적으로 바꺼",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.rename_sheet",
   "detail": "시트 이름을 변경합니다. — 지역성과 시트",
-  "secs": 0.1
+  "secs": 3.7
  },
  {
   "idx": 166,
   "task": "rename_sheet",
   "text": "시트명 지역별실적으로 변경해줴 빨ㄹ리",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.rename_sheet",
-  "detail": "시트 이름을 변경합니다. — 지역성과 시트",
-  "secs": 12.4
+  "outcome": "ERROR",
+  "card": true,
+  "action": "excel_live.pivot_table",
+  "detail": "시트=['지역성과', '지역성과_집계']",
+  "secs": 19.2
  },
  {
   "idx": 167,
   "task": "rename_sheet",
   "text": "아 그리고 지역성과 시트는 지역별실적이라고 이름 바꿔놔",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.rename_sheet",
   "detail": "시트 이름을 변경합니다. — 지역성과 시트",
-  "secs": 0.1
+  "secs": 6.4
  },
  {
   "idx": 168,
   "task": "rename_sheet",
   "text": "ㅇㅇ 탭 이름 지역별실적으로",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.rename_sheet",
-  "detail": "시트 이름을 변경합니다. — 지역성과 시트",
-  "secs": 12.5
+  "outcome": "WRONG",
+  "card": true,
+  "action": "excel_live.select_sheet",
+  "detail": "시트=['지역성과', '지역성과_집계']",
+  "secs": 24.8
  },
  {
   "idx": 169,
@@ -1857,7 +1857,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — D2 · 수식 1칸",
-  "secs": 17.2
+  "secs": 22.4
  },
  {
   "idx": 170,
@@ -1868,7 +1868,7 @@
   "card": true,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — D2 · 수식 1칸",
-  "secs": 21.4
+  "secs": 27.2
  },
  {
   "idx": 171,
@@ -1879,7 +1879,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — D2 · 수식 1칸",
-  "secs": 17.2
+  "secs": 21.6
  },
  {
   "idx": 172,
@@ -1890,7 +1890,7 @@
   "card": true,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — D2 · 수식 1칸",
-  "secs": 20.9
+  "secs": 26.4
  },
  {
   "idx": 173,
@@ -1901,7 +1901,7 @@
   "card": true,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — D2 · 수식 1칸",
-  "secs": 3.5
+  "secs": 3.8
  },
  {
   "idx": 174,
@@ -1912,7 +1912,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — D2 · 수식 1칸",
-  "secs": 17.5
+  "secs": 22.3
  },
  {
   "idx": 175,
@@ -1923,7 +1923,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — D2 · 수식 1칸",
-  "secs": 17.3
+  "secs": 22.2
  },
  {
   "idx": 176,
@@ -1934,7 +1934,7 @@
   "card": true,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — D2 · 수식 1칸",
-  "secs": 20.8
+  "secs": 24.0
  },
  {
   "idx": 177,
@@ -1945,18 +1945,18 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "표시 형식 — D2:D6",
-  "secs": 12.5
+  "secs": 14.3
  },
  {
   "idx": 178,
   "task": "percent_format",
   "text": "배송률소수1자리",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.set_number_format",
-  "detail": "표시 형식 — A1:F6",
-  "secs": 12.4
+  "detail": "표시 형식 — D2:D6",
+  "secs": 15.7
  },
  {
   "idx": 179,
@@ -1967,7 +1967,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "표시 형식 — D2:D6",
-  "secs": 12.4
+  "secs": 14.4
  },
  {
   "idx": 180,
@@ -1978,7 +1978,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "표시 형식 — D2:D6",
-  "secs": 12.4
+  "secs": 14.5
  },
  {
   "idx": 181,
@@ -1989,7 +1989,7 @@
   "card": true,
   "action": "excel_live.set_number_format",
   "detail": "표시 형식 — D2:D6",
-  "secs": 14.1
+  "secs": 16.0
  },
  {
   "idx": 182,
@@ -2000,7 +2000,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "표시 형식 — D2:D6",
-  "secs": 12.9
+  "secs": 14.8
  },
  {
   "idx": 183,
@@ -2011,7 +2011,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "표시 형식 — D2:D6",
-  "secs": 12.7
+  "secs": 14.5
  },
  {
   "idx": 184,
@@ -2022,7 +2022,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "표시 형식 — D2:D6",
-  "secs": 12.6
+  "secs": 14.5
  },
  {
   "idx": 185,
@@ -2033,7 +2033,7 @@
   "card": false,
   "action": "excel_live.apply_data_bar",
   "detail": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B6",
-  "secs": 12.7
+  "secs": 14.6
  },
  {
   "idx": 186,
@@ -2044,7 +2044,7 @@
   "card": true,
   "action": "excel_live.apply_data_bar",
   "detail": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — I2:I181",
-  "secs": 16.4
+  "secs": 18.5
  },
  {
   "idx": 187,
@@ -2055,7 +2055,7 @@
   "card": false,
   "action": "excel_live.apply_data_bar",
   "detail": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B6",
-  "secs": 12.6
+  "secs": 14.5
  },
  {
   "idx": 188,
@@ -2066,7 +2066,7 @@
   "card": true,
   "action": "excel_live.apply_data_bar",
   "detail": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B181",
-  "secs": 16.2
+  "secs": 18.2
  },
  {
   "idx": 189,
@@ -2077,7 +2077,7 @@
   "card": true,
   "action": "excel_live.apply_data_bar",
   "detail": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B6",
-  "secs": 15.9
+  "secs": 17.8
  },
  {
   "idx": 190,
@@ -2088,7 +2088,7 @@
   "card": false,
   "action": "excel_live.apply_data_bar",
   "detail": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B6",
-  "secs": 12.6
+  "secs": 14.5
  },
  {
   "idx": 191,
@@ -2099,7 +2099,7 @@
   "card": false,
   "action": "excel_live.apply_data_bar",
   "detail": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B6",
-  "secs": 12.5
+  "secs": 14.4
  },
  {
   "idx": 192,
@@ -2110,95 +2110,95 @@
   "card": false,
   "action": "excel_live.apply_data_bar",
   "detail": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B6",
-  "secs": 12.3
+  "secs": 14.4
  },
  {
   "idx": 193,
   "task": "autofit",
   "text": "열 너비 내용에 맞게 자동으로 맞춰",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.autofit_columns",
   "detail": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F6",
-  "secs": 12.4
+  "secs": 15.8
  },
  {
   "idx": 194,
   "task": "autofit",
   "text": "열너비 맞춰",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.autofit_columns",
   "detail": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F6",
-  "secs": 12.4
+  "secs": 15.7
  },
  {
   "idx": 195,
   "task": "autofit",
   "text": "자동 맞춤 해줘 열 너비",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.autofit_columns",
   "detail": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F6",
-  "secs": 12.4
+  "secs": 15.7
  },
  {
   "idx": 196,
   "task": "autofit",
   "text": "여기 열 폭 글자 길이에 맞게 맞춰봐",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.autofit_columns",
   "detail": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F6",
-  "secs": 12.4
+  "secs": 15.7
  },
  {
   "idx": 197,
   "task": "autofit",
   "text": "열 너비 내용에 맏게 자동 조졍",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.autofit_columns",
   "detail": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F6",
-  "secs": 12.3
+  "secs": 15.5
  },
  {
   "idx": 198,
   "task": "autofit",
   "text": "컬럼 폭 자동으로 마춰줘 빨ㄹ리",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.autofit_columns",
   "detail": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F6",
-  "secs": 12.4
+  "secs": 15.7
  },
  {
   "idx": 199,
   "task": "autofit",
   "text": "아 그리고 열 너비 안 잘리게 자동 맞춤",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.autofit_columns",
   "detail": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F6",
-  "secs": 12.6
+  "secs": 15.7
  },
  {
   "idx": 200,
   "task": "autofit",
   "text": "ㅇㅇ 열 폭 자동 맞춤",
   "persona": "A_팀장",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.autofit_columns",
   "detail": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F6",
-  "secs": 13.1
+  "secs": 15.6
  },
  {
   "idx": 201,
@@ -2297,7 +2297,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 59.5
+  "secs": 70.8
  },
  {
   "idx": 210,
@@ -2308,7 +2308,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 60.1
+  "secs": 71.3
  },
  {
   "idx": 211,
@@ -2319,7 +2319,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 60.7
+  "secs": 70.9
  },
  {
   "idx": 212,
@@ -2330,7 +2330,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 60.3
+  "secs": 70.4
  },
  {
   "idx": 213,
@@ -2341,7 +2341,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 59.9
+  "secs": 69.9
  },
  {
   "idx": 214,
@@ -2352,7 +2352,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 59.6
+  "secs": 70.7
  },
  {
   "idx": 215,
@@ -2363,7 +2363,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 59.8
+  "secs": 71.2
  },
  {
   "idx": 216,
@@ -2374,7 +2374,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 60.0
+  "secs": 71.2
  },
  {
   "idx": 217,
@@ -2385,7 +2385,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B8 · 수식 1칸\n2. 수식 적용 — C8 · 수식 1칸\n3. 수식 적용 — D8 · 수식 1칸\n4. 수식 적용 — E8 · 수식 1칸\n5. 수식 적용 — F8 · 수식 1칸\n6. 값 입력 — A8 · 값 1개 기록",
-  "secs": 60.3
+  "secs": 70.5
  },
  {
   "idx": 218,
@@ -2396,7 +2396,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B8 · 수식 1칸\n2. 수식 적용 — C8 · 수식 1칸\n3. 수식 적용 — D8 · 수식 1칸\n4. 수식 적용 — E8 · 수식 1칸\n5. 수식 적용 — F8 · 수식 1칸\n6. 값 입력 — A8 · 값 1개 기록",
-  "secs": 60.4
+  "secs": 70.4
  },
  {
   "idx": 219,
@@ -2407,7 +2407,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B8 · 수식 1칸\n2. 수식 적용 — C8 · 수식 1칸\n3. 수식 적용 — D8 · 수식 1칸\n4. 수식 적용 — E8 · 수식 1칸\n5. 수식 적용 — F8 · 수식 1칸\n6. 값 입력 — A8 · 값 1개 기록",
-  "secs": 59.9
+  "secs": 70.5
  },
  {
   "idx": 220,
@@ -2418,7 +2418,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B8 · 수식 1칸\n2. 수식 적용 — C8 · 수식 1칸\n3. 수식 적용 — D8 · 수식 1칸\n4. 수식 적용 — E8 · 수식 1칸\n5. 수식 적용 — F8 · 수식 1칸\n6. 값 입력 — A8 · 값 1개 기록",
-  "secs": 59.9
+  "secs": 71.1
  },
  {
   "idx": 221,
@@ -2429,7 +2429,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B8 · 수식 1칸\n2. 수식 적용 — C8 · 수식 1칸\n3. 수식 적용 — D8 · 수식 1칸\n4. 수식 적용 — E8 · 수식 1칸\n5. 수식 적용 — F8 · 수식 1칸\n6. 값 입력 — A8 · 값 1개 기록",
-  "secs": 59.9
+  "secs": 71.2
  },
  {
   "idx": 222,
@@ -2440,7 +2440,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B8 · 수식 1칸\n2. 수식 적용 — C8 · 수식 1칸\n3. 수식 적용 — D8 · 수식 1칸\n4. 수식 적용 — E8 · 수식 1칸\n5. 수식 적용 — F8 · 수식 1칸\n6. 값 입력 — A8 · 값 1개 기록",
-  "secs": 60.0
+  "secs": 70.9
  },
  {
   "idx": 223,
@@ -2451,7 +2451,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B8 · 수식 1칸\n2. 수식 적용 — C8 · 수식 1칸\n3. 수식 적용 — D8 · 수식 1칸\n4. 수식 적용 — E8 · 수식 1칸\n5. 수식 적용 — F8 · 수식 1칸\n6. 값 입력 — A8 · 값 1개 기록",
-  "secs": 60.5
+  "secs": 70.2
  },
  {
   "idx": 224,
@@ -2462,29 +2462,29 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B8 · 수식 1칸\n2. 수식 적용 — C8 · 수식 1칸\n3. 수식 적용 — D8 · 수식 1칸\n4. 수식 적용 — E8 · 수식 1칸\n5. 수식 적용 — F8 · 수식 1칸\n6. 값 입력 — A8 · 값 1개 기록",
-  "secs": 60.3
+  "secs": 70.3
  },
  {
   "idx": 225,
   "task": "header_navy",
   "text": "표 첫 줄 헤더를 남색 배경에 흰색 글씨, bold로 해 주실 수 있을까요?",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "WRONG",
+  "card": true,
   "action": "excel_live.set_font",
-  "detail": "1. 배경색 변경 — A1:F1 · 6개 셀\n2. 글자 서식 — A1:F1 · 6개 셀",
-  "secs": 15.0
+  "detail": "A1 채움=None",
+  "secs": 16.3
  },
  {
   "idx": 226,
   "task": "header_navy",
   "text": "머리글 행 남색 배경, 흰 글씨, 굵게 부탁드려요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.set_font",
-  "detail": "1. 배경색 변경 — A1:F1 · 6개 셀\n2. 글자 서식 — A1:F1 · 6개 셀",
-  "secs": 15.0
+  "outcome": "WRONG",
+  "card": true,
+  "action": "excel_live.fill_range",
+  "detail": "굵게를 요청했는데 bold=False",
+  "secs": 16.0
  },
  {
   "idx": 227,
@@ -2495,29 +2495,29 @@
   "card": false,
   "action": "excel_live.set_font",
   "detail": "1. 배경색 변경 — A1:F1 · 6개 셀\n2. 글자 서식 — A1:F1 · 6개 셀",
-  "secs": 15.1
+  "secs": 18.4
  },
  {
   "idx": 228,
   "task": "header_navy",
   "text": "header 행을 navy 배경으로 하고 글자는 흰색 bold로 바꿔 주세요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.set_font",
-  "detail": "1. 배경색 변경 — A1:F1 · 6개 셀\n2. 글자 서식 — A1:F1 · 6개 셀",
-  "secs": 15.1
+  "outcome": "WRONG",
+  "card": true,
+  "action": "excel_live.fill_range",
+  "detail": "굵게를 요청했는데 bold=False",
+  "secs": 15.9
  },
  {
   "idx": 229,
   "task": "header_navy",
   "text": "표 맨 윗줄 제목 행을 남색으로 칠하고 글씨는 흰색 굵게 해 주시면 감사하겠습니다.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.set_font",
-  "detail": "1. 배경색 변경 — A1:F1 · 6개 셀\n2. 글자 서식 — A1:F1 · 6개 셀",
-  "secs": 14.9
+  "outcome": "WRONG",
+  "card": true,
+  "action": "excel_live.fill_range",
+  "detail": "굵게를 요청했는데 bold=False",
+  "secs": 16.1
  },
  {
   "idx": 230,
@@ -2528,29 +2528,29 @@
   "card": false,
   "action": "excel_live.set_font",
   "detail": "1. 배경색 변경 — A1:F1 · 6개 셀\n2. 글자 서식 — A1:F1 · 6개 셀",
-  "secs": 14.9
+  "secs": 18.9
  },
  {
   "idx": 231,
   "task": "header_navy",
   "text": "머리글 줄 남색 배경에 흰 글씨 굵게로 해도 될까요?",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.set_font",
-  "detail": "1. 배경색 변경 — A1:F1 · 6개 셀\n2. 글자 서식 — A1:F1 · 6개 셀",
-  "secs": 15.1
+  "outcome": "WRONG",
+  "card": true,
+  "action": "excel_live.fill_range",
+  "detail": "굵게를 요청했는데 bold=False",
+  "secs": 15.7
  },
  {
   "idx": 232,
   "task": "header_navy",
   "text": "표 첫 줄을 남색 배경에 흰색 굵은 글시로 바꿔 주세요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.set_font",
-  "detail": "1. 배경색 변경 — A1:F1 · 6개 셀\n2. 글자 서식 — A1:F1 · 6개 셀",
-  "secs": 15.1
+  "outcome": "WRONG",
+  "card": true,
+  "action": "excel_live.fill_range",
+  "detail": "굵게를 요청했는데 bold=False",
+  "secs": 15.8
  },
  {
   "idx": 233,
@@ -2561,7 +2561,7 @@
   "card": false,
   "action": "excel_live.apply_border",
   "detail": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 12.5
+  "secs": 15.7
  },
  {
   "idx": 234,
@@ -2572,7 +2572,7 @@
   "card": false,
   "action": "excel_live.apply_border",
   "detail": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 12.5
+  "secs": 15.7
  },
  {
   "idx": 235,
@@ -2583,7 +2583,7 @@
   "card": true,
   "action": "excel_live.apply_border",
   "detail": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 21.8
+  "secs": 20.8
  },
  {
   "idx": 236,
@@ -2594,7 +2594,7 @@
   "card": false,
   "action": "excel_live.apply_border",
   "detail": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 12.5
+  "secs": 15.6
  },
  {
   "idx": 237,
@@ -2605,7 +2605,7 @@
   "card": false,
   "action": "excel_live.apply_border",
   "detail": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 12.4
+  "secs": 15.6
  },
  {
   "idx": 238,
@@ -2616,7 +2616,7 @@
   "card": false,
   "action": "excel_live.apply_border",
   "detail": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 12.5
+  "secs": 15.8
  },
  {
   "idx": 239,
@@ -2627,7 +2627,7 @@
   "card": true,
   "action": "excel_live.apply_border",
   "detail": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 15.8
+  "secs": 17.6
  },
  {
   "idx": 240,
@@ -2638,7 +2638,7 @@
   "card": false,
   "action": "excel_live.apply_border",
   "detail": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 12.8
+  "secs": 15.5
  },
  {
   "idx": 241,
@@ -2649,7 +2649,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "1. 표시 형식 — B2:B6\n2. 표시 형식 — C2:C6",
-  "secs": 15.3
+  "secs": 17.3
  },
  {
   "idx": 242,
@@ -2660,7 +2660,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "1. 표시 형식 — B2:B6\n2. 표시 형식 — C2:C6",
-  "secs": 15.1
+  "secs": 17.2
  },
  {
   "idx": 243,
@@ -2671,7 +2671,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "1. 표시 형식 — B2:B6\n2. 표시 형식 — C2:C6",
-  "secs": 15.3
+  "secs": 17.3
  },
  {
   "idx": 244,
@@ -2682,7 +2682,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "1. 표시 형식 — B2:B6\n2. 표시 형식 — C2:C6",
-  "secs": 15.3
+  "secs": 17.9
  },
  {
   "idx": 245,
@@ -2693,7 +2693,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "1. 표시 형식 — B2:B6\n2. 표시 형식 — C2:C6",
-  "secs": 15.3
+  "secs": 17.3
  },
  {
   "idx": 246,
@@ -2704,7 +2704,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "1. 표시 형식 — B2:B6\n2. 표시 형식 — C2:C6",
-  "secs": 15.1
+  "secs": 17.4
  },
  {
   "idx": 247,
@@ -2715,7 +2715,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "1. 표시 형식 — B2:B6\n2. 표시 형식 — C2:C6",
-  "secs": 15.2
+  "secs": 17.5
  },
  {
   "idx": 248,
@@ -2726,7 +2726,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "1. 표시 형식 — B2:B6\n2. 표시 형식 — C2:C6",
-  "secs": 15.2
+  "secs": 17.3
  },
  {
   "idx": 249,
@@ -2737,7 +2737,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F6",
-  "secs": 21.3
+  "secs": 24.5
  },
  {
   "idx": 250,
@@ -2748,7 +2748,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F6",
-  "secs": 21.1
+  "secs": 24.7
  },
  {
   "idx": 251,
@@ -2759,7 +2759,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F6",
-  "secs": 24.7
+  "secs": 28.5
  },
  {
   "idx": 252,
@@ -2770,7 +2770,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F6",
-  "secs": 21.0
+  "secs": 24.4
  },
  {
   "idx": 253,
@@ -2781,7 +2781,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F6",
-  "secs": 21.2
+  "secs": 24.2
  },
  {
   "idx": 254,
@@ -2792,7 +2792,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F6",
-  "secs": 21.3
+  "secs": 24.3
  },
  {
   "idx": 255,
@@ -2803,7 +2803,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F6",
-  "secs": 22.1
+  "secs": 25.4
  },
  {
   "idx": 256,
@@ -2814,7 +2814,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F6",
-  "secs": 21.3
+  "secs": 24.1
  },
  {
   "idx": 257,
@@ -2825,7 +2825,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F7",
-  "secs": 21.3
+  "secs": 24.2
  },
  {
   "idx": 258,
@@ -2836,7 +2836,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F7",
-  "secs": 21.0
+  "secs": 24.3
  },
  {
   "idx": 259,
@@ -2847,7 +2847,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F7",
-  "secs": 24.2
+  "secs": 27.2
  },
  {
   "idx": 260,
@@ -2858,7 +2858,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F7",
-  "secs": 21.6
+  "secs": 24.3
  },
  {
   "idx": 261,
@@ -2869,7 +2869,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F7",
-  "secs": 21.5
+  "secs": 24.7
  },
  {
   "idx": 262,
@@ -2880,7 +2880,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F7",
-  "secs": 22.5
+  "secs": 25.4
  },
  {
   "idx": 263,
@@ -2889,9 +2889,9 @@
   "persona": "B_신입",
   "outcome": "PASS_CARD",
   "card": true,
-  "action": "excel_live.sort_rows",
-  "detail": "엑셀 변경 작업을 실행합니다. — A1:F7",
-  "secs": 25.7
+  "action": "excel_live.sort_range",
+  "detail": "정렬 — A1:F7",
+  "secs": 27.2
  },
  {
   "idx": 264,
@@ -2902,40 +2902,40 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F7",
-  "secs": 21.5
+  "secs": 24.9
  },
  {
   "idx": 265,
   "task": "new_sheet",
   "text": "'요약'이라는 이름으로 새 시트 하나 만들어 주실 수 있을까요?",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.create_sheet",
   "detail": "엑셀 변경 작업을 실행합니다. — 요약 시트",
-  "secs": 5.1
+  "secs": 13.0
  },
  {
   "idx": 266,
   "task": "new_sheet",
   "text": "요약 sheet 하나 새로 추가해 주세요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.create_sheet",
   "detail": "엑셀 변경 작업을 실행합니다. — 요약 시트",
-  "secs": 5.1
+  "secs": 13.1
  },
  {
   "idx": 267,
   "task": "new_sheet",
   "text": "보고서 앞쪽에 요약 페이지가 필요하다고 해서요, 요약이라는 이름의 새 시트를 만들어 주세요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.create_sheet",
   "detail": "엑셀 변경 작업을 실행합니다. — 요약 시트",
-  "secs": 5.1
+  "secs": 12.9
  },
  {
   "idx": 268,
@@ -2946,7 +2946,7 @@
   "card": false,
   "action": "excel_live.create_sheet",
   "detail": "엑셀 변경 작업을 실행합니다. — 요약 시트",
-  "secs": 5.1
+  "secs": 7.0
  },
  {
   "idx": 269,
@@ -2957,7 +2957,7 @@
   "card": true,
   "action": "excel_live.create_sheet",
   "detail": "엑셀 변경 작업을 실행합니다. — 요약 시트",
-  "secs": 11.2
+  "secs": 12.9
  },
  {
   "idx": 270,
@@ -2968,29 +2968,29 @@
   "card": false,
   "action": "excel_live.create_sheet",
   "detail": "엑셀 변경 작업을 실행합니다. — 요약 시트",
-  "secs": 5.0
+  "secs": 7.1
  },
  {
   "idx": 271,
   "task": "new_sheet",
   "text": "요약이라는 시트 새로 만들어도 될까요?",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.create_sheet",
   "detail": "엑셀 변경 작업을 실행합니다. — 요약 시트",
-  "secs": 5.0
+  "secs": 12.8
  },
  {
   "idx": 272,
   "task": "new_sheet",
   "text": "요약이라는 이름의 새 싯트 하나 만들어 주세요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.create_sheet",
   "detail": "엑셀 변경 작업을 실행합니다. — 요약 시트",
-  "secs": 5.0
+  "secs": 12.7
  },
  {
   "idx": 273,
@@ -3001,7 +3001,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — H1 · 값 1개 기록",
-  "secs": 17.5
+  "secs": 20.1
  },
  {
   "idx": 274,
@@ -3012,7 +3012,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — H1 · 값 1개 기록",
-  "secs": 17.4
+  "secs": 20.1
  },
  {
   "idx": 275,
@@ -3023,7 +3023,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — H1 · 값 1개 기록",
-  "secs": 17.3
+  "secs": 20.1
  },
  {
   "idx": 276,
@@ -3034,7 +3034,7 @@
   "card": true,
   "action": "excel_live.write_range",
   "detail": "값 입력 — H1 · 값 1개 기록",
-  "secs": 18.9
+  "secs": 21.3
  },
  {
   "idx": 277,
@@ -3045,7 +3045,7 @@
   "card": true,
   "action": "excel_live.write_range",
   "detail": "값 입력 — H1 · 값 1개 기록",
-  "secs": 19.1
+  "secs": 21.4
  },
  {
   "idx": 278,
@@ -3056,7 +3056,7 @@
   "card": false,
   "action": "excel_live.clarify",
   "detail": "H1=None",
-  "secs": 5.0
+  "secs": 5.7
  },
  {
   "idx": 279,
@@ -3067,7 +3067,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — H1 · 값 1개 기록",
-  "secs": 17.4
+  "secs": 20.1
  },
  {
   "idx": 280,
@@ -3078,7 +3078,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — H1 · 값 1개 기록",
-  "secs": 17.4
+  "secs": 20.0
  },
  {
   "idx": 281,
@@ -3089,7 +3089,7 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — H1:M1",
-  "secs": 14.9
+  "secs": 18.5
  },
  {
   "idx": 282,
@@ -3100,7 +3100,7 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — H1:M1",
-  "secs": 14.8
+  "secs": 18.8
  },
  {
   "idx": 283,
@@ -3111,18 +3111,18 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — H1:M1",
-  "secs": 15.1
+  "secs": 18.9
  },
  {
   "idx": 284,
   "task": "merge_title",
   "text": "H1~M1 셀 합쳐 주세요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — H1:M1",
-  "secs": 15.5
+  "secs": 18.9
  },
  {
   "idx": 285,
@@ -3133,18 +3133,18 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — H1:M1",
-  "secs": 15.5
+  "secs": 18.7
  },
  {
   "idx": 286,
   "task": "merge_title",
   "text": "대시보드 제목이 길어서 한 셀에 다 안 보이더라고요, H1부터 M1까지를 하나의 셀로 병합해 주시면 감사하겠습니다.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — H1:M1",
-  "secs": 15.2
+  "secs": 19.1
  },
  {
   "idx": 287,
@@ -3155,7 +3155,7 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — H1:M1",
-  "secs": 15.1
+  "secs": 18.9
  },
  {
   "idx": 288,
@@ -3166,84 +3166,84 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — H1:M1",
-  "secs": 15.3
+  "secs": 18.9
  },
  {
   "idx": 289,
   "task": "freeze_top",
   "text": "첫 줄 머리글이 스크롤해도 계속 보이게 고정해 주실 수 있을까요?",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.freeze_panes",
   "detail": "머리글 행/열을 고정합니다.",
-  "secs": 12.8
+  "secs": 15.7
  },
  {
   "idx": 290,
   "task": "freeze_top",
   "text": "맨 윗줄 틀 고정 부탁드려요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.freeze_panes",
   "detail": "머리글 행/열을 고정합니다.",
-  "secs": 12.6
+  "secs": 15.6
  },
  {
   "idx": 291,
   "task": "freeze_top",
   "text": "데이터가 길어서 아래로 내리면 머리글이 안 보이더라고요, 첫 줄은 스크롤해도 항상 보이게 고정해 주세요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.freeze_panes",
   "detail": "머리글 행/열을 고정합니다.",
-  "secs": 12.6
+  "secs": 15.6
  },
  {
   "idx": 292,
   "task": "freeze_top",
   "text": "첫 번째 행 freeze 해 주세요, 스크롤 내려도 헤더 보이게요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.freeze_panes",
   "detail": "머리글 행/열을 고정합니다.",
-  "secs": 12.6
+  "secs": 15.5
  },
  {
   "idx": 293,
   "task": "freeze_top",
   "text": "top row 고정 부탁드려요, freeze panes로요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.freeze_panes",
   "detail": "머리글 행/열을 고정합니다.",
-  "secs": 12.6
+  "secs": 15.7
  },
  {
   "idx": 294,
   "task": "freeze_top",
   "text": "행이 많아서 내리다 보면 어느 열이 뭔지 헷갈려서요, 머리글 줄을 고정해서 스크롤해도 보이게 해 주시면 감사하겠습니다.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.freeze_panes",
   "detail": "머리글 행/열을 고정합니다.",
-  "secs": 12.6
+  "secs": 15.5
  },
  {
   "idx": 295,
   "task": "freeze_top",
   "text": "첫 줄 틀 고정 해도 될까요?",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.freeze_panes",
   "detail": "머리글 행/열을 고정합니다.",
-  "secs": 12.5
+  "secs": 15.6
  },
  {
   "idx": 296,
@@ -3254,7 +3254,7 @@
   "card": true,
   "action": "excel_live.freeze_panes",
   "detail": "머리글 행/열을 고정합니다.",
-  "secs": 18.0
+  "secs": 20.1
  },
  {
   "idx": 297,
@@ -3265,7 +3265,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — D2:D5 · 2개 셀",
-  "secs": 12.5
+  "secs": 14.4
  },
  {
   "idx": 298,
@@ -3276,7 +3276,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — D2:D5 · 2개 셀",
-  "secs": 12.6
+  "secs": 14.3
  },
  {
   "idx": 299,
@@ -3298,7 +3298,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — D2:D5 · 2개 셀",
-  "secs": 12.5
+  "secs": 14.4
  },
  {
   "idx": 301,
@@ -3309,7 +3309,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — D2:D5 · 2개 셀",
-  "secs": 12.4
+  "secs": 14.3
  },
  {
   "idx": 302,
@@ -3320,7 +3320,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — D2:D5 · 2개 셀",
-  "secs": 12.4
+  "secs": 14.3
  },
  {
   "idx": 303,
@@ -3331,7 +3331,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — D2:D5 · 2개 셀",
-  "secs": 12.6
+  "secs": 14.3
  },
  {
   "idx": 304,
@@ -3342,7 +3342,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — D2:D5 · 2개 셀",
-  "secs": 12.6
+  "secs": 14.8
  },
  {
   "idx": 305,
@@ -3353,7 +3353,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — F2:F6 · 1개 셀",
-  "secs": 12.5
+  "secs": 14.6
  },
  {
   "idx": 306,
@@ -3364,7 +3364,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — F2:F6 · 1개 셀",
-  "secs": 12.4
+  "secs": 14.7
  },
  {
   "idx": 307,
@@ -3375,7 +3375,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — F2:F6 · 1개 셀",
-  "secs": 12.5
+  "secs": 14.7
  },
  {
   "idx": 308,
@@ -3386,7 +3386,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — F2:F6 · 1개 셀",
-  "secs": 12.4
+  "secs": 14.5
  },
  {
   "idx": 309,
@@ -3397,7 +3397,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — F2:F6 · 1개 셀",
-  "secs": 12.5
+  "secs": 14.5
  },
  {
   "idx": 310,
@@ -3408,7 +3408,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — F2:F6 · 1개 셀",
-  "secs": 12.4
+  "secs": 14.8
  },
  {
   "idx": 311,
@@ -3419,7 +3419,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — F2:F6 · 1개 셀",
-  "secs": 12.5
+  "secs": 14.6
  },
  {
   "idx": 312,
@@ -3430,7 +3430,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — F2:F6 · 1개 셀",
-  "secs": 12.7
+  "secs": 14.8
  },
  {
   "idx": 313,
@@ -3441,7 +3441,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.8
+  "secs": 16.0
  },
  {
   "idx": 314,
@@ -3452,7 +3452,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.8
+  "secs": 15.8
  },
  {
   "idx": 315,
@@ -3463,7 +3463,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.7
+  "secs": 15.9
  },
  {
   "idx": 316,
@@ -3474,7 +3474,7 @@
   "card": true,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:D9",
-  "secs": 16.2
+  "secs": 18.0
  },
  {
   "idx": 317,
@@ -3485,7 +3485,7 @@
   "card": true,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:B7",
-  "secs": 16.3
+  "secs": 17.9
  },
  {
   "idx": 318,
@@ -3496,7 +3496,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.7
+  "secs": 15.8
  },
  {
   "idx": 319,
@@ -3507,7 +3507,7 @@
   "card": true,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:B7",
-  "secs": 16.3
+  "secs": 18.4
  },
  {
   "idx": 320,
@@ -3518,7 +3518,7 @@
   "card": false,
   "action": "excel_live.chart",
   "detail": "차트 없음",
-  "secs": 3.6
+  "secs": 3.7
  },
  {
   "idx": 321,
@@ -3529,7 +3529,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.7
+  "secs": 15.6
  },
  {
   "idx": 322,
@@ -3540,7 +3540,7 @@
   "card": true,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:B7",
-  "secs": 16.6
+  "secs": 18.6
  },
  {
   "idx": 323,
@@ -3551,7 +3551,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.6
+  "secs": 15.8
  },
  {
   "idx": 324,
@@ -3562,7 +3562,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.5
+  "secs": 15.7
  },
  {
   "idx": 325,
@@ -3573,7 +3573,7 @@
   "card": true,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:B7",
-  "secs": 16.4
+  "secs": 18.5
  },
  {
   "idx": 326,
@@ -3584,7 +3584,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.5
+  "secs": 15.6
  },
  {
   "idx": 327,
@@ -3595,7 +3595,7 @@
   "card": true,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:B7",
-  "secs": 16.5
+  "secs": 18.7
  },
  {
   "idx": 328,
@@ -3606,51 +3606,51 @@
   "card": false,
   "action": "excel_live.chart",
   "detail": "차트 없음",
-  "secs": 7.7
+  "secs": 8.2
  },
  {
   "idx": 329,
   "task": "delete_charts",
   "text": "시트에 있는 차트 전부 지워 주실 수 있을까요? 데이터는 그대로 두시고요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.delete_charts",
   "detail": "차트 삭제",
-  "secs": 12.7
+  "secs": 15.4
  },
  {
   "idx": 330,
   "task": "delete_charts",
   "text": "chart 다 삭제 부탁드려요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.delete_charts",
   "detail": "차트 삭제",
-  "secs": 12.5
+  "secs": 15.8
  },
  {
   "idx": 331,
   "task": "delete_charts",
   "text": "제가 실수로 그래프를 잘못 만든 것 같아서요, 시트에 있는 차트는 전부 지워 주세요, 표 데이터는 건드리지 마시고요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.delete_charts",
   "detail": "차트 삭제",
-  "secs": 12.6
+  "secs": 15.4
  },
  {
   "idx": 332,
   "task": "delete_charts",
   "text": "차트 전부 삭제해 주세요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.delete_charts",
   "detail": "차트 삭제",
-  "secs": 12.6
+  "secs": 15.6
  },
  {
   "idx": 333,
@@ -3661,40 +3661,40 @@
   "card": true,
   "action": "excel_live.delete_charts",
   "detail": "차트 삭제",
-  "secs": 13.9
+  "secs": 15.9
  },
  {
   "idx": 334,
   "task": "delete_charts",
   "text": "보고서 양식이 바뀌어서 그래프는 안 넣기로 했거든요, 시트에 있는 차트를 모두 지워 주시면 감사하겠습니다.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.delete_charts",
   "detail": "차트 삭제",
-  "secs": 12.4
+  "secs": 16.0
  },
  {
   "idx": 335,
   "task": "delete_charts",
   "text": "차트 다 지워도 될까요? 표는 그대로요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.delete_charts",
   "detail": "차트 삭제",
-  "secs": 12.6
+  "secs": 16.0
  },
  {
   "idx": 336,
   "task": "delete_charts",
   "text": "차트 전부 지워 주세요, 데이터는 그데로 두시고요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.delete_charts",
   "detail": "차트 삭제",
-  "secs": 12.5
+  "secs": 16.0
  },
  {
   "idx": 337,
@@ -3705,18 +3705,18 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "1. 테두리 적용 — A1:F6 · 36개 셀\n2. 배경색 변경 — A1:F6 · 36개 셀\n3. 내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 22.4
+  "secs": 27.4
  },
  {
   "idx": 338,
   "task": "clear_table",
   "text": "이 범위 값 다 clear 해 주세요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "WRONG",
+  "card": true,
   "action": "excel_live.clear_range",
-  "detail": "내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 17.4
+  "detail": "A1='지역'",
+  "secs": 21.6
  },
  {
   "idx": 339,
@@ -3727,7 +3727,7 @@
   "card": false,
   "action": "excel_live.clarify",
   "detail": "A1='지역'",
-  "secs": 5.1
+  "secs": 5.8
  },
  {
   "idx": 340,
@@ -3738,7 +3738,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "1. 테두리 적용 — A1:F6 · 36개 셀\n2. 배경색 변경 — A1:F6 · 36개 셀\n3. 내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 23.2
+  "secs": 27.5
  },
  {
   "idx": 341,
@@ -3749,7 +3749,7 @@
   "card": true,
   "action": "excel_live.create_table",
   "detail": "표 생성 — A1:F6 · 6×6",
-  "secs": 15.2
+  "secs": 17.3
  },
  {
   "idx": 342,
@@ -3760,7 +3760,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "1. 테두리 적용 — A1:F6 · 36개 셀\n2. 배경색 변경 — A1:F6 · 36개 셀\n3. 내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 22.9
+  "secs": 27.3
  },
  {
   "idx": 343,
@@ -3771,7 +3771,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "1. 테두리 적용 — A1:F6 · 36개 셀\n2. 배경색 변경 — A1:F6 · 36개 셀\n3. 내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 23.0
+  "secs": 27.1
  },
  {
   "idx": 344,
@@ -3782,73 +3782,73 @@
   "card": true,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 21.0
+  "secs": 23.6
  },
  {
   "idx": 345,
   "task": "cross_sheet_sum",
   "text": "A2에 지역성과 시트의 주문건수 합계를 가져와 주실 수 있을까요?",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
+  "outcome": "ASK",
   "card": false,
-  "action": "excel_live.set_formula",
-  "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 15.1
+  "action": "excel_live.clarify",
+  "detail": "요약!A2=None",
+  "secs": 10.0
  },
  {
   "idx": 346,
   "task": "cross_sheet_sum",
   "text": "A2 셀에 지역성과 sheet 주문건수 total 넣어 주세요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
+  "outcome": "ASK",
   "card": false,
-  "action": "excel_live.set_formula",
-  "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 15.1
+  "action": "excel_live.clarify",
+  "detail": "요약!A2=None",
+  "secs": 10.1
  },
  {
   "idx": 347,
   "task": "cross_sheet_sum",
   "text": "요약 시트에 전체 주문건수를 보여 줘야 해서요, A2에 지역성과 시트에 있는 주문건수 합계를 수식으로 넣어 주세요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
+  "outcome": "ASK",
   "card": false,
-  "action": "excel_live.set_formula",
-  "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 2.7
+  "action": "excel_live.clarify",
+  "detail": "요약!A2=None",
+  "secs": 4.2
  },
  {
   "idx": 348,
   "task": "cross_sheet_sum",
   "text": "A2에 지역성과 시트 주문건수 합계 부탁드려요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.set_formula",
-  "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 15.0
+  "outcome": "WRONG",
+  "card": true,
+  "action": "excel_live.write_range",
+  "detail": "요약!A2='SUM'",
+  "secs": 24.4
  },
  {
   "idx": 349,
   "task": "cross_sheet_sum",
   "text": "A2에 지역성과 시트 주문건수 열 SUM 값 들어가게 해 주세요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.set_formula",
-  "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 15.1
+  "outcome": "WRONG",
+  "card": true,
+  "action": "excel_live.write_range",
+  "detail": "요약!A2='SUM'",
+  "secs": 24.6
  },
  {
   "idx": 350,
   "task": "cross_sheet_sum",
   "text": "지금 요약 시트에 있는데요, 전체주문건수 아래 A2 칸에 지역성과 시트 주문건수를 다 더한 값이 들어가야 해서요, 수식으로 연결해 주시면 감사하겠습니다.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
+  "outcome": "ASK",
   "card": false,
-  "action": "excel_live.set_formula",
-  "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 15.1
+  "action": "excel_live.clarify",
+  "detail": "요약!A2=None",
+  "secs": 9.8
  },
  {
   "idx": 351,
@@ -3859,18 +3859,18 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 15.1
+  "secs": 18.7
  },
  {
   "idx": 352,
   "task": "cross_sheet_sum",
   "text": "A2에 지역성과 시트의 주문건수 합게 가져와 주세요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
+  "outcome": "ASK",
   "card": false,
-  "action": "excel_live.set_formula",
-  "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 15.0
+  "action": "excel_live.clarify",
+  "detail": "요약!A2=None",
+  "secs": 9.9
  },
  {
   "idx": 353,
@@ -3881,7 +3881,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — A8:B9 · 값 4개 기록",
-  "secs": 17.5
+  "secs": 20.5
  },
  {
   "idx": 354,
@@ -3892,7 +3892,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — A8:B9 · 값 4개 기록",
-  "secs": 17.6
+  "secs": 20.7
  },
  {
   "idx": 355,
@@ -3903,7 +3903,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — A8:B9 · 값 4개 기록",
-  "secs": 17.6
+  "secs": 20.5
  },
  {
   "idx": 356,
@@ -3914,7 +3914,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — A8:B9 · 값 4개 기록",
-  "secs": 17.4
+  "secs": 20.4
  },
  {
   "idx": 357,
@@ -3925,7 +3925,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — A8:B9 · 값 4개 기록",
-  "secs": 17.6
+  "secs": 20.3
  },
  {
   "idx": 358,
@@ -3936,7 +3936,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — A8:B9 · 값 4개 기록",
-  "secs": 17.4
+  "secs": 20.3
  },
  {
   "idx": 359,
@@ -3947,7 +3947,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — A8:B9 · 값 4개 기록",
-  "secs": 17.5
+  "secs": 20.2
  },
  {
   "idx": 360,
@@ -3958,29 +3958,29 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — A8:B9 · 값 4개 기록",
-  "secs": 17.4
+  "secs": 20.2
  },
  {
   "idx": 361,
   "task": "find_replace",
   "text": "표에서 수도권이라는 글자를 전부 서울권으로 바꿔 주실 수 있을까요?",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.find_replace",
   "detail": "찾아 바꾸기 — A1:F6 · 1개 셀 치환",
-  "secs": 18.0
+  "secs": 21.9
  },
  {
   "idx": 362,
   "task": "find_replace",
   "text": "수도권을 서울권으로 replace 부탁드려요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.find_replace",
   "detail": "찾아 바꾸기 — A1:F6 · 1개 셀 치환",
-  "secs": 17.9
+  "secs": 21.6
  },
  {
   "idx": 363,
@@ -3991,18 +3991,18 @@
   "card": true,
   "action": "excel_live.find_replace",
   "detail": "찾아 바꾸기 — A1:F6 · 1개 셀 치환",
-  "secs": 20.6
+  "secs": 21.8
  },
  {
   "idx": 364,
   "task": "find_replace",
   "text": "수도권 → 서울권으로 변경 부탁드려요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.find_replace",
   "detail": "찾아 바꾸기 — A1:F6 · 1개 셀 치환",
-  "secs": 17.9
+  "secs": 21.7
  },
  {
   "idx": 365,
@@ -4013,7 +4013,7 @@
   "card": true,
   "action": "excel_live.find_replace",
   "detail": "찾아 바꾸기 — A1:F6 · 1개 셀 치환",
-  "secs": 19.1
+  "secs": 21.7
  },
  {
   "idx": 366,
@@ -4024,117 +4024,117 @@
   "card": true,
   "action": "excel_live.find_replace",
   "detail": "찾아 바꾸기 — A1:F6 · 1개 셀 치환",
-  "secs": 19.1
+  "secs": 21.6
  },
  {
   "idx": 367,
   "task": "find_replace",
   "text": "수도권을 서울권으로 바꿔도 될까요?",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.find_replace",
   "detail": "찾아 바꾸기 — A1:F6 · 1개 셀 치환",
-  "secs": 17.6
+  "secs": 21.8
  },
  {
   "idx": 368,
   "task": "find_replace",
   "text": "수도권을 서울권으로 바꺼 주세요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.find_replace",
   "detail": "찾아 바꾸기 — A1:F6 · 1개 셀 치환",
-  "secs": 17.8
+  "secs": 22.2
  },
  {
   "idx": 369,
   "task": "rename_sheet",
   "text": "지역성과 시트 이름을 지역별실적으로 바꿔 주실 수 있을까요?",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.rename_sheet",
   "detail": "시트 이름을 변경합니다. — 지역성과 시트",
-  "secs": 0.1
+  "secs": 6.3
  },
  {
   "idx": 370,
   "task": "rename_sheet",
   "text": "지역성과 sheet 이름 지역별실적으로 rename 부탁드려요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.rename_sheet",
   "detail": "시트 이름을 변경합니다. — 지역성과 시트",
-  "secs": 0.1
+  "secs": 3.6
  },
  {
   "idx": 371,
   "task": "rename_sheet",
   "text": "보고서에 들어가는 시트 이름을 맞추라고 하셔서요, 지금 지역성과라고 된 시트 이름을 지역별실적으로 변경해 주세요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
+  "outcome": "ASK",
   "card": false,
-  "action": "excel_live.rename_sheet",
-  "detail": "시트 이름을 변경합니다. — 지역성과 시트",
-  "secs": 0.1
+  "action": "excel_live.clarify",
+  "detail": "시트=['지역성과']",
+  "secs": 1.1
  },
  {
   "idx": 372,
   "task": "rename_sheet",
   "text": "시트명 지역성과를 지역별실적으로 바꿔 주세요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.rename_sheet",
   "detail": "시트 이름을 변경합니다. — 지역성과 시트",
-  "secs": 0.1
+  "secs": 3.6
  },
  {
   "idx": 373,
   "task": "rename_sheet",
   "text": "현재 sheet 이름 지역성과를 지역별실적으로 바꿔 주세요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.rename_sheet",
   "detail": "시트 이름을 변경합니다. — 지역성과 시트",
-  "secs": 0.1
+  "secs": 3.5
  },
  {
   "idx": 374,
   "task": "rename_sheet",
   "text": "다른 파일이랑 이름이 헷갈려서요, 이 시트 이름을 지역성과에서 지역별실적으로 바꿔 주시면 감사하겠습니다.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.rename_sheet",
   "detail": "시트 이름을 변경합니다. — 지역성과 시트",
-  "secs": 0.1
+  "secs": 3.6
  },
  {
   "idx": 375,
   "task": "rename_sheet",
   "text": "지역성과 시트 이름 지역별실적으로 바꿔도 될까요?",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.rename_sheet",
   "detail": "시트 이름을 변경합니다. — 지역성과 시트",
-  "secs": 0.1
+  "secs": 3.6
  },
  {
   "idx": 376,
   "task": "rename_sheet",
   "text": "지역성과 시트 이름을 지역별실적으로 바꾸 주세요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.rename_sheet",
   "detail": "시트 이름을 변경합니다. — 지역성과 시트",
-  "secs": 0.1
+  "secs": 3.5
  },
  {
   "idx": 377,
@@ -4145,7 +4145,7 @@
   "card": true,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — D2 · 수식 1칸",
-  "secs": 23.5
+  "secs": 24.3
  },
  {
   "idx": 378,
@@ -4156,7 +4156,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — D2 · 수식 1칸",
-  "secs": 17.5
+  "secs": 21.7
  },
  {
   "idx": 379,
@@ -4167,7 +4167,7 @@
   "card": true,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — D2 · 수식 1칸",
-  "secs": 21.0
+  "secs": 24.0
  },
  {
   "idx": 380,
@@ -4178,7 +4178,7 @@
   "card": true,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — D2 · 수식 1칸",
-  "secs": 20.7
+  "secs": 23.8
  },
  {
   "idx": 381,
@@ -4189,7 +4189,7 @@
   "card": true,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — D2 · 수식 1칸",
-  "secs": 3.5
+  "secs": 3.6
  },
  {
   "idx": 382,
@@ -4200,7 +4200,7 @@
   "card": true,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — D2 · 수식 1칸",
-  "secs": 23.9
+  "secs": 26.9
  },
  {
   "idx": 383,
@@ -4211,7 +4211,7 @@
   "card": true,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — D2 · 수식 1칸",
-  "secs": 21.0
+  "secs": 23.7
  },
  {
   "idx": 384,
@@ -4222,7 +4222,7 @@
   "card": true,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — D2 · 수식 1칸",
-  "secs": 20.7
+  "secs": 23.8
  },
  {
   "idx": 385,
@@ -4233,7 +4233,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "표시 형식 — D2:D6",
-  "secs": 12.6
+  "secs": 14.4
  },
  {
   "idx": 386,
@@ -4244,7 +4244,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "표시 형식 — D2:D6",
-  "secs": 12.6
+  "secs": 14.4
  },
  {
   "idx": 387,
@@ -4255,7 +4255,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "표시 형식 — D2:D6",
-  "secs": 12.4
+  "secs": 14.4
  },
  {
   "idx": 388,
@@ -4266,7 +4266,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "표시 형식 — D2:D6",
-  "secs": 12.4
+  "secs": 14.6
  },
  {
   "idx": 389,
@@ -4277,7 +4277,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "표시 형식 — D2:D6",
-  "secs": 12.6
+  "secs": 14.4
  },
  {
   "idx": 390,
@@ -4288,7 +4288,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "표시 형식 — D2:D6",
-  "secs": 12.9
+  "secs": 14.5
  },
  {
   "idx": 391,
@@ -4299,7 +4299,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "표시 형식 — D2:D6",
-  "secs": 12.9
+  "secs": 14.4
  },
  {
   "idx": 392,
@@ -4310,7 +4310,7 @@
   "card": true,
   "action": "excel_live.set_number_format",
   "detail": "표시 형식 — D2:D6",
-  "secs": 14.2
+  "secs": 15.8
  },
  {
   "idx": 393,
@@ -4321,7 +4321,7 @@
   "card": false,
   "action": "excel_live.apply_data_bar",
   "detail": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B6",
-  "secs": 12.8
+  "secs": 14.7
  },
  {
   "idx": 394,
@@ -4332,7 +4332,7 @@
   "card": false,
   "action": "excel_live.apply_data_bar",
   "detail": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B6",
-  "secs": 12.8
+  "secs": 14.7
  },
  {
   "idx": 395,
@@ -4343,7 +4343,7 @@
   "card": false,
   "action": "excel_live.apply_data_bar",
   "detail": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B6",
-  "secs": 12.8
+  "secs": 14.9
  },
  {
   "idx": 396,
@@ -4354,7 +4354,7 @@
   "card": false,
   "action": "excel_live.apply_data_bar",
   "detail": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B6",
-  "secs": 12.7
+  "secs": 14.4
  },
  {
   "idx": 397,
@@ -4365,18 +4365,18 @@
   "card": false,
   "action": "excel_live.apply_data_bar",
   "detail": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B6",
-  "secs": 12.7
+  "secs": 14.6
  },
  {
   "idx": 398,
   "task": "data_bar",
   "text": "보고서에서 어느 지역이 주문이 많은지 한눈에 보이면 좋겠다고 해서요, 주문건수 열에 데이터 막대 조건부 서식을 적용해 주시면 감사하겠습니다.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.apply_formula_cf",
-  "detail": "수식 조건부 서식을 적용합니다. — A1:F6",
-  "secs": 12.7
+  "outcome": "PASS_CARD",
+  "card": true,
+  "action": "excel_live.apply_data_bar",
+  "detail": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B6",
+  "secs": 16.0
  },
  {
   "idx": 399,
@@ -4387,7 +4387,7 @@
   "card": false,
   "action": "excel_live.apply_data_bar",
   "detail": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B6",
-  "secs": 12.7
+  "secs": 14.8
  },
  {
   "idx": 400,
@@ -4398,51 +4398,51 @@
   "card": false,
   "action": "excel_live.apply_data_bar",
   "detail": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B6",
-  "secs": 12.7
+  "secs": 14.8
  },
  {
   "idx": 401,
   "task": "autofit",
   "text": "열 너비를 내용에 맞게 자동으로 맞춰 주실 수 있을까요?",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.autofit_columns",
   "detail": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F6",
-  "secs": 12.6
+  "secs": 16.1
  },
  {
   "idx": 402,
   "task": "autofit",
   "text": "열 너비 autofit 부탁드려요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.autofit_columns",
   "detail": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F6",
-  "secs": 12.5
+  "secs": 15.6
  },
  {
   "idx": 403,
   "task": "autofit",
   "text": "글자가 잘려서 ###으로 보이는 칸이 있어서요, 열 너비를 내용에 맞게 자동으로 조정해 주세요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.autofit_columns",
   "detail": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F6",
-  "secs": 12.5
+  "secs": 15.7
  },
  {
   "idx": 404,
   "task": "autofit",
   "text": "열 너비 자동 맞춤 해 주세요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.autofit_columns",
   "detail": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F6",
-  "secs": 12.5
+  "secs": 15.7
  },
  {
   "idx": 405,
@@ -4453,40 +4453,40 @@
   "card": false,
   "action": "excel_live.autofit_columns",
   "detail": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F6",
-  "secs": 12.5
+  "secs": 15.9
  },
  {
   "idx": 406,
   "task": "autofit",
   "text": "인쇄했을 때 내용이 다 보여야 해서요, 모든 열 너비를 내용 길이에 맞게 맞춰 주시면 감사하겠습니다.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.autofit_columns",
   "detail": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F6",
-  "secs": 12.5
+  "secs": 15.7
  },
  {
   "idx": 407,
   "task": "autofit",
   "text": "열 너비 내용에 맞게 맞춰도 될까요?",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.autofit_columns",
   "detail": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F6",
-  "secs": 12.4
+  "secs": 15.8
  },
  {
   "idx": 408,
   "task": "autofit",
   "text": "열 너비 내용에 맞게 자동으로 마춰 주세요.",
   "persona": "B_신입",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.autofit_columns",
   "detail": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F6",
-  "secs": 12.6
+  "secs": 15.7
  },
  {
   "idx": 409,
@@ -4585,7 +4585,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 60.1
+  "secs": 70.5
  },
  {
   "idx": 418,
@@ -4596,7 +4596,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 59.9
+  "secs": 71.3
  },
  {
   "idx": 419,
@@ -4607,7 +4607,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 60.9
+  "secs": 71.8
  },
  {
   "idx": 420,
@@ -4618,7 +4618,7 @@
   "card": false,
   "action": "excel_live.clarify",
   "detail": "B7/F7 SUM 없음",
-  "secs": 11.5
+  "secs": 9.8
  },
  {
   "idx": 421,
@@ -4629,7 +4629,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 61.0
+  "secs": 71.3
  },
  {
   "idx": 422,
@@ -4640,7 +4640,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 60.3
+  "secs": 71.4
  },
  {
   "idx": 423,
@@ -4651,7 +4651,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 60.1
+  "secs": 70.8
  },
  {
   "idx": 424,
@@ -4662,7 +4662,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B7 · 수식 1칸\n2. 수식 적용 — C7 · 수식 1칸\n3. 수식 적용 — D7 · 수식 1칸\n4. 수식 적용 — E7 · 수식 1칸\n5. 수식 적용 — F7 · 수식 1칸\n6. 값 입력 — A7 · 값 1개 기록",
-  "secs": 60.2
+  "secs": 71.4
  },
  {
   "idx": 425,
@@ -4673,7 +4673,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B8 · 수식 1칸\n2. 수식 적용 — C8 · 수식 1칸\n3. 수식 적용 — D8 · 수식 1칸\n4. 수식 적용 — E8 · 수식 1칸\n5. 수식 적용 — F8 · 수식 1칸\n6. 값 입력 — A8 · 값 1개 기록",
-  "secs": 60.4
+  "secs": 71.8
  },
  {
   "idx": 426,
@@ -4684,7 +4684,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B8 · 수식 1칸\n2. 수식 적용 — C8 · 수식 1칸\n3. 수식 적용 — D8 · 수식 1칸\n4. 수식 적용 — E8 · 수식 1칸\n5. 수식 적용 — F8 · 수식 1칸\n6. 값 입력 — A8 · 값 1개 기록",
-  "secs": 60.7
+  "secs": 71.5
  },
  {
   "idx": 427,
@@ -4695,7 +4695,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B8 · 수식 1칸\n2. 수식 적용 — C8 · 수식 1칸\n3. 수식 적용 — D8 · 수식 1칸\n4. 수식 적용 — E8 · 수식 1칸\n5. 수식 적용 — F8 · 수식 1칸\n6. 값 입력 — A8 · 값 1개 기록",
-  "secs": 60.7
+  "secs": 70.9
  },
  {
   "idx": 428,
@@ -4706,7 +4706,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B8 · 수식 1칸\n2. 수식 적용 — C8 · 수식 1칸\n3. 수식 적용 — D8 · 수식 1칸\n4. 수식 적용 — E8 · 수식 1칸\n5. 수식 적용 — F8 · 수식 1칸\n6. 값 입력 — A8 · 값 1개 기록",
-  "secs": 60.2
+  "secs": 71.8
  },
  {
   "idx": 429,
@@ -4717,7 +4717,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B8 · 수식 1칸\n2. 수식 적용 — C8 · 수식 1칸\n3. 수식 적용 — D8 · 수식 1칸\n4. 수식 적용 — E8 · 수식 1칸\n5. 수식 적용 — F8 · 수식 1칸\n6. 값 입력 — A8 · 값 1개 기록",
-  "secs": 60.2
+  "secs": 71.2
  },
  {
   "idx": 430,
@@ -4728,7 +4728,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B8 · 수식 1칸\n2. 수식 적용 — C8 · 수식 1칸\n3. 수식 적용 — D8 · 수식 1칸\n4. 수식 적용 — E8 · 수식 1칸\n5. 수식 적용 — F8 · 수식 1칸\n6. 값 입력 — A8 · 값 1개 기록",
-  "secs": 60.0
+  "secs": 71.9
  },
  {
   "idx": 431,
@@ -4739,7 +4739,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B8 · 수식 1칸\n2. 수식 적용 — C8 · 수식 1칸\n3. 수식 적용 — D8 · 수식 1칸\n4. 수식 적용 — E8 · 수식 1칸\n5. 수식 적용 — F8 · 수식 1칸\n6. 값 입력 — A8 · 값 1개 기록",
-  "secs": 60.2
+  "secs": 71.4
  },
  {
   "idx": 432,
@@ -4750,18 +4750,18 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "1. 수식 적용 — B8 · 수식 1칸\n2. 수식 적용 — C8 · 수식 1칸\n3. 수식 적용 — D8 · 수식 1칸\n4. 수식 적용 — E8 · 수식 1칸\n5. 수식 적용 — F8 · 수식 1칸\n6. 값 입력 — A8 · 값 1개 기록",
-  "secs": 60.7
+  "secs": 70.9
  },
  {
   "idx": 433,
   "task": "header_navy",
   "text": "머리글 행 채우기 색은 남색, 글꼴은 흰색 굵게로 서식 잡아 주세요",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.set_font",
-  "detail": "1. 배경색 변경 — A1:F1 · 6개 셀\n2. 글자 서식 — A1:F1 · 6개 셀",
-  "secs": 15.3
+  "outcome": "WRONG",
+  "card": true,
+  "action": "excel_live.fill_range",
+  "detail": "굵게를 요청했는데 bold=False",
+  "secs": 15.7
  },
  {
   "idx": 434,
@@ -4772,18 +4772,18 @@
   "card": false,
   "action": "excel_live.set_font",
   "detail": "1. 배경색 변경 — A1:F1 · 6개 셀\n2. 글자 서식 — A1:F1 · 6개 셀",
-  "secs": 15.1
+  "secs": 18.9
  },
  {
   "idx": 435,
   "task": "header_navy",
   "text": "표 제일 윗줄 바탕을 남색으로 하고 글자는 하얗고 두껍게 해주세요",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.set_font",
-  "detail": "1. 배경색 변경 — A1:F6 · 36개 셀\n2. 글자 서식 — A1:F6 · 36개 셀",
-  "secs": 15.2
+  "outcome": "WRONG",
+  "card": true,
+  "action": "excel_live.fill_range",
+  "detail": "굵게를 요청했는데 bold=False",
+  "secs": 15.9
  },
  {
   "idx": 436,
@@ -4794,18 +4794,18 @@
   "card": false,
   "action": "excel_live.set_font",
   "detail": "1. 배경색 변경 — A1:F1 · 6개 셀\n2. 글자 서식 — A1:F1 · 6개 셀",
-  "secs": 15.3
+  "secs": 18.8
  },
  {
   "idx": 437,
   "task": "header_navy",
   "text": "여기 첫 줄 남색 배경에 흰색 볼드로",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.set_font",
-  "detail": "1. 배경색 변경 — A1:F1 · 6개 셀\n2. 글자 서식 — A1:F1 · 6개 셀",
-  "secs": 15.1
+  "outcome": "WRONG",
+  "card": true,
+  "action": "excel_live.fill_range",
+  "detail": "굵게를 요청했는데 bold=False",
+  "secs": 15.8
  },
  {
   "idx": 438,
@@ -4816,18 +4816,18 @@
   "card": false,
   "action": "excel_live.set_font",
   "detail": "1. 배경색 변경 — A1:F1 · 6개 셀\n2. 글자 서식 — A1:F1 · 6개 셀",
-  "secs": 15.1
+  "secs": 18.8
  },
  {
   "idx": 439,
   "task": "header_navy",
   "text": "머리글 행 남색 배겅에 흰글씨 굵게 해주세요",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.set_font",
-  "detail": "1. 배경색 변경 — A1:F1 · 6개 셀\n2. 글자 서식 — A1:F1 · 6개 셀",
-  "secs": 15.0
+  "outcome": "WRONG",
+  "card": true,
+  "action": "excel_live.fill_range",
+  "detail": "굵게를 요청했는데 bold=False",
+  "secs": 15.9
  },
  {
   "idx": 440,
@@ -4838,7 +4838,7 @@
   "card": false,
   "action": "excel_live.set_font",
   "detail": "1. 배경색 변경 — A1:F1 · 6개 셀\n2. 글자 서식 — A1:F1 · 6개 셀",
-  "secs": 15.1
+  "secs": 19.0
  },
  {
   "idx": 441,
@@ -4849,7 +4849,7 @@
   "card": false,
   "action": "excel_live.apply_border",
   "detail": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 12.5
+  "secs": 16.1
  },
  {
   "idx": 442,
@@ -4860,7 +4860,7 @@
   "card": false,
   "action": "excel_live.apply_border",
   "detail": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 12.4
+  "secs": 15.6
  },
  {
   "idx": 443,
@@ -4871,7 +4871,7 @@
   "card": true,
   "action": "excel_live.apply_border",
   "detail": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 20.3
+  "secs": 20.5
  },
  {
   "idx": 444,
@@ -4882,7 +4882,7 @@
   "card": true,
   "action": "excel_live.apply_border",
   "detail": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 16.0
+  "secs": 18.1
  },
  {
   "idx": 445,
@@ -4893,7 +4893,7 @@
   "card": false,
   "action": "excel_live.apply_border",
   "detail": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 12.5
+  "secs": 15.9
  },
  {
   "idx": 446,
@@ -4904,7 +4904,7 @@
   "card": false,
   "action": "excel_live.apply_border",
   "detail": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 12.5
+  "secs": 16.1
  },
  {
   "idx": 447,
@@ -4915,7 +4915,7 @@
   "card": false,
   "action": "excel_live.apply_border",
   "detail": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 12.5
+  "secs": 15.7
  },
  {
   "idx": 448,
@@ -4926,7 +4926,7 @@
   "card": false,
   "action": "excel_live.apply_border",
   "detail": "테두리 적용 — A1:F6 · 36개 셀",
-  "secs": 12.4
+  "secs": 15.8
  },
  {
   "idx": 449,
@@ -4937,7 +4937,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "1. 표시 형식 — B2:B6\n2. 표시 형식 — C2:C6",
-  "secs": 15.0
+  "secs": 17.4
  },
  {
   "idx": 450,
@@ -4948,7 +4948,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "1. 표시 형식 — B2:B6\n2. 표시 형식 — C2:C6",
-  "secs": 15.0
+  "secs": 17.4
  },
  {
   "idx": 451,
@@ -4959,7 +4959,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "1. 표시 형식 — B2:B6\n2. 표시 형식 — C2:C6",
-  "secs": 15.0
+  "secs": 17.4
  },
  {
   "idx": 452,
@@ -4970,7 +4970,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "1. 표시 형식 — B2:B6\n2. 표시 형식 — C2:C6",
-  "secs": 15.5
+  "secs": 17.4
  },
  {
   "idx": 453,
@@ -4981,7 +4981,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "1. 표시 형식 — B2:B6\n2. 표시 형식 — C2:C6",
-  "secs": 15.4
+  "secs": 17.5
  },
  {
   "idx": 454,
@@ -4992,7 +4992,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "1. 표시 형식 — B2:B6\n2. 표시 형식 — C2:C6",
-  "secs": 15.3
+  "secs": 17.5
  },
  {
   "idx": 455,
@@ -5003,7 +5003,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "1. 표시 형식 — B2:B6\n2. 표시 형식 — C2:C6",
-  "secs": 15.3
+  "secs": 17.4
  },
  {
   "idx": 456,
@@ -5014,7 +5014,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "1. 표시 형식 — B2:B6\n2. 표시 형식 — C2:C6",
-  "secs": 15.4
+  "secs": 17.5
  },
  {
   "idx": 457,
@@ -5025,7 +5025,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F6",
-  "secs": 21.7
+  "secs": 24.4
  },
  {
   "idx": 458,
@@ -5036,7 +5036,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F6",
-  "secs": 21.5
+  "secs": 24.6
  },
  {
   "idx": 459,
@@ -5047,7 +5047,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F6",
-  "secs": 24.1
+  "secs": 27.6
  },
  {
   "idx": 460,
@@ -5058,7 +5058,7 @@
   "card": true,
   "action": "excel_live.sort_rows",
   "detail": "엑셀 변경 작업을 실행합니다. — A1:F6",
-  "secs": 20.8
+  "secs": 24.2
  },
  {
   "idx": 461,
@@ -5069,7 +5069,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F6",
-  "secs": 21.2
+  "secs": 24.5
  },
  {
   "idx": 462,
@@ -5080,7 +5080,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F6",
-  "secs": 21.3
+  "secs": 24.9
  },
  {
   "idx": 463,
@@ -5091,7 +5091,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F6",
-  "secs": 21.1
+  "secs": 24.8
  },
  {
   "idx": 464,
@@ -5102,7 +5102,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F6",
-  "secs": 21.3
+  "secs": 24.8
  },
  {
   "idx": 465,
@@ -5113,7 +5113,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F7",
-  "secs": 21.5
+  "secs": 24.5
  },
  {
   "idx": 466,
@@ -5124,7 +5124,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F7",
-  "secs": 21.6
+  "secs": 24.8
  },
  {
   "idx": 467,
@@ -5135,7 +5135,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F7",
-  "secs": 23.9
+  "secs": 27.7
  },
  {
   "idx": 468,
@@ -5146,7 +5146,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F7",
-  "secs": 21.3
+  "secs": 24.5
  },
  {
   "idx": 469,
@@ -5157,7 +5157,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F7",
-  "secs": 21.3
+  "secs": 24.6
  },
  {
   "idx": 470,
@@ -5168,7 +5168,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F7",
-  "secs": 21.8
+  "secs": 24.5
  },
  {
   "idx": 471,
@@ -5179,7 +5179,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F7",
-  "secs": 21.8
+  "secs": 24.4
  },
  {
   "idx": 472,
@@ -5190,95 +5190,95 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:F7",
-  "secs": 21.8
+  "secs": 24.5
  },
  {
   "idx": 473,
   "task": "new_sheet",
   "text": "'요약'이라는 이름으로 새 워크시트 추가해 주세요",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.create_sheet",
   "detail": "엑셀 변경 작업을 실행합니다. — 요약 시트",
-  "secs": 5.1
+  "secs": 12.8
  },
  {
   "idx": 474,
   "task": "new_sheet",
   "text": "시트 탭 하나 새로 만들고 이름은 요약으로 해줘",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.create_sheet",
   "detail": "엑셀 변경 작업을 실행합니다. — 요약 시트",
-  "secs": 5.1
+  "secs": 12.9
  },
  {
   "idx": 475,
   "task": "new_sheet",
   "text": "요약이라는 탭 하나 새로 파 주세요",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.create_sheet",
   "detail": "엑셀 변경 작업을 실행합니다. — 요약 시트",
-  "secs": 5.1
+  "secs": 13.2
  },
  {
   "idx": 476,
   "task": "new_sheet",
   "text": "새 시트 하나 추가해서 요약이라고 불러줘",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.create_sheet",
   "detail": "엑셀 변경 작업을 실행합니다. — 요약 시트",
-  "secs": 5.2
+  "secs": 12.9
  },
  {
   "idx": 477,
   "task": "new_sheet",
   "text": "요약 시트 하나 추가",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "WRONG",
+  "card": true,
   "action": "excel_live.create_sheet",
-  "detail": "엑셀 변경 작업을 실행합니다. — 요약 시트",
-  "secs": 5.2
+  "detail": "시트=['지역성과', '요약 시트']",
+  "secs": 13.2
  },
  {
   "idx": 478,
   "task": "new_sheet",
   "text": "새로 시트 만들어줘, 이름은 요약",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.create_sheet",
   "detail": "엑셀 변경 작업을 실행합니다. — 요약 시트",
-  "secs": 5.1
+  "secs": 12.9
  },
  {
   "idx": 479,
   "task": "new_sheet",
   "text": "요약 시트 새로 만들어주새요",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.create_sheet",
   "detail": "엑셀 변경 작업을 실행합니다. — 요약 시트",
-  "secs": 5.0
+  "secs": 12.8
  },
  {
   "idx": 480,
   "task": "new_sheet",
   "text": "요약 시트 추가!",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.create_sheet",
   "detail": "엑셀 변경 작업을 실행합니다. — 요약 시트",
-  "secs": 5.0
+  "secs": 13.2
  },
  {
   "idx": 481,
@@ -5289,7 +5289,7 @@
   "card": true,
   "action": "excel_live.write_range",
   "detail": "값 입력 — H1 · 값 1개 기록",
-  "secs": 19.0
+  "secs": 22.2
  },
  {
   "idx": 482,
@@ -5300,7 +5300,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — H1 · 값 1개 기록",
-  "secs": 17.8
+  "secs": 20.5
  },
  {
   "idx": 483,
@@ -5311,7 +5311,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — H1 · 값 1개 기록",
-  "secs": 17.7
+  "secs": 20.5
  },
  {
   "idx": 484,
@@ -5322,7 +5322,7 @@
   "card": true,
   "action": "excel_live.write_range",
   "detail": "값 입력 — H1 · 값 1개 기록",
-  "secs": 18.7
+  "secs": 21.6
  },
  {
   "idx": 485,
@@ -5333,7 +5333,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — H1 · 값 1개 기록",
-  "secs": 17.7
+  "secs": 20.4
  },
  {
   "idx": 486,
@@ -5344,7 +5344,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — H1 · 값 1개 기록",
-  "secs": 17.6
+  "secs": 20.3
  },
  {
   "idx": 487,
@@ -5355,7 +5355,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — H1 · 값 1개 기록",
-  "secs": 17.4
+  "secs": 20.3
  },
  {
   "idx": 488,
@@ -5366,7 +5366,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — H1 · 값 1개 기록",
-  "secs": 17.6
+  "secs": 20.3
  },
  {
   "idx": 489,
@@ -5377,18 +5377,18 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — H1:M1",
-  "secs": 15.2
+  "secs": 18.5
  },
  {
   "idx": 490,
   "task": "merge_title",
   "text": "H1:M1 범위 셀 병합해줘",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — H1:M1",
-  "secs": 15.2
+  "secs": 18.8
  },
  {
   "idx": 491,
@@ -5399,7 +5399,7 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — H1:M1",
-  "secs": 15.0
+  "secs": 18.6
  },
  {
   "idx": 492,
@@ -5410,7 +5410,7 @@
   "card": true,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — H1:M1",
-  "secs": 20.6
+  "secs": 23.3
  },
  {
   "idx": 493,
@@ -5421,7 +5421,7 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — H1:M1",
-  "secs": 15.1
+  "secs": 18.7
  },
  {
   "idx": 494,
@@ -5432,7 +5432,7 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — H1:M1",
-  "secs": 15.0
+  "secs": 18.9
  },
  {
   "idx": 495,
@@ -5443,40 +5443,40 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — H1:M1",
-  "secs": 15.0
+  "secs": 18.7
  },
  {
   "idx": 496,
   "task": "merge_title",
   "text": "H1~M1 병합!",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — H1:M1",
-  "secs": 15.4
+  "secs": 19.2
  },
  {
   "idx": 497,
   "task": "freeze_top",
   "text": "첫 행 틀 고정 걸어 주세요",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.freeze_panes",
   "detail": "머리글 행/열을 고정합니다.",
-  "secs": 12.9
+  "secs": 15.8
  },
  {
   "idx": 498,
   "task": "freeze_top",
   "text": "머리글 행이 스크롤 내려도 보이게 틀 고정 설정해줘",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.freeze_panes",
   "detail": "머리글 행/열을 고정합니다.",
-  "secs": 12.8
+  "secs": 16.0
  },
  {
   "idx": 499,
@@ -5487,62 +5487,62 @@
   "card": true,
   "action": "excel_live.freeze_panes",
   "detail": "머리글 행/열을 고정합니다.",
-  "secs": 16.0
+  "secs": 18.7
  },
  {
   "idx": 500,
   "task": "freeze_top",
   "text": "위에 제목 줄 스크롤 따라 안 사라지게 고정해줘",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.freeze_panes",
   "detail": "머리글 행/열을 고정합니다.",
-  "secs": 12.8
+  "secs": 16.0
  },
  {
   "idx": 501,
   "task": "freeze_top",
   "text": "여기 첫 줄 고정",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.freeze_panes",
   "detail": "머리글 행/열을 고정합니다.",
-  "secs": 12.8
+  "secs": 16.0
  },
  {
   "idx": 502,
   "task": "freeze_top",
   "text": "스크롤해도 보이게, 첫 행 고정 부탁해요",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.freeze_panes",
   "detail": "머리글 행/열을 고정합니다.",
-  "secs": 12.8
+  "secs": 16.0
  },
  {
   "idx": 503,
   "task": "freeze_top",
   "text": "첫 행 틀고졍 해주세요",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.freeze_panes",
   "detail": "머리글 행/열을 고정합니다.",
-  "secs": 12.7
+  "secs": 15.7
  },
  {
   "idx": 504,
   "task": "freeze_top",
   "text": "첫 행 틀 고정!",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.freeze_panes",
   "detail": "머리글 행/열을 고정합니다.",
-  "secs": 12.7
+  "secs": 15.7
  },
  {
   "idx": 505,
@@ -5553,7 +5553,7 @@
   "card": false,
   "action": "excel_live.apply_formula_cf",
   "detail": "수식 조건부 서식을 적용합니다. — A1:D5",
-  "secs": 12.7
+  "secs": 16.0
  },
  {
   "idx": 506,
@@ -5564,7 +5564,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — D2:D5 · 2개 셀",
-  "secs": 12.6
+  "secs": 14.6
  },
  {
   "idx": 507,
@@ -5575,7 +5575,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — D2:D5 · 2개 셀",
-  "secs": 12.5
+  "secs": 14.5
  },
  {
   "idx": 508,
@@ -5586,7 +5586,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — D2:D5 · 2개 셀",
-  "secs": 12.5
+  "secs": 14.6
  },
  {
   "idx": 509,
@@ -5597,7 +5597,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — D2:D5 · 2개 셀",
-  "secs": 12.6
+  "secs": 14.6
  },
  {
   "idx": 510,
@@ -5608,7 +5608,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — D2:D5 · 2개 셀",
-  "secs": 12.6
+  "secs": 14.5
  },
  {
   "idx": 511,
@@ -5619,7 +5619,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — D2:D5 · 2개 셀",
-  "secs": 12.5
+  "secs": 14.5
  },
  {
   "idx": 512,
@@ -5630,7 +5630,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — D2:D5 · 2개 셀",
-  "secs": 12.5
+  "secs": 14.5
  },
  {
   "idx": 513,
@@ -5641,7 +5641,7 @@
   "card": false,
   "action": "excel_live.apply_formula_cf",
   "detail": "수식 조건부 서식을 적용합니다. — A1:F6",
-  "secs": 12.5
+  "secs": 15.7
  },
  {
   "idx": 514,
@@ -5652,7 +5652,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — F2:F6 · 1개 셀",
-  "secs": 12.6
+  "secs": 14.5
  },
  {
   "idx": 515,
@@ -5663,7 +5663,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — F2:F6 · 1개 셀",
-  "secs": 12.7
+  "secs": 14.5
  },
  {
   "idx": 516,
@@ -5674,7 +5674,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — F2:F6 · 1개 셀",
-  "secs": 12.6
+  "secs": 14.6
  },
  {
   "idx": 517,
@@ -5685,7 +5685,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — F2:F6 · 1개 셀",
-  "secs": 12.6
+  "secs": 14.6
  },
  {
   "idx": 518,
@@ -5696,7 +5696,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — F2:F6 · 1개 셀",
-  "secs": 12.6
+  "secs": 14.7
  },
  {
   "idx": 519,
@@ -5707,7 +5707,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — F2:F6 · 1개 셀",
-  "secs": 12.5
+  "secs": 14.8
  },
  {
   "idx": 520,
@@ -5718,7 +5718,7 @@
   "card": false,
   "action": "excel_live.highlight_by_condition",
   "detail": "조건부 강조 — F2:F6 · 1개 셀",
-  "secs": 12.5
+  "secs": 14.6
  },
  {
   "idx": 521,
@@ -5729,7 +5729,7 @@
   "card": true,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:B7",
-  "secs": 16.0
+  "secs": 22.5
  },
  {
   "idx": 522,
@@ -5740,7 +5740,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.5
+  "secs": 16.0
  },
  {
   "idx": 523,
@@ -5751,7 +5751,7 @@
   "card": false,
   "action": "excel_live.chart",
   "detail": "차트 없음",
-  "secs": 4.1
+  "secs": 4.3
  },
  {
   "idx": 524,
@@ -5762,7 +5762,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.8
+  "secs": 15.9
  },
  {
   "idx": 525,
@@ -5773,7 +5773,7 @@
   "card": true,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:B7",
-  "secs": 16.4
+  "secs": 18.3
  },
  {
   "idx": 526,
@@ -5784,7 +5784,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.8
+  "secs": 16.0
  },
  {
   "idx": 527,
@@ -5795,7 +5795,7 @@
   "card": false,
   "action": "excel_live.chart",
   "detail": "차트 없음",
-  "secs": 3.5
+  "secs": 3.9
  },
  {
   "idx": 528,
@@ -5806,7 +5806,7 @@
   "card": false,
   "action": "excel_live.chart",
   "detail": "차트 없음",
-  "secs": 3.3
+  "secs": 3.5
  },
  {
   "idx": 529,
@@ -5817,7 +5817,7 @@
   "card": true,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:B7",
-  "secs": 16.4
+  "secs": 18.6
  },
  {
   "idx": 530,
@@ -5828,18 +5828,18 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.9
+  "secs": 16.0
  },
  {
   "idx": 531,
   "task": "bar_chart",
   "text": "지연건수 지역별로 비교되게 막대 그래프 하나 그려 주세요",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.create_chart",
-  "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.8
+  "outcome": "ERROR",
+  "card": true,
+  "action": "excel_live.pivot_table",
+  "detail": "차트 없음",
+  "secs": 23.0
  },
  {
   "idx": 532,
@@ -5850,7 +5850,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.7
+  "secs": 16.0
  },
  {
   "idx": 533,
@@ -5861,7 +5861,7 @@
   "card": true,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:B7",
-  "secs": 16.4
+  "secs": 19.3
  },
  {
   "idx": 534,
@@ -5872,7 +5872,7 @@
   "card": true,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:B7",
-  "secs": 16.5
+  "secs": 18.5
  },
  {
   "idx": 535,
@@ -5883,7 +5883,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 12.7
+  "secs": 15.7
  },
  {
   "idx": 536,
@@ -5894,18 +5894,18 @@
   "card": true,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:B7",
-  "secs": 16.6
+  "secs": 18.7
  },
  {
   "idx": 537,
   "task": "delete_charts",
   "text": "시트에 있는 차트 개체 전부 삭제해 주세요, 데이터는 그대로 두고",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.delete_charts",
   "detail": "차트 삭제",
-  "secs": 12.6
+  "secs": 15.9
  },
  {
   "idx": 538,
@@ -5916,18 +5916,18 @@
   "card": false,
   "action": "excel_live.clarify",
   "detail": "차트=1 B2=10452",
-  "secs": 6.3
+  "secs": 7.0
  },
  {
   "idx": 539,
   "task": "delete_charts",
   "text": "시트에 들어 있는 그래프 싹 다 없애 주세요",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.delete_charts",
   "detail": "차트 삭제",
-  "secs": 12.5
+  "secs": 15.8
  },
  {
   "idx": 540,
@@ -5938,29 +5938,29 @@
   "card": true,
   "action": "excel_live.delete_charts",
   "detail": "차트 삭제",
-  "secs": 13.8
+  "secs": 15.7
  },
  {
   "idx": 541,
   "task": "delete_charts",
   "text": "이거 차트 다 삭제",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.delete_charts",
   "detail": "차트 삭제",
-  "secs": 12.4
+  "secs": 15.9
  },
  {
   "idx": 542,
   "task": "delete_charts",
   "text": "전부 지워 주세요, 시트에 있는 차트는",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.delete_charts",
   "detail": "차트 삭제",
-  "secs": 12.6
+  "secs": 16.2
  },
  {
   "idx": 543,
@@ -5971,18 +5971,18 @@
   "card": true,
   "action": "excel_live.delete_charts",
   "detail": "차트 삭제",
-  "secs": 13.8
+  "secs": 16.3
  },
  {
   "idx": 544,
   "task": "delete_charts",
   "text": "차트 삭제!",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.delete_charts",
   "detail": "차트 삭제",
-  "secs": 12.7
+  "secs": 16.0
  },
  {
   "idx": 545,
@@ -5993,7 +5993,7 @@
   "card": true,
   "action": "excel_live.create_table",
   "detail": "표 생성 — A1:F6 · 6×6",
-  "secs": 15.1
+  "secs": 19.0
  },
  {
   "idx": 546,
@@ -6004,7 +6004,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 17.5
+  "secs": 21.9
  },
  {
   "idx": 547,
@@ -6015,7 +6015,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "1. 테두리 적용 — A1:F6 · 36개 셀\n2. 배경색 변경 — A1:F6 · 36개 셀\n3. 내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 22.4
+  "secs": 28.1
  },
  {
   "idx": 548,
@@ -6026,7 +6026,7 @@
   "card": true,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 20.8
+  "secs": 23.9
  },
  {
   "idx": 549,
@@ -6037,7 +6037,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 17.4
+  "secs": 21.6
  },
  {
   "idx": 550,
@@ -6048,7 +6048,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "1. 테두리 적용 — A1:F6 · 36개 셀\n2. 배경색 변경 — A1:F6 · 36개 셀\n3. 내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 22.9
+  "secs": 27.7
  },
  {
   "idx": 551,
@@ -6059,7 +6059,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "1. 테두리 적용 — A1:F6 · 36개 셀\n2. 배경색 변경 — A1:F6 · 36개 셀\n3. 내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 23.1
+  "secs": 27.3
  },
  {
   "idx": 552,
@@ -6070,18 +6070,18 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — A1:F6 · 값 36개 삭제",
-  "secs": 17.8
+  "secs": 21.7
  },
  {
   "idx": 553,
   "task": "cross_sheet_sum",
   "text": "A2에 지역성과 시트의 주문건수 열 합계를 참조 수식으로 넣어 주세요",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
+  "outcome": "ASK",
   "card": false,
-  "action": "excel_live.set_formula",
-  "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 15.5
+  "action": "excel_live.clarify",
+  "detail": "요약!A2=None",
+  "secs": 9.9
  },
  {
   "idx": 554,
@@ -6092,7 +6092,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 2.7
+  "secs": 4.3
  },
  {
   "idx": 555,
@@ -6103,7 +6103,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 15.4
+  "secs": 18.7
  },
  {
   "idx": 556,
@@ -6114,18 +6114,18 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 15.3
+  "secs": 18.7
  },
  {
   "idx": 557,
   "task": "cross_sheet_sum",
   "text": "A2에 지역성과 주문건수 합계",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
+  "outcome": "ASK",
   "card": false,
-  "action": "excel_live.set_formula",
-  "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 2.7
+  "action": "excel_live.clarify",
+  "detail": "요약!A2=None",
+  "secs": 4.4
  },
  {
   "idx": 558,
@@ -6136,29 +6136,29 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 2.7
+  "secs": 4.2
  },
  {
   "idx": 559,
   "task": "cross_sheet_sum",
   "text": "A2에 지역성과 시트 주문건수 합게 가져와줘",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.set_formula",
-  "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 15.2
+  "outcome": "WRONG",
+  "card": true,
+  "action": "excel_live.write_range",
+  "detail": "요약!A2='SUM'",
+  "secs": 24.5
  },
  {
   "idx": 560,
   "task": "cross_sheet_sum",
   "text": "A2에 지역성과 주문건수 합계!",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
+  "outcome": "ASK",
   "card": false,
-  "action": "excel_live.set_formula",
-  "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 2.7
+  "action": "excel_live.clarify",
+  "detail": "요약!A2=None",
+  "secs": 4.3
  },
  {
   "idx": 561,
@@ -6169,7 +6169,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — A8:B9 · 값 4개 기록",
-  "secs": 17.7
+  "secs": 20.4
  },
  {
   "idx": 562,
@@ -6180,7 +6180,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — A8:B9 · 값 4개 기록",
-  "secs": 17.6
+  "secs": 20.6
  },
  {
   "idx": 563,
@@ -6191,7 +6191,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — A8:B9 · 값 4개 기록",
-  "secs": 17.5
+  "secs": 20.9
  },
  {
   "idx": 564,
@@ -6202,7 +6202,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — A8:B9 · 값 4개 기록",
-  "secs": 17.5
+  "secs": 20.5
  },
  {
   "idx": 565,
@@ -6213,7 +6213,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — A8:B9 · 값 4개 기록",
-  "secs": 17.5
+  "secs": 20.5
  },
  {
   "idx": 566,
@@ -6224,7 +6224,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — A8:B9 · 값 4개 기록",
-  "secs": 17.5
+  "secs": 20.7
  },
  {
   "idx": 567,
@@ -6235,7 +6235,7 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — A8:B9 · 값 4개 기록",
-  "secs": 17.6
+  "secs": 20.8
  },
  {
   "idx": 568,
@@ -6246,40 +6246,40 @@
   "card": false,
   "action": "excel_live.write_range",
   "detail": "값 입력 — A8:B9 · 값 4개 기록",
-  "secs": 17.7
+  "secs": 20.5
  },
  {
   "idx": 569,
   "task": "find_replace",
   "text": "표에서 수도권 텍스트를 서울권으로 찾아 바꾸기 해 주세요",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.find_replace",
   "detail": "찾아 바꾸기 — A1:F6 · 1개 셀 치환",
-  "secs": 17.5
+  "secs": 21.9
  },
  {
   "idx": 570,
   "task": "find_replace",
   "text": "수도권이라는 문자열 전부 서울권으로 치환해줘",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.find_replace",
   "detail": "찾아 바꾸기 — A1:F6 · 1개 셀 치환",
-  "secs": 17.5
+  "secs": 21.7
  },
  {
   "idx": 571,
   "task": "find_replace",
   "text": "수도권이라고 적힌 건 다 서울권으로 고쳐 주세요",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.find_replace",
   "detail": "찾아 바꾸기 — A1:F6 · 1개 셀 치환",
-  "secs": 17.6
+  "secs": 22.0
  },
  {
   "idx": 572,
@@ -6290,7 +6290,7 @@
   "card": true,
   "action": "excel_live.find_replace",
   "detail": "찾아 바꾸기 — A1:F6 · 1개 셀 치환",
-  "secs": 21.2
+  "secs": 21.7
  },
  {
   "idx": 573,
@@ -6301,128 +6301,128 @@
   "card": true,
   "action": "excel_live.find_replace",
   "detail": "찾아 바꾸기 — A1:F6 · 1개 셀 치환",
-  "secs": 19.2
+  "secs": 22.0
  },
  {
   "idx": 574,
   "task": "find_replace",
   "text": "서울권으로 바꿔 주세요, 수도권이라고 된 거",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.find_replace",
   "detail": "찾아 바꾸기 — A1:F6 · 1개 셀 치환",
-  "secs": 17.9
+  "secs": 21.8
  },
  {
   "idx": 575,
   "task": "find_replace",
   "text": "수도권을 서울권으로 바꺼줘",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.find_replace",
   "detail": "찾아 바꾸기 — A1:F6 · 1개 셀 치환",
-  "secs": 17.8
+  "secs": 21.8
  },
  {
   "idx": 576,
   "task": "find_replace",
   "text": "수도권→서울권 변경!",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.find_replace",
   "detail": "찾아 바꾸기 — A1:F6 · 1개 셀 치환",
-  "secs": 17.6
+  "secs": 21.8
  },
  {
   "idx": 577,
   "task": "rename_sheet",
   "text": "지역성과 워크시트 이름을 지역별실적으로 변경해 주세요",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
+  "outcome": "ASK",
   "card": false,
-  "action": "excel_live.rename_sheet",
-  "detail": "시트 이름을 변경합니다. — 지역성과 시트",
-  "secs": 0.1
+  "action": "excel_live.clarify",
+  "detail": "시트=['지역성과']",
+  "secs": 1.3
  },
  {
   "idx": 578,
   "task": "rename_sheet",
   "text": "현재 시트 탭 이름 지역별실적으로 바꿔줘",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.rename_sheet",
-  "detail": "시트 이름을 변경합니다. — 지역성과 시트",
-  "secs": 12.8
+  "outcome": "ERROR",
+  "card": true,
+  "action": "excel_live.pivot_table",
+  "detail": "시트=['지역성과', '지역성과_집계']",
+  "secs": 20.4
  },
  {
   "idx": 579,
   "task": "rename_sheet",
   "text": "지역성과라고 된 탭 이름을 지역별실적으로 고쳐 주세요",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.rename_sheet",
   "detail": "시트 이름을 변경합니다. — 지역성과 시트",
-  "secs": 0.1
+  "secs": 3.6
  },
  {
   "idx": 580,
   "task": "rename_sheet",
   "text": "이 시트 이름 지역별실적으로 다시 지어줘",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.rename_sheet",
-  "detail": "시트 이름을 변경합니다. — 지역성과 시트",
-  "secs": 12.8
+  "outcome": "ERROR",
+  "card": true,
+  "action": "excel_live.pivot_table",
+  "detail": "시트=['지역성과', '지역성과_집계']",
+  "secs": 18.5
  },
  {
   "idx": 581,
   "task": "rename_sheet",
   "text": "시트명 지역별실적으로",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.rename_sheet",
-  "detail": "시트 이름을 변경합니다. — 지역성과 시트",
-  "secs": 12.8
+  "outcome": "WRONG",
+  "card": true,
+  "action": "excel_live.select_sheet",
+  "detail": "시트=['지역성과', '지역성과_집계']",
+  "secs": 24.1
  },
  {
   "idx": 582,
   "task": "rename_sheet",
   "text": "지역별실적으로 바꿔 주세요, 지역성과 시트 이름",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.rename_sheet",
   "detail": "시트 이름을 변경합니다. — 지역성과 시트",
-  "secs": 0.1
+  "secs": 3.8
  },
  {
   "idx": 583,
   "task": "rename_sheet",
   "text": "지역성과 시트 이름을 지역별실적으로 바꿔주세오",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.rename_sheet",
   "detail": "시트 이름을 변경합니다. — 지역성과 시트",
-  "secs": 0.1
+  "secs": 3.5
  },
  {
   "idx": 584,
   "task": "rename_sheet",
   "text": "시트 이름 지역별실적!",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.rename_sheet",
-  "detail": "시트 이름을 변경합니다. — 지역성과 시트",
-  "secs": 12.7
+  "outcome": "WRONG",
+  "card": true,
+  "action": "excel_live.select_sheet",
+  "detail": "시트=['지역성과', '지역성과_집계']",
+  "secs": 24.3
  },
  {
   "idx": 585,
@@ -6433,7 +6433,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — D2 · 수식 1칸",
-  "secs": 17.7
+  "secs": 22.5
  },
  {
   "idx": 586,
@@ -6444,7 +6444,7 @@
   "card": true,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — D2 · 수식 1칸",
-  "secs": 23.5
+  "secs": 24.7
  },
  {
   "idx": 587,
@@ -6455,7 +6455,7 @@
   "card": true,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — D2 · 수식 1칸",
-  "secs": 21.0
+  "secs": 24.2
  },
  {
   "idx": 588,
@@ -6466,7 +6466,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — D2 · 수식 1칸",
-  "secs": 17.5
+  "secs": 21.8
  },
  {
   "idx": 589,
@@ -6477,7 +6477,7 @@
   "card": true,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — D2 · 수식 1칸",
-  "secs": 21.0
+  "secs": 24.0
  },
  {
   "idx": 590,
@@ -6488,7 +6488,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — D2 · 수식 1칸",
-  "secs": 17.5
+  "secs": 21.5
  },
  {
   "idx": 591,
@@ -6499,18 +6499,18 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — D2 · 수식 1칸",
-  "secs": 17.5
+  "secs": 21.6
  },
  {
   "idx": 592,
   "task": "cell_subtract",
   "text": "D2에 B2 빼기 C2 입력!",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
-  "action": "excel_live.set_formula",
-  "detail": "수식 적용 — D2 · 수식 1칸",
-  "secs": 17.6
+  "outcome": "PASS_CARD",
+  "card": true,
+  "action": "excel_live.write_range",
+  "detail": "값 입력 — D2 · 값 1개 기록",
+  "secs": 21.5
  },
  {
   "idx": 593,
@@ -6521,7 +6521,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "표시 형식 — D2:D6",
-  "secs": 12.6
+  "secs": 14.7
  },
  {
   "idx": 594,
@@ -6532,7 +6532,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "표시 형식 — D2:D6",
-  "secs": 12.5
+  "secs": 14.6
  },
  {
   "idx": 595,
@@ -6543,7 +6543,7 @@
   "card": true,
   "action": "excel_live.set_number_format",
   "detail": "표시 형식 — D2:D6",
-  "secs": 13.8
+  "secs": 15.9
  },
  {
   "idx": 596,
@@ -6554,7 +6554,7 @@
   "card": true,
   "action": "excel_live.set_number_format",
   "detail": "표시 형식 — D2:D6",
-  "secs": 13.9
+  "secs": 15.7
  },
  {
   "idx": 597,
@@ -6565,7 +6565,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "표시 형식 — D2:D6",
-  "secs": 12.5
+  "secs": 14.5
  },
  {
   "idx": 598,
@@ -6576,7 +6576,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "표시 형식 — D2:D6",
-  "secs": 12.5
+  "secs": 14.6
  },
  {
   "idx": 599,
@@ -6587,7 +6587,7 @@
   "card": true,
   "action": "excel_live.set_number_format",
   "detail": "표시 형식 — D2:D6",
-  "secs": 13.8
+  "secs": 15.7
  },
  {
   "idx": 600,
@@ -6598,7 +6598,7 @@
   "card": false,
   "action": "excel_live.set_number_format",
   "detail": "표시 형식 — D2:D6",
-  "secs": 12.7
+  "secs": 14.6
  },
  {
   "idx": 601,
@@ -6609,7 +6609,7 @@
   "card": false,
   "action": "excel_live.apply_data_bar",
   "detail": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B6",
-  "secs": 13.0
+  "secs": 14.6
  },
  {
   "idx": 602,
@@ -6620,7 +6620,7 @@
   "card": false,
   "action": "excel_live.apply_data_bar",
   "detail": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B6",
-  "secs": 12.9
+  "secs": 14.8
  },
  {
   "idx": 603,
@@ -6631,7 +6631,7 @@
   "card": true,
   "action": "excel_live.apply_data_bar",
   "detail": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B181",
-  "secs": 16.5
+  "secs": 18.7
  },
  {
   "idx": 604,
@@ -6642,7 +6642,7 @@
   "card": true,
   "action": "excel_live.apply_data_bar",
   "detail": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B6",
-  "secs": 16.3
+  "secs": 17.9
  },
  {
   "idx": 605,
@@ -6653,7 +6653,7 @@
   "card": false,
   "action": "excel_live.apply_data_bar",
   "detail": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B6",
-  "secs": 12.9
+  "secs": 14.6
  },
  {
   "idx": 606,
@@ -6664,7 +6664,7 @@
   "card": false,
   "action": "excel_live.apply_data_bar",
   "detail": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B6",
-  "secs": 12.9
+  "secs": 14.7
  },
  {
   "idx": 607,
@@ -6675,7 +6675,7 @@
   "card": false,
   "action": "excel_live.apply_data_bar",
   "detail": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B6",
-  "secs": 12.7
+  "secs": 14.8
  },
  {
   "idx": 608,
@@ -6686,40 +6686,40 @@
   "card": false,
   "action": "excel_live.apply_data_bar",
   "detail": "선택 범위에 데이터 막대 조건부 서식을 적용합니다. — B2:B6",
-  "secs": 12.7
+  "secs": 14.8
  },
  {
   "idx": 609,
   "task": "autofit",
   "text": "열 너비 자동 맞춤 해 주세요",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.autofit_columns",
   "detail": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F6",
-  "secs": 12.7
+  "secs": 16.2
  },
  {
   "idx": 610,
   "task": "autofit",
   "text": "모든 열 너비를 내용 길이에 맞게 자동 조정해줘",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.autofit_columns",
   "detail": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F6",
-  "secs": 12.8
+  "secs": 16.1
  },
  {
   "idx": 611,
   "task": "autofit",
   "text": "칸 폭 글자 안 잘리게 알아서 맞춰 주세요",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.autofit_columns",
   "detail": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F6",
-  "secs": 12.7
+  "secs": 15.7
  },
  {
   "idx": 612,
@@ -6730,51 +6730,51 @@
   "card": false,
   "action": "excel_live.autofit_columns",
   "detail": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F6",
-  "secs": 12.5
+  "secs": 16.1
  },
  {
   "idx": 613,
   "task": "autofit",
   "text": "여기 열 너비 자동",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.autofit_columns",
   "detail": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F6",
-  "secs": 12.5
+  "secs": 15.9
  },
  {
   "idx": 614,
   "task": "autofit",
   "text": "내용에 맞게 자동으로, 열 너비 조정 부탁해요",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.autofit_columns",
   "detail": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F6",
-  "secs": 12.5
+  "secs": 15.8
  },
  {
   "idx": 615,
   "task": "autofit",
   "text": "열 너비 자동 마춤 해주세요",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.autofit_columns",
   "detail": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F6",
-  "secs": 12.5
+  "secs": 15.9
  },
  {
   "idx": 616,
   "task": "autofit",
   "text": "열 너비 자동맞춤!",
   "persona": "C_실무",
-  "outcome": "PASS_RULE",
-  "card": false,
+  "outcome": "PASS_CARD",
+  "card": true,
   "action": "excel_live.autofit_columns",
   "detail": "열 너비를 내용에 맞게 자동 조정합니다. — A1:F6",
-  "secs": 12.5
+  "secs": 15.9
  },
  {
   "idx": 617,

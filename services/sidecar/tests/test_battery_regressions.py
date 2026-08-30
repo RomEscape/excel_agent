@@ -6729,6 +6729,17 @@ class TestCrossSheetAggregateRestoredLayerAgnostic:
         _restore_cross_sheet_aggregate("성적부 결석 합계 A2", plan, p, "요약")
         assert plan[0].params == before
 
+    def test_대상이_소스와_같아도_비소스로_재지향한다(self, tmp_path, monkeypatch):
+        # 게이트 실측(2026-08-30 재측정 2회): 앞 케이스 잔여로 활성=성적부면 규칙도
+        # 복원기도 원본에 낙하했다. 소스≠대상은 의미론이다 — 유일 비소스로 재지향.
+        from office_claw_sidecar.routers.excel_live import _restore_cross_sheet_aggregate
+
+        p = self._setup(tmp_path, monkeypatch)
+        plan = self._plan()
+        _restore_cross_sheet_aggregate("ㅇㅇ 성적부 결석 합 A2", plan, p, "성적부")
+        assert plan[0].params.get("sheet_name") == "요약"
+        assert plan[0].params.get("formula_a1") == "=SUM('성적부'!C2:C5)"
+
     def test_크로스시트_아닌_수식은_무발동(self, tmp_path, monkeypatch):
         from office_claw_sidecar.routers.excel_live import _restore_cross_sheet_aggregate
 

@@ -11131,6 +11131,20 @@ def _restore_cross_sheet_aggregate(
         target_sheet = _resolve_sheet_name(svc, wb_id, sheet_name)
     except Exception:
         target_sheet = ""
+    # 대상이 **소스 시트와 같으면** 원본을 덮는다 — 게이트 실측(2026-08-30 재측정 2회):
+    # 앞 케이스의 잔여 상태로 활성=성적부가 되면 규칙·복원기 모두 원본에 낙하했다.
+    # 소스가 아닌 시트가 유일하면 그곳으로 재지향하고, 모호하면 파괴 대신 거절한다.
+    source_sheets = set(re.findall(r"'([^']+)'!", str((cross_steps[0].get("params") or {}).get("formula_a1") or "")))
+    if target_sheet and target_sheet in source_sheets:
+        others = [s for s in sheet_names if s not in source_sheets]
+        if len(others) == 1:
+            trace_note("cross_sheet_retarget", was=target_sheet, now=others[0])
+            target_sheet = others[0]
+        else:
+            raise ExcelLiveError(
+                f"'{target_sheet}' 시트는 집계의 원본이라 결과를 쓰면 데이터가 덮입니다. "
+                f"어느 시트의 {str((cross_steps[0].get('params') or {}).get('range_ref') or '해당 셀')}에 쓸까요?"
+            )
     if target_sheet:
         for step in cross_steps:
             step.setdefault("params", {})["sheet_name"] = target_sheet
@@ -11417,7 +11431,10 @@ def _plan_approval_gate(
     # 그것이 사용자가 말한 기준이다(층을 가리지 않고 여기서 한 번에).
     _restore_sort_metric(req.message, plan, req.workbook_id, plan_sheet or req.sheet_name)
     # 크로스시트 집계 복원 — 무자격 SUM이 원본 시트에 낙하하는 것을 층 무관하게 막는다.
-    _restore_cross_sheet_aggregate(req.message, plan, req.workbook_id, plan_sheet or req.sheet_name)
+    # 대상 시트는 **요청 문맥(req.sheet_name)**이다 — plan_sheet는 관측 활성(=원본
+    # 성적부)이라 그걸 넘기면 복원기가 원본에 도로 못박는다(2026-08-30 재측정 실측:
+    # 자격 수식은 붙었는데 성적부 A2 '김민준'이 여전히 덮였다). 규칙 경로와 동일 규약.
+    _restore_cross_sheet_aggregate(req.message, plan, req.workbook_id, req.sheet_name)
     if not target_problem:
         key_problem = _key_column_problem(req.workbook_id, plan_sheet or req.sheet_name, plan)
         if key_problem:
