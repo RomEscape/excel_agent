@@ -6748,3 +6748,86 @@ class TestCrossSheetAggregateRestoredLayerAgnostic:
         _restore_cross_sheet_aggregate("C열 합계를 A2에 넣어줘", plan, p, "요약")
         # 시트를 원본으로 지목하지 않은 문장 — 빌더가 확신 못 하면 손대지 않는다
         assert plan[0].params.get("formula_a1") == "=SUM(C2:C5)"
+
+
+class TestBlindClusterFixes:
+    """말투 게이트 B팔 3대 클러스터(2026-08-30, intent-first-gate-0830 32건)의 핀.
+
+    ①배경색 의도가 흰 글씨·굵게를 버림(13건) ②rename이 이름을 잃고 '지역별'이
+    집계 훅에 강탈(8건) ③'합계'가 'SUM' 글자로 기록(4건) ④'요약 시트'·오타 부사
+    '새루'가 시트 이름으로(2건). 전부 원문 회수·층 무관 교정으로 봉합.
+    """
+
+    def test_배경색_의도가_글자_서식을_회수한다(self):
+        from office_claw_sidecar.services.excel_intent_normalizer import intent_to_plan
+
+        out = intent_to_plan({"task": "fill_color", "option": "남색", "column": ""}, digest=None,
+                             message="머리글 행 남색 배경, 흰 글씨, 굵게 부탁드려요.")
+        steps = out["action_plan"]
+        assert len(steps) == 2 and steps[1]["action"] == "excel_live.set_font"
+        assert steps[1]["params"]["bold"] is True and steps[1]["params"]["font_color"] == "#FFFFFF"
+        # 글자 어휘가 없으면 1단 그대로
+        out2 = intent_to_plan({"task": "fill_color", "option": "남색", "column": ""}, digest=None,
+                              message="이 범위 남색으로 칠해줘")
+        assert len(out2["action_plan"]) == 1
+
+    def test_rename_이름을_원문에서_회수한다(self):
+        from office_claw_sidecar.services.excel_intent_normalizer import intent_to_plan
+
+        for msg in ("이 시트 이름 지역별실적으로 바꿔", "시트명 지역별실적으로", "시트 이름 지역별실적!",
+                    "시트명 지역별실적으로 변경해줴 빨ㄹ리"):
+            out = intent_to_plan({"task": "rename_sheet", "option": "", "column": ""}, digest=None, message=msg)
+            assert out and out["action_plan"][0]["params"]["new_name"] == "지역별실적", msg
+
+    def test_rename_강탈을_층_무관으로_교정한다(self):
+        from office_claw_sidecar.routers.excel_live import PlanStep, _restore_rename_from_hijack
+
+        plan = [PlanStep(action="excel_live.pivot_table", params={"row_field": "지역"}, reason="r")]
+        _restore_rename_from_hijack("이 시트 이름 지역별실적으로 바꿔", plan)
+        assert plan[0].action == "excel_live.rename_sheet"
+        assert plan[0].params["new_name"] == "지역별실적"
+        # 정당한 집계·생성 문장엔 무발동
+        for msg in ("지역별로 매출 집계표 만들어줘", "요약 시트 하나 만들어줄래?"):
+            p2 = [PlanStep(action="excel_live.pivot_table", params={}, reason="r")]
+            _restore_rename_from_hijack(msg, p2)
+            assert p2[0].action == "excel_live.pivot_table", msg
+
+    def test_시트_이름_꼬리와_오타_부사를_정화한다(self):
+        from office_claw_sidecar.services.excel_intent_normalizer import intent_to_plan
+
+        out = intent_to_plan({"task": "create_sheet", "option": "요약 시트", "column": ""}, digest=None,
+                             message="요약 시트 하나 추가")
+        assert out["action_plan"][0]["params"]["sheet_name"] == "요약"
+        out2 = intent_to_plan({"task": "create_sheet", "option": "새루", "column": ""}, digest=None,
+                              message="요약 시트 하나 맏드러 새루")
+        assert out2["action_plan"][0]["params"]["sheet_name"] == "요약"
+
+    def test_SUM_리터럴이_수식으로_재구성된다(self, tmp_path, monkeypatch):
+        from openpyxl import Workbook
+
+        from office_claw_sidecar.routers.excel_live import PlanStep, _restore_cross_sheet_aggregate
+        from office_claw_sidecar.services import excel_live_file_service as fs
+        from office_claw_sidecar.services import excel_live_service as ls
+        from office_claw_sidecar.services.excel_live_service import get_excel_live_service
+
+        p = tmp_path / "g.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "지역성과"
+        ws.append(["지역", "주문건수"])
+        ws.append(["수도권", 10452])
+        ws.append(["충청권", 3892])
+        wb.create_sheet("요약")
+        wb.save(p)
+        fs.WORKSPACE_ROOT = tmp_path
+        ls._excel_live_service = None
+        ls._excel_live_service_engine = None
+        monkeypatch.setenv("EXCEL_LIVE_ENGINE", "file")
+        svc = get_excel_live_service()
+        svc.select_workbook(str(p))
+        svc.select_sheet(None, "요약")
+        plan = [PlanStep(action="excel_live.write_range", params={"start_cell": "A2", "values_2d": [["SUM"]]}, reason="의도")]
+        _restore_cross_sheet_aggregate("A2에 지역성과 시트 주문건수 합게 너어줘", plan, str(p), "요약")
+        assert plan[0].action == "excel_live.set_formula"
+        assert plan[0].params["formula_a1"] == "=SUM('지역성과'!B2:B3)"
+        assert plan[0].params["sheet_name"] == "요약"

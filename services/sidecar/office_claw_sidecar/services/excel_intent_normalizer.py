@@ -370,6 +370,21 @@ def intent_to_plan(
                 "params": {"target_range": rng or "__ACTIVE_SELECTION__", "fill_color": color},
                 "reason": "의도 정규화: 배경색",
             }]
+            # 모델이 배경색만 뽑고 글씨색·굵게를 버리는 일이 잦다(2026-08-30 말투
+            # 게이트 B팔 13건: "남색 배경 흰 글씨 굵게"가 fill만 실행 — bold=False).
+            # 원문에 어휘가 있으면 set_font를 덧붙인다 — 규칙 경로와 같은 2단 형태.
+            font_recovered: dict[str, Any] = {}
+            if re.search(r"(흰|하얀|하양|백색|white)", plain_message, re.IGNORECASE):
+                font_recovered["font_color"] = "#FFFFFF"
+            if re.search(r"(굵게|굵은|볼드|bold|두껍게|두꺼운)", plain_message, re.IGNORECASE):
+                font_recovered["bold"] = True
+            if font_recovered:
+                font_recovered["target_range"] = steps[0]["params"]["target_range"]
+                steps.append({
+                    "action": "excel_live.set_font",
+                    "params": font_recovered,
+                    "reason": "의도 정규화: 글자 서식(원문 회수)",
+                })
 
     elif task == "font":
         font_params = _font_params_from(option_text)
@@ -552,14 +567,17 @@ def intent_to_plan(
         # 시트 이름은 option 또는 column에 실려 온다. 이름을 지어내지 않는다 —
         # 모델이 "null"을 이름으로 내 'null' 시트가 생겼다(2026-08-25).
         name = str(option_text or column or "").strip().strip("'\"")
+        # '요약 시트'처럼 시트 낱말이 붙어 오면 꼬리를 뗀다(2026-08-30 말투 B:
+        # '요약 시트'라는 이름의 시트가 생겼다).
+        name = re.sub(r"\s*(?:워크시트|시트|sheet|탭|tab)$", "", name, flags=re.IGNORECASE).strip()
         # "확인자 열 새로 만들어줘"는 열 추가다 — 모델이 create_sheet로 오분류하면
         # 이름('확인자')이 원문에 있어도 시트를 만들면 안 된다(2026-08-26 커버리지 0906).
         column_wording = bool(
             re.search(r"(?:열|컬럼|column)\s*\S{0,6}\s*(?:만들|추가|새로|넣)", plain_message)
         )
         degenerate = {
-            "시트", "sheet", "탭", "새 시트", "새", "새로운", "새로", "하나", "빈", "임시",
-            "null", "none", "undefined",
+            "시트", "sheet", "탭", "새 시트", "새", "새로운", "새로", "새루", "새로이",
+            "하나", "빈", "임시", "null", "none", "undefined",
         }
         usable = (
             bool(name)
@@ -697,7 +715,7 @@ def intent_to_plan(
             "reason": "의도 정규화: 색조",
         }]
 
-    elif task == "rename_sheet" and _worded(r"이름", r"rename", r"바꿔", r"변경"):
+    elif task == "rename_sheet" and _worded(r"이름", r"rename", r"바꿔", r"변경", r"시트\s*명", r"탭\s*명"):
         # 새 이름은 option(또는 column)에 실려 온다 — create_sheet와 같은 규약.
         # "지역별실적으로 바꿔줘"처럼 조사가 붙어 오면 어간이 문장에 있는지로 벗긴다.
         raw_name = str(option_text or column or "").strip().strip("'\"")
@@ -725,6 +743,31 @@ def intent_to_plan(
                 "params": params,
                 "reason": "의도 정규화: 시트 이름 변경",
             }]
+        if not steps:
+            # 모델이 새 이름을 못 뽑으면 rename 근거가 있어도 통째로 버려져 '지역별'
+            # 같은 낱말이 집계 훅에 강탈됐다(2026-08-30 말투 B 8건: 지역성과_집계
+            # 시트가 생김). "…(으)로 바꿔/변경"의 목적어를 원문에서 회수한다.
+            m = re.search(
+                r"([가-힣A-Za-z0-9_]{2,31}?)\s*(?:으로|로)\s*(?:바꿔|바꾸|변경|변겅|고쳐|지어|정해)",
+                plain_message,
+            )
+            if not m:
+                # "시트 이름 지역별실적!"처럼 동사 생략 — 이름/명 뒤 명사를 회수.
+                m = re.search(
+                    r"(?:시트|탭|sheet)\s*(?:이름|명)\s*(?:은|을|를|:)?\s*([가-힣A-Za-z0-9_]{2,31})\s*[!.~\s]*$",
+                    plain_message,
+                )
+            if m:
+                recovered_name = m.group(1).strip()
+                for particle in ("으로", "로"):
+                    if recovered_name.endswith(particle) and len(recovered_name) > len(particle) + 1:
+                        recovered_name = recovered_name[: -len(particle)]
+                if recovered_name and recovered_name.lower() not in {"시트", "sheet", "탭", "이름"}:
+                    steps = [{
+                        "action": "excel_live.rename_sheet",
+                        "params": {"new_name": recovered_name},
+                        "reason": "의도 정규화: 시트 이름 변경(원문 회수)",
+                    }]
 
     elif (
         task == "delete_sheet"

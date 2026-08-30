@@ -11092,6 +11092,42 @@ _UNQUALIFIED_AGG_FORMULA = re.compile(
 )
 
 
+_RENAME_CONTEXT = re.compile(
+    r"(?:시트|탭|sheet)\s*(?:의)?\s*(?:이름|명)"
+    r"|이름\s*(?:을|은)?\s*[가-힣A-Za-z0-9_]{2,31}\s*(?:으로|로)\s*(?:바꿔|바꾸|변경|지어)"
+)
+
+
+def _restore_rename_from_hijack(message: str, plan: list[PlanStep]) -> None:
+    """이름 변경 문장을 집계·생성 계획이 강탈했으면 rename으로 되돌린다 — 층 무관.
+
+    2026-08-30 말투 B 8건: 의도층이 새 이름을 잃자 '지역별'이 피벗 폴백에 잡혀
+    지역성과_집계 시트가 생겼다(ERROR 4·WRONG 4).
+    """
+    if not plan or plan[0].action not in {"excel_live.pivot_table", "excel_live.create_sheet"}:
+        return
+    text = str(message or "")
+    if not _RENAME_CONTEXT.search(text):
+        return
+    m = re.search(
+        r"([가-힣A-Za-z0-9_]{2,31}?)\s*(?:으로|로)\s*(?:바꿔|바꾸|변경|변겅|고쳐|지어|정해)?",
+        text,
+    )
+    if not m:
+        return
+    new_name = m.group(1).strip()
+    if not new_name or new_name in {"시트", "탭", "이름"}:
+        return
+    trace_note("rename_restored_from_hijack", was=plan[0].action, new_name=new_name)
+    plan[:] = _normalize_plan_or_empty([
+        {
+            "action": "excel_live.rename_sheet",
+            "params": {"new_name": new_name},
+            "reason": "이름 변경 문장 복원(강탈 교정)",
+        }
+    ])
+
+
 def _restore_cross_sheet_aggregate(
     message: str, plan: list[PlanStep], workbook_id: str | None, sheet_name: str | None
 ) -> None:
@@ -11103,14 +11139,30 @@ def _restore_cross_sheet_aggregate(
     (=SUM('원본'!구간) + 대상 시트 고정)을 만들 수 있으면 그 계획으로 교체한다.
     빌더가 못 만들면 손대지 않는다 — 복원은 확신 있을 때만.
     """
-    if len(plan) != 1 or plan[0].action != "excel_live.set_formula":
+    if len(plan) != 1:
         return
     params = plan[0].params if isinstance(plan[0].params, dict) else {}
-    formula = str(params.get("formula_a1") or "")
-    if "!" in formula or not _UNQUALIFIED_AGG_FORMULA.match(formula):
+    formula = str(params.get("formula_a1") or "")  # write_range면 빈 문자열 — 추적용
+    if plan[0].action == "excel_live.set_formula":
+        if "!" in formula or not _UNQUALIFIED_AGG_FORMULA.match(formula):
+            return
+        if str(params.get("sheet_name") or "").strip():
+            return  # 층이 시트를 지정했으면 그 판단을 존중한다(검증은 다른 가드가 한다).
+    elif plan[0].action == "excel_live.write_range":
+        # "합계"라는 요청이 'SUM'이라는 **글자**로 기록됐다(2026-08-30 말투 B 4건).
+        # 단일 셀에 집계 낱말 하나면 값이 아니라 수식 요청이다 — 빌더로 재구성한다.
+        values = params.get("values_2d") or []
+        flat = [
+            str(v).strip()
+            for row in values
+            if isinstance(row, (list, tuple))
+            for v in row
+            if str(v or "").strip()
+        ]
+        if len(flat) != 1 or flat[0].upper() not in {"SUM", "합계", "총합", "합", "AVERAGE", "평균", "COUNT", "개수"}:
+            return
+    else:
         return
-    if str(params.get("sheet_name") or "").strip():
-        return  # 층이 시트를 지정했으면 그 판단을 존중한다(검증은 다른 가드가 한다).
     try:
         svc = get_excel_live_service()
         wb_id = _resolve_workbook_id(svc, workbook_id)
@@ -11435,6 +11487,7 @@ def _plan_approval_gate(
     # 성적부)이라 그걸 넘기면 복원기가 원본에 도로 못박는다(2026-08-30 재측정 실측:
     # 자격 수식은 붙었는데 성적부 A2 '김민준'이 여전히 덮였다). 규칙 경로와 동일 규약.
     _restore_cross_sheet_aggregate(req.message, plan, req.workbook_id, req.sheet_name)
+    _restore_rename_from_hijack(req.message, plan)
     if not target_problem:
         key_problem = _key_column_problem(req.workbook_id, plan_sheet or req.sheet_name, plan)
         if key_problem:
