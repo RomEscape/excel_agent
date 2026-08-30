@@ -1464,7 +1464,19 @@ class ExcelLiveService:
             # COM Font/HorizontalAlignment는 macOS에서 읽기 즉사·대입 무음 no-op다
             # (2026-08-30 감사). 글꼴 속성은 고수준 API(양 플랫폼 공통)로 처리한다.
             if _xl_align is not None:
-                raise ExcelLiveError("텍스트 맞춤(정렬)은 아직 Windows에서만 지원됩니다 — macOS 지원은 준비 중입니다.")
+                # appscript horizontal_alignment enum(k.h_align_*) — AS 사전 표준.
+                try:
+                    from appscript import k as _k
+
+                    _mac_align = {
+                        -4131: _k.h_align_left,
+                        -4108: _k.h_align_center,
+                        -4152: _k.h_align_right,
+                        -4130: _k.h_align_justify,
+                    }[_xl_align]
+                    rng.api.horizontal_alignment.set(_mac_align)
+                except Exception as exc:
+                    raise ExcelLiveError(f"텍스트 맞춤 실패(macOS): {exc}") from exc
             if bold is not None:
                 rng.font.bold = bool(bold)
             if name:
@@ -1573,22 +1585,37 @@ class ExcelLiveService:
         return {"unmerged_ranges": merged_before, "address": str(rng.address)}
 
     def freeze_panes(self, workbook_id: str | None, sheet_name: str, freeze_at: str | None = None) -> dict[str, Any]:
-        if sys.platform == "darwin":
-            # COM 전용 경로 — macOS에서는 깊은 AttributeError 대신 명확히 거절한다
-            # (2026-08-30 macOS 감사, 조용한 오동작보다 시끄러운 거절).
-            raise ExcelLiveError("틀 고정은(는) COM 전용이라 아직 Windows에서만 지원됩니다 — macOS 지원은 준비 중입니다.")
         wb, sheet = self._open_target(workbook_id, sheet_name)
         cell_ref = str(freeze_at or "A2").strip().upper() or "A2"
-        window = wb.app.api.ActiveWindow
         sheet.activate()
-        if cell_ref in {"NONE", "해제", "OFF"}:
+        release = cell_ref in {"NONE", "해제", "OFF"}
+        if not release:
+            cell = sheet.range(cell_ref)
+            row_no = int(getattr(cell, "row", 1) or 1)
+            col_no = int(getattr(cell, "column", 1) or 1)
+        if sys.platform == "darwin":
+            # appscript 창 속성 — COM ActiveWindow와 같은 모양이되 읽기/쓰기가
+            # .get()/.set()이다(xlwings _xlmac 관용구 기준, 2026-08-30 P2).
+            try:
+                window = wb.app.api.active_window
+                if release:
+                    window.freeze_panes.set(False)
+                    window.split_row.set(0)
+                    window.split_column.set(0)
+                    return {"frozen": False, "freeze_at": None}
+                window.freeze_panes.set(False)
+                window.split_row.set(max(0, row_no - 1))
+                window.split_column.set(max(0, col_no - 1))
+                window.freeze_panes.set(True)
+            except Exception as exc:
+                raise ExcelLiveError(f"틀 고정 실패(macOS): {exc}") from exc
+            return {"frozen": True, "freeze_at": cell_ref}
+        window = wb.app.api.ActiveWindow
+        if release:
             window.FreezePanes = False
             window.SplitRow = 0
             window.SplitColumn = 0
             return {"frozen": False, "freeze_at": None}
-        cell = sheet.range(cell_ref)
-        row_no = int(getattr(cell, "row", 1) or 1)
-        col_no = int(getattr(cell, "column", 1) or 1)
         window.FreezePanes = False
         window.SplitRow = max(0, row_no - 1)
         window.SplitColumn = max(0, col_no - 1)
@@ -1691,11 +1718,43 @@ class ExcelLiveService:
         orientation: str | None = None,
         fit_to_page: bool | None = None,
     ) -> dict[str, Any]:
-        if sys.platform == "darwin":
-            # COM 전용 경로 — macOS에서는 깊은 AttributeError 대신 명확히 거절한다
-            # (2026-08-30 macOS 감사, 조용한 오동작보다 시끄러운 거절).
-            raise ExcelLiveError("인쇄 설정은(는) COM 전용이라 아직 Windows에서만 지원됩니다 — macOS 지원은 준비 중입니다.")
         _wb, sheet = self._open_target(workbook_id, sheet_name)
+        if sys.platform == "darwin":
+            # print_area는 xlwings 고수준(page_setup)이 양 플랫폼을 덮고, 방향·맞춤은
+            # appscript page_setup_object 속성으로 쓴다(_xlmac 관용구, 2026-08-30 P2).
+            try:
+                from appscript import k as _k
+
+                if print_area:
+                    rng = self._resolve_target_range(sheet, print_area)
+                    resolved_area = str(rng.address).replace("$", "")
+                    sheet.page_setup.print_area = resolved_area
+                else:
+                    resolved_area = str(sheet.page_setup.print_area or "").replace("$", "") or None
+                setup = sheet.api.page_setup_object
+                orient_out = None
+                if orientation:
+                    normalized = str(orientation).strip().lower()
+                    if normalized in {"landscape", "가로"}:
+                        setup.orientation.set(_k.landscape)
+                        orient_out = "landscape"
+                    elif normalized in {"portrait", "세로"}:
+                        setup.orientation.set(_k.portrait)
+                        orient_out = "portrait"
+                if orient_out is None:
+                    try:
+                        orient_out = "landscape" if setup.orientation.get() == _k.landscape else "portrait"
+                    except Exception:
+                        orient_out = None
+                if fit_to_page:
+                    setup.zoom.set(False)
+                    setup.fit_to_pages_wide.set(1)
+                    setup.fit_to_pages_tall.set(1)
+            except ExcelLiveError:
+                raise
+            except Exception as exc:
+                raise ExcelLiveError(f"인쇄 설정 실패(macOS): {exc}") from exc
+            return {"print_area": resolved_area, "orientation": orient_out, "fit_to_page": bool(fit_to_page)}
         setup = sheet.api.PageSetup
         if print_area:
             rng = self._resolve_target_range(sheet, print_area)
@@ -1726,22 +1785,35 @@ class ExcelLiveService:
     def add_cell_comment(
         self, workbook_id: str | None, sheet_name: str, target_range: str, text: str, author: str = "OfficeClaw AI"
     ) -> dict[str, Any]:
-        if sys.platform == "darwin":
-            # COM 전용 경로 — macOS에서는 깊은 AttributeError 대신 명확히 거절한다
-            # (2026-08-30 macOS 감사, 조용한 오동작보다 시끄러운 거절).
-            raise ExcelLiveError("셀 메모은(는) COM 전용이라 아직 Windows에서만 지원됩니다 — macOS 지원은 준비 중입니다.")
         if not str(text or "").strip():
             raise ExcelLiveError("add_cell_comment.text가 비어 있습니다.")
         _wb, sheet = self._open_target(workbook_id, sheet_name)
         rng = self._resolve_target_range(sheet, target_range)
         cell = sheet.range(f"{self._col_letter(int(rng.column))}{int(rng.row)}")
         body = f"{author}:\n{text}" if author else str(text)
-        try:
-            if cell.api.Comment is not None:
-                cell.api.Comment.Delete()
-        except Exception:
-            pass
-        cell.api.AddComment(body)
+        if sys.platform == "darwin":
+            # xlwings _xlmac의 메모 관용구: 삭제=clear_Excel_comments,
+            # 생성=make(new=k.Excel_comment, Excel_comment_text)(2026-08-30 P2).
+            try:
+                from appscript import k as _k
+
+                try:
+                    cell.api.clear_Excel_comments()
+                except Exception:
+                    pass
+                cell.api.make(
+                    new=_k.Excel_comment,
+                    with_properties={_k.Excel_comment_text: body},
+                )
+            except Exception as exc:
+                raise ExcelLiveError(f"셀 메모 추가 실패(macOS): {exc}") from exc
+        else:
+            try:
+                if cell.api.Comment is not None:
+                    cell.api.Comment.Delete()
+            except Exception:
+                pass
+            cell.api.AddComment(body)
         return {"address": str(cell.address).replace("$", ""), "author": author, "text": str(text)}
 
     def describe_sheet_layout(self, workbook_id: str | None, sheet_name: str) -> dict[str, Any]:
@@ -2015,16 +2087,19 @@ class ExcelLiveService:
         table_name: str = "",
         has_header: bool = True,
     ) -> dict[str, Any]:
-        if sys.platform == "darwin":
-            # COM 전용 경로 — macOS에서는 깊은 AttributeError 대신 명확히 거절한다
-            # (2026-08-30 macOS 감사, 조용한 오동작보다 시끄러운 거절).
-            raise ExcelLiveError("엑셀 표 변환은(는) COM 전용이라 아직 Windows에서만 지원됩니다 — macOS 지원은 준비 중입니다.")
         target_id = workbook_id or self._selected_workbook_id
         if not target_id:
             raise WorkbookNotFoundError("workbook_id가 필요합니다.")
         sheet = self._find_sheet(self._find_workbook(target_id), sheet_name)
         rng = self._resolve_target_range(sheet, target_range)
-        existing = {str(item.Name) for item in sheet.api.ListObjects}
+        if sys.platform == "darwin":
+            existing = set()
+            try:
+                existing = {str(t.name) for t in sheet.tables}
+            except Exception:
+                pass
+        else:
+            existing = {str(item.Name) for item in sheet.api.ListObjects}
         cleaned = re.sub(r"[^A-Za-z0-9_]", "", str(table_name or "")) or f"{sheet_name}Table"
         if cleaned[0].isdigit():
             cleaned = f"T{cleaned}"
@@ -2033,9 +2108,22 @@ class ExcelLiveService:
         while display in existing:
             index += 1
             display = f"{cleaned}{index}"
-        listed = sheet.api.ListObjects.Add(1, rng.api, True, 1 if has_header else 2)
-        listed.Name = display
-        listed.TableStyle = "TableStyleMedium2"
+        if sys.platform == "darwin":
+            # xlwings 고수준 tables.add — 맥에서는 make new list_object로 구현돼
+            # 있다(_xlmac, 2026-08-30 P2). COM ListObjects와 같은 결과 계약.
+            try:
+                sheet.tables.add(
+                    source=rng,
+                    name=display,
+                    table_style_name="TableStyleMedium2",
+                    has_headers=bool(has_header),
+                )
+            except Exception as exc:
+                raise ExcelLiveError(f"엑셀 표 변환 실패(macOS): {exc}") from exc
+        else:
+            listed = sheet.api.ListObjects.Add(1, rng.api, True, 1 if has_header else 2)
+            listed.Name = display
+            listed.TableStyle = "TableStyleMedium2"
         return {
             "created": True,
             "address": str(rng.address),
@@ -2067,7 +2155,7 @@ class ExcelLiveService:
         # (dev 병합의 색 정책과 같은 취지: 조용한 오동작보다 시끄러운 거절).
         if sys.platform == "darwin":
             raise ExcelLiveError(
-                "조건부 서식 규칙은 아직 Windows에서만 지원됩니다 — macOS 지원은 준비 중입니다."
+                "조건부 서식 규칙은 macOS Excel의 AppleScript 자동화에 API가 없어 라이브 모드에서는 불가합니다 — 파일 엔진(EXCEL_LIVE_ENGINE=file)은 지원합니다."
             )
         condition = rng.api.FormatConditions.Add(Type=2, Formula1=formula_text)
         red, green, blue = self._hex_to_rgb(fill_color)
@@ -2097,7 +2185,7 @@ class ExcelLiveService:
         # (dev 병합의 색 정책과 같은 취지: 조용한 오동작보다 시끄러운 거절).
         if sys.platform == "darwin":
             raise ExcelLiveError(
-                "조건부 서식 규칙은 아직 Windows에서만 지원됩니다 — macOS 지원은 준비 중입니다."
+                "조건부 서식 규칙은 macOS Excel의 AppleScript 자동화에 API가 없어 라이브 모드에서는 불가합니다 — 파일 엔진(EXCEL_LIVE_ENGINE=file)은 지원합니다."
             )
         scale = rng.api.FormatConditions.AddColorScale(3)
         for index, hex_code in ((1, min_color), (2, mid_color), (3, max_color)):
@@ -2123,7 +2211,7 @@ class ExcelLiveService:
         # (dev 병합의 색 정책과 같은 취지: 조용한 오동작보다 시끄러운 거절).
         if sys.platform == "darwin":
             raise ExcelLiveError(
-                "조건부 서식 규칙은 아직 Windows에서만 지원됩니다 — macOS 지원은 준비 중입니다."
+                "조건부 서식 규칙은 macOS Excel의 AppleScript 자동화에 API가 없어 라이브 모드에서는 불가합니다 — 파일 엔진(EXCEL_LIVE_ENGINE=file)은 지원합니다."
             )
         bar = rng.api.FormatConditions.AddDatabar()
         red, green, blue = self._hex_to_rgb(color)
@@ -2226,10 +2314,6 @@ class ExcelLiveService:
         unlock_range: str | None = None,
     ) -> dict[str, Any]:
         """시트 보호/잠금 설정을 적용한다."""
-        if sys.platform == "darwin":
-            # COM 전용 경로 — macOS에서는 깊은 AttributeError 대신 명확히 거절한다
-            # (2026-08-30 macOS 감사, 조용한 오동작보다 시끄러운 거절).
-            raise ExcelLiveError("시트 보호은(는) COM 전용이라 아직 Windows에서만 지원됩니다 — macOS 지원은 준비 중입니다.")
         target_id = workbook_id or self._selected_workbook_id
         if not target_id:
             raise WorkbookNotFoundError("workbook_id가 필요합니다.")
@@ -2239,6 +2323,54 @@ class ExcelLiveService:
         if ws_api is None:
             raise ExcelLiveError("시트 보호를 적용할 수 없습니다. Excel API 객체를 찾지 못했습니다.")
         pwd = str(password or "")
+        if sys.platform == "darwin":
+            # AppleScript: unprotect/protect 명령 + range의 locked 속성(.set).
+            # SpecialCells가 없어 수식 셀은 수식 격자를 읽어 셀 단위로 잠근다
+            # (상한 2000 — 그 이상은 잠금 범위를 시트 보호 기본에 맡긴다). 2026-08-30 P2.
+            try:
+                ws_api.unprotect(password=pwd)
+            except Exception:
+                pass
+            used = getattr(ws, "used_range", None) or ws.range("A1")
+            try:
+                used.api.locked.set(False)
+            except Exception:
+                pass
+            locked_count = 0
+            if lock_formula_cells:
+                try:
+                    formulas = used.formula
+                    if not isinstance(formulas, (list, tuple)):
+                        formulas = [[formulas]]
+                    start_row = int(getattr(used, "row", 1) or 1)
+                    start_col = int(getattr(used, "column", 1) or 1)
+                    for r_off, row in enumerate(formulas):
+                        row_list = row if isinstance(row, (list, tuple)) else [row]
+                        for c_off, f in enumerate(row_list):
+                            if isinstance(f, str) and f.startswith("=") and locked_count < 2000:
+                                addr = f"{self._col_letter(start_col + c_off)}{start_row + r_off}"
+                                ws.range(addr).api.locked.set(True)
+                                locked_count += 1
+                except Exception:
+                    pass
+            unlocked_address = ""
+            if unlock_range:
+                try:
+                    unlock_rng = self._resolve_target_range(ws, unlock_range)
+                    unlock_rng.api.locked.set(False)
+                    unlocked_address = str(unlock_rng.address)
+                except Exception as exc:
+                    raise ExcelLiveError(f"잠금 해제 범위 적용 실패: {exc}") from exc
+            try:
+                ws_api.protect(password=pwd)
+            except Exception as exc:
+                raise ExcelLiveError(f"시트 보호 적용 실패(macOS): {exc}") from exc
+            return {
+                "protected": True,
+                "sheet_name": str(getattr(ws, "name", "") or ""),
+                "lock_formula_cells": bool(lock_formula_cells),
+                "unlock_range": unlocked_address,
+            }
         try:
             ws_api.Unprotect(Password=pwd)
         except Exception:
@@ -2297,7 +2429,7 @@ class ExcelLiveService:
         if sys.platform == "darwin":
             # COM 전용 경로 — macOS에서는 깊은 AttributeError 대신 명확히 거절한다
             # (2026-08-30 macOS 감사, 조용한 오동작보다 시끄러운 거절).
-            raise ExcelLiveError("입력 유효성 검사은(는) COM 전용이라 아직 Windows에서만 지원됩니다 — macOS 지원은 준비 중입니다.")
+            raise ExcelLiveError("입력 유효성 검사는 macOS Excel의 AppleScript 자동화에 API가 없어 라이브 모드에서는 불가합니다 — 파일 엔진(EXCEL_LIVE_ENGINE=file)은 지원합니다.")
         target_id = workbook_id or self._selected_workbook_id
         if not target_id:
             raise WorkbookNotFoundError("workbook_id가 필요합니다.")
@@ -2494,10 +2626,6 @@ class ExcelLiveService:
 
     def refresh_power_query(self, workbook_id: str | None) -> dict[str, Any]:
         """통합문서의 연결/쿼리를 새로고침한다(RefreshAll)."""
-        if sys.platform == "darwin":
-            # COM 전용 경로 — macOS에서는 깊은 AttributeError 대신 명확히 거절한다
-            # (2026-08-30 macOS 감사, 조용한 오동작보다 시끄러운 거절).
-            raise ExcelLiveError("macOS Excel에는 Power Query가 없습니다 — 이 작업은 Windows에서만 가능합니다.")
         target_id = workbook_id or self._selected_workbook_id
         if not target_id:
             raise WorkbookNotFoundError("workbook_id가 필요합니다.")
@@ -2506,9 +2634,17 @@ class ExcelLiveService:
         if api_wb is None:
             raise ExcelLiveError("Power Query 새로고침을 실행할 수 없습니다.")
         try:
-            api_wb.RefreshAll()
+            if sys.platform == "darwin":
+                # 모던 맥 Excel은 refresh_all을 받기도 한다 — 안 되면 가드 대신
+                # 실제 사유가 담긴 오류를 낸다(2026-08-30 P2: 선제 거절 → 시도).
+                api_wb.refresh_all()
+            else:
+                api_wb.RefreshAll()
         except Exception as exc:
-            raise ExcelLiveError(f"Power Query 새로고침 실패: {exc}") from exc
+            raise ExcelLiveError(
+                f"Power Query 새로고침 실패: {exc}"
+                + (" (이 macOS Excel의 자동화가 refresh all을 지원하지 않을 수 있습니다.)" if sys.platform == "darwin" else "")
+            ) from exc
         return {"refreshed": True, "workbook_id": self._workbook_id(wb)}
 
     def run_vba_macro(
@@ -2526,10 +2662,6 @@ class ExcelLiveService:
         실행된 대상이 다르면 승인 자체가 무의미하다. `'파일명'!매크로` 형태로
         대상을 못 박는다.
         """
-        if sys.platform == "darwin":
-            # COM 전용 경로 — macOS에서는 깊은 AttributeError 대신 명확히 거절한다
-            # (2026-08-30 macOS 감사, 조용한 오동작보다 시끄러운 거절).
-            raise ExcelLiveError("VBA 매크로 실행은(는) COM 전용이라 아직 Windows에서만 지원됩니다 — macOS 지원은 준비 중입니다.")
         target_id = workbook_id or self._selected_workbook_id
         if not target_id:
             raise WorkbookNotFoundError("workbook_id가 필요합니다.")
@@ -2547,7 +2679,12 @@ class ExcelLiveService:
         qualified = f"'{wb_name}'!{macro}"
         macro_args = list(args or [])
         try:
-            app.api.Run(qualified, *macro_args)
+            if sys.platform == "darwin":
+                # xlwings 고수준 app.macro — 맥 구현은 run_VB_macro다(_xlmac:341,
+                # 2026-08-30 P2). 인자 형태도 COM Run과 같다.
+                app.macro(qualified)(*macro_args)
+            else:
+                app.api.Run(qualified, *macro_args)
         except Exception as exc:
             raise ExcelLiveError(f"VBA 매크로 실행 실패: {exc}") from exc
         return {

@@ -6530,59 +6530,54 @@ class TestMacWriteRefusalDetection:
 
 
 class TestMacGuardsRefuseLoudly:
-    """macOS P1(2026-08-30): COM 전용 액션은 darwin에서 첫 줄에 명확히 거절한다.
+    """macOS P2(2026-08-30): '준비 중' 가드는 전멸 — AppleScript에 API가 없는 4종만
+    플랫폼 한계로 거절하고(파일 엔진 안내 포함), 나머지는 전부 구현됐다.
 
-    가드가 통합문서 조회보다 먼저라 Windows에서도 monkeypatch로 검증된다.
-    고수준 대체가 설계된 액션(차트·병합·글꼴·중복 제거·행/열 삭제·수식 채움)은
-    여기 없어야 한다 — 가드 목록이 늘면 대체 설계가 후퇴한 것이다.
+    구현 7종(틀 고정·표 변환·시트 보호·인쇄·메모·VBA·PQ)은 xlwings _xlmac 관용구
+    기준 다윈 분기 — 가드 문구가 다시 생기면 구현이 후퇴한 것이다.
     """
 
-    GUARDED = [
-        ("freeze_panes", {"workbook_id": "wb", "sheet_name": "S"}),
-        ("convert_to_excel_table", {"workbook_id": "wb", "sheet_name": "S", "target_range": "A1:B2"}),
-        ("protect_sheet", {"workbook_id": "wb", "sheet_name": "S"}),
+    STILL_GUARDED = [
         ("set_data_validation", {"workbook_id": "wb", "sheet_name": "S", "target_range": "A1"}),
-        ("set_print_area", {"workbook_id": "wb", "sheet_name": "S"}),
-        ("add_cell_comment", {"workbook_id": "wb", "sheet_name": "S", "target_range": "A1", "text": "메모"}),
-        ("run_vba_macro", {"workbook_id": "wb", "macro_name": "Do"}),
-        ("refresh_power_query", {"workbook_id": "wb"}),
+    ]
+    IMPLEMENTED = [
+        "freeze_panes", "convert_to_excel_table", "protect_sheet",
+        "set_print_area", "add_cell_comment", "run_vba_macro", "refresh_power_query",
     ]
 
-    def _svc(self):
-        from office_claw_sidecar.services.excel_live_service import ExcelLiveService
-
-        return ExcelLiveService()
-
-    def test_darwin에서_가드가_명확히_거절한다(self, monkeypatch):
-        import sys
-
+    def test_잔여_가드는_플랫폼_한계를_명시한다(self, monkeypatch):
         from office_claw_sidecar.services import excel_live_service as m
+        from office_claw_sidecar.services.excel_live_service import ExcelLiveError, ExcelLiveService
 
         monkeypatch.setattr(m.sys, "platform", "darwin", raising=False)
-        _ = sys  # noqa: F841
-        svc = self._svc()
-        from office_claw_sidecar.services.excel_live_service import ExcelLiveError
-
-        for name, kwargs in self.GUARDED:
+        svc = ExcelLiveService()
+        for name, kwargs in self.STILL_GUARDED:
             try:
                 getattr(svc, name)(**kwargs)
             except ExcelLiveError as exc:
-                assert ("준비 중" in str(exc)) or ("Power Query" in str(exc)), (name, str(exc))
+                assert "AppleScript" in str(exc) and "파일 엔진" in str(exc), (name, str(exc))
             else:
-                raise AssertionError(f"{name}: darwin 가드가 발동하지 않았다")
+                raise AssertionError(f"{name}: darwin 한계 거절이 발동하지 않았다")
 
-    def test_windows에서는_가드_문구로_거절하지_않는다(self, monkeypatch):
+    def test_조건부서식_3종도_같은_한계_문구다(self, monkeypatch):
+        import inspect
+
         from office_claw_sidecar.services import excel_live_service as m
 
-        monkeypatch.setattr(m.sys, "platform", "win32", raising=False)
-        svc = self._svc()
-        for name, kwargs in self.GUARDED:
-            try:
-                getattr(svc, name)(**kwargs)
-            except Exception as exc:
-                assert "준비 중" not in str(exc), (name, str(exc))
-            else:
-                pass  # Excel 상태에 따라 성공할 수도 있다 — 가드 문구만 아니면 된다
+        for name in ("apply_formula_cf", "apply_color_scale", "apply_data_bar"):
+            source = inspect.getsource(getattr(m.ExcelLiveService, name))
+            assert "AppleScript" in source and "파일 엔진" in source, name
+
+    def test_구현_7종에는_가드_문구가_없다(self):
+        import inspect
+
+        from office_claw_sidecar.services import excel_live_service as m
+
+        for name in self.IMPLEMENTED:
+            source = inspect.getsource(getattr(m.ExcelLiveService, name))
+            assert "준비 중" not in source, f"{name}: 가드가 되살아났다"
+            assert 'sys.platform == "darwin"' in source, f"{name}: 다윈 분기가 없다"
+
 
 
 class TestRunLockUsesPidLiveness:
