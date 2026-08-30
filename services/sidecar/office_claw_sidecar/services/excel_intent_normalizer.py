@@ -468,7 +468,11 @@ def intent_to_plan(
             # 지어줘 빈칸으루"에서 지어낸 column=지역이 통과해 A열만 비웠다
             # (2026-08-26 게이트 0535 실측, 601→600 회귀 1건의 전부).
             whole_table_wording = bool(
-                re.search(r"(전체|전부|싹|모두|몽땅|내용\s*다|다\s*지[워어]|다\s*비워|다\s*삭제)", plain_message)
+                re.search(
+                    r"(전체|전부|싹|모두|몽땅|내용\s*다|값\s*다|다\s*지[워어]|다\s*비워|다\s*삭제"
+                    r"|다\s*(?:clear|클리어))",
+                    plain_message,
+                )
             ) and str(column).strip() not in plain_message
             letter, last = _column_letter(entry, column), _last_row(entry)
             if letter and last > 2 and not whole_table_wording:

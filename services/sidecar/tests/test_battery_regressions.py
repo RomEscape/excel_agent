@@ -6831,3 +6831,51 @@ class TestBlindClusterFixes:
         assert plan[0].action == "excel_live.set_formula"
         assert plan[0].params["formula_a1"] == "=SUM('지역성과'!B2:B3)"
         assert plan[0].params["sheet_name"] == "요약"
+
+
+class TestChartPlanNotHijackedByAggregate:
+    """'지연건수 지역별로 … 막대 그래프'의 '건수'가 집계어로 잡혀 차트 계획이
+    피벗 슬롯에 강탈됐다(2026-08-30 말투 B, verify_failed). 원문·계획 양쪽에
+    차트가 있으면 confident_pivot이 물러난다 — 무차트 집계 문장의 그물은 유지.
+    """
+
+    DIGEST = {
+        "sheets": [{
+            "name": "지역성과", "used_range": "A1:F6",
+            "columns": [{"header": "지역", "letter": "A"}, {"header": "주문건수", "letter": "B"},
+                        {"header": "지연건수", "letter": "E"}],
+        }],
+        "active_sheet": "지역성과",
+    }
+    CHART_PLAN = {"action_plan": [{
+        "action": "excel_live.create_chart",
+        "params": {"source_range": "__ACTIVE_SELECTION__", "chart_type": "bar"},
+        "reason": "r",
+    }]}
+
+    def test_차트_문장은_차트_계획을_지킨다(self):
+        from office_claw_sidecar.routers.excel_live import ExcelLiveCommandRequest, _merge_operation_slots
+
+        req = ExcelLiveCommandRequest(message="지연건수 지역별로 비교되게 막대 그래프 하나 그려 주세요",
+                                      sheet_name="지역성과")
+        slots = _merge_operation_slots(None, session_key="t", req=req, hints={"intent": "chart"},
+                                       parsed=self.CHART_PLAN, digest=self.DIGEST)
+        assert slots is None
+
+    def test_무차트_집계_문장의_그물은_유지된다(self):
+        from office_claw_sidecar.routers.excel_live import ExcelLiveCommandRequest, _merge_operation_slots
+
+        req = ExcelLiveCommandRequest(message="지역별 주문건수 집계 정리해줘", sheet_name="지역성과")
+        slots = _merge_operation_slots(None, session_key="t", req=req, hints={"intent": "pivot"},
+                                       parsed=self.CHART_PLAN, digest=self.DIGEST)
+        assert slots is not None and slots.intent == "pivot"
+
+    def test_값_다는_전체_지우기다_지어낸_열을_믿지_않는다(self):
+        from office_claw_sidecar.services.excel_intent_normalizer import intent_to_plan
+
+        out = intent_to_plan({"task": "clear_values", "option": "", "column": "지역"},
+                             digest=self.DIGEST, message="이 범위 값 다 clear 해 주세요.")
+        assert not (out or {}).get("action_plan")
+        out2 = intent_to_plan({"task": "clear_values", "option": "", "column": "지역"},
+                              digest=self.DIGEST, message="지역 열 비워줘")
+        assert out2["action_plan"][0]["params"]["target_range"] == "A2:A6"

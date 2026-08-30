@@ -5987,7 +5987,15 @@ def _merge_operation_slots(
         } and hint_intent not in {"", "general", "read"}
         # 규칙이 기준 열까지 확정한 집계 요청은 플래너에게 맡기지 않는다.
         # 같은 문장이 실행할 때마다 피벗/시트생성/셀칠하기로 갈리던 원인이 여기였다.
-        confident_pivot = bool(_confident_group_key(req.message, digest, sheet_name=req.sheet_name))
+        # 단 원문이 차트를 말했고 계획도 차트면 여기서 물러난다 — "지연건수 지역별로
+        # 비교되게 막대 그래프"에서 '건수'가 집계어로 잡혀 차트 계획이 피벗 슬롯에
+        # 강탈됐다(2026-08-30 말투 B, verify_failed로 턴 전체가 죽었다).
+        chart_plan_backed_by_message = first_action == "excel_live.create_chart" and bool(
+            _ACTION_EVIDENCE["excel_live.create_chart"].search(str(req.message or ""))
+        )
+        confident_pivot = not chart_plan_backed_by_message and bool(
+            _confident_group_key(req.message, digest, sheet_name=req.sheet_name)
+        )
         if first_action and not planner_downgraded_to_read and not confident_pivot:
             return None
         if confident_pivot:
