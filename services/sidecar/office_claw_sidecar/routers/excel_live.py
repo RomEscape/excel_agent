@@ -9642,6 +9642,9 @@ async def _run_command(
         (_intent_first_enabled() or quick_first_action in _intent_first_kind_allowlist())
         and not should_parse_with_llm
         and quick_plan_for_parse
+        # 붙여넣기-쓰기 확정 턴은 실험에서 제외 — 붙여넣기 계약은 규칙이 소유한다.
+        # (2026-08-30 두 팔 실측: 13×7 붙여넣기를 LLM이 정렬로 오인지해 방향을 되물었다)
+        and not row_write_confirmed
     ):
         should_parse_with_llm = True
         llm_decision_reason = "intent_first_experiment"
@@ -9838,6 +9841,13 @@ async def _run_command(
         # 끊으면 httpx 요청이 백그라운드에 살아남아 Ollama에 부하가 쌓인다.
         "parse_timeout_seconds": parse_timeout_seconds,
         "personalization_hint": personalization_hint,
+        # 실험(intent_first)이 강제한 턴에서 의도층이 물러나면 이 규칙 계획으로
+        # 복귀한다 — 플래너 폴백은 실험 변수 밖의 회귀를 만든다(2026-08-30 두 팔).
+        "intent_first_rule_plan": (
+            [dict(s) for s in quick_plan_for_parse]
+            if llm_decision_reason == "intent_first_experiment" and quick_plan_for_parse
+            else None
+        ),
         "workbook_digest": workbook_digest,
         "workbook_digest_text": render_workbook_digest(workbook_digest),
         "conversation_history_text": _render_conversation_history(pending_clarification),

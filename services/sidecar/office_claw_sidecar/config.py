@@ -54,12 +54,15 @@ def _detect_workspace_root() -> Path | None:
     """
     소스 트리 실행 환경에서 레포 루트를 추정한다.
 
-    조건:
-    - package.json 존재
-    - python-sidecar 디렉터리 존재
+    조건(모노레포 이행 2026-08-30): CLAUDE.md + services/sidecar 존재.
+    옛 마커(package.json+python-sidecar)는 구조 개편으로 둘 다 사라져 감지가
+    조용히 실패했고, 게이트·배터리의 chat_log가 통째로 AppData로 새어 나갔다
+    (같은 날 실측 — 포렌식이 "로그 없음"으로 보였다). 옛 레이아웃도 계속 지원한다.
     """
     here = Path(__file__).resolve()
     for parent in here.parents:
+        if (parent / "CLAUDE.md").exists() and (parent / "services" / "sidecar").exists():
+            return parent
         if (parent / "package.json").exists() and (parent / "python-sidecar").exists():
             return parent
     return None

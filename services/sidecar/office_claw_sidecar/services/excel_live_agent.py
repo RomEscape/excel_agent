@@ -1493,6 +1493,25 @@ async def parse_excel_live_command(
         )
         if normalized is not None:
             return normalized
+        rule_plan = context.get("intent_first_rule_plan")
+        if rule_plan:
+            # 실험이 강제한 턴 — 의도층이 물러났으니 규칙의 확정 계획으로 복귀한다.
+            # 플래너로 흘리면 규칙이 정확히 이해한 명령이 실험 탓에 회귀한다
+            # (2026-08-30 실측: 합계 행 → create_table 오답).
+            trace_note(
+                "llm_call",
+                purpose="intent_first_fallback",
+                outcome="rule_restored",
+                mapped_action=str(rule_plan[0].get("action") or ""),
+            )
+            return {
+                "action_plan": [dict(s) for s in rule_plan],
+                "action": str(rule_plan[0].get("action") or ""),
+                "params": dict(rule_plan[0].get("params") or {}),
+                "reason": "실험 폴백: 의도층 물러남 — 규칙 계획 복귀",
+                "intent": "edit",
+                "plan_source": "rule",
+            }
     # 목록 조회는 어느 모드에서든 편집 요청의 답이 아니다. 관측(read_range·
     # validate_data)만 모드에 따라 허용한다 — 그게 이번 실험의 변수다.
     non_edit_actions = {

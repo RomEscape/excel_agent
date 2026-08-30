@@ -584,6 +584,32 @@ def intent_to_plan(
             and not column_wording
             and _worded(r"만들", r"맏드", r"만드", r"생성", r"추가", r"create", r"add")
         ):
+            # 기본 이름으로 가기 전에 원문에서 이름을 회수한다 — "대시보드 시트 하나
+            # 만들어줄래?"에서 모델이 이름을 못 뽑아 Sheet2가 생겼고, 이후 '대시보드'
+            # 참조 ~20턴이 무너졌다(2026-08-30 두 팔 실측 0830-0734, 팔B).
+            # ok=True인데 결과가 다른 미검출 오실행 부류라 원문이 최후의 근거다.
+            recovered = ""
+            m = re.search(
+                r"([가-힣A-Za-z0-9_·&/-]{2,20}?)\s*(?:이라는|이란|라는)?\s*(?:워크시트|시트|sheet|탭)",
+                plain_message,
+                re.IGNORECASE,
+            )
+            if m:
+                cand = m.group(1).strip()
+                if cand and cand.lower() not in degenerate and cand not in {"새", "새로운", "다른"}:
+                    recovered = cand
+            if recovered:
+                steps = [{
+                    "action": "excel_live.create_sheet",
+                    "params": {"sheet_name": recovered},
+                    "reason": "의도 정규화: 새 시트(원문 이름 회수)",
+                }]
+        if not steps and (
+            (not name or name.lower() in degenerate)
+            and not re.search(r"(?:이름|명)\s*(?:은|을|이|으로|로|의)", plain_message)
+            and not column_wording
+            and _worded(r"만들", r"맏드", r"만드", r"생성", r"추가", r"create", r"add")
+        ):
             # 이름 없는 생성("새로운 시트 만들어줘") — 조용히 버리면 플래너가 미라벨
             # 계획을 내 "'새로운' 시트를 찾을 수 없습니다"가 됐다(2026-08-25 GUI 실측).
             # 기본 이름은 디스패처가 채운다(sheet_name="" 계약). 단 두 경우는 물러난다:

@@ -6623,3 +6623,35 @@ class TestRunLockUsesPidLiveness:
         lock_path.write_text("nightly-gates (구형식)", encoding="utf-8")
         with m.RunLock("probe", path=lock_path) as lock:
             assert lock.acquired is False  # 방금 만든 파일 — 10h 폴백이 존중
+
+
+class TestIntentCreateSheetRecoversNameFromMessage:
+    """모델이 이름을 못 뽑으면 원문에서 회수한다(2026-08-30 두 팔 실측 — Sheet2 참사).
+
+    '대시보드 시트 하나 만들어줄래?'가 기본 이름 시트를 만들어 ok=True로 보고됐고,
+    이후 '대시보드' 참조 ~20턴이 되묻기로 무너졌다(미검출 오실행 부류).
+    """
+
+    @staticmethod
+    def _plan(msg, option="", column=""):
+        from office_claw_sidecar.services.excel_intent_normalizer import intent_to_plan
+
+        intent = {"task": "create_sheet", "option": option, "column": column}
+        return intent_to_plan(intent, digest=None, message=msg)
+
+    def test_원문에서_이름을_회수한다(self):
+        out = self._plan("대시보드 시트 하나 만들어줄래?")
+        assert out is not None
+        assert out["action_plan"][0]["params"]["sheet_name"] == "대시보드"
+        out2 = self._plan("월별요약 탭 생성해줘")
+        assert out2 is not None and out2["action_plan"][0]["params"]["sheet_name"] == "월별요약"
+
+    def test_이름_없는_생성은_기본_이름_유지(self):
+        out = self._plan("새 시트 만들어줘")
+        assert out is not None
+        assert out["action_plan"][0]["params"]["sheet_name"] == ""
+
+    def test_모델이_이름을_준_경우는_그대로(self):
+        out = self._plan("정산 시트 만들어줘", option="정산")
+        assert out is not None
+        assert out["action_plan"][0]["params"]["sheet_name"] == "정산"
