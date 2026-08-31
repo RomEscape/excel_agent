@@ -7247,3 +7247,51 @@ class TestLocationTargetingP0:
         assert run("A2부터 D20까지만 날짜순으로 정렬해줘") == "A2:D20"
         assert run("A2:D20 날짜순으로 정렬해줘") == "A2:D20"
         assert run("날짜순으로 정렬해줘") == "__ACTIVE_SELECTION__"
+
+
+class TestLiveMergeGuardsValues:
+    """라이브(xlwings) 병합의 값 손실 가드(2026-09-01 위치 감사 확정 [3]).
+
+    파일 엔진은 거절하는데 라이브는 DisplayAlerts를 끄고 파괴했다 — 롤백 면제
+    사유('실행기 가드가 거부한다')가 라이브에선 거짓이었다. 같은 잣대 이식.
+    """
+
+    class _Rng:
+        def __init__(self, value):
+            self.value = value
+            self.address = "$A$1:$C$1"
+
+        def merge(self):
+            self.merged = True
+
+    def _svc(self, rng):
+        from office_claw_sidecar.services.excel_live_service import ExcelLiveService
+
+        class _Sheet:
+            book = None
+
+        svc = ExcelLiveService()
+        svc._open_target = lambda wb, sh: (None, _Sheet())
+        svc._resolve_target_range = lambda sheet, tr: rng
+        return svc
+
+    def test_값이_둘_이상이면_병합을_거절한다(self):
+        from office_claw_sidecar.services.excel_live_service import ExcelLiveError
+
+        rng = self._Rng([["제목", "부제", None]])
+        try:
+            self._svc(rng).merge_cells(None, "S", "A1:C1")
+        except ExcelLiveError as exc:
+            assert "사라집니다" in str(exc)
+        else:
+            raise AssertionError("값 손실 병합이 거절되지 않았다")
+        assert not hasattr(rng, "merged")
+
+    def test_무손실이면_병합한다(self):
+        rng = self._Rng([["제목", None, ""]])
+        out = self._svc(rng).merge_cells(None, "S", "A1:C1")
+        assert out["merged"] is True and rng.merged
+
+    def test_스칼라_단일_셀도_병합한다(self):
+        rng = self._Rng("제목")
+        assert self._svc(rng).merge_cells(None, "S", "A1")["merged"] is True

@@ -1543,6 +1543,26 @@ class ExcelLiveService:
     def merge_cells(self, workbook_id: str | None, sheet_name: str, target_range: str) -> dict[str, Any]:
         _wb, sheet = self._open_target(workbook_id, sheet_name)
         rng = self._resolve_target_range(sheet, target_range)
+        # 값이 둘 이상이면 병합은 **지우는 일**이다 — 파일 엔진과 같은 잣대로
+        # 거절한다. 이 가드가 없어서 라이브 엔진은 DisplayAlerts로 Excel 경고까지
+        # 끈 채 값을 파괴했고, 롤백 면제 사유('실행기 가드가 거부한다')가 라이브
+        # 에선 거짓이었다(2026-09-01 위치 감사 실행-재현). rng.value는 고수준
+        # API라 macOS에서도 동작한다.
+        raw = rng.value
+        grid = raw if isinstance(raw, list) else [[raw]]
+        if grid and not isinstance(grid[0], list):
+            grid = [grid]
+        doomed = sum(
+            1
+            for i, row in enumerate(grid)
+            for j, v in enumerate(row)
+            if not (i == 0 and j == 0) and str(v if v is not None else "").strip() != ""
+        )
+        if doomed:
+            raise ExcelLiveError(
+                f"{target_range}를 병합하면 왼쪽 위 말고 {doomed}칸의 값이 사라집니다. "
+                "값이 없는 줄을 지목하거나, 먼저 값을 옮겨 주세요."
+            )
         # 병합은 왼쪽 위 값만 남긴다 — Excel이 경고창을 띄우지 않게 DisplayAlerts를 잠깐 끈다.
         app_obj = getattr(getattr(sheet, "book", None), "app", None)
         if sys.platform == "darwin":
