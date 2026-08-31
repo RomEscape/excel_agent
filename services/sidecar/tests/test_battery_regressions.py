@@ -7127,3 +7127,30 @@ class TestRound3ResidualFixes:
                           params={"start_cell": "A1", "values_2d": [["종합"]]}, reason="r")]
         _restore_cross_sheet_aggregate("A1에 종합 써줘", plan2, str(p), "요약")
         assert plan2[0].action == "excel_live.write_range"
+
+
+class TestRenameBacksOffWithoutSheetWord:
+    """"수도권은 서울권으로 이름 바꿔놔"는 값 치환(find_replace)인데 의도층이
+    rename_sheet를 골라 시트를 개명했다(2026-08-31 armB8 — B 고유 실패의 전부).
+    시트/탭 낱말이 없으면 rename 분기가 물러나 규칙 폴백(A팔 경로)이 맡는다.
+    """
+
+    DIG = {"sheets": [{"name": "지역성과", "columns": []}], "active_sheet": "지역성과"}
+
+    def test_시트_낱말_없는_이름_바꿔는_물러난다(self):
+        from office_claw_sidecar.services.excel_intent_normalizer import intent_to_plan
+
+        out = intent_to_plan({"task": "rename_sheet", "option": "서울권으로", "column": ""},
+                             digest=self.DIG, message="아 그리고 수도권은 서울권으로 이름 바꿔놔")
+        assert not (out or {}).get("action_plan")
+
+    def test_시트_낱말이_있으면_그대로_확정한다(self):
+        from office_claw_sidecar.services.excel_intent_normalizer import intent_to_plan
+
+        for msg in ("이 시트 이름 지역별실적으로 바꿔", "ㅇㅇ 탭 이름 지역별실적으로",
+                    "지역성과 워크시트 이름을 지역별실적으로 변경해 주세요"):
+            out = intent_to_plan({"task": "rename_sheet", "option": "", "column": ""},
+                                 digest=self.DIG, message=msg)
+            params = out["action_plan"][0]["params"]
+            assert params["new_name"] == "지역별실적", msg
+            assert params["sheet_name"] == "지역성과", msg

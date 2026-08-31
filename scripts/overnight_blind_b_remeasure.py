@@ -26,7 +26,6 @@ SIDECAR = ROOT / "services" / "sidecar"
 PY = Path(os.environ["LOCALAPPDATA"]) / "officeclaw/venvs/python-sidecar/Scripts/python.exe"
 CASES = ROOT / "datasets/eval/blind_paraphrases_v1.jsonl"
 REPORT = CASES.with_name(CASES.stem + "_report.json")
-OUT = ROOT / "logs/measurements/intent-first-gate-0831"
 DEADLINE_START = dt.datetime.now().replace(hour=5, minute=30, second=0, microsecond=0)
 if DEADLINE_START < dt.datetime.now():
     DEADLINE_START += dt.timedelta(days=1)
@@ -44,7 +43,6 @@ def lock_owner() -> str:
 
 
 def main() -> int:
-    OUT.mkdir(parents=True, exist_ok=True)
     say(f"대기 시작 — 게이트 락({LOCK_PATH})의 내용이 'nightly-gates'로 시작할 때만 트리거")
 
     # 1) 게이트 시작 대기(내용 검사 — 배터리 락엔 무반응)
@@ -63,11 +61,15 @@ def main() -> int:
         time.sleep(60)
     say("게이트 종료 감지 — 60초 진정 후 A팔 보고서 보존")
     time.sleep(60)
+    # 산출 디렉터리는 **측정 당일**(게이트가 끝난 날) 기준 — 무장 시점(자정 전)
+    # 날짜로 잡으면 전날 보고서를 덮어쓴다.
+    out = ROOT / "logs/measurements" / f"intent-first-gate-{dt.date.today():%m%d}"
+    out.mkdir(parents=True, exist_ok=True)
 
     # 3) 오늘 새벽 게이트가 남긴 A팔(기본 모드) 보고서를 보존
     if REPORT.exists():
-        shutil.copy2(REPORT, OUT / "armA_blind_report.json")
-        say(f"A팔 보고서 보존 → {OUT / 'armA_blind_report.json'}")
+        shutil.copy2(REPORT, out / "armA_blind_report.json")
+        say(f"A팔 보고서 보존 → {out / 'armA_blind_report.json'}")
     else:
         say("경고: A팔 보고서가 없다 — 게이트가 blind 단계 전에 죽었을 수 있다")
 
@@ -80,10 +82,10 @@ def main() -> int:
         env.update(
             PYTHONUTF8="1",
             EXCEL_LIVE_ENGINE="file",
-            BLIND_SESSION_TAG="armB5-remeasure-0831",
+            BLIND_SESSION_TAG=f"armB-remeasure-{dt.date.today():%m%d}",
             OFFICECLAW_INTENT_FIRST="1",
         )
-        log_path = OUT / "armB5_blind.txt"
+        log_path = out / "armB5_blind.txt"
         say(f"B팔(INTENT_FIRST=1) 624 시작 — 로그 {log_path}")
         with log_path.open("w", encoding="utf-8") as fh:
             code = subprocess.run(
@@ -93,8 +95,8 @@ def main() -> int:
         if code != 0:
             say(f"B팔 러너 종료코드 {code} — 로그를 봐야 한다")
             return code
-        shutil.copy2(REPORT, OUT / "armB5_blind_report.json")
-        say(f"B팔 보고서 보존 → {OUT / 'armB5_blind_report.json'}")
+        shutil.copy2(REPORT, out / "armB5_blind_report.json")
+        say(f"B팔 보고서 보존 → {out / 'armB5_blind_report.json'}")
 
     # 5) 요약 두 줄(전문은 로그 꼬리)
     tail = log_path.read_text(encoding="utf-8", errors="replace").splitlines()

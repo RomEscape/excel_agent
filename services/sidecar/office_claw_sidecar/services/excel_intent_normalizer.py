@@ -745,7 +745,11 @@ def intent_to_plan(
             "reason": "의도 정규화: 색조",
         }]
 
-    elif task == "rename_sheet" and _worded(r"이름", r"rename", r"바꿔", r"변경", r"시트\s*명", r"탭\s*명"):
+    elif task == "rename_sheet" and _worded(r"시트", r"탭", r"sheet", r"워크시트"):
+        # "수도권은 서울권으로 이름 바꿔놔"는 값 치환(find_replace)인데 모델이
+        # rename_sheet를 골랐다(2026-08-31 armB8 실측 — B 고유 실패의 전부).
+        # '이름 바꿔'만으로는 시트 개명 근거가 못 된다. 시트/탭 낱말이 없으면
+        # 물러나 규칙 폴백이 맡는다(A팔과 같은 경로).
         # 새 이름은 option(또는 column)에 실려 온다 — create_sheet와 같은 규약.
         # "지역별실적으로 바꿔줘"처럼 조사가 붙어 오면 어간이 문장에 있는지로 벗긴다.
         # 꼬리 문장부호도 벗긴다 — "시트 이름 지역별실적!"에서 모델이 '지역별실적!'을
