@@ -607,7 +607,13 @@ _SORT_ORDER_MARKER = re.compile(
 )
 
 # "A1:L37" 처럼 원문이 직접 말한 범위. 이게 없으면 플래너가 지어낸 범위를 믿으면 안 된다.
-_EXPLICIT_RANGE_MENTION = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}\s*:\s*[A-Za-z]{1,3}\d{1,7}")
+_EXPLICIT_RANGE_MENTION = re.compile(
+    # 콜론형만 인정하면 "A2부터 D20까지" 말투 범위가 명시로 안 쳐져, 옳게 온
+    # target_range가 표 전체(__ACTIVE_SELECTION__)로 갈아치워졌다(2026-09-01
+    # 감사 실행-재현: 21~100행까지 재배열).
+    r"(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}\s*:\s*[A-Za-z]{1,3}\d{1,7}"
+    r"|(?<![A-Za-z0-9])[A-Za-z]{1,3}\d{1,7}\s*(?:부터|에서)\s*[A-Za-z]{1,3}\d{1,7}\s*까지"
+)
 
 # 표 전체를 다루는 작업들 — 범위를 잘못 좁히면 일부 행만 집계·정렬돼 조용히 틀린 결과가 된다.
 _WHOLE_TABLE_RANGE_SLOTS = {

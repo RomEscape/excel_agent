@@ -7201,3 +7201,49 @@ class TestSmalltalkRoutesToChat:
                 if text and classify_off_topic(text).off_topic:
                     stolen.append(text[:40])
         assert not stolen, stolen
+
+
+class TestLocationTargetingP0:
+    """위치 감사 확정 약점 [1][2][4] 핀(2026-09-01 워크플로 30에이전트, 실행-재현).
+
+    [1]부정문("A1에 말고 B2에")이 배제한 A1에 쓰레기 기록 [2]나열문("B7에는 …,
+    C7에는 …")의 첫 셀 오염+둘째 셀 무음 유실 [4]"부터~까지" 말투 범위를
+    바인더가 표 전체로 갈아치움.
+    """
+
+    def test_부정문과_나열문은_규칙이_물러난다(self):
+        from office_claw_sidecar.services.excel_live_agent import parse_command_rule_based
+
+        for msg in ("A1에 말고 B2에 완료 써줘", "A1에다 말고 B2에다 완료 써줘",
+                    "A1에가 아니라 B2에 완료 써줘", "B7에는 완료, C7에는 진행중 써줘",
+                    "B7에 완료, C7에 진행중 써줘"):
+            r = parse_command_rule_based(msg)
+            assert not (r and r.get("action") == "excel_live.write_range"), (msg, r)
+
+    def test_정상_단일_쓰기는_유지되고_에는_조사가_청정하다(self):
+        from office_claw_sidecar.services.excel_live_agent import parse_command_rule_based
+
+        for msg, cell, value in (("A1에 120 입력", "A1", 120),
+                                 ("B7에는 완료라고 써줘", "B7", "완료"),
+                                 ("F9에 완료라고 써줘", "F9", "완료")):
+            r = parse_command_rule_based(msg)
+            assert r and r["action"] == "excel_live.write_range", msg
+            assert r["params"]["start_cell"] == cell, msg
+            assert r["params"]["values_2d"] == [[value]], (msg, r["params"])
+
+    def test_말투_범위는_명시_범위다(self):
+        from office_claw_sidecar.services.excel_param_binder import PlanStep, bind_plan_steps
+
+        dig = {"sheets": [{"name": "데이터", "used_range": "A1:D100",
+                           "columns": [{"header": "지역", "letter": "A"}, {"header": "날짜", "letter": "B"}]}],
+               "active_sheet": "데이터"}
+
+        def run(msg):
+            steps = [PlanStep(action="excel_live.sort_range",
+                              params={"target_range": "A2:D20", "key_column": 2, "order": "asc"}, reason="r")]
+            out, _ = bind_plan_steps(steps, digest=dig, message=msg, sheet_name="데이터")
+            return out[0].params.get("target_range")
+
+        assert run("A2부터 D20까지만 날짜순으로 정렬해줘") == "A2:D20"
+        assert run("A2:D20 날짜순으로 정렬해줘") == "A2:D20"
+        assert run("날짜순으로 정렬해줘") == "__ACTIVE_SELECTION__"

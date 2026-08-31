@@ -1000,7 +1000,9 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
     # 셀 토큰 앞의 부정 후읽기: "A1:F6에"의 F6은 범위의 일부지 셀이 아니다 —
     # 이걸 셀로 오인하면 문장 전체가 그 칸의 값이 된다(2026-08-18 실측).
     single_write_patterns = [
-        r"(?<![:A-Za-z0-9])([a-z]+\d+)\s*(?:셀|칸)?\s*에(?:다가?)?\s*(?:값\s*(?:으로|에)?\s*)?['\"]?([^'\"]+?)['\"]?\s*(?:을|를)?\s*(?:로)?\s*("
+        # 조사 '에는/에도'를 안 받으면 '는'이 값으로 넘어간다 — _BARE_CELL_TEXT(169행)와
+        # 같은 회귀 부류(2026-09-01 감사: B7에 '는 완료, …'가 써졌다).
+        r"(?<![:A-Za-z0-9])([a-z]+\d+)\s*(?:셀|칸)?\s*에(?:다가?|는|도)?\s*(?:값\s*(?:으로|에)?\s*)?['\"]?([^'\"]+?)['\"]?\s*(?:을|를)?\s*(?:로)?\s*("
         + _SW_VERB
         + r")",
         r"(?<![:A-Za-z0-9])([a-z]+\d+)\s*(?:셀|칸)?\s*값(?:을|를|에(?:다가?)?|은|이)?\s*['\"]?([^'\"]+?)['\"]?\s*(?:로|으로)?\s*("
@@ -1057,6 +1059,14 @@ def parse_command_rule_based(message: str, *, context_range: str | None = None) 
         if not single_write:
             continue
         cell = single_write.group(1).upper()
+        # 값에 다른 셀 좌표·부정어가 섞였으면 이 매치는 문장을 잘못 자른 것이다.
+        # "A1에 말고 B2에 완료 써줘"가 배제한 A1에 '말고 B2에 완료'를 썼고,
+        # "B7에는 완료, C7에는 진행중"의 C7 쓰기가 무음 유실됐다(2026-09-01 감사
+        # 실행-재현). 규칙이 표현 못 하는 문형은 놓아서 플래너가 잡게 한다(§3).
+        if re.search(r"(?<![A-Za-z])[A-Za-z]{1,3}\d{1,7}", single_write.group(2)) or re.search(
+            r"말고|아니라", single_write.group(2)
+        ):
+            continue
         if pattern is single_write_patterns[2] and re.search(r"[,;]", single_write.group(2)):
             # "CO2 농도,512 입력" — 조사 없이 붙은 셀 닮은 토큰 뒤에 값 나열이 오면
             # 그 토큰은 셀이 아니라 값이다(2026-08-19 ex4 정적 프로브: CO2가 셀로

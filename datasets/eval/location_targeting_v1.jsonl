@@ -1,0 +1,40 @@
+{"task": "loc_cell_far", "text": "F9에 완료라고 써줘", "persona": "L_위치"}
+{"task": "loc_cell_far", "text": "f9에 완료 입력해줘", "persona": "L_위치"}
+{"task": "loc_cell_far", "text": "F9 셀에 완료라고 적어 주세요", "persona": "L_위치"}
+{"task": "loc_cell_far", "text": "완료라고 F9에 넣어줘", "persona": "L_위치"}
+{"task": "loc_cell_two_refs", "text": "C9 말고 B9에 점검이라고 써줘", "persona": "L_위치"}
+{"task": "loc_cell_two_refs", "text": "C9가 아니라 B9에 점검 입력해줘", "persona": "L_위치"}
+{"task": "loc_cell_two_refs", "text": "B9에 점검이라고 써줘 C9 아니고", "persona": "L_위치"}
+{"task": "loc_cell_two_refs", "text": "C9 말고 B9다 점검이라고 적어줘", "persona": "L_위치"}
+{"task": "loc_range_fill", "text": "B2:D4만 노란색으로 칠해줘", "persona": "L_위치"}
+{"task": "loc_range_fill", "text": "B2:D4 범위 노랗게 해주세요", "persona": "L_위치"}
+{"task": "loc_range_fill", "text": "B2부터 D4까지 노란색 배경으로", "persona": "L_위치"}
+{"task": "loc_range_fill", "text": "b2:d4 노란색 채우기", "persona": "L_위치"}
+{"task": "loc_row_delete", "text": "3행 삭제해줘", "persona": "L_위치"}
+{"task": "loc_row_delete", "text": "3번째 행 지워줘", "persona": "L_위치"}
+{"task": "loc_row_delete", "text": "세 번째 행 삭제해 주세요", "persona": "L_위치"}
+{"task": "loc_row_delete", "text": "시트에서 3행을 없애줘", "persona": "L_위치"}
+{"task": "loc_col_format", "text": "D열 천 단위 콤마 서식으로 해줘", "persona": "L_위치"}
+{"task": "loc_col_format", "text": "D열 숫자에 쉼표 넣어줘", "persona": "L_위치"}
+{"task": "loc_col_format", "text": "d열 콤마 서식 부탁해요", "persona": "L_위치"}
+{"task": "loc_col_format", "text": "D 열만 천단위 구분기호로", "persona": "L_위치"}
+{"task": "loc_col_header_bold", "text": "매출 열 굵게 해줘", "persona": "L_위치"}
+{"task": "loc_col_header_bold", "text": "매출 열 글씨 볼드로", "persona": "L_위치"}
+{"task": "loc_col_header_bold", "text": "매출 항목 열만 굵게 해주세요", "persona": "L_위치"}
+{"task": "loc_col_header_bold", "text": "매출 열 폰트 굵게 바꿔줘", "persona": "L_위치"}
+{"task": "loc_sheet_write", "text": "요약 시트 B1에 점검완료라고 써줘", "persona": "L_위치"}
+{"task": "loc_sheet_write", "text": "요약 탭 B1에 점검완료 입력해줘", "persona": "L_위치"}
+{"task": "loc_sheet_write", "text": "요약 시트의 B1 셀에 점검완료라고 적어 주세요", "persona": "L_위치"}
+{"task": "loc_sheet_write", "text": "점검완료라고 요약 시트 B1에 넣어줘", "persona": "L_위치"}
+{"task": "loc_merge_range", "text": "A1:C1 병합해줘", "persona": "L_위치"}
+{"task": "loc_merge_range", "text": "A1부터 C1까지 합쳐줘", "persona": "L_위치"}
+{"task": "loc_merge_range", "text": "a1:c1 셀 병합해 주세요", "persona": "L_위치"}
+{"task": "loc_merge_range", "text": "제목 칸 A1:C1 하나로 병합", "persona": "L_위치"}
+{"task": "loc_clear_range", "text": "B2:B4 값 지워줘", "persona": "L_위치"}
+{"task": "loc_clear_range", "text": "B2:B4만 비워 주세요", "persona": "L_위치"}
+{"task": "loc_clear_range", "text": "B2부터 B4까지 내용 삭제해줘", "persona": "L_위치"}
+{"task": "loc_clear_range", "text": "b2:b4 값만 지워", "persona": "L_위치"}
+{"task": "loc_ordinal_fill", "text": "두 번째 열 노란색으로 칠해줘", "persona": "L_위치"}
+{"task": "loc_ordinal_fill", "text": "둘째 열 노랗게 해줘", "persona": "L_위치"}
+{"task": "loc_ordinal_fill", "text": "2번째 열 배경 노란색으로", "persona": "L_위치"}
+{"task": "loc_ordinal_fill", "text": "두번째 열만 노란 색칠해주세요", "persona": "L_위치"}
