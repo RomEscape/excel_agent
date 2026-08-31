@@ -246,6 +246,27 @@ async def _agent_chat_inner(req: ChatRequest) -> ChatResponse:
 
     except OpenClawUnavailableError as exc:
         logger.warning("[agent] OpenClaw 게이트웨이 사용 불가: %s", exc)
+        # 게이트웨이가 없어도 대화는 끊기면 안 된다 — 로컬 모델 폴백이 이미
+        # 있는데(_fallback_chat_via_llm) 이 분기에만 배선이 빠져 있어, 인사말
+        # 하나에도 사용자가 503을 봤다(2026-09-01 스모크 실측: 12문 전부 503).
+        fallback_text = await _fallback_chat_via_llm(send_message)
+        if fallback_text:
+            _audit.log(
+                action="agent.chat.fallback_llm",
+                target="llm_service",
+                detail=f"session={req.session_id or 'new'} reason=gateway_unavailable",
+            )
+            if mask_result.was_modified:
+                fallback_text += (
+                    f"\n\n> 민감 정보 {mask_result.count}건({', '.join(mask_result.types)})이 "
+                    "LLM 전송 전 자동 마스킹되었습니다."
+                )
+            return ChatResponse(
+                response=fallback_text,
+                session_id=str(req.session_id or "local-fallback"),
+                masked_count=mask_result.count,
+                masked_types=list(mask_result.types),
+            )
         exc_text = str(exc).lower()
         if "gateway token mismatch" in exc_text or "token mismatch" in exc_text:
             raise HTTPException(

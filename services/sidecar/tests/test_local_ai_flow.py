@@ -137,8 +137,12 @@ def test_chat_uses_llm_fallback_on_openclaw_degraded_reply(monkeypatch):
 # ── 테스트: 실패 / 보안 경로 ────────────────────────────────────────────────
 
 
-def test_chat_returns_503_when_gateway_unavailable(monkeypatch):
-    """OpenClaw 게이트웨이가 죽어있으면 사용자에게 한국어 안내를 준다."""
+def test_chat_falls_back_to_local_llm_when_gateway_unavailable(monkeypatch):
+    """게이트웨이가 죽어 있어도 대화는 끊기면 안 된다 — 로컬 폴백이 답한다.
+
+    2026-09-01 스모크 실측: 폴백이 있는데도 이 분기에만 배선이 빠져 인사말
+    하나에 사용자가 503을 봤다.
+    """
 
     class _DeadClient:
         async def send_message(self, message, session_id=None):
@@ -147,10 +151,35 @@ def test_chat_returns_503_when_gateway_unavailable(monkeypatch):
 
     monkeypatch.setattr(agent_router, "get_client", lambda: _DeadClient())
 
-    resp = client.post("/agent/chat", json={"message": "hello"})
+    class _FallbackLLM:
+        async def chat(self, messages, model=None):
+            return "안녕하세요! 무엇을 도와드릴까요?"
 
+    monkeypatch.setattr(agent_router, "get_llm_service", lambda: _FallbackLLM())
+
+    resp = client.post("/agent/chat", json={"message": "안녕"})
+    assert resp.status_code == 200
+    assert resp.json()["response"] == "안녕하세요! 무엇을 도와드릴까요?"
+
+
+def test_chat_returns_503_when_gateway_and_fallback_both_fail(monkeypatch):
+    """게이트웨이도 로컬 폴백도 못 답하면 그때만 한국어 안내 503이다."""
+
+    class _DeadClient:
+        async def send_message(self, message, session_id=None):
+            raise OpenClawUnavailableError("gateway not running")
+            yield  # pragma: no cover
+
+    monkeypatch.setattr(agent_router, "get_client", lambda: _DeadClient())
+
+    class _BrokenLLM:
+        async def chat(self, messages, model=None):
+            raise RuntimeError("no model")
+
+    monkeypatch.setattr(agent_router, "get_llm_service", lambda: _BrokenLLM())
+
+    resp = client.post("/agent/chat", json={"message": "hello"})
     assert resp.status_code == 503
-    # 사용자가 다음에 뭘 해야 할지 한국어로 안내되는지 확인
     detail = resp.json()["detail"]
     assert "openclaw" in detail.lower() or "OpenClaw" in detail
     assert "재시작" in detail or "실행" in detail

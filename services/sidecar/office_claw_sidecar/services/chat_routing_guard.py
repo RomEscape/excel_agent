@@ -97,6 +97,35 @@ _EXCEL_MARKERS = re.compile(
 )
 
 
+# ── 3. 스몰토크 판정 ────────────────────────────────────────────────────────
+# 인사·감사·작별·기분·목적어 없는 희망 표현·능력 질문 — 명령이 아니라 대화다.
+# 이게 없어서 "안녕하세요"가 계획 전용 플래너에 도달해 list_workbooks가 나오고,
+# "다 지워버리고 싶네"(푸념)가 clear_range 퀵룰에 명중했다(2026-09-01 스모크
+# 12문 실측). 엑셀 어휘가 하나라도 있으면 이 판정 전에 엑셀 경로로 확정되므로
+# ("고마워, B열 정렬해줘"는 엑셀), 여기 걸리는 문장은 어휘상 순수 대화뿐이다.
+_SMALLTALK_MARKERS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(p)
+    for p in (
+        r"^\s*(안녕|안뇽|하이|헬로|hello|hi|ㅎㅇ|ㅎ2)[!~.\s]*$",
+        r"^\s*안녕하세요",
+        r"^\s*(좋은\s*(아침|하루)|굿모닝|굿밤)",
+        r"^\s*(고마워|고맙|감사합|감사해|감사히|땡큐|thank|thx)",
+        r"(수고했|수고하셨|수고해|잘\s*자|잘자|안녕히|내일\s*(봐|보자)|퇴근할게|이만\s*갈게)",
+        r"^\s*(심심|피곤|졸리|졸려|배고파|배고프|힘들다|힘드네)",
+        r"(점심|저녁|아침)\s*(은|을|때)?\s*뭐\s*먹",
+        r"뭐\s*먹을까",
+        r"(너|넌|너는)\s*뭐\s*(를)?\s*할\s*수\s*있",
+        r"무엇을\s*할\s*수\s*있",
+        r"어떤\s*(기능|일|작업)\s*(이|을|를)?\s*(할\s*수\s*있|가능|되)",
+        r"(이|요|저)\s*(프로그램|앱|서비스)\s*(은|는|을|를)?\s*어떻게\s*(써|쓰는|사용)",
+        # 목적어 없는 희망·푸념 — "다 지워버리고 싶네"는 명령이 아니다. 대상을
+        # 부른 문장("이 표 다 지워줘")은 엑셀 어휘에 먼저 걸려 여기 안 온다.
+        r"(다\s*지워\s*버리고\s*싶|때려\s*치우고\s*싶|집에\s*가고\s*싶"
+        r"|쉬고\s*싶|그만\s*두고\s*싶|일하기\s*싫|하기\s*싫다)",
+    )
+)
+
+
 @dataclass(frozen=True)
 class RouteVerdict:
     """이 문장을 엑셀 경로에서 처리해도 되는가."""
@@ -124,4 +153,8 @@ def classify_off_topic(message: str) -> RouteVerdict:
         hit = pattern.search(lowered)
         if hit:
             return RouteVerdict(off_topic=True, why=hit.group(0)[:40])
+    for pattern in _SMALLTALK_MARKERS:
+        hit = pattern.search(lowered)
+        if hit:
+            return RouteVerdict(off_topic=True, why=f"smalltalk:{hit.group(0)[:32]}")
     return RouteVerdict(off_topic=False)

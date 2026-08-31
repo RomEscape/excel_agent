@@ -7154,3 +7154,50 @@ class TestRenameBacksOffWithoutSheetWord:
             params = out["action_plan"][0]["params"]
             assert params["new_name"] == "지역별실적", msg
             assert params["sheet_name"] == "지역성과", msg
+
+
+class TestSmalltalkRoutesToChat:
+    """일반 질의는 대화 경로로(2026-09-01 스모크 12문 실측: 인사가 플래너에
+    도달해 list_workbooks, 푸념 "다 지워버리고 싶네"가 clear_range 퀵룰 명중).
+
+    엑셀 어휘 검사가 항상 먼저라, 여기 걸리는 문장은 어휘상 순수 대화뿐이다.
+    """
+
+    SMALLTALK = ["안녕", "안녕하세요!", "ㅎㅇ", "고마워", "점심 뭐 먹을까", "심심하다",
+                 "너 뭐 할 수 있어?", "이 프로그램 어떻게 쓰는거야",
+                 "아 오늘 일 너무 많다 다 지워버리고 싶네", "수고했어 내일 보자",
+                 "좋은 아침이에요", "감사합니다!"]
+    EXCEL = ["안녕하세요 B2에 100 써주세요", "고마워, 이제 B열 정렬해줘",
+             "이 표 다 지워버리고 싶어 정리 좀", "이 함수 어떻게 쓰는거야",
+             "시트 이름 바꿔줘", "수고 많았다고 A1에 적어줘"]
+
+    def test_스몰토크는_대화로_보낸다(self):
+        from office_claw_sidecar.services.chat_routing_guard import classify_off_topic
+
+        for msg in self.SMALLTALK:
+            v = classify_off_topic(msg)
+            assert v.off_topic, msg
+
+    def test_엑셀_어휘가_있으면_엑셀_경로다(self):
+        from office_claw_sidecar.services.chat_routing_guard import classify_off_topic
+
+        for msg in self.EXCEL:
+            assert not classify_off_topic(msg).off_topic, msg
+
+    def test_게이트_코퍼스_696문은_전부_엑셀_경로다(self):
+        # 말투 624 + 파괴 72 — 스몰토크 판정이 게이트 문장을 한 건도 뺏으면 안 된다.
+        import json
+        from pathlib import Path
+
+        from office_claw_sidecar.services.chat_routing_guard import classify_off_topic
+
+        root = Path(__file__).resolve().parents[3]
+        stolen = []
+        for name in ("blind_paraphrases_v1.jsonl", "guard_cases_v1.jsonl"):
+            for ln in (root / "datasets/eval" / name).read_text(encoding="utf-8").splitlines():
+                if not ln.strip():
+                    continue
+                text = json.loads(ln).get("text") or ""
+                if text and classify_off_topic(text).off_topic:
+                    stolen.append(text[:40])
+        assert not stolen, stolen
