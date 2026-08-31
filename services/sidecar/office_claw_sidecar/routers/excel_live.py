@@ -5993,8 +5993,19 @@ def _merge_operation_slots(
         chart_plan_backed_by_message = first_action == "excel_live.create_chart" and bool(
             _ACTION_EVIDENCE["excel_live.create_chart"].search(str(req.message or ""))
         )
-        confident_pivot = not chart_plan_backed_by_message and bool(
-            _confident_group_key(req.message, digest, sheet_name=req.sheet_name)
+        # rename도 같은 부류다: '지역별실적'이 '지역'+별(_GROUP_MARKER)과
+        # '실적'(_AGGREGATE_WORDS)에 겹으로 걸려, 새 이름까지 확보한 rename 계획이
+        # 멀티턴 피벗으로 갈렸다(2026-08-31 armB6 실측 6건 ERROR). 층이 new_name을
+        # 뽑아냈다는 것 자체가 집계 문장이 아니라는 구체 증거다.
+        rename_plan_with_name = False
+        if first_action == "excel_live.rename_sheet" and parsed:
+            first = parsed["action_plan"][0] if isinstance(parsed["action_plan"][0], dict) else {}
+            first_params = first.get("params") if isinstance(first.get("params"), dict) else {}
+            rename_plan_with_name = bool(str(first_params.get("new_name") or "").strip())
+        confident_pivot = (
+            not chart_plan_backed_by_message
+            and not rename_plan_with_name
+            and bool(_confident_group_key(req.message, digest, sheet_name=req.sheet_name))
         )
         if first_action and not planner_downgraded_to_read and not confident_pivot:
             return None
@@ -11106,11 +11117,13 @@ _RENAME_CONTEXT = re.compile(
 )
 
 
-def _restore_rename_from_hijack(message: str, plan: list[PlanStep]) -> None:
+def _restore_rename_from_hijack(message: str, plan: list[PlanStep], sheet_name: str) -> None:
     """이름 변경 문장을 집계·생성 계획이 강탈했으면 rename으로 되돌린다 — 층 무관.
 
     2026-08-30 말투 B 8건: 의도층이 새 이름을 잃자 '지역별'이 피벗 폴백에 잡혀
-    지역성과_집계 시트가 생겼다(ERROR 4·WRONG 4).
+    지역성과_집계 시트가 생겼다(ERROR 4·WRONG 4). 실행기는 sheet_name을 명시
+    요구하므로 요청 문맥의 시트("이 시트")를 함께 확정한다 — 이게 빠져
+    2026-08-31 armB5에서 22건이 실행기에서 즉사했다.
     """
     if not plan or plan[0].action not in {"excel_live.pivot_table", "excel_live.create_sheet"}:
         return
@@ -11122,15 +11135,33 @@ def _restore_rename_from_hijack(message: str, plan: list[PlanStep]) -> None:
         text,
     )
     if not m:
+        # "시트 이름 지역별실적!"처럼 조사·동사 생략 — 이름/명 뒤 명사를 회수.
+        m = re.search(
+            r"(?:시트|탭|sheet)\s*(?:의)?\s*(?:이름|명)\s*(?:은|을|를|:)?"
+            r"\s*([가-힣A-Za-z0-9_]{2,31})\s*[!.~\s]*$",
+            text,
+        )
+    if not m:
         return
     new_name = m.group(1).strip()
     if not new_name or new_name in {"시트", "탭", "이름"}:
+        return
+    params: dict[str, Any] = {"new_name": new_name}
+    hijack_params = plan[0].params if isinstance(plan[0].params, dict) else {}
+    target_sheet = str(sheet_name or "").strip() or str(
+        hijack_params.get("source_sheet") or hijack_params.get("sheet_name") or ""
+    ).strip()
+    if target_sheet:
+        params["sheet_name"] = target_sheet
+    else:
+        # 대상 시트를 어디서도 확정 못 하면 교정하지 않는다 — sheet_name 없는
+        # rename은 실행기에서 즉사한다(2026-08-31 armB5/B6 실측).
         return
     trace_note("rename_restored_from_hijack", was=plan[0].action, new_name=new_name)
     plan[:] = _normalize_plan_or_empty([
         {
             "action": "excel_live.rename_sheet",
-            "params": {"new_name": new_name},
+            "params": params,
             "reason": "이름 변경 문장 복원(강탈 교정)",
         }
     ])
@@ -11167,7 +11198,23 @@ def _restore_cross_sheet_aggregate(
             for v in row
             if str(v or "").strip()
         ]
-        if len(flat) != 1 or flat[0].upper() not in {"SUM", "합계", "총합", "합", "AVERAGE", "평균", "COUNT", "개수"}:
+        agg_words = {"SUM", "합계", "총합", "합", "TOTAL", "토탈", "AVERAGE", "평균", "COUNT", "개수"}
+        if len(flat) != 1:
+            return
+        value_text = flat[0].upper()
+        # 'sheet 주문건수 total'처럼 파편에 집계어가 섞인 경우도 수식 요청이다
+        # (2026-08-31 armB7: 되묻기로 빠졌다). 단 "…라고 적어줘"는 축자 쓰기 —
+        # 제목에 '합계'가 든 문장을 수식으로 바꾸면 그게 오실행이다.
+        if re.search(r"(이?라고|이?란|라는)\s*(?:글자|문구|제목|텍스트)?", str(message or "")) and (
+            "적" in str(message or "") or "써" in str(message or "") or "입력" in str(message or "")
+        ):
+            if value_text not in agg_words:
+                return
+        # 부분 일치엔 한 글자 '합'을 빼야 한다 — '종합'·'합병' 같은 낱말이 오폭한다.
+        substring_words = agg_words - {"합"}
+        if value_text not in agg_words and not (
+            len(value_text) <= 40 and any(w in value_text for w in substring_words)
+        ):
             return
     else:
         return
@@ -11327,6 +11374,15 @@ def _plan_approval_gate(
     # 계획 위생도 없이 실행됐다(2026-08-24 감사 B2). 재계획도 같은 구멍이었다 —
     # 승인 후 검증 실패로 다시 짠 계획은 사람이 본 적이 없는데 approved로 통과했다.
     # 승인이 면제하는 것은 **승인 카드 재요청뿐**이다. 검사는 항상 수행한다.
+
+    # 크로스시트 집계 복원 — 무자격 SUM이 원본 시트에 낙하하는 것을 층 무관하게 막는다.
+    # 대상 시트는 **요청 문맥(req.sheet_name)**이다 — plan_sheet는 관측 활성(=원본
+    # 성적부)이라 그걸 넘기면 복원기가 원본에 도로 못박는다(2026-08-30 재측정 실측:
+    # 자격 수식은 붙었는데 성적부 A2 '김민준'이 여전히 덮였다). 규칙 경로와 동일 규약.
+    # 위치는 반드시 위생 가드·블라스트 반경 **앞** — 뒤에 두면 =SUM(A2:A6) 순환이
+    # 교정되기 전에 되묻기로 턴이 끝난다(2026-08-31 armB5 실측 11건).
+    _restore_cross_sheet_aggregate(req.message, plan, req.workbook_id, req.sheet_name)
+    _restore_rename_from_hijack(req.message, plan, req.sheet_name)
 
     # 블라스트 반경 — 사람이 가리키지 않은 자리의 **값**을 덮는가.
     # 계획이 옳은지는 판단하지 않는다. "지목한 자리"와 "건드릴 자리"만 비교하므로
@@ -11490,12 +11546,6 @@ def _plan_approval_gate(
     # 기준 열을 **검사하기 전에** 바로잡는다 — "X 많은 Y부터"의 지표가 확정되면
     # 그것이 사용자가 말한 기준이다(층을 가리지 않고 여기서 한 번에).
     _restore_sort_metric(req.message, plan, req.workbook_id, plan_sheet or req.sheet_name)
-    # 크로스시트 집계 복원 — 무자격 SUM이 원본 시트에 낙하하는 것을 층 무관하게 막는다.
-    # 대상 시트는 **요청 문맥(req.sheet_name)**이다 — plan_sheet는 관측 활성(=원본
-    # 성적부)이라 그걸 넘기면 복원기가 원본에 도로 못박는다(2026-08-30 재측정 실측:
-    # 자격 수식은 붙었는데 성적부 A2 '김민준'이 여전히 덮였다). 규칙 경로와 동일 규약.
-    _restore_cross_sheet_aggregate(req.message, plan, req.workbook_id, req.sheet_name)
-    _restore_rename_from_hijack(req.message, plan)
     if not target_problem:
         key_problem = _key_column_problem(req.workbook_id, plan_sheet or req.sheet_name, plan)
         if key_problem:

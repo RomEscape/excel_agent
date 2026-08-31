@@ -389,11 +389,37 @@ def intent_to_plan(
     elif task == "font":
         font_params = _font_params_from(option_text)
         if font_params:
+            # fill_color 분기 회수의 거울상 — "남색배경 흰글씨 굵게"가 task=font
+            # (bold만)로 매핑돼 배경·흰색이 버려졌다(2026-08-31 armB6 실측).
+            # 원문에 어휘가 있으면 여기서 회수한다.
+            if "font_color" not in font_params and re.search(
+                r"(흰|하얀|하양|백색|white)", plain_message, re.IGNORECASE
+            ):
+                font_params["font_color"] = "#FFFFFF"
+            if "bold" not in font_params and re.search(
+                r"(굵게|굵은|볼드|bold|두껍게|두꺼운)", plain_message, re.IGNORECASE
+            ):
+                font_params["bold"] = True
+            target = rng or "__ACTIVE_SELECTION__"
             steps = [{
                 "action": "excel_live.set_font",
-                "params": {"target_range": rng or "__ACTIVE_SELECTION__", **font_params},
+                "params": {"target_range": target, **font_params},
                 "reason": f"의도 정규화: 글자 서식({next(iter(font_params))})",
             }]
+            fill_m = re.search(
+                r"(남색|네이비|navy|파란|파랑|하늘|빨간|빨강|노란|노랑|초록|녹색|회색|주황|보라)"
+                r"\s*(?:색)?\s*(?:배경|바탕|으로\s*칠|채우)",
+                plain_message,
+                re.IGNORECASE,
+            )
+            if fill_m:
+                fill_color = _COLORS.get(fill_m.group(1).lower())
+                if fill_color:
+                    steps.insert(0, {
+                        "action": "excel_live.fill_range",
+                        "params": {"target_range": target, "fill_color": fill_color},
+                        "reason": "의도 정규화: 배경색(원문 회수)",
+                    })
 
     elif task == "number_format":
         code = _format_code_from(option_text)
@@ -722,7 +748,9 @@ def intent_to_plan(
     elif task == "rename_sheet" and _worded(r"이름", r"rename", r"바꿔", r"변경", r"시트\s*명", r"탭\s*명"):
         # 새 이름은 option(또는 column)에 실려 온다 — create_sheet와 같은 규약.
         # "지역별실적으로 바꿔줘"처럼 조사가 붙어 오면 어간이 문장에 있는지로 벗긴다.
-        raw_name = str(option_text or column or "").strip().strip("'\"")
+        # 꼬리 문장부호도 벗긴다 — "시트 이름 지역별실적!"에서 모델이 '지역별실적!'을
+        # 그대로 실어 '!'가 박힌 시트가 생겼다(2026-08-31 armB7 실측).
+        raw_name = str(option_text or column or "").strip().strip("'\"").rstrip("!.?~…,")
         candidates = [raw_name]
         for particle in ("으로", "로"):
             if raw_name.endswith(particle) and len(raw_name) > len(particle):
@@ -742,6 +770,16 @@ def intent_to_plan(
             old = str(column or "").strip()
             if old and old != new_name and old in sheet_names:
                 params["sheet_name"] = old
+            else:
+                # 실행기는 sheet_name을 명시 요구한다 — 비워 두면 즉사한다
+                # (2026-08-31 armB5 실측 22건). 문장이 지목한 실재 시트, 없으면
+                # 활성 시트("이 시트")로 확정한다.
+                named = next(
+                    (n for n in sheet_names if n and n != new_name and n in plain_message), ""
+                )
+                fallback_sheet = named or str((digest or {}).get("active_sheet") or "").strip()
+                if fallback_sheet:
+                    params["sheet_name"] = fallback_sheet
             steps = [{
                 "action": "excel_live.rename_sheet",
                 "params": params,
@@ -767,11 +805,22 @@ def intent_to_plan(
                     if recovered_name.endswith(particle) and len(recovered_name) > len(particle) + 1:
                         recovered_name = recovered_name[: -len(particle)]
                 if recovered_name and recovered_name.lower() not in {"시트", "sheet", "탭", "이름"}:
-                    steps = [{
-                        "action": "excel_live.rename_sheet",
-                        "params": {"new_name": recovered_name},
-                        "reason": "의도 정규화: 시트 이름 변경(원문 회수)",
-                    }]
+                    sheet_names = {
+                        str(s.get("name") or "") for s in ((digest or {}).get("sheets") or [])
+                    }
+                    named = next(
+                        (n for n in sheet_names if n and n != recovered_name and n in plain_message),
+                        "",
+                    )
+                    target_sheet = named or str((digest or {}).get("active_sheet") or "").strip()
+                    if target_sheet:
+                        # 대상 시트를 확정 못 하면 계획을 내지 않는다 — 실행기가
+                        # 어차피 거절하므로 규칙 폴백에 물려주는 편이 낫다.
+                        steps = [{
+                            "action": "excel_live.rename_sheet",
+                            "params": {"sheet_name": target_sheet, "new_name": recovered_name},
+                            "reason": "의도 정규화: 시트 이름 변경(원문 회수)",
+                        }]
 
     elif (
         task == "delete_sheet"
