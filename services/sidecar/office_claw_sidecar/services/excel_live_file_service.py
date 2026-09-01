@@ -1841,7 +1841,10 @@ class FileExcelLiveService(ExcelLiveService):
 
         # 기준 열을 못 찾으면 지우지 않는다 — 1번 열 강등은 **조건에 안 맞는 행을
         # 엉뚱한 열 기준으로 지우는** 조용한 오실행이다(dedupe와 같은 부류, 2026-08-26).
-        col_idx = self._resolve_column_selector(column, 1, col_count, header, strict=True)
+        # 범위가 A열에서 시작하지 않으면 열 문자 지목이 오른쪽으로 밀린다
+        # (2026-09-01 위치 감사 확정 [7]) — 정렬(1502행)과 같은 관용구.
+        min_col_f = range_boundaries(address)[0]
+        col_idx = self._resolve_column_selector(column, min_col_f, col_count, header, strict=True)
         if col_idx < 0:
             raise ExcelLiveError(self._unresolved_filter_column_error(column, header))
         op = str(operator or "==").strip()
@@ -2936,9 +2939,14 @@ class FileExcelLiveService(ExcelLiveService):
         body = normalized[1:] if has_header else normalized
         if not body:
             raise ExcelLiveError("피벗 대상 데이터가 비어 있습니다.")
-        row_idx = self._resolve_column_selector(row_field, 1, col_count, header)
-        val_idx = self._resolve_column_selector(value_field, 1, col_count, header)
-        col_idx = self._resolve_column_selector(column_field, 1, col_count, header) if column_field is not None else None
+        min_col_p = range_boundaries(str(payload.get("address", source_range)))[0]
+        row_idx = self._resolve_column_selector(row_field, min_col_p, col_count, header)
+        val_idx = self._resolve_column_selector(value_field, min_col_p, col_count, header)
+        col_idx = (
+            self._resolve_column_selector(column_field, min_col_p, col_count, header)
+            if column_field is not None
+            else None
+        )
         agg_name = str(agg or "sum").strip().lower()
         if agg_name not in {"sum", "avg", "count"}:
             agg_name = "sum"
@@ -3145,11 +3153,13 @@ class FileExcelLiveService(ExcelLiveService):
         body = normalized[1:] if has_header else normalized
         if not body:
             return {"duplicate_groups": 0, "duplicate_rows": 0, "address": address, "samples": []}
+        min_col, min_row, _max_col, _max_row = range_boundaries(address)
         if key_columns:
-            subset = [self._resolve_column_selector(col, 1, col_count, header) for col in key_columns]
+            subset = [
+                self._resolve_column_selector(col, min_col, col_count, header) for col in key_columns
+            ]
         else:
             subset = list(range(col_count))
-        min_col, min_row, _max_col, _max_row = range_boundaries(address)
         body_start = min_row + (1 if has_header else 0)
 
         occurrences: dict[tuple, list[int]] = {}

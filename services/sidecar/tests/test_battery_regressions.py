@@ -7295,3 +7295,144 @@ class TestLiveMergeGuardsValues:
     def test_스칼라_단일_셀도_병합한다(self):
         rng = self._Rng("제목")
         assert self._svc(rng).merge_cells(None, "S", "A1")["merged"] is True
+
+
+class TestSpokenLocationNarrowing:
+    """말한 위치로 좁히는 교정기(2026-09-01 위치 게이트: 미검출 오실행 22건 중
+    16건 = 명시 위치가 선택 영역 통짜에 밀림 — 감사 [22]를 반박이 잘못 기각,
+    실측이 뒤집었다).
+    """
+
+    def _run(self, msg, action="excel_live.fill_range", target="A1:E6"):
+        from office_claw_sidecar.routers.excel_live import PlanStep, _restore_spoken_location
+
+        plan = [PlanStep(action=action, params={"target_range": target, "fill_color": "#FFFF00"},
+                         reason="r")]
+        _restore_spoken_location(msg, plan, None, "데이터")
+        return plan[0].params["target_range"]
+
+    def test_명시_범위_열_행으로_좁힌다(self):
+        for msg, want in (("B2:D4만 노란색으로 칠해줘", "B2:D4"),
+                          ("B2부터 D4까지 노란색 배경으로", "B2:D4"),
+                          ("b2:d4 노란색 채우기", "B2:D4"),
+                          ("D열 천 단위 콤마 서식으로 해줘", "D1:D6"),
+                          ("두 번째 열 노란색으로 칠해줘", "B1:B6"),
+                          ("둘째 열 노랗게 해줘", "B1:B6"),
+                          ("세 번째 행 삭제해 주세요", "A3:E3"),
+                          ("3행 삭제해줘", "A3:E3"),
+                          ("B2:B4 값 지워줘", "B2:B4")):
+            assert self._run(msg) == want, msg
+
+    def test_무발동_보호(self):
+        # 위치 무언급·복수 열·접속사·뺄셈 피연산('에서'는 '까지' 필수)은 안 건드린다.
+        for msg in ("이 표 노란색으로 칠해줘", "머리글 행 남색으로", "D열과 E열 콤마",
+                    "매출이랑 금액 열에 콤마", "D2에 B2에서 C2 뺀 거 넣어"):
+            assert self._run(msg) == "A1:E6", msg
+
+    def test_게이트_코퍼스에서_대상_액션_발동은_비대상_과제_문장뿐이다(self):
+        # 좁힘 발동은 문장만으로 결정된다. 696문 중 발동 문장의 과제가 전부
+        # 비대상 액션(merge·freeze·수식)이면 말투·파괴 게이트 행동 불변이 증명된다.
+        import json
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[3]
+        gated_tasks_fired = []
+        NON_GATED = {"merge_title", "cell_subtract", "freeze_top", "merge_keeps_values",
+                     "sum_below", "avg_below", "cross_sheet_sum", "title_cell"}
+        for name in ("blind_paraphrases_v1.jsonl", "guard_cases_v1.jsonl"):
+            for ln in (root / "datasets/eval" / name).read_text(encoding="utf-8").splitlines():
+                if not ln.strip():
+                    continue
+                row = json.loads(ln)
+                if self._run(row.get("text") or "") != "A1:E6" and row.get("task") not in NON_GATED:
+                    gated_tasks_fired.append((row.get("task"), row.get("text")[:40]))
+        assert not gated_tasks_fired, gated_tasks_fired
+
+    def test_머리글_열은_워크북을_읽어_좁힌다(self, tmp_path, monkeypatch):
+        from openpyxl import Workbook
+
+        from office_claw_sidecar.routers.excel_live import PlanStep, _restore_spoken_header_column
+        from office_claw_sidecar.services import excel_live_file_service as fs
+        from office_claw_sidecar.services import excel_live_service as ls
+        from office_claw_sidecar.services.excel_live_service import get_excel_live_service
+
+        p = tmp_path / "g.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "데이터"
+        ws.append(["지역", "주문건수", "매출", "금액"])
+        ws.append(["수도권", 120, 3400, 3400000])
+        wb.save(p)
+        fs.WORKSPACE_ROOT = tmp_path
+        ls._excel_live_service = None
+        ls._excel_live_service_engine = None
+        monkeypatch.setenv("EXCEL_LIVE_ENGINE", "file")
+        get_excel_live_service().select_workbook(str(p))
+        plan = [PlanStep(action="excel_live.set_font", params={"target_range": "A1:D2", "bold": True},
+                         reason="r")]
+        _restore_spoken_header_column("매출 열 굵게 해줘", plan, str(p), "데이터")
+        assert plan[0].params["target_range"] == "C1:C2"
+        # 하네스·GUI가 workbook/sheet를 비워 보내도 활성 시트로 해석해야 한다
+        # (2026-09-01 재측정: read가 죽어 교정기가 조용히 물러났던 회귀).
+        plan_none = [PlanStep(action="excel_live.set_font",
+                              params={"target_range": "A1:D2", "bold": True}, reason="r")]
+        _restore_spoken_header_column("매출 열 굵게 해줘", plan_none, None, None)
+        assert plan_none[0].params["target_range"] == "C1:C2"
+        # 없는 머리글은 무발동
+        plan2 = [PlanStep(action="excel_live.set_font", params={"target_range": "A1:D2", "bold": True},
+                          reason="r")]
+        _restore_spoken_header_column("비고 열 굵게 해줘", plan2, str(p), "데이터")
+        assert plan2[0].params["target_range"] == "A1:D2"
+
+
+class TestColumnLetterPrefersHeaders:
+    """ID·No·Qty처럼 라틴 1~3자 머리글을 열 문자로 오인하던 것(감사 확정 [6]).
+
+    머리글 정확 일치 > 열 문자 모양 > 머리글 부분 일치 순서로 본다.
+    """
+
+    ENTRY = {"columns": [{"header": "ID", "letter": "A"}, {"header": "매출", "letter": "B"},
+                         {"header": "Qty", "letter": "C"}]}
+
+    def test_라틴_머리글은_그_열이다(self):
+        from office_claw_sidecar.services.excel_intent_normalizer import _column_letter
+
+        assert _column_letter(self.ENTRY, "ID") == "A"
+        assert _column_letter(self.ENTRY, "qty") == "C"
+
+    def test_진짜_열_문자와_부분_일치는_유지된다(self):
+        from office_claw_sidecar.services.excel_intent_normalizer import _column_letter
+
+        assert _column_letter(self.ENTRY, "D") == "D"
+        assert _column_letter(self.ENTRY, "매출") == "B"
+        assert _column_letter(self.ENTRY, "매") == "B"
+
+
+class TestColumnSelectorRespectsRangeStart:
+    """A열 비시작 범위에서 열 문자 지목이 밀리던 것(감사 확정 [7]).
+
+    filter_rows·pivot·find_duplicates가 start_col=1을 하드코딩 — 정렬(min_col
+    관용구)과 같은 보정으로 통일. C1:E4 표에서 'D'(상태) 지목이 예전엔 끝열
+    (점수)로 밀려 엉뚱한 행이 지워졌다.
+    """
+
+    def test_C시작_표에서_D열_필터가_상태를_지운다(self, tmp_path):
+        from openpyxl import Workbook, load_workbook
+
+        from office_claw_sidecar.services import excel_live_file_service as fsmod
+        from office_claw_sidecar.services.excel_live_file_service import FileExcelLiveService
+
+        p = tmp_path / "g.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "S"
+        ws["C1"], ws["D1"], ws["E1"] = "이름", "상태", "점수"
+        for i, row in enumerate((("철수", "취소", 10), ("영희", "완료", 20), ("민수", "취소", 30)), start=2):
+            ws[f"C{i}"], ws[f"D{i}"], ws[f"E{i}"] = row
+        wb.save(p)
+        fsmod.WORKSPACE_ROOT = tmp_path
+        svc = FileExcelLiveService()
+        svc.filter_rows(str(p), "S", target_range="C1:E4", column="D",
+                        operator="==", value="취소", mode="remove", has_header=True)
+        ws2 = load_workbook(p)["S"]
+        assert ws2["C2"].value == "영희" and ws2["C3"].value is None

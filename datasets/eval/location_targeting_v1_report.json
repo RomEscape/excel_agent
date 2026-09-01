@@ -1,0 +1,46 @@
+[
+ {
+  "idx": 1,
+  "task": "loc_col_header_bold",
+  "text": "매출 열 굵게 해줘",
+  "persona": "L_위치",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.set_font",
+  "detail": "글자 서식 — C1:C6 · 6개 셀",
+  "secs": 14.3
+ },
+ {
+  "idx": 2,
+  "task": "loc_col_header_bold",
+  "text": "매출 열 글씨 볼드로",
+  "persona": "L_위치",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.set_font",
+  "detail": "글자 서식 — C1:C6 · 6개 셀",
+  "secs": 14.2
+ },
+ {
+  "idx": 3,
+  "task": "loc_col_header_bold",
+  "text": "매출 항목 열만 굵게 해주세요",
+  "persona": "L_위치",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.set_font",
+  "detail": "글자 서식 — C1:C6 · 6개 셀",
+  "secs": 14.4
+ },
+ {
+  "idx": 4,
+  "task": "loc_col_header_bold",
+  "text": "매출 열 폰트 굵게 바꿔줘",
+  "persona": "L_위치",
+  "outcome": "PASS_RULE",
+  "card": false,
+  "action": "excel_live.set_font",
+  "detail": "글자 서식 — C1:C6 · 6개 셀",
+  "secs": 14.3
+ }
+]

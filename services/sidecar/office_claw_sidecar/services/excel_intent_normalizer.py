@@ -232,16 +232,25 @@ def _font_params_from(option_text: str) -> dict[str, Any]:
 
 
 def _column_letter(entry: dict[str, Any], column: Any) -> str:
-    """머리글 이름(또는 이미 열 문자)을 열 문자로. 못 찾으면 ""."""
+    """머리글 이름(또는 이미 열 문자)을 열 문자로. 못 찾으면 "".
+
+    머리글 조회가 열-문자 모양 검사보다 **먼저다** — ID·No·Qty처럼 라틴 1~3자
+    머리글이 실제로 있는데 열 문자로 읽으면 수백 열 떨어진 빈 열이 대상이 된다
+    (2026-09-01 위치 감사 확정 [6]).
+    """
     name = str(column or "").strip()
     if not name:
         return ""
-    if re.fullmatch(r"[A-Za-z]{1,3}", name):
-        return name.upper()
     lowered = name.lower()
     for col in entry.get("columns") or []:
         header = str(col.get("header") or "").strip()
-        if header and (header.lower() == lowered or lowered in header.lower()):
+        if header and header.lower() == lowered:
+            return str(col.get("letter") or "").upper()
+    if re.fullmatch(r"[A-Za-z]{1,3}", name):
+        return name.upper()
+    for col in entry.get("columns") or []:
+        header = str(col.get("header") or "").strip()
+        if header and lowered in header.lower():
             return str(col.get("letter") or "").upper()
     return ""
 

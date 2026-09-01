@@ -11167,6 +11167,172 @@ def _restore_rename_from_hijack(message: str, plan: list[PlanStep], sheet_name: 
     ])
 
 
+_SPOKEN_LOCATION_ACTIONS = frozenset({
+    "excel_live.fill_range",
+    "excel_live.set_font",
+    "excel_live.set_number_format",
+    "excel_live.clear_range",
+    "excel_live.apply_border",
+})
+_SPOKEN_ORDINALS = {
+    "첫": 1, "두": 2, "둘": 2, "세": 3, "셋": 3, "네": 4, "넷": 4,
+    "다섯": 5, "여섯": 6, "일곱": 7, "여덟": 8, "아홉": 9, "열": 10,
+}
+_SPOKEN_RANGE = re.compile(
+    # '부터/에서' 연결은 '까지'가 있어야 범위다 — "B2에서 C2 뺀 값"(뺄셈 피연산)을
+    # 범위로 읽으면 안 된다(2026-09-01 코퍼스 발동 조사: cell_subtract 11문).
+    r"(?<![A-Za-z0-9])([A-Za-z]{1,3}\d{1,7})\s*(?::\s*([A-Za-z]{1,3}\d{1,7})"
+    r"|(?:부터|에서)\s*([A-Za-z]{1,3}\d{1,7})\s*까지)"
+)
+_SPOKEN_COL_LETTER = re.compile(r"(?<![A-Za-z가-힣0-9])([A-Za-z]{1,2})\s*열")
+_SPOKEN_COL_ORDINAL = re.compile(
+    r"(첫|두|둘|세|셋|네|넷|다섯|여섯|일곱|여덟|아홉|열|\d{1,2})\s*번?\s*째\s*열"
+)
+_SPOKEN_ROW = re.compile(
+    r"(?:(첫|두|둘|세|셋|네|넷|다섯|여섯|일곱|여덟|아홉|열)\s*번?\s*째\s*|(\d{1,3})\s*(?:번\s*째\s*)?)행"
+)
+# '열만/열은/열을'의 조사를 막으면 안 된다 — "매출 항목 열만 굵게"가 무발동이었다
+# (2026-09-01 재측정). '열'이 낱말 일부인 오탐은 앞 그룹·불용어가 거른다.
+_SPOKEN_COL_HEADER = re.compile(
+    r"([가-힣A-Za-z0-9_]{2,12})\s*(?:항목\s*)?열(?=만|은|을|를|이|에|의|도|\s|$)"
+)
+_SPOKEN_CONJUNCTION = re.compile(r"(이랑|랑\s|하고\s|및\s|과\s|와\s)")
+_HEADER_COL_STOPWORDS = frozenset({"전체", "모든", "이", "그", "저", "해당", "옆", "왼쪽", "오른쪽", "마지막", "번째"})
+
+
+def _restore_spoken_location(message: str, plan: list[PlanStep], workbook_id: str | None, sheet_name: str | None) -> None:
+    """서식·비우기 계획의 대상을 문장이 말한 위치로 좁힌다 — 층 무관.
+
+    2026-09-01 위치 게이트 실측: "B2:D4만 노란색"·"D열 콤마"·"매출 열 굵게"·
+    "두 번째 열"·"B2:B4 값 지워"가 전부 선택 영역(A1:E6) 통짜로 실행됐다(40문
+    중 미검출 오실행 16건). 퀵룰의 ctx-우선 순서가 원인이지만 플래너·의도층도
+    같은 실수를 하므로 승인 직전 한 곳에서 교정한다. 위치가 둘 이상 언급되거나
+    접속사('랑/과')로 여러 열을 묶은 문장은 모호해서 건드리지 않는다.
+    """
+    if len(plan) != 1 or plan[0].action not in _SPOKEN_LOCATION_ACTIONS:
+        return
+    params = plan[0].params if isinstance(plan[0].params, dict) else {}
+    current = str(params.get("target_range") or "")
+    bounds_m = re.fullmatch(r"([A-Za-z]{1,3})(\d{1,7}):([A-Za-z]{1,3})(\d{1,7})", current.replace("$", ""))
+    if not bounds_m:
+        return  # 상징 대상(__ACTIVE_SELECTION__ 등)은 실행기 치환 규약에 맡긴다.
+    from openpyxl.utils import column_index_from_string, get_column_letter
+
+    c1 = column_index_from_string(bounds_m.group(1).upper())
+    r1 = int(bounds_m.group(2))
+    c2 = column_index_from_string(bounds_m.group(3).upper())
+    r2 = int(bounds_m.group(4))
+    text = str(message or "")
+
+    ranges = _SPOKEN_RANGE.findall(text)
+    letters = _SPOKEN_COL_LETTER.findall(text)
+    ordinals = _SPOKEN_COL_ORDINAL.findall(text)
+    rows = _SPOKEN_ROW.findall(text)
+    mentions = len(ranges) + len(letters) + len(ordinals) + len(rows)
+    if mentions != 1:
+        return  # 없거나(좁힐 근거 없음) 둘 이상(모호)이면 물러난다.
+
+    narrowed = ""
+    if ranges:
+        a, b_colon, b_kkaji = ranges[0]
+        b = b_colon or b_kkaji
+        narrowed = f"{a.upper()}:{b.upper()}"
+    elif letters:
+        col = column_index_from_string(letters[0].upper())
+        if not (c1 <= col <= c2):
+            return
+        narrowed = f"{letters[0].upper()}{r1}:{letters[0].upper()}{r2}"
+    elif ordinals:
+        idx = _SPOKEN_ORDINALS.get(ordinals[0]) or (int(ordinals[0]) if ordinals[0].isdigit() else 0)
+        col = c1 + idx - 1
+        if idx < 1 or col > c2:
+            return
+        letter = get_column_letter(col)
+        narrowed = f"{letter}{r1}:{letter}{r2}"
+    elif rows:
+        word, digit = rows[0]
+        idx = _SPOKEN_ORDINALS.get(word) or (int(digit) if digit else 0)
+        if idx < 1 or not (r1 <= idx <= r2):
+            return
+        narrowed = f"{get_column_letter(c1)}{idx}:{get_column_letter(c2)}{idx}"
+    else:  # pragma: no cover — mentions==1 이면 위 넷 중 하나다
+        return
+
+    if not narrowed and not ranges:
+        return
+    if not narrowed:
+        # 머리글 열 좁힘은 아래 별도 경로에서 처리한다.
+        return
+    if narrowed == current.replace("$", "").upper():
+        return
+    trace_note("spoken_location_narrowed", was=current, now=narrowed, action=plan[0].action)
+    params["target_range"] = narrowed
+    plan[0].params = params
+
+
+def _restore_spoken_header_column(message: str, plan: list[PlanStep], workbook_id: str | None, sheet_name: str | None) -> None:
+    """"매출 열 굵게"처럼 머리글 이름으로 지정한 열로 좁힌다 — 워크북을 읽어 확정.
+
+    열 문자·서수·범위가 이미 있으면 _restore_spoken_location 몫이므로 여기서는
+    순수 머리글 이름만 본다. 접속사로 여러 열을 묶은 문장('매출이랑 금액 열')은
+    한 열로 좁히면 나머지가 유실되므로 물러난다.
+    """
+    if len(plan) != 1 or plan[0].action not in _SPOKEN_LOCATION_ACTIONS:
+        return
+    params = plan[0].params if isinstance(plan[0].params, dict) else {}
+    current = str(params.get("target_range") or "")
+    bounds_m = re.fullmatch(r"([A-Za-z]{1,3})(\d{1,7}):([A-Za-z]{1,3})(\d{1,7})", current.replace("$", ""))
+    if not bounds_m:
+        return
+    text = str(message or "")
+    if _SPOKEN_RANGE.search(text) or _SPOKEN_COL_LETTER.search(text) or _SPOKEN_COL_ORDINAL.search(text):
+        return
+    if _SPOKEN_CONJUNCTION.search(text):
+        return
+    headers_named = [
+        m.group(1)
+        for m in _SPOKEN_COL_HEADER.finditer(text)
+        if m.group(1) not in _HEADER_COL_STOPWORDS and not m.group(1).isdigit()
+    ]
+    if len(headers_named) != 1:
+        return
+    from openpyxl.utils import column_index_from_string, get_column_letter
+
+    c1 = column_index_from_string(bounds_m.group(1).upper())
+    r1 = int(bounds_m.group(2))
+    c2 = column_index_from_string(bounds_m.group(3).upper())
+    r2 = int(bounds_m.group(4))
+    try:
+        service = get_excel_live_service()
+        resolved_sheet = str(sheet_name or params.get("sheet_name") or "").strip()
+        if not resolved_sheet:
+            # 하네스·GUI 모두 sheet_name이 비어 올 수 있다 — 활성 시트로 해석한다
+            # (2026-09-01 재측정: 이게 없어 read가 죽고 교정기가 조용히 물러났다).
+            resolved_sheet = str(service.list_sheets(workbook_id).get("active_sheet") or "").strip()
+        if not resolved_sheet:
+            return
+        header_row = service.read_range(
+            workbook_id, resolved_sheet, f"{get_column_letter(c1)}{r1}:{get_column_letter(c2)}{r1}"
+        ).get("values") or [[]]
+    except Exception:
+        return
+    wanted = headers_named[0]
+    hit = [
+        c1 + j
+        for j, v in enumerate(header_row[0] if header_row else [])
+        if str(v or "").strip() and (str(v).strip() == wanted or wanted in str(v))
+    ]
+    if len(hit) != 1:
+        return  # 없는 머리글이거나 중복 — 좁히면 도리어 틀린다.
+    letter = get_column_letter(hit[0])
+    narrowed = f"{letter}{r1}:{letter}{r2}"
+    if narrowed == current.replace("$", "").upper():
+        return
+    trace_note("spoken_header_column_narrowed", was=current, now=narrowed, header=wanted)
+    params["target_range"] = narrowed
+    plan[0].params = params
+
+
 def _restore_cross_sheet_aggregate(
     message: str, plan: list[PlanStep], workbook_id: str | None, sheet_name: str | None
 ) -> None:
@@ -11383,6 +11549,10 @@ def _plan_approval_gate(
     # 교정되기 전에 되묻기로 턴이 끝난다(2026-08-31 armB5 실측 11건).
     _restore_cross_sheet_aggregate(req.message, plan, req.workbook_id, req.sheet_name)
     _restore_rename_from_hijack(req.message, plan, req.sheet_name)
+    # 말한 위치로 좁힘 — "B2:D4만"·"D열"·"두 번째 열"·"3행"·"매출 열"이 선택 영역
+    # 통짜(A1:E6)로 번지던 것(2026-09-01 위치 게이트: 미검출 오실행 16건).
+    _restore_spoken_location(req.message, plan, req.workbook_id, req.sheet_name)
+    _restore_spoken_header_column(req.message, plan, req.workbook_id, req.sheet_name)
 
     # 블라스트 반경 — 사람이 가리키지 않은 자리의 **값**을 덮는가.
     # 계획이 옳은지는 판단하지 않는다. "지목한 자리"와 "건드릴 자리"만 비교하므로
