@@ -28,8 +28,9 @@ import {
   chatDeleteSession,
 } from "@/lib/api";
 
-/** 사이드바에 불러올 세션 개수. */
-const SESSION_LIST_LIMIT = 30;
+/** 사이드바에 불러올 세션 개수 — 저장은 무한(로그·DB에 자동 삭제 없음)이고
+ * 이것은 표시 상한일 뿐이다. 30이면 옛 대화가 사라진 것처럼 보였다(2026-09-01). */
+const SESSION_LIST_LIMIT = 200;
 
 const app = () => useAppStore.getState();
 const chat = () => useChatStore.getState();
