@@ -31,6 +31,8 @@ import {
   ToolStepChip,
 } from "@/components/ui/chat";
 import { BrandWordmark } from "@/components/ui/logo";
+import { ExcelTargetBar } from "@/components/workspace/ExcelTargetBar.jsx";
+import { useExcelTarget } from "@/hooks/useExcelTarget.js";
 import { cn } from "@/lib/utils";
 import { panelToggleLabel } from "@/lib/chatPanel";
 import {
@@ -60,6 +62,9 @@ const QUICK_PROMPTS = Object.freeze([
 
 export default function ChatPanel() {
   const agentMessages = useAppStore((s) => s.agentMessages);
+  // 지금 에이전트가 어느 엑셀 파일을 보고 있는지 — 채팅 패널에도 항상 보인다.
+  // 이게 없어서 "처리 중인 파일이 안 보인다"는 지적이 나왔다(2026-09-01).
+  const excelTarget = useExcelTarget();
   const ollamaState = useStatusStore((s) => s.modules.ollama.state);
 
   const sending = useChatStore((s) => s.sending);
@@ -210,6 +215,9 @@ export default function ChatPanel() {
           </button>
         </div>
       </div>
+
+      {/* 지금 대상 파일 — 대화가 어느 통합문서를 건드리는지 상시 표시 */}
+      <ExcelTargetBar target={excelTarget} className="mx-3 mt-2 shrink-0" />
 
       {/* 스레드 */}
       <div className="min-h-0 flex-1 overflow-y-auto bg-card px-4 py-4">
