@@ -72,6 +72,14 @@ def test_merge_and_unmerge_cells(monkeypatch):
     class _Api:
         DisplayAlerts = True
     wb1.app = type("App", (), {"api": _Api()})()
+    # 값이 둘 이상인 병합은 **지우는 일**이라 거절한다 — 파일 엔진과 같은 계약
+    # (2026-09-01 위치 감사: 이 가드가 라이브에 없어 값이 파괴됐다).
+    with pytest.raises(ExcelLiveError):
+        service.merge_cells(wb1.fullname, "Sheet1", "A1:B1")
+    assert merged == []
+    # 좌상단 외에 값이 없으면 병합한다.
+    sheet1 = wb1.sheets[0]
+    sheet1._values.pop((1, 2), None)
     assert service.merge_cells(wb1.fullname, "Sheet1", "A1:B1") == {"merged": True, "address": "A1:B1"}
     assert merged == ["A1:B1"]
     out = service.unmerge_cells(wb1.fullname, "Sheet1", "A1:B1")
