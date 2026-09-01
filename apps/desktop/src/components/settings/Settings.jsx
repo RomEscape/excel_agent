@@ -185,22 +185,9 @@ export default function Settings() {
     return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
   };
 
-  // Auto-set default model when provider changes.
-  // Ollama: 실제 설치된 모델 목록(중앙 statusStore)에서 첫 번째를 기본값으로.
-  // 없으면 sentinel "skt/A.X-4.0-Light:latest"로 두고 picker가 "현재 설치 안 됨" 경고 표시.
-  const handleProviderChange = (val) => {
-    setProvider(val);
-    if (val === "claude") {
-      setModel("claude-sonnet-4-20250514");
-    } else {
-      const installed = useStatusStore.getState().modules.ollama.models;
-      if (Array.isArray(installed) && installed.length > 0) {
-        setModel(installed[0].name);
-      } else {
-        setModel("skt/A.X-4.0-Light:latest");
-      }
-    }
-  };
+  // (provider 선택 UI가 사라지면서 handleProviderChange는 죽은 코드가 됐다 —
+  //  setProvider·useStatusStore 참조가 이 파일에 더 이상 없어 lint no-undef로
+  //  모든 프론트 커밋을 막고 있었다. 2026-09-01 제거.)
 
   return (
     <div className="space-y-6">

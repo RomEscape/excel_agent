@@ -79,17 +79,31 @@ function buildHistory(messages) {
 
 // ── 세션 ────────────────────────────────────────────────────────────────────
 
-/** 세션 목록 새로고침. sidecar 미지원이면 sessionsAvailable을 내린다. */
+/** 세션 목록 새로고침. sidecar 미지원이면 sessionsAvailable을 내린다.
+
+ * 첫 구동에서는 사이드카보다 먼저 호출돼 반드시 진다 — 재시도가 없으면
+ * "대화 기록을 사용할 수 없습니다"가 박제된다(2026-09-01 첫 구동 실측).
+ * 부팅 레이스 한정으로 짧게 재시도한다.
+ */
+let sessionsRetryTimer = 0;
+let sessionsRetriesLeft = 15;
+
 export async function refreshSessions() {
   const { setSessions, setSessionsLoading, setSessionsAvailable } = chat();
   setSessionsLoading(true);
+  if (typeof window !== "undefined") window.clearTimeout(sessionsRetryTimer);
   try {
     const list = await chatListSessions(SESSION_LIST_LIMIT);
     setSessions(Array.isArray(list) ? list : list?.sessions || []);
     setSessionsAvailable(true);
+    sessionsRetriesLeft = 15;
   } catch {
     setSessions([]);
     setSessionsAvailable(false);
+    if (sessionsRetriesLeft > 0 && typeof window !== "undefined") {
+      sessionsRetriesLeft -= 1;
+      sessionsRetryTimer = window.setTimeout(() => refreshSessions(), 2000);
+    }
   } finally {
     setSessionsLoading(false);
   }

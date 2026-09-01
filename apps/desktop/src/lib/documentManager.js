@@ -52,16 +52,29 @@ function arrayBufferToBase64(buffer) {
 }
 
 /** 워크스페이스 루트의 파일 목록을 다시 읽는다. */
+// 앱이 사이드카보다 먼저 뜨는 첫 구동에서는 최초 조회가 반드시 진다 — 재시도가
+// 없으면 "문서 목록을 불러오지 못했습니다" 배너가 박제된다(2026-09-01 첫 구동
+// 실측: 사이드카는 2번째 헬스체크에 떴는데 배너는 그대로). 부팅 레이스 한정으로
+// 짧게 재시도하고, 성공하면 상한을 되돌린다.
+let documentsRetryTimer = 0;
+let documentsRetriesLeft = 15;
+
 export async function refreshDocuments(path) {
   const { setFiles, setLoading, setError } = store();
   setLoading(true);
+  if (typeof window !== "undefined") window.clearTimeout(documentsRetryTimer);
   try {
     const data = await workspaceListFiles(path);
     setFiles(data?.files, data?.workspace);
     setError("");
+    documentsRetriesLeft = 15;
   } catch (err) {
     setFiles([], "");
     setError(toUserMessage(err, "문서 목록을 불러오지 못했습니다."));
+    if (documentsRetriesLeft > 0 && typeof window !== "undefined") {
+      documentsRetriesLeft -= 1;
+      documentsRetryTimer = window.setTimeout(() => refreshDocuments(path), 2000);
+    }
   } finally {
     setLoading(false);
   }

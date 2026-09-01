@@ -48,6 +48,7 @@ import {
   openWorkspaceFolder,
 } from "@/lib/api";
 import { toUserMessage } from "@/lib/errorMessages";
+import { refreshWorkspacePath } from "@/lib/workspaceManager";
 
 const TOTAL_STEPS = 3;
 
@@ -309,6 +310,25 @@ function StepWorkspace({ onNext, onPrev }) {
   const workspacePath = useAppStore((s) => s.workspacePath);
   const [opening, setOpening] = useState(false);
   const [openError, setOpenError] = useState("");
+
+  // 온보딩 중에는 WorkspacePage가 안 떠 있어 경로를 store에 채울 곳이 없다 —
+  // 이 단계가 직접 당겨온다. 빈 채로 두면 placeholder("폴더를 선택해주세요")만
+  // 보이고 확인 버튼이 영영 비활성이다(2026-09-01 첫 구동 실측). 사이드카가
+  // 아직 부팅 중일 수 있어 채워질 때까지 2초 간격으로 잠깐 재시도한다.
+  useEffect(() => {
+    let alive = true;
+    let timer = 0;
+    const pull = async (attemptsLeft) => {
+      const root = await refreshWorkspacePath();
+      if (!alive || root || attemptsLeft <= 0) return;
+      timer = window.setTimeout(() => pull(attemptsLeft - 1), 2000);
+    };
+    pull(15);
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+  }, []);
 
   const handleOpenFolder = async () => {
     setOpening(true);
