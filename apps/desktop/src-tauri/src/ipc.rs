@@ -179,21 +179,28 @@ pub async fn excel_live_status(state: State<'_, Mutex<SidecarState>>) -> Result<
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // 사이드카 요청 계약과 1:1 — 묶으면 JS 쪽 키 매핑이 또 어긋난다
 pub async fn excel_live_command(
     state: State<'_, Mutex<SidecarState>>,
     message: String,
     workbook_id: Option<String>,
     sheet_name: Option<String>,
+    session_id: Option<String>,
     approve: Option<bool>,
-    history: Option<serde_json::Value>,
+    context_range: Option<String>,
+    client: Option<serde_json::Value>,
 ) -> Result<String, String> {
-    // history: [{role, content}] — 멀티턴 맥락. 없으면 빈 배열로 전달.
+    // 리베이스 후 JS 시그니처(sessionId·contextRange·clientContext)와 이 명령이
+    // 어긋나 세션이 파편화되고 붙여넣기 문맥이 통째로 유실됐다(2026-09-01 실측:
+    // "여기에 입력해줘"가 위치 문맥 없이 도착). 사이드카 요청 모델과 1:1로 맞춘다.
     let body = serde_json::json!({
         "message": message,
         "workbook_id": workbook_id,
         "sheet_name": sheet_name,
+        "session_id": session_id,
+        "context_range": context_range,
         "approve": approve.unwrap_or(false),
-        "history": history.unwrap_or_else(|| serde_json::json!([])),
+        "client": client,
     });
     sidecar_request(
         &state,

@@ -261,7 +261,7 @@ export async function excelLiveCommand(
     sessionId,
     approve,
     contextRange,
-    clientContext,
+    client: clientContext,
   });
   return parseResponse(raw);
 }

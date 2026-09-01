@@ -77,6 +77,7 @@ import {
 import { answerMacroFollowUp, startMacroPlan } from "@/lib/excelMacroManager";
 import ExcelMacroCard from "@/components/workspace/ExcelMacroCard";
 import useAppStore from "@/store/appStore";
+import useChatStore from "@/store/chatStore";
 import useExcelMacroStore from "@/store/excelMacroStore";
 import {
   workspaceListFiles,
@@ -1772,6 +1773,9 @@ export default function WorkspacePage() {
   const [botUsername] = useState(null); // 텔레그램 제거(dev 병합)로 항상 null — 딥링크 UI는 자연히 숨는다
 
   // 채팅 사이드 패널 상태 — localStorage persist
+  // 우측 ChatPanel(도킹/플로팅)이 떠 있으면 인라인 채팅은 숨긴다 — 같은 대화가
+  // 두 군데 렌더돼 "대화 창이 두 개 중복"으로 보였다(2026-09-01 사용자 실측).
+  const chatPanelOpen = useChatStore((st) => st.panelOpen);
   const [chatOpen, setChatOpen] = useState(() => {
     try {
       const v = localStorage.getItem(LS_CHAT_OPEN);
@@ -2214,7 +2218,7 @@ export default function WorkspacePage() {
       {/* resize handle + 채팅 사이드 패널.
           <aside>는 두 배치에서 같은 자리(프래그먼트의 두 번째 자식)에 두어 배치가 바뀌어도
           ChatSidePanel이 다시 마운트되지 않게 한다 — 입력 중인 글·승인 대기가 살아남아야 한다. */}
-      {chatOpen && (
+      {chatOpen && !chatPanelOpen && (
         <>
           {!stacked && (
             <div

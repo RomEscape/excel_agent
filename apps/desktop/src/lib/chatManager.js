@@ -28,9 +28,6 @@ import {
   chatDeleteSession,
 } from "@/lib/api";
 
-/** 멀티턴 맥락으로 보낼 최근 턴 수. */
-const HISTORY_TURNS = 8;
-
 /** 사이드바에 불러올 세션 개수. */
 const SESSION_LIST_LIMIT = 30;
 
@@ -62,19 +59,6 @@ function persistSilent(sessionId, role, text, extra = {}) {
  */
 function stamp() {
   return new Date().toISOString();
-}
-
-/** 최근 대화를 OpenAI 형식 history로 — 오류 메시지와 빈 턴은 제외. */
-function buildHistory(messages) {
-  const turns = [];
-  for (const m of messages) {
-    if (m.error) continue;
-    const role = m.role === "user" ? "user" : m.role === "agent" ? "assistant" : null;
-    const content = String(m.text ?? "").trim();
-    if (!role || !content) continue;
-    turns.push({ role, content });
-  }
-  return turns.slice(-HISTORY_TURNS);
 }
 
 // ── 세션 ────────────────────────────────────────────────────────────────────
@@ -211,7 +195,6 @@ export async function sendMessage(rawInput) {
   if (!trimmed) return;
 
   const {
-    agentMessages,
     addAgentMessage,
     activeSessionId,
     setActiveSessionId,
@@ -220,7 +203,6 @@ export async function sendMessage(rawInput) {
 
   // 보낼 명령문은 참조 블록을 정리한 형태, 화면에 남는 건 사용자가 친 원문.
   const message = toOutboundCommand(trimmed);
-  const history = buildHistory(agentMessages);
   addAgentMessage({ role: "user", text: trimmed, time: stamp() });
   // 지난 턴의 스텝 칩을 비운다 — 안 비우면 어느 요청의 진행인지 알 수 없다.
   setToolSteps([]);
@@ -236,7 +218,10 @@ export async function sendMessage(rawInput) {
   setSending(true);
   setTaskLabel("AI가 처리하는 중...");
   try {
-    const res = await excelLiveCommand(message, null, null, false, history);
+    // 리베이스 후 시그니처가 (message, wb, sheet, sessionId, approve, …)로
+    // 바뀌었는데 옛 자리(approve 위치에 history 배열)로 호출해 Rust 역직렬화가
+    // 즉사했다 — 채팅 패널발 명령이 사이드카에 닿지도 못한 원인(2026-09-01).
+    const res = await excelLiveCommand(message, null, null, sid, false);
     // 이번 턴에 실제로 실행된 액션 → 툴 진행 스텝 칩 (와이어프레임 B-7).
     setToolSteps(toToolSteps(res?.executed_actions));
 
@@ -251,10 +236,14 @@ export async function sendMessage(rawInput) {
       persistSilent(sid, "agent", text);
     }
   } catch (err) {
-    const errText = toUserMessage(
-      err,
-      "작업 처리 중 오류가 발생했습니다. 다시 시도해 주세요."
-    );
+    const fallback = "작업 처리 중 오류가 발생했습니다. 다시 시도해 주세요.";
+    let errText = toUserMessage(err, fallback);
+    // 일반 문구만 반복되면 원인을 알 길이 없다 — 매핑 안 된 오류는 원문을 덧붙인다.
+    if (errText === fallback) {
+      const rawErr = String(err?.message || err || "").slice(0, 160);
+      if (rawErr) errText = `${fallback}
+(${rawErr})`;
+    }
     addAgentMessage({ role: "agent", text: null, error: errText, time: stamp() });
     persistSilent(sid, "agent", "", { errorText: errText });
   } finally {
@@ -381,7 +370,13 @@ export async function buildSelectedRangeContext() {
 
   setInsertingRange(true);
   try {
-    const out = await excelLiveCommand("지금 선택한 범위 읽어줘", null, null, false);
+    const out = await excelLiveCommand(
+      "지금 선택한 범위 읽어줘",
+      null,
+      null,
+      app().activeSessionId ?? null,
+      false,
+    );
     const { block, address, rows, cols } = buildRangeContextBlock(out?.result || {});
     addAgentMessage({
       role: "system",
