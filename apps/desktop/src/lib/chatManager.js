@@ -226,13 +226,25 @@ export async function sendMessage(rawInput) {
     // 이번 턴에 실제로 실행된 액션 → 툴 진행 스텝 칩 (와이어프레임 B-7).
     setToolSteps(toToolSteps(res?.executed_actions));
 
-    if (res?.approval_required && res?.pending_approval) {
-      setPendingExcelApproval(res.pending_approval);
-      const note = res.reason || "엑셀 변경 작업은 승인 후 실행됩니다.";
+    // 사이드카 응답의 승인·되묻기 필드는 result 안에 있다 — 최상위만 읽으면
+    // 되묻기("D1:G6에 어떤 값을 넣을까요?")가 "작업이 완료되었습니다"로 둔갑한다
+    // (2026-09-01 실측: 사이드카는 옳게 물었는데 화면이 완료라고 했다).
+    const rr = (res && typeof res.result === "object" && res.result) || {};
+    const approvalRequired = res?.approval_required ?? rr.approval_required;
+    const pendingApproval = res?.pending_approval ?? rr.pending_approval;
+    const askFollowUp = res?.ask_follow_up ?? rr.ask_follow_up;
+    const followUpQuestion = res?.follow_up_question ?? rr.follow_up_question;
+
+    if (approvalRequired && pendingApproval) {
+      setPendingExcelApproval(pendingApproval);
+      const note = res?.reason || "엑셀 변경 작업은 승인 후 실행됩니다.";
       addAgentMessage({ role: "agent", text: note, time: stamp() });
       persistSilent(sid, "agent", note);
+    } else if (askFollowUp && followUpQuestion) {
+      addAgentMessage({ role: "agent", text: followUpQuestion, time: stamp() });
+      persistSilent(sid, "agent", followUpQuestion);
     } else {
-      const text = res?.assistant_text || formatResultText(res?.action, res?.result);
+      const text = res?.assistant_text || formatResultText(res?.action, rr);
       addAgentMessage({ role: "agent", text, time: stamp() });
       persistSilent(sid, "agent", text);
     }
