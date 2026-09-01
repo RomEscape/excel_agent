@@ -127,6 +127,10 @@ React + Zustand. URL 라우팅 없이 `appStore.currentPage`로 화면 전환.
 
 전체 67개 검증 입력은 `TEST_INPUT_COMMANDS_EXCEL_LIVE.txt`, Excel Live 명령 레퍼런스는 `docs/excel-live-command-list.txt`.
 
+AI가 왜 그렇게 판단했는지는 전부 `logs/chat_log.jsonl`(턴당 JSON 한 줄)에 남는다 —
+구조 해설과 "사용자 불만 → 로그 판독 → 개선"의 루프는
+[`docs/chat-log-guide.md`](docs/chat-log-guide.md) (초보자용 안내서).
+
 ---
 
 ## 모바일 원격 제어 흐름
