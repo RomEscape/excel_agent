@@ -1,0 +1,10 @@
+{
+  "name": "officeclaw-root",
+  "private": true,
+  "description": "모노레포 루트 위임 스크립트 — 앱 본체는 apps/desktop. 2026-08-29 dev 리베이스로 루트 package.json이 사라져 몸에 밴 `npm run tauri:dev`가 ENOENT로 죽던 것을 되살린다.",
+  "scripts": {
+    "tauri:dev": "cd apps/desktop && npm run tauri:dev",
+    "dev": "cd apps/desktop && npm run dev",
+    "build": "cd apps/desktop && npm run build"
+  }
+}
