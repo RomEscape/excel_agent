@@ -1875,6 +1875,19 @@ class ExcelLiveService:
 
     # ---- 열 이름 기반 표 작업(파일 엔진과 같은 계약) ----
 
+    def _table_origin(self, workbook_id: str | None, sheet_name: str) -> tuple[int, int]:
+        """사용 범위의 원점(1-기반 행·열). 그리드 색인→절대 좌표 환산에 쓴다.
+
+        표가 A1에서 시작하지 않으면(예: B1:F20) 그리드 색인을 그대로 열 문자로
+        바꿀 때 왼쪽으로 밀린 **엉뚱한 데이터 열**이 삭제·덮어쓰기 대상이 된다
+        (2026-09-01 위치 감사 확정 [5][18]).
+        """
+        ref = str(self.get_used_range_ref(workbook_id, sheet_name) or "").replace("$", "")
+        m = re.match(r"^([A-Za-z]{1,3})(\d{1,7})", ref)
+        if not m:
+            return 1, 1
+        return int(m.group(2)), self._col_to_idx(m.group(1).upper())
+
     def _table_grid(self, workbook_id: str | None, sheet_name: str) -> tuple[list[Any], list[list[Any]], int]:
         """사용 범위를 머리글 한 줄과 본문으로 나눠 준다. 열 이름 기반 작업의 공통 진입점."""
         ref = self.get_used_range_ref(workbook_id, sheet_name)
@@ -1980,9 +1993,10 @@ class ExcelLiveService:
             value = float(sum(numbers)) / len(numbers)
         else:
             value = float(max(numbers) if kind == "max" else min(numbers))
+        _origin_row, _origin_col = self._table_origin(workbook_id, sheet_name)
         return {
             "value": value,
-            "column": self._col_letter(index + 1),
+            "column": self._col_letter(_origin_col + index),
             "header": name,
             "stat": kind,
             "numeric_count": len(numbers),
@@ -1992,7 +2006,8 @@ class ExcelLiveService:
         header, _body, width = self._table_grid(workbook_id, sheet_name)
         index, name = self._pick_column(column, header, width)
         _wb, sheet = self._open_target(workbook_id, sheet_name)
-        letter = self._col_letter(index + 1)
+        _origin_row, _origin_col = self._table_origin(workbook_id, sheet_name)
+        letter = self._col_letter(_origin_col + index)
         if sys.platform == "darwin":
             sheet.range(f"{letter}:{letter}").delete()  # 고수준(양 플랫폼) — COM Delete는 macOS 즉사
         else:
@@ -2012,8 +2027,10 @@ class ExcelLiveService:
         header, _body, width = self._table_grid(workbook_id, sheet_name)
         index, name = self._pick_column(column, header, width)
         _wb, sheet = self._open_target(workbook_id, sheet_name)
-        sheet.range(f"{self._col_letter(index + 1)}1").value = target
-        return {"old_name": name or self._col_letter(index + 1), "new_name": target, "column": self._col_letter(index + 1)}
+        _origin_row, _origin_col = self._table_origin(workbook_id, sheet_name)
+        letter = self._col_letter(_origin_col + index)
+        sheet.range(f"{letter}{_origin_row}").value = target
+        return {"old_name": name or letter, "new_name": target, "column": letter}
 
     def add_column(
         self,
@@ -2026,17 +2043,20 @@ class ExcelLiveService:
         if not label:
             raise ExcelLiveError("추가할 열 이름을 알려주세요.")
         _header, body, width = self._table_grid(workbook_id, sheet_name)
-        target_col = width + 1
-        letter = self._col_letter(target_col)
+        _origin_row, _origin_col = self._table_origin(workbook_id, sheet_name)
+        # '마지막 열 옆'은 사용 범위 원점 기준이다 — width+1을 A열 기준 절대로
+        # 읽으면 마지막 데이터 열을 덮는다(2026-09-01 감사 [18]).
+        letter = self._col_letter(_origin_col + width)
         _wb, sheet = self._open_target(workbook_id, sheet_name)
-        sheet.range(f"{letter}1").value = label
+        sheet.range(f"{letter}{_origin_row}").value = label
         filled = 0
+        _first_body_row = _origin_row + 1
         if formula_a1 and body:
             # 첫 행 수식을 채우고 아래로 늘리면 Excel이 상대 참조를 행마다 옮겨 준다.
-            first = sheet.range(f"{letter}2")
+            first = sheet.range(f"{letter}{_first_body_row}")
             first.formula = formula_a1
             if len(body) > 1:
-                block = sheet.range(f"{letter}2:{letter}{1 + len(body)}")
+                block = sheet.range(f"{letter}{_first_body_row}:{letter}{_origin_row + len(body)}")
                 if sys.platform == "darwin":
                     # COM AutoFill은 macOS 즉사(2026-08-30 감사). 범위에 수식을
                     # 대입하면 Excel이 행마다 상대 참조를 옮겨 준다 — 같은 의미다.

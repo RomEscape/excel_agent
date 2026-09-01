@@ -2180,6 +2180,19 @@ _PASTE_WRITE_VERB_TAIL = re.compile(
 )
 
 
+def _col_after(letters: str) -> str:
+    """열 문자 바로 오른쪽 열("F"→"G", "Z"→"AA")."""
+    idx = 0
+    for ch in str(letters or "A").upper():
+        idx = idx * 26 + (ord(ch) - 64)
+    idx += 1
+    out = ""
+    while idx > 0:
+        idx, rem = divmod(idx - 1, 26)
+        out = chr(65 + rem) + out
+    return out
+
+
 def parse_rangeless_row_write(text: str, target_range: str) -> dict | None:
     """범위 없이 값 나열+쓰기 동사만 있는 문장 — 붙여넣기 뒤의 자연스러운 형태.
 
@@ -2197,6 +2210,12 @@ def parse_rangeless_row_write(text: str, target_range: str) -> dict | None:
         return None
     source = str(text or "").strip()
     lowered_src = source.lower()
+    # '이 표 아래에 …'는 좌상단이 아니라 **표 아래**다 — 자리말을 벗기기만 하면
+    # write_range(좌상단)가 머리글을 덮는다(2026-09-01 감사 [16] 실경로 재현).
+    # 값 나열 안의 '아래' 같은 데이터 낱말과 헷갈리지 않게 첫 구분자 앞에서만 본다.
+    _head_zone = re.split(r"[,;\n]", source, maxsplit=1)[0]
+    _place_below = bool(re.search(r"(?:아래|밑)\s*에", _head_zone))
+    _place_side = bool(re.search(r"(?:옆|오른쪽)\s*에", _head_zone))
     if not source or "=" in source or "수식" in source or "헤더" in lowered_src or "header" in lowered_src:
         return None
     verb = _PASTE_WRITE_VERB_TAIL.search(source)
@@ -2289,10 +2308,20 @@ def parse_rangeless_row_write(text: str, target_range: str) -> dict | None:
             return None
     if rng:
         col_count = _column_span(rng.group(1), rng.group(3))
-        start_cell = f"{rng.group(1)}{rng.group(2)}"
+        if _place_below:
+            start_cell = f"{rng.group(1)}{int(rng.group(4)) + 1}"
+        elif _place_side:
+            start_cell = f"{_col_after(rng.group(3))}{rng.group(2)}"
+        else:
+            start_cell = f"{rng.group(1)}{rng.group(2)}"
     else:
         col_count = len(_split_header_tokens(row_groups[0]))
-        start_cell = f"{single.group(1)}{single.group(2)}"
+        if _place_below:
+            start_cell = f"{single.group(1)}{int(single.group(2)) + 1}"
+        elif _place_side:
+            start_cell = f"{_col_after(single.group(1))}{single.group(2)}"
+        else:
+            start_cell = f"{single.group(1)}{single.group(2)}"
         if col_count < 2 and len(row_groups) < 2:
             # 한 칸에 낱말 하나 — 단일 쓰기 규칙이 더 잘 안다.
             return None

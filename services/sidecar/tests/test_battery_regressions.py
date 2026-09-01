@@ -7499,3 +7499,82 @@ class TestSheetQualifiedHooks:
         slot3 = _merge_operation_slots(slot2, session_key="t", req=req3,
                                        hints={"intent": "sort"}, parsed=None, digest=dig)
         assert slot3.sheet_name == "Dashboard"
+
+
+class TestXlwingsColumnOpsRespectOrigin:
+    """xlwings 열 연산의 사용범위-원점 보정(감사 확정 [5][18]).
+
+    표가 B1:F3이면 '매출'(D열) 지목이 그리드 색인→'C'로 밀려 엉뚱한 데이터 열이
+    대상이 됐다(drop_column은 롤백 면제라 복구도 불가). 절대 좌표로 환산한다.
+    """
+
+    def _service(self):
+        import sys as _sys
+        from pathlib import Path
+
+        _sys.path.insert(0, str(Path(__file__).parent))
+        from test_excel_live_service import _FakeApp, _FakeSheet, _FakeWorkbook, _FakeXw
+
+        from office_claw_sidecar.services.excel_live_service import ExcelLiveService
+
+        sheet = _FakeSheet("S")
+        sheet.seed("B1:F1", [["지역", "주문건수", "매출", "금액", "지연건수"]])
+        sheet.seed("B2:F2", [["수도권", 120, 3400, 3400000, 3]])
+        sheet.seed("B3:F3", [["충청권", 80, 2100, 2100000, 1]])
+        wb = _FakeWorkbook(name="s.xlsx", fullname=r"C:\work\s.xlsx", sheets=[sheet])
+        return ExcelLiveService(xw_module=_FakeXw(_FakeApp([wb]))), wb, sheet
+
+    def test_통계의_열_문자는_절대_좌표다(self):
+        svc, wb, _sheet = self._service()
+        out = svc.calculate_column_stat(wb.fullname, "S", "매출", stat="sum")
+        assert out["column"] == "D" and out["value"] == 5500.0
+
+    def test_rename은_원점_행열에_쓴다(self):
+        svc, wb, sheet = self._service()
+        out = svc.rename_column(wb.fullname, "S", "매출", "판매액")
+        assert out["column"] == "D"
+        assert sheet._values.get((1, 4)) == "판매액"
+
+    def test_add는_마지막_열_오른쪽_빈_열에_만든다(self):
+        svc, wb, sheet = self._service()
+        out = svc.add_column(wb.fullname, "S", "비고")
+        assert out["column"] == "G"
+        assert sheet._values.get((1, 7)) == "비고"
+        # 기존 마지막 데이터 열(F)은 무손상
+        assert sheet._values.get((1, 6)) == "지연건수"
+
+
+class TestPasteBelowOffset:
+    """'이 표 아래에 (값 격자) 기록'이 context 좌상단(머리글)을 덮던 것(감사 [16]).
+
+    자리말을 벗기기만 하고 오프셋 계산이 없었다. 아래/밑→문맥 아래 행,
+    옆/오른쪽→오른쪽 열. 자리말 없으면 기존 좌상단(붙여넣기 계약) 유지.
+    """
+
+    def test_아래는_문맥_다음_행부터다(self):
+        from office_claw_sidecar.services.excel_live_agent import parse_rangeless_row_write
+
+        r = parse_rangeless_row_write("이 표 아래에 수도권,10452,8123 기록해둬", "A1:F9")
+        assert r["params"]["start_cell"] == "A10"
+        assert r["params"]["values_2d"][0][:3] == ["수도권", 10452, 8123]
+
+    def test_옆은_오른쪽_열부터다(self):
+        from office_claw_sidecar.services.excel_live_agent import parse_rangeless_row_write
+
+        r = parse_rangeless_row_write("이 표 옆에 비고,메모 넣어줘", "A1:F9")
+        assert r["params"]["start_cell"] == "G1"
+
+    def test_자리말_없으면_좌상단_계약_유지(self):
+        from office_claw_sidecar.services.excel_live_agent import parse_rangeless_row_write
+
+        r = parse_rangeless_row_write("지역,주문건수,매출; 수도권,120,3400 입력해줘", "A1:C2")
+        assert r["params"]["start_cell"] == "A1"
+        # 값 나열 **안**의 '아래' 낱말(첫 구분자 뒤)은 자리말이 아니다
+        r2 = parse_rangeless_row_write("상단,아래,좌측; 1,2,3 입력해줘", "A1:C2")
+        assert r2["params"]["start_cell"] == "A1"
+
+    def test_단일_셀_문맥도_아래로_민다(self):
+        from office_claw_sidecar.services.excel_live_agent import parse_rangeless_row_write
+
+        r = parse_rangeless_row_write("여기 아래에 수도권,10452 넣어줘", "B5")
+        assert r["params"]["start_cell"] == "B6"
