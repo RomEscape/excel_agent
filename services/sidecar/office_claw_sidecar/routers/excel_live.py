@@ -6039,7 +6039,16 @@ def _merge_operation_slots(
     )
     slot.intent = intent
     slot.workbook_id = req.workbook_id or slot.workbook_id
-    slot.sheet_name = req.sheet_name or slot.sheet_name
+    # 첫 턴이 지목한 시트("'재고' 시트 정렬")를 답변 턴의 활성 시트로 덮지
+    # 않는다(2026-09-01 감사 [10]: Dashboard가 파괴적으로 재배열). 이 턴의
+    # 문장이 그 시트를 직접 불렀을 때만 갱신한다.
+    _turn_sheet = str(req.sheet_name or "").strip()
+    if not str(slot.sheet_name or "").strip():
+        slot.sheet_name = _turn_sheet or slot.sheet_name
+    elif _turn_sheet and (
+        _turn_sheet == str(slot.sheet_name or "") or _turn_sheet in str(req.message or "")
+    ):
+        slot.sheet_name = _turn_sheet
     # 되묻기 판정이 "기준 열이 **실재하는가**"를 보려면 머리글이 필요하다. 슬롯에 실어
     # 두면 `_operation_follow_up(slot)`의 시그니처를 안 바꿔도 된다(호출부 4곳 무변).
     _slot_entry = sheet_entry(digest or {}, slot.sheet_name) if digest else None
@@ -6246,6 +6255,21 @@ def _slot_column(params: dict[str, Any], key: str, default: str) -> str:
     """슬롯에 열 값이 None으로 들어 있어도 "NONE" 같은 가짜 열을 만들지 않게 한다."""
     value = str(params.get(key) or "").strip().upper()
     return value or default
+
+
+def _stamp_slot_sheet(
+    steps: list[dict[str, Any]] | None, slot: PendingExcelOperationSlots | None
+) -> list[dict[str, Any]] | None:
+    """슬롯이 기억하는 시트를 단계에 못박는다 — 실행이 답변 턴의 활성 시트로
+    새지 않게(2026-09-01 감사 [10]: 단계에 sheet_name이 없어 디스패치가 활성을
+    썼다). 디스패처는 params.sheet_name을 우선한다.
+    """
+    sheet = str(getattr(slot, "sheet_name", "") or "").strip()
+    if sheet and steps:
+        for st in steps:
+            if isinstance(st, dict):
+                st.setdefault("params", {}).setdefault("sheet_name", sheet)
+    return steps
 
 
 def _operation_action_plan(slot: PendingExcelOperationSlots) -> list[dict[str, Any]]:
@@ -9410,6 +9434,24 @@ async def _run_command(
                         agg_dest_row = int(dest_parts.group(2))
                         agg_dest_cols = (dest_parts.group(1), dest_parts.group(3))
             if agg_match is not None:
+                # 문장이 활성이 아닌 시트를 지목했으면 이 훅은 놓는다 — 좌표는
+                # 활성 시트에서 만들고 실행은 재지향된 시트에서 되는 어긋남이
+                # 생긴다(2026-09-01 감사 [9]: 요약!B21에 매출 표 모양 수식).
+                # 재지향 후 층(플래너·집계 규칙)이 그 시트 기준으로 다시 푼다.
+                try:
+                    _agg_svc0 = get_excel_live_service()
+                    _agg_wb0 = _resolve_workbook_id(_agg_svc0, req.workbook_id)
+                    _agg_names0 = [
+                        str(n) for n in ((_agg_svc0.list_sheets(_agg_wb0) or {}).get("sheets") or [])
+                    ]
+                    _agg_active0 = _resolve_sheet_name(_agg_svc0, _agg_wb0, req.sheet_name)
+                except Exception:
+                    _agg_names0, _agg_active0 = [], ""
+                _agg_other = _spoken_other_sheet(req.message, _agg_names0, _agg_active0)
+                if _agg_other:
+                    trace_note("aggregate_hook_backoff", named_sheet=_agg_other, active=_agg_active0)
+                    agg_match = None
+            if agg_match is not None:
                 agg_func, agg_label = agg_match
                 agg_target_from_context = False
                 if agg_dest_row:
@@ -9566,6 +9608,12 @@ async def _run_command(
                 except Exception:
                     cross_active = ""
                 if cross_active:
+                    # 문장이 목적지 시트를 직접 불렀으면 그쪽이 우선이다 — 활성
+                    # 시트로 못박으면 "요약 시트 A4에 지역성과 합계 가져와줘"가
+                    # 활성(Dashboard)!A4에 써진다(2026-09-01 감사 [8] 재현).
+                    cross_active = _cross_sheet_destination(
+                        cross_steps, cross_sheet_names, req.message, cross_active
+                    )
                     for cross_step in cross_steps:
                         cross_step["params"]["sheet_name"] = cross_active
                 quick_action_plan = cross_steps
@@ -10490,7 +10538,7 @@ async def _run_command(
                     digest=workbook_digest,
                 )
                 if rule_slot is not None and not _operation_follow_up(rule_slot):
-                    slot_steps = _normalize_plan_or_empty(_operation_action_plan(rule_slot))
+                    slot_steps = _normalize_plan_or_empty(_stamp_slot_sheet(_operation_action_plan(rule_slot), rule_slot))
                     # 슬롯이 고른 액션에도 같은 잣대를 적용한다. 근거 없으면 쓰지 않는다.
                     if slot_steps and _action_lacks_evidence(slot_steps[0].action, req.message):
                         slot_steps = []
@@ -10643,7 +10691,7 @@ async def _run_command(
                 # 슬롯 규칙이 못 채운 값이라도 실제 머리글·시트를 보면 확정되는 경우가 많고,
                 # 그때까지 질문하면 사용자는 이미 말한 내용을 또 말해야 한다.
                 rescued_plan = _bind_and_validate(
-                    _normalize_plan_or_empty(_operation_action_plan(op_slot)),
+                    _normalize_plan_or_empty(_stamp_slot_sheet(_operation_action_plan(op_slot), op_slot)),
                     require_binding_evidence=True,
                 )
                 if rescued_plan:
@@ -10671,7 +10719,7 @@ async def _run_command(
                     },
                 )
 
-            op_plan_raw = _operation_action_plan(op_slot) if op_slot is not None else None
+            op_plan_raw = _stamp_slot_sheet(_operation_action_plan(op_slot), op_slot) if op_slot is not None else None
             if rescued_plan or op_plan_raw:
                 action_plan = rescued_plan or _normalize_plan_or_empty(op_plan_raw)
                 if (
@@ -11198,6 +11246,26 @@ _SPOKEN_COL_HEADER = re.compile(
 )
 _SPOKEN_CONJUNCTION = re.compile(r"(이랑|랑\s|하고\s|및\s|과\s|와\s)")
 _HEADER_COL_STOPWORDS = frozenset({"전체", "모든", "이", "그", "저", "해당", "옆", "왼쪽", "오른쪽", "마지막", "번째"})
+
+
+def _spoken_other_sheet(message: str, names: list[str], active: str) -> str:
+    """문장이 활성이 아닌 실재 시트를 지목했으면 그 이름, 아니면 ""."""
+    text = str(message or "")
+    return next((n for n in names if n and n != active and n in text), "")
+
+
+def _cross_sheet_destination(
+    cross_steps: list[dict[str, Any]], names: list[str], message: str, active: str
+) -> str:
+    """크로스시트 계획의 목적지 — 문장이 부른 비-원본 시트가 하나면 그쪽, 아니면 활성."""
+    formula_srcs: set[str] = set()
+    for step in cross_steps or []:
+        formula = str(((step or {}).get("params") or {}).get("formula_a1") or "")
+        formula_srcs |= set(re.findall(r"'([^']+)'!", formula))
+    named = [
+        n for n in names if n and n not in formula_srcs and n in str(message or "")
+    ]
+    return named[0] if len(named) == 1 else active
 
 
 def _restore_spoken_location(message: str, plan: list[PlanStep], workbook_id: str | None, sheet_name: str | None) -> None:

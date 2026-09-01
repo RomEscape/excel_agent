@@ -7436,3 +7436,66 @@ class TestColumnSelectorRespectsRangeStart:
                         operator="==", value="취소", mode="remove", has_header=True)
         ws2 = load_workbook(p)["S"]
         assert ws2["C2"].value == "영희" and ws2["C3"].value is None
+
+
+class TestSheetQualifiedHooks:
+    """시트 한정 확정 약점 [8][9][10] 핀(2026-09-01 감사·실경로 재현).
+
+    [8] "요약 시트 A4에 지역성과 합계"가 활성(Dashboard)!A4에 써짐 — 목적지는
+    문장이 부른 비-원본 시트. [9] 집계-아래 훅이 활성 좌표로 만들고 재지향된
+    시트에서 실행 — 다른 시트 지목 시 훅이 놓는다. [10] 멀티턴 슬롯의 첫 턴
+    지목 시트가 답변 턴 활성으로 덮임 + 완성 계획에 시트 도장.
+    """
+
+    def test_크로스시트_목적지는_문장이_부른_비원본_시트다(self):
+        from office_claw_sidecar.routers.excel_live import _cross_sheet_destination
+
+        steps = [{"action": "excel_live.set_formula",
+                  "params": {"formula_a1": "=SUM('지역성과'!B2:B3)", "range_ref": "A4"}}]
+        names = ["Dashboard", "지역성과", "요약"]
+        assert _cross_sheet_destination(
+            steps, names, "요약 시트 A4에 지역성과 시트 주문건수 합계 가져와줘", "Dashboard"
+        ) == "요약"
+        # 목적지 언급이 없으면 활성 유지
+        assert _cross_sheet_destination(
+            steps, names, "A4에 지역성과 시트 주문건수 합계 가져와줘", "Dashboard"
+        ) == "Dashboard"
+
+    def test_집계_훅은_다른_시트_지목_시_놓는다(self):
+        from office_claw_sidecar.routers.excel_live import _spoken_other_sheet
+
+        names = ["매출", "요약"]
+        assert _spoken_other_sheet("요약 시트 표 아래에 합계 넣어줘", names, "매출") == "요약"
+        assert _spoken_other_sheet("표 아래에 합계 넣어줘", names, "매출") == ""
+
+    def test_슬롯_시트는_답변_턴_활성에_덮이지_않는다(self):
+        from office_claw_sidecar.routers.excel_live import (
+            ExcelLiveCommandRequest,
+            _merge_operation_slots,
+            _operation_action_plan,
+            _stamp_slot_sheet,
+        )
+
+        dig = {"sheets": [{"name": "Dashboard", "used_range": "A1:C5",
+                           "columns": [{"header": "항목", "letter": "A"}]},
+                          {"name": "재고", "used_range": "A1:D9",
+                           "columns": [{"header": "품명", "letter": "A"},
+                                       {"header": "매출", "letter": "B"}]}],
+               "active_sheet": "Dashboard"}
+        req1 = ExcelLiveCommandRequest(message="'재고' 시트 정렬해줘", sheet_name="재고", session_id="t")
+        slot = _merge_operation_slots(None, session_key="t", req=req1,
+                                      hints={"intent": "sort"}, parsed=None, digest=dig)
+        req2 = ExcelLiveCommandRequest(message="매출 기준 내림차순", sheet_name="Dashboard", session_id="t")
+        slot2 = _merge_operation_slots(slot, session_key="t", req=req2,
+                                       hints={"intent": "sort",
+                                              "params": {"key_column": "매출", "order": "desc"}},
+                                       parsed=None, digest=dig)
+        assert slot2.sheet_name == "재고"
+        steps = _stamp_slot_sheet(_operation_action_plan(slot2), slot2)
+        assert steps and steps[0]["params"]["sheet_name"] == "재고"
+        # 이 턴 문장이 시트를 직접 부르면 갱신된다
+        req3 = ExcelLiveCommandRequest(message="아니 Dashboard 시트로 해줘",
+                                       sheet_name="Dashboard", session_id="t")
+        slot3 = _merge_operation_slots(slot2, session_key="t", req=req3,
+                                       hints={"intent": "sort"}, parsed=None, digest=dig)
+        assert slot3.sheet_name == "Dashboard"
