@@ -580,8 +580,14 @@ pub async fn command_audit_clear(state: State<'_, Mutex<SidecarState>>) -> Resul
 
 /// 워크스페이스 폴더를 Finder(macOS) / Explorer(Windows)로 연다.
 #[tauri::command]
-pub async fn open_workspace_folder(_app: tauri::AppHandle) -> Result<String, String> {
-    let workspace = workspace_dir().ok_or_else(|| "홈 디렉토리를 찾을 수 없습니다".to_string())?;
+pub async fn open_workspace_folder(
+    _app: tauri::AppHandle,
+    state: State<'_, Mutex<SidecarState>>,
+) -> Result<String, String> {
+    let workspace = match sidecar_workspace_root(&state).await {
+        Some(root) => root,
+        None => workspace_dir().ok_or_else(|| "홈 디렉토리를 찾을 수 없습니다".to_string())?,
+    };
 
     // 디렉토리가 없으면 생성
     if !workspace.exists() {
@@ -614,7 +620,10 @@ pub async fn open_workspace_folder(_app: tauri::AppHandle) -> Result<String, Str
 ///   - 절대 경로 차단 (상대 경로만 허용)
 ///   - `..` 포함 경로 차단 (워크스페이스 탈출 방지)
 #[tauri::command]
-pub async fn open_workspace_file(path: String) -> Result<String, String> {
+pub async fn open_workspace_file(
+    path: String,
+    state: State<'_, Mutex<SidecarState>>,
+) -> Result<String, String> {
     // 1) 입력 경로 검증
     if path.starts_with('/') || path.starts_with('\\') {
         return Err("절대 경로는 허용되지 않습니다. 상대 경로를 사용하세요.".to_string());
@@ -626,9 +635,11 @@ pub async fn open_workspace_file(path: String) -> Result<String, String> {
         }
     }
 
-    // 2) 워크스페이스 루트 확인/생성
-    let workspace_root =
-        workspace_dir().ok_or_else(|| "홈 디렉토리를 찾을 수 없습니다".to_string())?;
+    // 2) 워크스페이스 루트 확인/생성 — 목록과 같은 루트(사이드카 소유)를 쓴다
+    let workspace_root = match sidecar_workspace_root(&state).await {
+        Some(root) => root,
+        None => workspace_dir().ok_or_else(|| "홈 디렉토리를 찾을 수 없습니다".to_string())?,
+    };
     if !workspace_root.exists() {
         std::fs::create_dir_all(&workspace_root)
             .map_err(|e| format!("워크스페이스 폴더 생성 실패: {}", e))?;
@@ -790,6 +801,7 @@ pub async fn workspace_create_excel_file(
 pub async fn workspace_write_file_binary(
     path: String,
     content_base64: String,
+    state: State<'_, Mutex<SidecarState>>,
 ) -> Result<String, String> {
     // 1. 샌드박스 검증 — 절대 경로 거부
     if path.starts_with('/') || path.starts_with('\\') {
@@ -804,9 +816,11 @@ pub async fn workspace_write_file_binary(
         }
     }
 
-    // 3. 워크스페이스 루트 확인 및 생성
-    let workspace_root =
-        workspace_dir().ok_or_else(|| "홈 디렉토리를 찾을 수 없습니다".to_string())?;
+    // 3. 워크스페이스 루트 확인 및 생성 — 목록과 같은 루트(사이드카 소유)
+    let workspace_root = match sidecar_workspace_root(&state).await {
+        Some(root) => root,
+        None => workspace_dir().ok_or_else(|| "홈 디렉토리를 찾을 수 없습니다".to_string())?,
+    };
     if !workspace_root.exists() {
         std::fs::create_dir_all(&workspace_root)
             .map_err(|e| format!("워크스페이스 폴더 생성 실패: {}", e))?;
@@ -1020,6 +1034,34 @@ fn dirs_home() -> Option<std::path::PathBuf> {
 /// Python sandbox(config.get_workspace_root)와 동일한 위치를 가리킨다.
 fn workspace_dir() -> Option<std::path::PathBuf> {
     dirs_home().map(|home| home.join("officeclaw").join("Workspace"))
+}
+
+/// 사이드카가 소유한 워크스페이스 루트(/workspace/files의 `workspace`).
+///
+/// 목록·열기·업로드가 **같은 폴더**를 봐야 한다 — Rust가 옛 경로
+/// (~/officeclaw/Workspace)를 따로 하드코딩해, 목록에 멀쩡히 보이는 파일이
+/// "찾을 수 없습니다"로 죽고 업로드는 목록에 안 나타났다(2026-09-01 실측).
+/// 사이드카가 아직 안 떠 있으면 옛 경로로 폴백한다.
+async fn sidecar_workspace_root(
+    state: &State<'_, Mutex<SidecarState>>,
+) -> Option<std::path::PathBuf> {
+    let raw = sidecar_request(
+        state,
+        Method::GET,
+        "/workspace/files",
+        None,
+        Some(Duration::from_secs(5)),
+        "워크스페이스 루트 조회 실패",
+    )
+    .await
+    .ok()?;
+    let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let root = value.get("workspace")?.as_str()?.trim().to_string();
+    if root.is_empty() {
+        None
+    } else {
+        Some(std::path::PathBuf::from(root))
+    }
 }
 
 #[tauri::command]
