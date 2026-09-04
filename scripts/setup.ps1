@@ -8,8 +8,11 @@
 $ErrorActionPreference = "Stop"
 
 $ProjectDir = Split-Path -Parent $PSScriptRoot
-$SidecarDir = Join-Path $ProjectDir "python-sidecar"
-$TauriDir = Join-Path $ProjectDir "src-tauri"
+# 모노레포 이행(2026-08-30): python-sidecar → services/sidecar, src-tauri → apps/desktop/src-tauri.
+# bash 쪽만 고쳐져 있어 윈도우 셋업이 통째로 깨져 있었다(2026-09-05 실측).
+$SidecarDir = Join-Path $ProjectDir "services\sidecar"
+$TauriDir = Join-Path $ProjectDir "apps\desktop\src-tauri"
+$AppDir = Join-Path $ProjectDir "apps\desktop"
 $OpenClawHome = Join-Path $env:USERPROFILE ".openclaw"
 $CargoHome = Join-Path $env:USERPROFILE ".cargo"
 $RustupHome = Join-Path $env:USERPROFILE ".rustup"
@@ -177,7 +180,7 @@ Initialize-ToolPaths
 
 Test-RequiredCommand -Name "node" -InstallHint "Node.js LTS 설치 후 새 터미널을 열어주세요. (https://nodejs.org)"
 Test-RequiredCommand -Name "npm" -InstallHint "Node.js 설치에 npm이 포함됩니다. PATH를 확인해 주세요."
-Invoke-Step -Title "Node 의존성 설치 (npm ci)" -Command "npm ci"
+Invoke-Step -Title "Node 의존성 설치 (npm ci)" -Command "npm ci" -WorkingDirectory $AppDir
 
 if (-not (Get-Command openclaw -ErrorAction SilentlyContinue)) {
     Write-Warning "[SETUP_OPENCLAW_MISSING_OR_PATH] openclaw 명령을 찾지 못했습니다. 설치 후 새 터미널에서 npm prefix/PATH를 다시 확인해 주세요."
@@ -198,10 +201,17 @@ Test-RequiredCommand -Name "cargo" -InstallHint "Rust 설치 후 재시도해 �
 Test-RequiredCommand -Name "link.exe" -InstallHint "Visual Studio C++ Build Tools가 필요합니다. (winget: Microsoft.VisualStudio.2022.BuildTools)"
 Invoke-Step -Title "Rust 툴체인 확인 (cargo --version)" -Command "cargo --version"
 Invoke-Step -Title "MSVC 링커 확인 (link.exe)" -Command "link.exe /? | Out-Null"
+# externalBin 자리채움 — tauri.conf.json이 이 파일의 **존재**를 요구한다(dev도 마찬가지).
+# .gitignore 대상이라 클론 직후엔 없다. dev 모드 사이드카는 venv 소스로 뜨므로 빈 파일로 충분하다.
+$BinDir = Join-Path $TauriDir "binaries"
+if (-not (Test-Path $BinDir)) { New-Item -ItemType Directory -Force -Path $BinDir | Out-Null }
+$Placeholder = Join-Path $BinDir "office-claw-sidecar-x86_64-pc-windows-msvc.exe"
+if (-not (Test-Path $Placeholder)) { New-Item -ItemType File -Path $Placeholder | Out-Null }
+
 Invoke-Step -Title "Tauri 크레이트 의존성 프리페치 (cargo fetch)" -Command "cargo fetch" -WorkingDirectory $TauriDir
 
 if (-not $SkipBuild) {
-    Invoke-Step -Title "프론트엔드 빌드 (npm run build)" -Command "npm run build"
+    Invoke-Step -Title "프론트엔드 빌드 (npm run build)" -Command "npm run build" -WorkingDirectory $AppDir
     Invoke-Step -Title "Rust 체크 빌드 (cargo check)" -Command "cargo check" -WorkingDirectory $TauriDir
 }
 

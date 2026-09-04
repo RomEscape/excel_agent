@@ -173,7 +173,7 @@ ensure_cmd node "Node.js LTS 설치 후 재시도해 주세요. https://nodejs.o
 ensure_cmd npm "Node.js 설치에 npm이 포함됩니다."
 run_step "npm 전역 prefix 고정 (사용자 홈)" "npm config set prefix \"$NPM_CONFIG_PREFIX\"" "$PROJECT_DIR"
 hydrate_path
-run_step "Node 의존성 설치 (npm ci)" "npm ci" "$PROJECT_DIR"
+run_step "Node 의존성 설치 (npm ci)" "npm ci" "$PROJECT_DIR/apps/desktop"  # 루트엔 lockfile이 없다
 
 if ! command -v openclaw >/dev/null 2>&1; then
   echo "[SETUP_OPENCLAW_MISSING_OR_PATH] openclaw 명령을 찾지 못했습니다. 설치 후 새 터미널에서 npm prefix/PATH를 다시 확인해 주세요." >&2
