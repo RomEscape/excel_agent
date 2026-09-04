@@ -103,3 +103,6 @@ text_1.xlsx
 
 # 기획/계획 문서 (로컬 전용 — 버전관리 제외)
 docs/product/
+
+# 로컬 전용 cargo 설정(OneDrive 회피용 target-dir) — 머신마다 경로가 달라 커밋하지 않는다
+apps/desktop/src-tauri/.cargo/
