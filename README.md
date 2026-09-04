@@ -150,6 +150,39 @@ relay 주소 정책은 모바일 `lib/transport/relay_url.dart`가 단일 소스
 
 ## 빠른 시작
 
+### 클론해서 바로 쓰기 (한 번에 설치)
+
+셋업 스크립트 하나가 도구(Node·Rust·uv·Ollama)·의존성·모델까지 전부 준비한다.
+
+```powershell
+git clone -b openclaw_jinh_demo <저장소> officeclaw
+cd officeclaw
+powershell scripts\setup.ps1 -PlannerHfRepo "<계정>/ax7bplanner-v3-GGUF"
+npm run tauri:dev
+```
+
+```bash
+# macOS / Linux
+git clone -b openclaw_jinh_demo <저장소> officeclaw && cd officeclaw
+OFFICECLAW_PLANNER_HF_REPO="<계정>/ax7bplanner-v3-GGUF" ./scripts/setup.sh
+npm run tauri:dev
+```
+
+**모델 두 개**를 쓴다. 범용 대화용 `skt/A.X-4.0-Light`는 공개 레지스트리에서
+자동으로 받아 오고, Excel 계획 수립용 `ax7bplanner-v3`는 이 저장소에서
+파인튜닝한 것이라 어느 레지스트리에도 없다 — 가중치(4.4GB)는 git으로 옮길 수
+없으므로 **Hugging Face에 한 번 올려 두고** 위처럼 저장소 이름만 알려 주면
+셋업이 받아서 앱이 기대하는 이름으로 맞춰 준다. 안 알려 주면 나머지는 다
+설치되고 플래너만 빠진 채(계획 품질 저하) 안내가 뜬다.
+
+모델을 가진 쪽에서 올릴 파일을 만드는 방법 — Ollama에 이미 있는 모델을 GGUF로
+꺼낸다(한 번만):
+
+```powershell
+powershell scripts\export-planner-model.ps1
+# → artifacts\ax7bplanner-v3.gguf 생성 + huggingface-cli 업로드 명령 안내
+```
+
 ### 배포본 (비개발자, Windows 권장)
 
 1. GitHub Releases에서 최신 패키지 다운로드 → 실행

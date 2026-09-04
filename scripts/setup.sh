@@ -204,6 +204,47 @@ if [[ "$BUILD_SIDECAR" == "1" ]]; then
 fi
 
 echo ""
+
+# ── 모델 준비 ────────────────────────────────────────────────────────────────
+# 범용 대화(model)와 Excel 계획 수립(planner_model) 둘을 쓴다. 범용은 공개
+# 레지스트리에 있지만 플래너는 이 저장소에서 파인튜닝한 것이라 어디에도 없다.
+# 가중치(4.4GB)는 git으로 못 옮기므로 Hugging Face에 올려 두고 받아 온다.
+GENERAL_MODEL="skt/A.X-4.0-Light:latest"
+PLANNER_MODEL="ax7bplanner-v3:latest"
+HF_REPO="${OFFICECLAW_PLANNER_HF_REPO:-}"
+
+if command -v ollama >/dev/null 2>&1; then
+  if [[ "$DRY_RUN" == "1" ]]; then
+    INSTALLED_MODELS=""
+  else
+    INSTALLED_MODELS="$(ollama list 2>/dev/null || true)"
+  fi
+
+  if ! grep -q "${GENERAL_MODEL%%:*}" <<<"$INSTALLED_MODELS"; then
+    run_step "범용 모델 내려받기 ($GENERAL_MODEL)" "ollama pull $GENERAL_MODEL"
+  else
+    echo "[건너뜀] 범용 모델이 이미 있습니다 ($GENERAL_MODEL)"
+  fi
+
+  if ! grep -q "${PLANNER_MODEL%%:*}" <<<"$INSTALLED_MODELS"; then
+    if [[ -n "$HF_REPO" ]]; then
+      run_step "플래너 모델 내려받기 (hf.co/$HF_REPO)" "ollama pull hf.co/$HF_REPO"
+      # 앱 설정은 'ax7bplanner-v3:latest'를 기대한다 — 받은 이름을 그쪽으로 맞춘다.
+      run_step "플래너 모델 이름 맞추기 ($PLANNER_MODEL)" "ollama cp hf.co/${HF_REPO}:latest $PLANNER_MODEL"
+    elif [[ -f "$PROJECT_DIR/artifacts/ax7b-planner-v3-f16.gguf" ]]; then
+      run_step "플래너 모델 생성 (로컬 GGUF)" "ollama create ax7bplanner-v3 -f deploy/ollama/Modelfile.ax7b-planner-v3"
+    else
+      echo ""
+      echo "[주의] 플래너 모델($PLANNER_MODEL)이 없습니다 — Excel 계획 수립 품질이 떨어집니다."
+      echo "       받을 곳을 알려주세요: OFFICECLAW_PLANNER_HF_REPO=<계정>/ax7bplanner-v3-GGUF ./scripts/setup.sh"
+    fi
+  else
+    echo "[건너뜀] 플래너 모델이 이미 있습니다 ($PLANNER_MODEL)"
+  fi
+else
+  echo "[주의] ollama를 찾지 못해 모델 준비를 건너뜁니다."
+fi
+
 echo "=== 통합 설치 완료 ==="
 echo "OPENCLAW_HOME=$OPENCLAW_HOME"
 echo "CARGO_HOME=$CARGO_HOME"
