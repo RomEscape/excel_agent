@@ -211,7 +211,8 @@ echo ""
 # 가중치(4.4GB)는 git으로 못 옮기므로 Hugging Face에 올려 두고 받아 온다.
 GENERAL_MODEL="skt/A.X-4.0-Light:latest"
 PLANNER_MODEL="ax7bplanner-v3:latest"
-HF_REPO="${OFFICECLAW_PLANNER_HF_REPO:-}"
+# 기본 배포처 — 2026-09-05 공개 업로드 완료. 환경변수가 있으면 그쪽이 우선.
+HF_REPO="${OFFICECLAW_PLANNER_HF_REPO:-PJiNH/ax7bplanner-v3-GGUF}"
 
 if command -v ollama >/dev/null 2>&1; then
   if [[ "$DRY_RUN" == "1" ]]; then

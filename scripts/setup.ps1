@@ -234,10 +234,14 @@ if ($BuildSidecar -or (-not $SkipBuild)) {
 # 올려 두고 받아 온다 — 올릴 파일은 scripts\export-planner-model.ps1이 만든다.
 $GeneralModel = "skt/A.X-4.0-Light:latest"
 $PlannerModel = "ax7bplanner-v3:latest"
+# 기본 배포처 — 2026-09-05 공개 업로드 완료. 인자·환경변수가 있으면 그쪽이 우선.
+$DefaultPlannerHfRepo = "PJiNH/ax7bplanner-v3-GGUF"
 $HfRepo = if (-not [string]::IsNullOrWhiteSpace($PlannerHfRepo)) {
     $PlannerHfRepo.Trim()
-} else {
+} elseif (-not [string]::IsNullOrWhiteSpace($env:OFFICECLAW_PLANNER_HF_REPO)) {
     "$($env:OFFICECLAW_PLANNER_HF_REPO)".Trim()
+} else {
+    $DefaultPlannerHfRepo
 }
 
 if (Get-Command ollama -ErrorAction SilentlyContinue) {
