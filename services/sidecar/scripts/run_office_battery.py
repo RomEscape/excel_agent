@@ -25,7 +25,13 @@ H = {
     "X-Auth-Token": "dev-token",
     "Authorization": "Bearer dev-token",
 }
-ROOT = Path(r"C:/Users/asdjj/AppData/Local/office_claw/Workspace")
+def _workspace_root():
+    # 이 개발기 절대경로가 박혀 있어 다른 머신에서 전멸했다(2026-09-06 감사 D).
+    from office_claw_sidecar.config import get_workspace_root
+    return Path(get_workspace_root())
+
+
+ROOT = _workspace_root()
 
 
 def post(path: str, pl: dict) -> dict:

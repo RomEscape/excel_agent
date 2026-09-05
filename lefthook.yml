@@ -20,7 +20,7 @@ pre-commit:
       glob: "services/sidecar/**/*.py"
       root: "services/sidecar/"
       # uv가 없는 개발기(2026-08-16 Windows 실측)에서는 uvx가 없어 훅이 통째로 실패했다.
-      run: if command -v uvx >/dev/null 2>&1; then uvx ruff check .; else ./.venv/Scripts/ruff.exe check .; fi
+      run: if command -v uvx >/dev/null 2>&1; then uvx ruff check .; else sh ../../scripts/py-run.sh -m ruff check .; fi
     frontend-lint:
       glob: "apps/desktop/src/**/*.{ts,tsx,js,jsx}"
       root: "apps/desktop/"

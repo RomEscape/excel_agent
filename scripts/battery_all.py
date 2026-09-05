@@ -31,7 +31,7 @@ SCENARIOS = SIDECAR / "scenarios/dialogue"
 OUT_DIR = ROOT / "logs/nightly"
 PY = Path(
     os.environ.get("OFFICECLAW_PY")
-    or (Path(os.environ["LOCALAPPDATA"]) / "officeclaw/venvs/python-sidecar/Scripts/python.exe")
+    or (Path(os.environ.get("LOCALAPPDATA", str(Path.home() / ".cache"))) / "officeclaw/venvs/python-sidecar/Scripts/python.exe")
 )
 _SUCCESS = re.compile(r"^성공\s+(\d+)\s*/\s*(\d+)", re.MULTILINE)
 _FAIL_LINE = re.compile(r"^\[\s*(\d+)\]\s+FAIL(.*)$", re.MULTILINE)

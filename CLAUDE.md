@@ -42,7 +42,7 @@
 
 ### 이 환경의 파이썬
 
-시스템 파이썬도 `uv`도 없다. **동작하는 인터프리터는 하나뿐이다.**
+`uv`가 있으면 `uv run`을 그대로 쓰면 된다. 없거나 못 믿겠으면 아래 venv 인터프리터가 확실하다(셋업이 만들어 둔다).
 
 ```powershell
 $PY = "$env:LOCALAPPDATA\officeclaw\venvs\python-sidecar\Scripts\python.exe"
@@ -145,7 +145,7 @@ flutter test                               # unit tests
 `.zshrc` / `.bashrc`에:
 
 ```bash
-alias oc-precheck='cd /Users/skim/Desktop/project/office_claw && \
+alias oc-precheck='cd <저장소 경로> && \
   (cd apps/desktop/src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings) && \
   (cd services/sidecar && uvx ruff check . && uv run pytest -q) && \
   (cd apps/desktop && npm run test:unit --if-present) && \

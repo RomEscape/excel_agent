@@ -54,7 +54,13 @@ function Invoke-Step {
 
     Push-Location $WorkingDirectory
     try {
+        $global:LASTEXITCODE = 0
         Invoke-Expression $Command
+        # $ErrorActionPreference=Stop 은 네이티브 exe(npm/cargo/uv) 실패를 못 잡는다 —
+        # 중간이 다 깨져도 "통합 설치 완료"가 찍혔다(2026-09-06 감사 A5).
+        if ($LASTEXITCODE -is [int] -and $LASTEXITCODE -ne 0) {
+            throw "단계 실패(종료코드 ${LASTEXITCODE}): $Title"
+        }
     } finally {
         Pop-Location
     }
@@ -167,12 +173,16 @@ if ($SidecarVenvParent) {
     Ensure-Directory -PathValue $SidecarVenvParent
 }
 $env:UV_PROJECT_ENVIRONMENT = $SidecarVenvPath
+# 새 셸의 `uv run`이 services/sidecar/.venv 를 따로 만드는 것을 막는다(감사 B1 — venv 이중화 실측).
+if (-not $DryRun) { [Environment]::SetEnvironmentVariable("UV_PROJECT_ENVIRONMENT", $SidecarVenvPath, "User") }
 Write-Host "Python venv path: $SidecarVenvPath"
 Initialize-ToolHomes
 Initialize-ToolPaths
 Install-CommandIfMissing -Name "node" -WingetId "OpenJS.NodeJS.LTS" -Title "Node.js 자동 설치 (winget)"
 Install-CommandIfMissing -Name "cargo" -WingetId "Rustlang.Rustup" -Title "Rust 자동 설치 (winget)"
 Install-CommandIfMissing -Name "ollama" -WingetId "Ollama.Ollama" -Title "Ollama 자동 설치 (winget)"
+# uv — 파이썬 의존성·빌드의 정상 경로 전부가 uv 전제인데 아무도 설치하지 않았다(2026-09-06 감사 A1).
+Install-CommandIfMissing -Name "uv" -WingetId "astral-sh.uv" -Title "uv 자동 설치 (winget)"
 Install-CommandIfMissing -Name "py" -WingetId "Python.Python.3.12" -Title "Python 자동 설치 (winget)"
 Ensure-WindowsCppToolchain
 Initialize-ToolPaths
@@ -193,12 +203,18 @@ if (-not (Get-Command openclaw -ErrorAction SilentlyContinue)) {
 if (Get-Command uv -ErrorAction SilentlyContinue) {
     Invoke-Step -Title "Python 의존성 동기화 (uv sync --extra dev)" -Command "uv sync --extra dev" -WorkingDirectory $SidecarDir
 } else {
-    if (Get-Command py -ErrorAction SilentlyContinue) {
-        Invoke-Step -Title "Python 의존성 설치 (py -m pip install -r requirements.txt)" -Command "py -m pip install -r `"$ProjectDir/requirements.txt`""
-    } else {
+    # 전역이 아니라 **셋업이 약속한 venv**에 깐다 — 게이트·배터리·문서가 전부
+    # $SidecarVenvPath\Scripts\python.exe 를 가리킨다(2026-09-06 감사 A4).
+    if (Get-Command py -ErrorAction SilentlyContinue) { $BootstrapPy = "py" }
+    else {
         Test-RequiredCommand -Name "python" -InstallHint "Python 3.11+ 설치 후 재시도해 주세요. (https://python.org)"
-        Invoke-Step -Title "Python 의존성 설치 (python -m pip install -r requirements.txt)" -Command "python -m pip install -r `"$ProjectDir/requirements.txt`""
+        $BootstrapPy = "python"
     }
+    $VenvPy = Join-Path $SidecarVenvPath "Scripts\python.exe"
+    if (-not (Test-Path $VenvPy)) {
+        Invoke-Step -Title "Python venv 생성 ($SidecarVenvPath)" -Command "$BootstrapPy -m venv `"$SidecarVenvPath`""
+    }
+    Invoke-Step -Title "Python 의존성 설치 (venv pip install -r requirements.txt)" -Command "& `"$VenvPy`" -m pip install -r `"$ProjectDir/requirements.txt`""
 }
 
 Test-RequiredCommand -Name "cargo" -InstallHint "Rust 설치 후 재시도해 주세요. (https://rustup.rs)"
@@ -223,7 +239,8 @@ if ($BuildSidecar -or (-not $SkipBuild)) {
     if (Get-Command uv -ErrorAction SilentlyContinue) {
         Invoke-Step -Title "Python sidecar 빌드 (uv run --extra dev python build_sidecar.py)" -Command "uv run --extra dev python build_sidecar.py" -WorkingDirectory $SidecarDir
     } else {
-        Invoke-Step -Title "Python sidecar 빌드 (python build_sidecar.py)" -Command "python build_sidecar.py" -WorkingDirectory $SidecarDir
+        # pip 폴백엔 PyInstaller(dev extra)가 없다 — dev 모드는 venv 소스로 뜨므로 지장 없다(감사 A3).
+        Write-Warning "uv가 없어 사이드카 단일 실행파일 빌드는 건너뜁니다."
     }
 }
 

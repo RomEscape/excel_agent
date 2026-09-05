@@ -6,7 +6,8 @@ REPEAT="${1:-1}"; shift
 EXS=("$@"); [ ${#EXS[@]} -eq 0 ] && EXS=(ex1 ex2 ex3 ex4 ex5 ex6 ex7 ex8)
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 S="${DIALOGUE_DIR:-$HERE/scenarios/dialogue}"
-PY="/c/Users/asdjj/AppData/Local/officeclaw/venvs/python-sidecar/Scripts/python.exe"
+# OFFICECLAW_PY 로 덮을 수 있다 — 기본은 셋업이 만드는 venv(감사 D).
+PY="${OFFICECLAW_PY:-$LOCALAPPDATA/officeclaw/venvs/python-sidecar/Scripts/python.exe}"
 cd "$HERE" || exit 1
 for ex in "${EXS[@]}"; do
   echo "########## $ex (x$REPEAT) $(date +%H:%M:%S)"

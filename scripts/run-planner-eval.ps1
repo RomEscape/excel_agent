@@ -15,8 +15,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
-$sidecar = Join-Path $root "python-sidecar"
-$python = Join-Path $sidecar ".venv\Scripts\python.exe"
+$sidecar = Join-Path $root "services/sidecar"
+$python = $env:OFFICECLAW_PY
+if (-not $python) { $python = Join-Path $env:LOCALAPPDATA "officeclaw\venvs\python-sidecar\Scripts\python.exe" }
 if (-not (Test-Path $python)) { $python = "python" }
 
 if (-not $Tag) { $Tag = ($Candidate -replace "[:.]", "-") }

@@ -162,12 +162,27 @@ export CARGO_HOME
 export RUSTUP_HOME
 export NPM_CONFIG_PREFIX
 export UV_PROJECT_ENVIRONMENT="$SIDECAR_VENV_PATH"
+# 새 셸의 uv run이 services/sidecar/.venv 를 따로 만드는 것을 막는다(감사 B1).
+if [[ "$DRY_RUN" != "1" ]]; then
+  for rc in "$HOME/.zshrc" "$HOME/.bashrc"; do
+    if [ -f "$rc" ] && ! grep -q "UV_PROJECT_ENVIRONMENT" "$rc"; then
+      echo "export UV_PROJECT_ENVIRONMENT=\"$SIDECAR_VENV_PATH\"" >> "$rc"
+      echo "[알림] $rc 에 UV_PROJECT_ENVIRONMENT 를 추가했습니다."
+    fi
+  done
+fi
 echo "Python venv path: $UV_PROJECT_ENVIRONMENT"
 
 hydrate_path
 auto_install_node_if_missing
 auto_install_rust_if_missing
 auto_install_python_if_missing
+# uv — 파이썬 의존성·빌드의 정상 경로 전부가 uv 전제(2026-09-06 감사 A1).
+if ! command -v uv >/dev/null 2>&1; then
+  run_step "uv 자동 설치 (astral.sh)" "curl -LsSf https://astral.sh/uv/install.sh | sh" "$PROJECT_DIR"
+  export PATH="$HOME/.local/bin:$PATH"
+  hydrate_path
+fi
 
 ensure_cmd node "Node.js LTS 설치 후 재시도해 주세요. https://nodejs.org"
 ensure_cmd npm "Node.js 설치에 npm이 포함됩니다."
@@ -183,11 +198,27 @@ if command -v uv >/dev/null 2>&1; then
   run_step "Python 의존성 동기화 (uv sync --extra dev)" "uv sync --extra dev" "$SIDECAR_DIR"
 else
   ensure_cmd python3 "Python 3.11+ 설치 후 재시도해 주세요. https://python.org"
-  run_step "Python 의존성 설치 (python3 -m pip install -r requirements.txt)" "python3 -m pip install -r \"$PROJECT_DIR/requirements.txt\"" "$PROJECT_DIR"
+  # 전역이 아니라 셋업이 약속한 venv에 깐다 — 게이트·러너가 이 경로를 본다(감사 A4).
+  [ -x "$SIDECAR_VENV_PATH/bin/python" ] || run_step "Python venv 생성" "python3 -m venv \"$SIDECAR_VENV_PATH\"" "$PROJECT_DIR"
+  run_step "Python 의존성 설치 (venv pip)" "\"$SIDECAR_VENV_PATH/bin/python\" -m pip install -r \"$PROJECT_DIR/requirements.txt\"" "$PROJECT_DIR"
 fi
 
 ensure_cmd cargo "Rust 설치 후 재시도해 주세요. https://rustup.rs"
 run_step "Rust 툴체인 확인 (cargo --version)" "cargo --version" "$PROJECT_DIR"
+# externalBin 자리채움 — tauri.conf.json이 파일의 **존재**를 요구한다(dev도 같음).
+# .gitignore 대상이라 클론 직후엔 없다. 없으면 바로 아래 cargo check가 실패한다(감사 A2).
+BIN_DIR="$TAURI_DIR/binaries"
+mkdir -p "$BIN_DIR"
+case "$(uname -s)-$(uname -m)" in
+  Darwin-arm64) TRIPLE="aarch64-apple-darwin" ;;
+  Darwin-x86_64) TRIPLE="x86_64-apple-darwin" ;;
+  Linux-x86_64) TRIPLE="x86_64-unknown-linux-gnu" ;;
+  *) TRIPLE="x86_64-pc-windows-msvc" ;;
+esac
+PLACEHOLDER="$BIN_DIR/office-claw-sidecar-$TRIPLE"
+[ "$TRIPLE" = "x86_64-pc-windows-msvc" ] && PLACEHOLDER="$PLACEHOLDER.exe"
+[ -f "$PLACEHOLDER" ] || touch "$PLACEHOLDER"
+
 run_step "Tauri 크레이트 의존성 프리페치 (cargo fetch)" "cargo fetch" "$TAURI_DIR"
 
 if [[ "$SKIP_BUILD" != "1" ]]; then

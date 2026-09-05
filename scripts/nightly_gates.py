@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SIDECAR = ROOT / "services" / "sidecar"
 PY = Path(
     os.environ.get("OFFICECLAW_PY")
-    or (Path(os.environ["LOCALAPPDATA"]) / "officeclaw/venvs/python-sidecar/Scripts/python.exe")
+    or (Path(os.environ.get("LOCALAPPDATA", str(Path.home() / ".cache"))) / "officeclaw/venvs/python-sidecar/Scripts/python.exe")
 )
 BASELINE = ROOT / "config/gate_baseline.json"
 OUT_DIR = ROOT / "logs/nightly"

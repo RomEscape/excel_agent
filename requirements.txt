@@ -1,6 +1,6 @@
 # Team 503 AI (officeclaw) — Python sidecar 의존성 단일 진입점
 # 설치: pip install -r requirements.txt
-# 동기화 권장: cd python-sidecar && uv sync --frozen
+# 동기화 권장: cd services/sidecar && uv sync --frozen
 # OneDrive 경로 충돌 회피(Windows): $env:UV_PROJECT_ENVIRONMENT="$env:LOCALAPPDATA\officeclaw\venvs\python-sidecar"
 
 fastapi>=0.115.0
@@ -14,6 +14,7 @@ google-api-python-client>=2.130.0
 python-telegram-bot>=21.0
 python-multipart>=0.0.6
 openpyxl>=3.1.0
+pandas>=2.2.0
 xlsxwriter>=3.2.0
 python-docx>=1.1.0
 reportlab>=4.2.0
@@ -23,4 +24,7 @@ websockets>=12.0
 xlwings>=0.33.0
 # OS별 Excel 자동화 런타임
 pywin32>=306; platform_system == "Windows"
+# 모노레포 공용 패키지 — 사이드카가 import 한다(2026-09-06 감사 A3)
+-e ./packages/protocol/python
+-e ./packages/py-shared
 appscript; platform_system == "Darwin"

@@ -5,7 +5,7 @@
 # 아래 create 명령은 파일이 없어 실패한다. 비교가 필요하면 Ollama의 ax7bplanner-v5r:latest(q4)를 쓴다.
 
 # 등록: ollama create ax7bplanner-v5r -f deploy/ollama/Modelfile.ax7b-planner-v5r --quantize q4_K_M
-FROM C:\Users\asdjj\OneDrive\바탕 화면\동화책 프로젝트\officeclaw\artifacts\ax7b-planner-v5r-f16.gguf
+FROM ../../artifacts/ax7b-planner-v5r-f16.gguf
 
 PARAMETER num_ctx 16384
 PARAMETER temperature 0.2

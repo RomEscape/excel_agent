@@ -17,7 +17,13 @@ from office_claw_sidecar.routers.excel_live import (
 from office_claw_sidecar.services.excel_live_service import invalidate_excel_engine_cache
 from office_claw_sidecar.services.llm_service import get_llm_service
 
-WS = Path(r"C:\Users\asdjj\AppData\Local\office_claw\Workspace")
+def _workspace_root():
+    # 이 개발기 절대경로가 박혀 있어 다른 머신에서 전멸했다(2026-09-06 감사 D).
+    from office_claw_sidecar.config import get_workspace_root
+    return Path(get_workspace_root())
+
+
+WS = _workspace_root()
 WB = WS / "강건성_probe.xlsx"
 
 SEED = [

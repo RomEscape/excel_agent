@@ -8,7 +8,7 @@
 # 양자화는 Ollama가 등록 시점에 처리한다. llama.cpp의 convert_hf_to_gguf.py는
 # q4_k_m outtype이 없고(f32/f16/bf16/q8_0만) llama-quantize 바이너리도 빌드돼 있지 않다.
 # 등록: ollama create ax7bplanner-v2 -f deploy/ollama/Modelfile.ax7b-planner-v2 --quantize q4_K_M
-FROM C:\Users\asdjj\OneDrive\바탕 화면\동화책 프로젝트\officeclaw\artifacts\ax7b-planner-v2-f16.gguf
+FROM ../../artifacts/ax7b-planner-v2-f16.gguf
 
 # 플래너 프롬프트 실측 1677~1831토큰 + 계획 JSON 출력. 여유를 둬 8192.
 PARAMETER num_ctx 8192

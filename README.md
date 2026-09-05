@@ -125,7 +125,7 @@ React + Zustand. URL 라우팅 없이 `appStore.currentPage`로 화면 전환.
 | `J1에 수식 =SUM(A1:A10) 적용` | `set_formula` (승인) |
 | `매출 내림차순 정렬` / `중복 행 지워줘` | `sort_rows` / `dedupe_rows` (승인) |
 
-전체 67개 검증 입력은 `TEST_INPUT_COMMANDS_EXCEL_LIVE.txt`, Excel Live 명령 레퍼런스는 `docs/excel-live-command-list.txt`.
+Excel Live 명령 레퍼런스는 `docs/excel-live-command-list.txt`.
 
 ---
 

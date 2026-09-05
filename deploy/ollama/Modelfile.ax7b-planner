@@ -1,5 +1,5 @@
 # 경로를 실제 GGUF 산출물 위치로 맞춰 주세요.
-FROM C:\Users\asdjj\OneDrive\바탕 화면\동화책 프로젝트\officeclaw\artifacts\ax7b-planner.gguf
+FROM ../../artifacts/ax7b-planner.gguf
 
 PARAMETER num_ctx 16384
 PARAMETER temperature 0.2

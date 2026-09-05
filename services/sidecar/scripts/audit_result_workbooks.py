@@ -24,7 +24,12 @@ import sys
 
 from openpyxl import load_workbook
 
-ROOT = sys.argv[1] if len(sys.argv) > 1 else r"C:/Users/asdjj/AppData/Local/office_claw/Workspace"
+def _default_workspace():
+    from office_claw_sidecar.config import get_workspace_root
+    return str(get_workspace_root())
+
+
+ROOT = sys.argv[1] if len(sys.argv) > 1 else _default_workspace()
 
 COMMAND_TAIL = re.compile(r"(해줘|해 줘|주세요|줄래|넣어|입력해|바꿔|칠해|만들어|지워|보여줘|부탁)\s*[.!~…]*$")
 LOCATIVE = re.compile(r"(아래에|밑에|위에|옆에|다음 줄에|여기에|거기에)\s*$")
