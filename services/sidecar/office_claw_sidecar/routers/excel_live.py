@@ -4121,7 +4121,13 @@ def _build_quick_action_plan(message: str, context_range: str | None) -> list[di
     # 부정 판정은 **공용 게이트 한 곳**만 쓴다. 예전엔 저장 규칙이 자체 정규식을 들고 있어
     # "저장 안 해도 돼요" · "저장 말고" · "저장 금지"를 놓치고 그대로 저장했다(2026-08-19 게이트 실측).
     # 규칙마다 부정을 따로 적으면 이런 구멍이 반드시 생긴다.
-    if any(token in lowered for token in ["저장", "save"]) and not _negated_command(text):
+    if (
+        any(token in lowered for token in ["저장", "save"])
+        and not _negated_command(text)
+        # "다른 이름으로 저장해줘"가 파일명도 없이 그냥 저장으로 실행됐다
+        # (2026-09-06 코퍼스 실측) — 파일명이 필요한 문장은 규칙 밖으로 놓아준다.
+        and not re.search(r"다른\s*이름|새\s*이름|새\s*파일|이름\s*바꿔", text)
+    ):
         if "pdf" in lowered:
             # "PDF로 저장" 은 통합문서 저장이 아니라 내보내기다.
             return [
@@ -8794,10 +8800,61 @@ def _validate_plan_for_request(steps, req: ExcelLiveCommandRequest):
     )
 
 
+_HABITUAL_RANGE = re.compile(
+    r"(?<![A-Za-z0-9])([A-Za-z]{1,3})(\d{1,4}):([A-Za-z]{1,3})(\d{3,4})(?![A-Za-z0-9])"
+)
+
+
+def _last_used_row_in_digest(digest: dict[str, Any]) -> int:
+    rows = [0]
+    for sheet in (digest or {}).get("sheets") or []:
+        ref = str(sheet.get("used_range") or "")
+        found = re.search(r":(?:[A-Za-z]{1,3})(\d+)$", ref)
+        if found:
+            rows.append(int(found.group(1)))
+    return max(rows)
+
+
+def _clamp_habitual_long_ranges(steps, *, digest: dict[str, Any], message: str) -> None:
+    """플래너 SFT 잔재 — 표가 몇 행이든 `…:181`류 범위를 쓴다(학습 리터럴 8.1% 실측).
+
+    2026-09-06 285턴 코퍼스: E2:E181 수식 쓰기가 사용 범위를 오염시켜 이후 턴의
+    관측·계획이 연쇄로 무너졌다. 관측된 끝행보다 60행 이상 길고, 문장이 그 범위를
+    직접 말하지 않았을 때만 표 끝으로 자른다(명시 범위는 사용자 뜻 그대로 둔다).
+    """
+    last_row = _last_used_row_in_digest(digest)
+    if not 0 < last_row <= 40:
+        return
+    compact_message = re.sub(r"\s+", "", str(message or "")).upper()
+
+    def _clamp_text(value: str) -> str:
+        def _sub(m: "re.Match[str]") -> str:
+            end_row = int(m.group(4))
+            if end_row < 100 or end_row - last_row < 60:
+                return m.group(0)
+            if m.group(0).upper() in compact_message:
+                return m.group(0)
+            return f"{m.group(1)}{m.group(2)}:{m.group(3)}{last_row}"
+
+        return _HABITUAL_RANGE.sub(_sub, value)
+
+    for step in steps or []:
+        params = getattr(step, "params", None)
+        if params is None and isinstance(step, dict):
+            params = step.get("params")
+        if not isinstance(params, dict):
+            continue
+        for key, value in list(params.items()):
+            if isinstance(value, str) and ":" in value:
+                clamped = _clamp_text(value)
+                if clamped != value:
+                    params[key] = clamped
+
+
 def _bind_plan_for_request(steps, *, digest: dict[str, Any], req: ExcelLiveCommandRequest):
     """실행 직전에 상징적 파라미터를 실제 머리글/시트로 확정한다."""
     try:
-        return bind_plan_steps(
+        bound, notes = bind_plan_steps(
             steps,
             digest=digest,
             message=req.message,
@@ -8806,6 +8863,8 @@ def _bind_plan_for_request(steps, *, digest: dict[str, Any], req: ExcelLiveComma
     except Exception:
         # 바인딩은 보조 레이어다. 실패해도 원본 플랜으로 계속 진행한다.
         return steps, []
+    _clamp_habitual_long_ranges(bound, digest=digest, message=req.message)
+    return bound, notes
 
 
 def _chain_chart_to_pivot(steps: list[PlanStep], *, session_key: str) -> list[PlanStep]:
@@ -9691,8 +9750,11 @@ async def _run_command(
             hints.pop("table_intent", None)
     elif quick_first_action == "excel_live.fill_range":
         # 단순 색 채우기 요청은 fast path로 즉시 실행하는 편이 안정적이다.
-        should_parse_with_llm = False
-        llm_decision_reason = "fill_range_fast_path"
+        # 단, 색을 **말한 적 없는** 문장("조건부로 칠해주세요")은 규칙이 노란색을
+        # 지어내 칠했다(2026-09-06 285턴 코퍼스 실측) — 색 없는 문장은 놓아준다.
+        if _quick_extract_colors(req.message):
+            should_parse_with_llm = False
+            llm_decision_reason = "fill_range_fast_path"
     if row_write_confirmed and quick_first_action == "excel_live.write_range":
         # 붙여넣기·좌표 행 쓰기는 값 격자까지 규칙이 확정했다 — 모델 몫이 없다.
         should_parse_with_llm = False
@@ -11056,6 +11118,19 @@ _UNSTATED_PARAM_RULES: tuple[tuple[frozenset[str], re.Pattern[str], str], ...] =
             re.IGNORECASE,
         ),
         "오름차순(작은 값부터)으로 할까요, 내림차순(큰 값부터)으로 할까요?",
+    ),
+    (
+        # "수식 넣어줘"(무엇을 계산?)가 180칸 수식 카드로 갔다(2026-09-06 코퍼스).
+        # 계산 내용을 말한 문장은 아래 근거 어휘 중 하나는 반드시 지난다.
+        frozenset({"excel_live.set_formula"}),
+        re.compile(
+            r"(합계|총합|총계|소계|평균|개수|건수|곱|나누|나눈|더하|더한|빼|뺀|차이"
+            r"|비중|비율|퍼센트|%|백분율|누적|순위|검산|증감|성장률|수익률|마진|이익"
+            r"|최댓값|최솟값|최대|최소|표준편차|분산|중앙값"
+            r"|sum|average|avg|count|max|min|if|vlookup|xlookup|concat|round)",
+            re.IGNORECASE,
+        ),
+        "어떤 계산을 넣을까요? 예: 단가 곱하기 판매량 검산, 매출 합계",
     ),
 )
 

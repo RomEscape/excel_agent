@@ -49,7 +49,13 @@ EXECUTABLE |= set(re.findall(r'"(excel_live\.[a-z_]+)"', _router_src))
 
 SCENARIO = Path(sys.argv[1])
 SC = json.loads(SCENARIO.read_text(encoding="utf-8"))
-WB = Path(r"C:/Users/asdjj/AppData/Local/office_claw/Workspace") / SC["workbook_name"]
+def _workspace_root():
+    # 이 개발기 절대경로가 박혀 있어 다른 머신에서 전멸했다(2026-09-06 감사 D).
+    from office_claw_sidecar.config import get_workspace_root
+    return Path(get_workspace_root())
+
+
+WB = _workspace_root() / SC["workbook_name"]
 SESSION_BASE = "test-dialogue-" + SCENARIO.stem
 TURNS = SC["turns"]
 
@@ -253,7 +259,9 @@ async def run_once(round_no: int) -> list[dict]:
             good = asked
             why = "" if good else "되물었어야 함"
         elif expect == "noop":
-            good = asked or action in {"excel_live.noop", "excel_live.clarify", "excel_live.not_excel"} or bool(result.get("noop"))
+            # not_excel_request: "고마워, 수고했어" 같은 잡담 응답 — 실행 안 했는데
+            # 집합에 없어서 '실행돼 버림'으로 오판됐다(2026-09-06 285턴 코퍼스 실측).
+            good = asked or action in {"excel_live.noop", "excel_live.clarify", "excel_live.not_excel", "excel_live.not_excel_request"} or bool(result.get("noop"))
             why = "" if good else "실행돼 버림"
         else:
             good = all_executed
