@@ -9,7 +9,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "tauri:dev": "tauri dev",
+    "tauri:dev": "node ../../scripts/with-tool-path.mjs tauri dev",
     "test:unit": "node --test src/lib/*.test.js src/lib/localStack/*.test.js",
     "devlog:auto": "cd ../../services/sidecar && uv run python scripts/append_devlog_from_reports.py --devlog ../../개발일지.md --complex-report ../../logs/excel_complex_verify_report.json --release-gate ../../logs/eval_release_gate.json --from-staged",
     "devlog:check": "node ../../scripts/check-devlog-update.mjs --staged",

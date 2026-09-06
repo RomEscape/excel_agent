@@ -5,13 +5,17 @@ import reactRefresh from "eslint-plugin-react-refresh";
 
 // CI의 `npm run lint --if-present`는 지금까지 스크립트가 없어 조용히 스킵됐다.
 // 전체 코드의 38.9%인 프론트엔드가 검사를 한 번도 안 받았다는 뜻이다.
+//
+// 2026-09-06: 이 파일은 저장소 루트에 있었다. ESLint 는 루트 설정을 찾지만 `@eslint/js` 등은
+// apps/desktop/node_modules 에만 있어 새 클론에서 `npm run lint` 가 ERR_MODULE_NOT_FOUND 로
+// 죽었다(실측). apps/desktop 로 옮겨 의존성이 있는 곳에서 해석되게 한다.
 export default [
   {
     ignores: [
       "dist/**",
       "node_modules/**",
       "src-tauri/target/**",
-      "python-sidecar/**",
+      "../../services/**",
       "logs/**",
     ],
   },

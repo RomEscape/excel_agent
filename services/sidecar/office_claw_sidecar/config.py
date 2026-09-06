@@ -8,6 +8,8 @@ from pathlib import Path
 APP_NAME = "office_claw"
 SERVICE_NAMESPACE = "office_claw"
 TEMP_SUBDIRS = ("excel_uploads", "document_exports")
+# 소스 트리 실행 시 워크스페이스 폴더 이름(저장소 루트 기준). README·.gitignore 와 같이 바꾼다.
+DEV_WORKSPACE_DIRNAME = "엑셀 작업 폴더"
 
 
 def get_data_dir() -> Path:
@@ -36,7 +38,12 @@ def get_workspace_root() -> Path:
     if override:
         root = Path(override).expanduser()
     else:
-        root = get_data_dir() / "Workspace"
+        # 소스 트리에서 돌 때(개발기·클론)는 저장소 안 `엑셀 작업 폴더/` 가 기본이다(gitignore).
+        # AppData 깊숙한 폴더는 "매번 찾아 들어가기 귀찮다"(2026-09-06 사용자가 이 이름으로
+        # 폴더를 만들어 둠) — 로그가 이미 <repo>/logs 로 가는 것과 같은 규칙이고, 배포본
+        # (소스 트리 아님)은 그대로 <data_dir>/Workspace 다. 옛 위치의 파일은 자동으로 옮기지 않는다.
+        repo_root = _detect_workspace_root()
+        root = (repo_root / DEV_WORKSPACE_DIRNAME) if repo_root is not None else (get_data_dir() / "Workspace")
     root.mkdir(parents=True, exist_ok=True)
     return root
 

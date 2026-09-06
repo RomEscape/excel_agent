@@ -899,7 +899,14 @@ def _resolve_sheet_name(service, workbook_id: str | None, sheet_name: str | None
     if sheet_name:
         return sheet_name
     rows = service.list_workbooks()
-    if not rows:
+    # 목록이 비어도 지목(workbook_id)이 있으면 아래에서 그 통합문서에게 직접 묻는다.
+    #
+    # 2026-09-06 실측(새 PC 클론): 파일 엔진의 list_workbooks()는 워크스페이스·CWD를
+    # 스캔한 결과라, 방금 select_workbook()한 통합문서가 워크스페이스 밖(임시 폴더)에
+    # 있으면 빈 목록이 된다. 여기서 먼저 예외를 내 버려 선택 프로브의 `empty`가 늘
+    # null이었고, 승인 게이트 회귀 핀 4개가 개발기(워크스페이스에 잔여 xlsx 있음)에서만
+    # 통과하고 빈 워크스페이스에서는 전부 실패했다.
+    if not rows and not workbook_id:
         raise ExcelConnectionError("열린 통합문서가 없습니다.")
     if workbook_id:
         lowered = workbook_id.lower()
@@ -922,6 +929,8 @@ def _resolve_sheet_name(service, workbook_id: str | None, sheet_name: str | None
                 return str(sheets[0])
         except Exception:
             pass
+    if not rows:
+        raise ExcelConnectionError("열린 통합문서가 없습니다.")
     return rows[0].get("active_sheet") or "Sheet1"
 
 

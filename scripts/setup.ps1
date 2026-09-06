@@ -5,7 +5,11 @@
     [switch]$SkipBuild,
     # 플래너 모델을 올려 둔 Hugging Face 저장소(예: "myaccount/ax7bplanner-v3-GGUF").
     # 생략하면 환경변수 OFFICECLAW_PLANNER_HF_REPO를 본다.
-    [string]$PlannerHfRepo = ""
+    [string]$PlannerHfRepo = "",
+    # 범용 대화 모델(A.X-4.0-Light)의 GGUF를 올려 둔 HF 저장소. Ollama 레지스트리에는
+    # 이 모델이 없어서 HF에서 받아 `skt/A.X-4.0-Light:latest`로 이름을 맞춘다.
+    # 생략하면 환경변수 OFFICECLAW_GENERAL_HF_REPO → 기본값(jayusop/…Q4_K_M-GGUF).
+    [string]$GeneralHfRepo = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -194,7 +198,16 @@ Initialize-ToolPaths
 
 Test-RequiredCommand -Name "node" -InstallHint "Node.js LTS 설치 후 새 터미널을 열어주세요. (https://nodejs.org)"
 Test-RequiredCommand -Name "npm" -InstallHint "Node.js 설치에 npm이 포함됩니다. PATH를 확인해 주세요."
-Invoke-Step -Title "Node 의존성 설치 (npm ci)" -Command "npm ci" -WorkingDirectory $AppDir
+# npm ci 는 node_modules 를 통째로 지우고 다시 깐다. OneDrive 폴더 안에서는 동기화 클라이언트가
+# 방금 만든 파일을 잡고 있어 삭제가 EBUSY(-4082)로 죽는다(2026-09-06 실측: 두 번째 setup 실행이
+# 여기서 멈춤). lockfile 이 그대로면 건너뛴다 — 재실행이 빨라지는 덤도 있다.
+$NpmStamp = Join-Path $AppDir "node_modules\.package-lock.json"
+$NpmLock = Join-Path $AppDir "package-lock.json"
+if ((Test-Path $NpmStamp) -and ((Get-Item $NpmStamp).LastWriteTime -ge (Get-Item $NpmLock).LastWriteTime)) {
+    Write-Host "[건너뜀] node_modules 가 package-lock.json 과 같거나 더 새롭다 (npm ci 생략)"
+} else {
+    Invoke-Step -Title "Node 의존성 설치 (npm ci)" -Command "npm ci" -WorkingDirectory $AppDir
+}
 
 if (-not (Get-Command openclaw -ErrorAction SilentlyContinue)) {
     Write-Warning "[SETUP_OPENCLAW_MISSING_OR_PATH] openclaw 명령을 찾지 못했습니다. 설치 후 새 터미널에서 npm prefix/PATH를 다시 확인해 주세요."
@@ -220,7 +233,16 @@ if (Get-Command uv -ErrorAction SilentlyContinue) {
 Test-RequiredCommand -Name "cargo" -InstallHint "Rust 설치 후 재시도해 주세요. (https://rustup.rs)"
 Test-RequiredCommand -Name "link.exe" -InstallHint "Visual Studio C++ Build Tools가 필요합니다. (winget: Microsoft.VisualStudio.2022.BuildTools)"
 Invoke-Step -Title "Rust 툴체인 확인 (cargo --version)" -Command "cargo --version"
-Invoke-Step -Title "MSVC 링커 확인 (link.exe)" -Command "link.exe /? | Out-Null"
+# `link.exe /?` 는 도움말을 찍고도 종료코드가 0이 아니다(MSVC 14.44 실측: 1100 / -1).
+# 2026-09-06 감사 A5로 Invoke-Step 이 종료코드를 보게 되자 이 단계가 **항상** 죽어
+# 새 PC 셋업이 여기서 끝났다(같은 날 실측, Ji_NH). 경로만 확인하고 MSVC 것인지 본다 —
+# Git for Windows 의 coreutils `link.exe` 가 먼저 잡히면 cargo 링크가 실패하기 때문이다.
+$LinkExe = (Get-Command link.exe).Source
+Write-Host "==> MSVC 링커 확인 (link.exe)" -ForegroundColor Cyan
+Write-Host "    $LinkExe" -ForegroundColor DarkGray
+if ($LinkExe -notmatch 'VC\\Tools\\MSVC') {
+    throw "PATH 의 link.exe 가 MSVC 가 아닙니다: $LinkExe (Visual Studio C++ Build Tools 가 필요합니다)"
+}
 # externalBin 자리채움 — tauri.conf.json이 이 파일의 **존재**를 요구한다(dev도 마찬가지).
 # .gitignore 대상이라 클론 직후엔 없다. dev 모드 사이드카는 venv 소스로 뜨므로 빈 파일로 충분하다.
 $BinDir = Join-Path $TauriDir "binaries"
@@ -235,7 +257,12 @@ if (-not $SkipBuild) {
     Invoke-Step -Title "Rust 체크 빌드 (cargo check)" -Command "cargo check" -WorkingDirectory $TauriDir
 }
 
-if ($BuildSidecar -or (-not $SkipBuild)) {
+# 사이드카 단일 실행파일(PyInstaller)은 **배포본에만** 필요하다. dev 모드는 venv 소스로
+# 사이드카를 띄우므로(apps/desktop/src-tauri/src/sidecar.rs) 빈 placeholder면 된다.
+# 예전엔 기본으로 빌드했는데, spec(sidecar-hardened.spec)이 Nuitka --module 산출물
+# (build-mod/)을 요구해 새 PC에서는 여기서 죽고 **모델 준비까지 못 갔다**(2026-09-06 실측).
+# 필요할 때만 -BuildSidecar 로 켠다 — build_sidecar.py 가 Nuitka 단계까지 같이 돈다.
+if ($BuildSidecar) {
     if (Get-Command uv -ErrorAction SilentlyContinue) {
         Invoke-Step -Title "Python sidecar 빌드 (uv run --extra dev python build_sidecar.py)" -Command "uv run --extra dev python build_sidecar.py" -WorkingDirectory $SidecarDir
     } else {
@@ -246,10 +273,23 @@ if ($BuildSidecar -or (-not $SkipBuild)) {
 
 # ── 모델 준비 ────────────────────────────────────────────────────────────────
 # 앱은 모델 둘을 쓴다: 범용 대화(model)와 Excel 계획 수립(planner_model).
-# 범용은 공개 레지스트리에 있지만, 플래너는 이 저장소에서 파인튜닝한 것이라
-# 어느 레지스트리에도 없다. 가중치는 git으로 못 옮기므로(4.4GB) Hugging Face에
-# 올려 두고 받아 온다 — 올릴 파일은 scripts\export-planner-model.ps1이 만든다.
+# **둘 다 Ollama 공개 레지스트리에 없다.** 범용 `skt/A.X-4.0-Light`는 SKT가 HF에
+# safetensors로만 올렸고 Ollama 레지스트리에는 없어서 `ollama pull skt/A.X-4.0-Light`가
+# "pull model manifest: file does not exist"로 죽는다(2026-09-06 실측, 새 PC Ji_NH).
+# 개발기는 커뮤니티 GGUF(hf.co/jayusop/…)를 받아 앱이 기대하는 이름으로 `ollama cp`
+# 해 두었던 것이다(개발일지 2026-05-21). 셋업도 같은 경로를 밟는다.
+# 플래너는 이 저장소에서 파인튜닝한 것이라 어느 레지스트리에도 없다. 가중치는
+# git으로 못 옮기므로(4.4GB) Hugging Face에 올려 두고 받아 온다 — 올릴 파일은
+# scripts\export-planner-model.ps1이 만든다.
 $GeneralModel = "skt/A.X-4.0-Light:latest"
+$DefaultGeneralHfRepo = "jayusop/A.X-4.0-Light-Q4_K_M-GGUF"
+$GenRepo = if (-not [string]::IsNullOrWhiteSpace($GeneralHfRepo)) {
+    $GeneralHfRepo.Trim()
+} elseif (-not [string]::IsNullOrWhiteSpace($env:OFFICECLAW_GENERAL_HF_REPO)) {
+    "$($env:OFFICECLAW_GENERAL_HF_REPO)".Trim()
+} else {
+    $DefaultGeneralHfRepo
+}
 $PlannerModel = "ax7bplanner-v3:latest"
 # 기본 배포처 — 2026-09-05 공개 업로드 완료. 인자·환경변수가 있으면 그쪽이 우선.
 $DefaultPlannerHfRepo = "PJiNH/ax7bplanner-v3-GGUF"
@@ -265,7 +305,12 @@ if (Get-Command ollama -ErrorAction SilentlyContinue) {
     $installedModels = if ($DryRun) { "" } else { (& ollama list 2>$null | Out-String) }
 
     if ($installedModels -notmatch [regex]::Escape($GeneralModel.Split(":")[0])) {
-        Invoke-Step -Title "범용 모델 내려받기 ($GeneralModel)" -Command "ollama pull $GeneralModel"
+        Invoke-Step -Title "범용 모델 내려받기 (hf.co/$GenRepo)" -Command "ollama pull hf.co/$GenRepo"
+        # 앱 설정(local_stack/presets.py)은 'skt/A.X-4.0-Light:latest'를 기대한다 — 받은 이름을 그쪽으로 맞춘다.
+        Invoke-Step -Title "범용 모델 이름 맞추기 ($GeneralModel)" -Command "ollama cp hf.co/${GenRepo}:latest $GeneralModel"
+        # 옛 앱 설정(2026-05 온보딩)은 별칭 'ax4-light:latest' 를 저장해 둔 PC 가 있다 — 새 PC 첫 구동
+        # 실측(2026-09-06 Ji_NH)에서 /health missing_models 에 이 이름이 남았다. 같은 blob 이라 공짜다.
+        Invoke-Step -Title "범용 모델 옛 별칭 (ax4-light:latest)" -Command "ollama cp $GeneralModel ax4-light:latest"
     } else {
         Write-Host "[건너뜀] 범용 모델이 이미 있습니다 ($GeneralModel)"
     }

@@ -154,8 +154,23 @@ export function buildModelOptions(models) {
  * @param {unknown} installedModels 설치된 모델 (객체 또는 문자열 배열)
  * @param {unknown} extraIds 목록에 없어도 보여줘야 하는 ID들
  */
+/**
+ * 대화 모델 셀렉트에 보여줄 이름인가.
+ *
+ * 2026-09-06 새 PC 실측: 셋업이 만든 `hf.co/…` 출처 태그와 Excel 계획 전용 플래너
+ * (`ax7bplanner-*`)까지 목록에 떠서 "여기서 뭘 골라야 하나"가 됐다. 출처 태그는
+ * 같은 파일의 별칭이고, 플래너는 사이드카가 알아서 쓰므로 고를 대상이 아니다.
+ */
+export function isChatModelChoice(id) {
+  const name = String(id || "").trim();
+  if (!name) return false;
+  if (name.startsWith("hf.co/")) return false;
+  if (name.split(":")[0].startsWith("ax7bplanner")) return false;
+  return true;
+}
+
 export function buildModelChoices(installedModels, extraIds) {
-  const installed = normalizeIds(installedModels);
+  const installed = normalizeIds(installedModels).filter(isChatModelChoice);
   const installedSet = new Set(installed);
   const extras = normalizeIds(extraIds).filter((id) => !installedSet.has(id));
 

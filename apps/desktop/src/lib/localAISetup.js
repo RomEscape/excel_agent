@@ -8,6 +8,7 @@ export {
   STEP_LABEL,
   RECOMMENDED_MODELS,
   DEFAULT_MODEL,
+  PLANNER_MODEL,
   buildPlan,
   isAllReady,
   hasModelInstalled,

@@ -58,6 +58,9 @@ env/
 .claude/*
 # 스킬은 팀이 공유해야 한다 — 개발일지·로그 확인 규칙이 여기 들어 있다.
 !.claude/skills/
+# Claude Code 훅(2026-09-06): .cursor/hooks 와 같은 역할 — 세션 시작 시 개발일지 최근 항목 주입.
+!.claude/settings.json
+!.claude/hooks/
 *.swp
 *.swo
 .DS_Store
@@ -105,3 +108,9 @@ docs/product/
 
 # 로컬 전용 cargo 설정(OneDrive 회피용 target-dir) — 머신마다 경로가 달라 커밋하지 않는다
 apps/desktop/src-tauri/.cargo/
+
+# ── 개발기 워크스페이스(2026-09-06) ─────────────────────────────────────────
+# 소스 트리에서 앱을 돌리면 사이드카가 여기를 워크스페이스 루트로 쓴다(config.get_workspace_root).
+# 사용자 엑셀 파일이라 커밋하지 않는다. 시작 파일(데모 워크북)은 손으로 복사해 넣었다.
+엑셀 작업 폴더/*
+!엑셀 작업 폴더/.gitkeep

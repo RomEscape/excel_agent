@@ -50,6 +50,7 @@ import {
   buildPlan,
   isAllReady,
   hasModelInstalled,
+  PLANNER_MODEL,
 } from "@/lib/localAISetup";
 import {
   QWEN3_OPENCLAW_PRESET,
@@ -313,6 +314,11 @@ export default function LocalAISetupWizard() {
           case STEP.PULL_MODEL: {
             const result = await STATUS_MODULES.ollama.pullModel(model);
             handleInstallResult(stepId, result);
+            // Excel 계획 플래너도 같이 받는다. 이미 있으면 Ollama 가 곧바로 success 를 낸다.
+            // 이걸 빼먹으면 채팅은 되는데 Excel 계획이 조용히 실패한다(2026-09-06 새 PC 실측).
+            pushLog(stepId, "info", `Excel 계획 모델(${PLANNER_MODEL})을 확인하고 있어요...`);
+            const plannerResult = await STATUS_MODULES.ollama.pullModel(PLANNER_MODEL);
+            handleInstallResult(stepId, plannerResult);
             break;
           }
           case STEP.CONFIG_OC: {

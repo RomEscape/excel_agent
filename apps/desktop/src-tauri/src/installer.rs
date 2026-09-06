@@ -428,12 +428,16 @@ pub async fn pull_ollama_model(
     // 모델명에 shell metachar 끼어들어가지 않도록 사전 검증
     crate::ollama::validate_model_name(&model)?;
 
-    let manual = format!("ollama pull {}", model);
+    // 앱이 기대하는 이름은 Ollama 레지스트리에 없다 — 받을 수 있는 곳(HF GGUF)에서 받아
+    // `ollama cp` 로 이름을 맞춘다. 예전엔 `ollama pull skt/A.X-4.0-Light` 를 그대로 쳐서
+    // 마법사의 모델 단계가 새 PC 에서 항상 실패했다(2026-09-06 실측).
+    let (source, alias) = pull_plan(&model);
+    let manual = manual_pull_command("ollama", &source, alias.as_deref());
 
     #[cfg(target_os = "windows")]
     let cmd = match crate::ollama::windows_ollama_exe() {
         // 경로에 공백이 있을 수 있어 따옴표 + 호출 연산자(&)로 실행한다.
-        Some(exe) => format!("& \"{}\" pull {}", exe.display(), model),
+        Some(exe) => windows_pull_command(&exe.display().to_string(), &source, alias.as_deref()),
         None => {
             if crate::ollama::is_ollama_running().await {
                 return serde_json::to_value(InstallResult {
@@ -460,7 +464,7 @@ pub async fn pull_ollama_model(
     // 탐지(앱 번들 확인)는 성공하는데 맨 이름 `ollama`는 PATH에 없어 실패한다.
     #[cfg(target_os = "macos")]
     let cmd = match crate::ollama::macos_ollama_exe() {
-        Some(exe) => format!("\"{}\" pull {}", exe.display(), model),
+        Some(exe) => posix_pull_command(&exe.display().to_string(), &source, alias.as_deref()),
         None => {
             if crate::ollama::is_ollama_running().await {
                 return serde_json::to_value(InstallResult {
@@ -487,6 +491,97 @@ pub async fn pull_ollama_model(
 
     let result = run_shell_streaming(app, &state, "pull-model", &cmd, &manual)?;
     serde_json::to_value(result).map_err(|e| e.to_string())
+}
+
+/// 앱이 기대하는 모델 이름 → (실제로 pull 할 이름, `ollama cp` 로 맞출 별칭).
+///
+/// 두 모델 다 Ollama 공개 레지스트리에 없다(2026-09-06 실측: `ollama pull skt/A.X-4.0-Light`
+/// → "pull model manifest: file does not exist"). `scripts/setup.ps1`·`setup.sh` 와 같은 출처를
+/// 쓴다 — 출처를 바꾸면 셋 다 같이 바꾼다. 모르는 이름은 그대로 pull 한다.
+pub(crate) fn pull_plan(model: &str) -> (String, Option<String>) {
+    let base = model.split(':').next().unwrap_or(model);
+    match base {
+        "skt/A.X-4.0-Light" => (
+            "hf.co/jayusop/A.X-4.0-Light-Q4_K_M-GGUF".to_string(),
+            Some("skt/A.X-4.0-Light:latest".to_string()),
+        ),
+        "ax7bplanner-v3" => (
+            "hf.co/PJiNH/ax7bplanner-v3-GGUF".to_string(),
+            Some("ax7bplanner-v3:latest".to_string()),
+        ),
+        _ => (model.to_string(), None),
+    }
+}
+
+/// 사람이 손으로 칠 명령(오류 안내·리눅스 폴백용).
+fn manual_pull_command(bin: &str, source: &str, alias: Option<&str>) -> String {
+    match alias {
+        Some(a) => format!("{bin} pull {source} && {bin} cp {source}:latest {a}"),
+        None => format!("{bin} pull {source}"),
+    }
+}
+
+/// PowerShell 용 — pull 이 성공했을 때만 cp 한다.
+#[cfg(target_os = "windows")]
+fn windows_pull_command(exe: &str, source: &str, alias: Option<&str>) -> String {
+    match alias {
+        Some(a) => format!(
+            "& \"{exe}\" pull {source}; if ($LASTEXITCODE -eq 0) {{ & \"{exe}\" cp {source}:latest {a} }}"
+        ),
+        None => format!("& \"{exe}\" pull {source}"),
+    }
+}
+
+/// sh 용(macOS).
+#[cfg(target_os = "macos")]
+fn posix_pull_command(exe: &str, source: &str, alias: Option<&str>) -> String {
+    match alias {
+        Some(a) => format!("\"{exe}\" pull {source} && \"{exe}\" cp {source}:latest {a}"),
+        None => format!("\"{exe}\" pull {source}"),
+    }
+}
+
+#[cfg(test)]
+mod pull_plan_tests {
+    use super::*;
+
+    #[test]
+    fn app_model_names_resolve_to_hf_sources_with_alias() {
+        let (src, alias) = pull_plan("skt/A.X-4.0-Light:latest");
+        assert_eq!(src, "hf.co/jayusop/A.X-4.0-Light-Q4_K_M-GGUF");
+        assert_eq!(alias.as_deref(), Some("skt/A.X-4.0-Light:latest"));
+
+        let (src, alias) = pull_plan("ax7bplanner-v3");
+        assert_eq!(src, "hf.co/PJiNH/ax7bplanner-v3-GGUF");
+        assert_eq!(alias.as_deref(), Some("ax7bplanner-v3:latest"));
+    }
+
+    #[test]
+    fn unknown_names_pull_as_is() {
+        assert_eq!(pull_plan("qwen3:8b"), ("qwen3:8b".to_string(), None));
+    }
+
+    #[test]
+    fn manual_command_chains_cp_only_with_alias() {
+        assert_eq!(
+            manual_pull_command("ollama", "hf.co/x/y", Some("z:latest")),
+            "ollama pull hf.co/x/y && ollama cp hf.co/x/y:latest z:latest"
+        );
+        assert_eq!(
+            manual_pull_command("ollama", "qwen3:8b", None),
+            "ollama pull qwen3:8b"
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_command_guards_cp_on_exit_code() {
+        let cmd = windows_pull_command("C:\\o\\ollama.exe", "hf.co/x/y", Some("z:latest"));
+        assert!(
+            cmd.starts_with("& \"C:\\o\\ollama.exe\" pull hf.co/x/y; if ($LASTEXITCODE -eq 0) {")
+        );
+        assert!(cmd.contains("cp hf.co/x/y:latest z:latest"));
+    }
 }
 
 /// Tauri command: 진행 중인 설치 취소.

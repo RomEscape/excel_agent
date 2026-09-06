@@ -6,16 +6,16 @@
 
 ```powershell
 $PY = "$env:LOCALAPPDATA\officeclaw\venvs\python-sidecar\Scripts\python.exe"
-& $PY python-sidecar\scripts\show_turns.py -n 5                 # 최근 5턴
-& $PY python-sidecar\scripts\show_turns.py --failed -n 8        # 깨진 턴만
-& $PY python-sidecar\scripts\show_turns.py --follow             # 실시간
-& $PY python-sidecar\scripts\show_turns.py --grep "정렬" -n 3   # 문장으로 찾기
+& $PY services\sidecar\scripts\show_turns.py -n 5                 # 최근 5턴
+& $PY services\sidecar\scripts\show_turns.py --failed -n 8        # 깨진 턴만
+& $PY services\sidecar\scripts\show_turns.py --follow             # 실시간
+& $PY services\sidecar\scripts\show_turns.py --grep "정렬" -n 3   # 문장으로 찾기
 ```
 
 한 턴에 모델을 여러 번 부르는 경로(재계획·관측 루프)는 `show_turns.py`로 부족하다 — **첫 호출만** 보여 준다:
 
 ```powershell
-& $PY python-sidecar\scripts\dump_turn_llm_calls.py logs\diagnostics\<실행id>.jsonl <turn_id> logs\turn.txt
+& $PY services\sidecar\scripts\dump_turn_llm_calls.py logs\diagnostics\<실행id>.jsonl <turn_id> logs\turn.txt
 ```
 
 ## 필드가 답해 주는 질문

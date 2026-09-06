@@ -6,7 +6,10 @@ build-backend = "setuptools.build_meta"
 name = "office-claw-sidecar"
 version = "0.1.0"
 description = "Privacy-focused AI work agent - Python sidecar backend"
-requires-python = ">=3.10"
+# 3.11 하한: backup.py·routers/{agent,excel_live,security}.py 가 `from datetime import UTC`
+# (3.11+) 를 쓴다. ">=3.10" 이던 동안 새 PC 클론에서 uv 가 3.10.19 를 골라
+# 사이드카 임포트가 통째로 죽었다(2026-09-06 실측). 실제 선택 버전은 .python-version(3.12).
+requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
@@ -36,6 +39,9 @@ dependencies = [
 # torch/transformers 를 끌어와 64MB 산출물을 201MB 로 부풀리고 있었다(미사용).
 dev = [
     "pytest>=8.0",
+    # CI(pr-check.yml)가 `uv run ruff check .` 를 돌린다 — dev extra 에 없으면 "Failed to spawn: ruff".
+    # 2026-09-06 실측: 이 브랜치는 CI 가 돈 적이 없어 안 드러났다. lefthook 의 uvx 폴백과 같은 버전대.
+    "ruff>=0.6",
     "pyinstaller>=6.0",
     # 사이드카 네이티브 컴파일(하드닝). 우리 코드가 import 하지 않으므로 번들에는
     # 들어가지 않는다 — pyinstaller 와 같은 성격의 빌드 도구다.

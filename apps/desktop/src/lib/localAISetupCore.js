@@ -4,6 +4,7 @@
 
 import {
   DEFAULT_OLLAMA_MODEL,
+  DEFAULT_PLANNER_MODEL,
   LOCAL_STACK_MODEL_OPTIONS,
 } from "./localStack/index.js";
 
@@ -25,6 +26,9 @@ export const STEP_LABEL = Object.freeze({
 export const RECOMMENDED_MODELS = LOCAL_STACK_MODEL_OPTIONS;
 
 export const DEFAULT_MODEL = DEFAULT_OLLAMA_MODEL;
+
+/** Excel 계획 플래너 — 범용 모델과 별개로 반드시 있어야 한다. */
+export const PLANNER_MODEL = DEFAULT_PLANNER_MODEL;
 
 /**
  * Ollama 모델 목록에 해당 모델이 이미 받아져 있는지 확인.
@@ -49,7 +53,9 @@ export function isAllReady(diag, model) {
   if (!diag) return false;
   const ollOK = diag.oll?.installed && diag.oll?.running;
   const modelOK = hasModelInstalled(diag.oll?.models, model);
-  return Boolean(ollOK && modelOK);
+  // 플래너가 없으면 채팅은 되는데 Excel 계획이 조용히 실패한다 — 준비됨으로 치지 않는다.
+  const plannerOK = hasModelInstalled(diag.oll?.models, PLANNER_MODEL);
+  return Boolean(ollOK && modelOK && plannerOK);
 }
 
 export function buildPlan(diag, model) {
@@ -59,7 +65,11 @@ export function buildPlan(diag, model) {
 
   route(Boolean(diag?.oll?.installed), STEP.INSTALL_OLLAMA);
   route(Boolean(diag?.oll?.running), STEP.START_OLLAMA);
-  route(hasModelInstalled(diag?.oll?.models, model), STEP.PULL_MODEL);
+  route(
+    hasModelInstalled(diag?.oll?.models, model) &&
+      hasModelInstalled(diag?.oll?.models, PLANNER_MODEL),
+    STEP.PULL_MODEL,
+  );
 
   // 대화 테스트는 항상 마지막에 수행해 Ollama 응답 경로를 검증한다.
   todo.push(STEP.PROMPT_TEST);

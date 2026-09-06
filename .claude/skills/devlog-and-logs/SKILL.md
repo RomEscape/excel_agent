@@ -1,8 +1,10 @@
 ---
 name: devlog-and-logs
-description: Office-Claw에서 무언가 잘못 동작했을 때 판단 경로(로그)로 원인을 찾고, 고친 뒤 개발일지에 실측과 함께 남긴다.
-when_to_use: "왜 이렇게 됐지" · "오류 원인" · "실패 분석" · "로그 봐줘" · "개발일지" · 배터리/게이트가 깨졌을 때 · 성공이라고 보고했는데 결과 파일이 이상할 때 · 코드를 고치고 커밋하기 직전.
+description: "Office-Claw에서 무언가 잘못 동작했을 때 판단 경로(로그)로 원인을 찾고, 고친 뒤 개발일지에 실측과 함께 남긴다. 트리거: '왜 이렇게 됐지' · '오류 원인' · '실패 분석' · '로그 봐줘' · '개발일지' · 배터리/게이트가 깨졌을 때 · 성공이라고 보고했는데 결과 파일이 이상할 때 · 코드를 고치고 커밋하기 직전."
 ---
+<!-- frontmatter 주의: 값에 따옴표·콜론이 섞이면 전체를 한 겹 따옴표로 감싼다. 2026-08-29~09-06 사이
+     when_to_use 줄이 YAML 파싱에 실패해 트리거 문구가 통째로 안 보였다(2026-09-06 감사에서 실측). -->
+
 
 # 진단은 로그부터, 마무리는 개발일지
 
@@ -15,7 +17,7 @@ when_to_use: "왜 이렇게 됐지" · "오류 원인" · "실패 분석" · "�
 
 ```powershell
 $PY = "$env:LOCALAPPDATA\officeclaw\venvs\python-sidecar\Scripts\python.exe"
-& $PY python-sidecar\scripts\dialogue_failures.py <dialogue_exN_log.json> [...]
+& $PY services\sidecar\scripts\dialogue_failures.py <dialogue_exN_log.json> [...]
 ```
 
 로그에서 무엇을 읽는지, 한 턴을 더 깊게 보는 법은 → [references/log-reading.md](references/log-reading.md)
@@ -30,7 +32,7 @@ $PY = "$env:LOCALAPPDATA\officeclaw\venvs\python-sidecar\Scripts\python.exe"
 원본 시트에 잘못 쓰인 수식 6건, **지워진 학생 이름 1개**가 있었다.
 
 ```powershell
-& $PY python-sidecar\scripts\audit_result_workbooks.py   # 결과 워크북 전수 감사
+& $PY services\sidecar\scripts\audit_result_workbooks.py   # 결과 워크북 전수 감사
 ```
 
 다섯 가지를 본다: 셀에 박힌 명령문 · 글자로 박힌 수식 요청문 · `0.1` 같은 자릿수 오해
@@ -71,7 +73,7 @@ before/after를 재고, 일반화는 **블라인드 게이트**로 잰다 — �
   (게이트는 단일 프로세스라 시작 후 편집은 안전하지만, 결과는 시작 시점 코드를 반영한다.)
 - v1/v2 각본은 **같은 워크북을 공유**한다. 결과 대조는 마지막에 돈 각본 기준으로.
 - `dialogue_failures.py`가 없으면 러너 로그와 `chat_log.jsonl`을 직접 맞춰야 한다 —
-  먼저 `python-sidecar/scripts/`에 있는지 본다.
+  먼저 `services/sidecar/scripts/`에 있는지 본다.
 
 ## 6. 도구 함정 — 조용히 소스를 망가뜨리는 것들
 

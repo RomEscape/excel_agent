@@ -41,3 +41,10 @@ export const LOCAL_STACK_MODEL_OPTIONS = Object.freeze([
 ]);
 
 export const DEFAULT_OLLAMA_MODEL = QWEN3_OPENCLAW_PRESET.ollamaModel;
+
+/**
+ * Excel 계획 수립 전용 플래너(사이드카 local_stack/presets.py 의 planner_model 과 같은 이름).
+ * 마법사가 범용 모델만 받고 이 모델을 안 받아 새 PC 에서 "플래너가 조용히 죽는" 상태로
+ * 시작했다(2026-09-06 실측). 범용 모델과 함께 받는다.
+ */
+export const DEFAULT_PLANNER_MODEL = "ax7bplanner-v3:latest";

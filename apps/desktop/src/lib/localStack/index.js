@@ -7,6 +7,7 @@ export {
   LOCAL_STACK_MODEL_OPTIONS,
   DEFAULT_PRESET_ID,
   DEFAULT_OLLAMA_MODEL,
+  DEFAULT_PLANNER_MODEL,
   getLocalStackPreset,
 } from "./presets.js";
 export {

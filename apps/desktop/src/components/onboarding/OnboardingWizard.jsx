@@ -311,19 +311,28 @@ function StepWorkspace({ onNext, onPrev }) {
   const [opening, setOpening] = useState(false);
   const [openError, setOpenError] = useState("");
 
+  const [waiting, setWaiting] = useState(true);
+
   // 온보딩 중에는 WorkspacePage가 안 떠 있어 경로를 store에 채울 곳이 없다 —
   // 이 단계가 직접 당겨온다. 빈 채로 두면 placeholder("폴더를 선택해주세요")만
   // 보이고 확인 버튼이 영영 비활성이다(2026-09-01 첫 구동 실측). 사이드카가
-  // 아직 부팅 중일 수 있어 채워질 때까지 2초 간격으로 잠깐 재시도한다.
+  // 아직 부팅 중일 수 있어 채워질 때까지 2초 간격으로 재시도한다.
+  // 2026-09-06 새 PC 실측: 첫 구동은 OpenClaw 대기 30초 + 사이드카 부팅 15초라
+  // 15회(30초)로는 모자라 빈 칸으로 끝났다. 2분까지 기다리고, 기다리는 동안은
+  // 그렇다고 말해 준다.
   useEffect(() => {
     let alive = true;
     let timer = 0;
     const pull = async (attemptsLeft) => {
       const root = await refreshWorkspacePath();
-      if (!alive || root || attemptsLeft <= 0) return;
+      if (!alive) return;
+      if (root || attemptsLeft <= 0) {
+        setWaiting(false);
+        return;
+      }
       timer = window.setTimeout(() => pull(attemptsLeft - 1), 2000);
     };
-    pull(15);
+    pull(60);
     return () => {
       alive = false;
       window.clearTimeout(timer);
@@ -361,6 +370,16 @@ function StepWorkspace({ onNext, onPrev }) {
           워크스페이스 위치는 추후에 언제든 변경이 가능합니다. 모든 파일 접근은 이
           폴더 안으로 제한됩니다.
         </p>
+        {!workspacePath && waiting && (
+          <p className="text-center text-xs text-muted-foreground">
+            로컬 엔진(사이드카)이 켜지는 중입니다. 경로가 채워질 때까지 잠시 기다려 주세요.
+          </p>
+        )}
+        {!workspacePath && !waiting && (
+          <p className="text-center text-xs text-destructive">
+            로컬 엔진이 2분 안에 응답하지 않았습니다. 앱을 껐다 켜거나 터미널 로그를 확인해 주세요.
+          </p>
+        )}
       </div>
 
       {openError && <p className="text-xs text-destructive">{openError}</p>}

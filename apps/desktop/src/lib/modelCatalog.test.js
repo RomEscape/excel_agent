@@ -15,6 +15,7 @@ import assert from "node:assert/strict";
 import {
   RECOMMENDED_MODEL,
   buildModelChoices,
+  isChatModelChoice,
   buildModelOptions,
   describeModel,
   pickDefaultModel,
@@ -93,4 +94,23 @@ test("describeModel — 제조사·태그 분해는 기존 계약 유지", () =>
   assert.equal(m.brand, "Qwen");
   assert.equal(m.recommended, true);
   assert.equal(describeModel("듣도보도못한모델").brand, "로컬 모델");
+});
+
+test("buildModelChoices — hf.co 출처 태그와 플래너는 대화 모델 목록에서 숨긴다 (2026-09-06)", () => {
+  const opts = buildModelChoices(
+    [
+      { name: "skt/A.X-4.0-Light:latest" },
+      { name: "hf.co/jayusop/A.X-4.0-Light-Q4_K_M-GGUF:latest" },
+      { name: "ax7bplanner-v3:latest" },
+      { name: "hf.co/PJiNH/ax7bplanner-v3-GGUF:latest" },
+      { name: "ax4-light:latest" },
+    ],
+    [],
+  );
+  assert.deepEqual(
+    opts.map((o) => o.id).sort(),
+    ["ax4-light:latest", "skt/A.X-4.0-Light:latest"],
+  );
+  assert.equal(isChatModelChoice("ax7bplanner-v3"), false);
+  assert.equal(isChatModelChoice("qwen3:8b"), true);
 });

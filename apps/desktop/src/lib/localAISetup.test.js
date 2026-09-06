@@ -30,7 +30,8 @@ const fixtures = {
     oll: {
       installed: true,
       running: true,
-      models: [{ name: `${model}:latest` }],
+      // 2026-09-06: 플래너(ax7bplanner-v3)까지 있어야 '준비됨'이다.
+      models: [{ name: `${model}:latest` }, { name: "ax7bplanner-v3:latest" }],
     },
   }),
   /** Ollama 설치됐지만 데몬이 꺼진 상태 */

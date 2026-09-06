@@ -23,22 +23,28 @@ pub fn run() {
             // Installer state — 진행 중인 설치 자식 프로세스 핸들 (cancel용).
             app.manage(std::sync::Mutex::new(installer::InstallerState::default()));
 
-            // Spawn the OpenClaw gateway first, then the Python sidecar
+            // 사이드카를 먼저, OpenClaw 게이트웨이는 그다음에 띄운다.
+            //
+            // 예전엔 게이트웨이가 먼저였는데, `openclaw` CLI 가 없는 PC 에서는 30초 타임아웃을
+            // **다 기다린 뒤에야** 사이드카를 띄웠다. 그동안 온보딩 3단계(워크스페이스)는
+            // 사이드카에 경로를 물어보다 30초 만에 포기해 빈 칸 + 비활성 확인 버튼으로 남았다
+            // (2026-09-06 새 PC 첫 구동 실측). 둘은 서로 의존하지 않는다 — 게이트웨이는
+            // 없어도 앱이 돌고, 사이드카는 게이트웨이 없이도 Ollama 를 직접 쓴다.
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                // Step 1: Start OpenClaw gateway
+                // Step 1: Start Python sidecar
+                match sidecar::spawn_sidecar(&app_handle).await {
+                    Ok(()) => println!("[office-claw] Sidecar started successfully"),
+                    Err(e) => eprintln!("[office-claw] Failed to start sidecar: {}", e),
+                }
+
+                // Step 2: Start OpenClaw gateway (optional)
                 let openclaw_state =
                     app_handle.state::<std::sync::Mutex<openclaw::OpenClawState>>();
                 match openclaw::spawn_openclaw(&openclaw_state).await {
                     Ok(()) => println!("[office-claw] OpenClaw gateway started"),
                     Err(e) => eprintln!("[office-claw] OpenClaw gateway unavailable: {}", e),
                     // Not fatal — app continues, Python sidecar may fall back to direct LLM
-                }
-
-                // Step 2: Start Python sidecar
-                match sidecar::spawn_sidecar(&app_handle).await {
-                    Ok(()) => println!("[office-claw] Sidecar started successfully"),
-                    Err(e) => eprintln!("[office-claw] Failed to start sidecar: {}", e),
                 }
             });
 

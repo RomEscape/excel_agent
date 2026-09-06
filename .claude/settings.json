@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/devlog-session-start.mjs\"",
+            "timeout": 15,
+            "statusMessage": "개발일지 최근 항목 읽는 중"
+          }
+        ]
+      }
+    ]
+  }
+}

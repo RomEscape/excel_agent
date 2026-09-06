@@ -42,9 +42,13 @@ def _read_json_optional(path: Path | None) -> dict[str, Any] | None:
 
 
 def _run_git_changed_files(staged: bool) -> list[str]:
-    cmd = ["git", "-c", "core.quotepath=false", "diff", "--name-only", "--diff-filter=ACMR"]
+    cmd = ["git", "-c", "core.quotepath=false", "diff", "--name-only", "--diff-filter=ACMRD"]
     if staged:
-        cmd.insert(2, "--cached")
+        # 예전엔 index 2 에 넣어 `git -c --cached core.quotepath=false …` 가 됐다 — git 이
+        # "key does not contain a section: --cached" 로 exit 128 → except 가 [] → 언제나
+        # "[SKIP] staged 변경 파일이 없어". 2026-08-04 도입 이래 자동 블록이 0회 붙은 이유
+        # (2026-09-06 감사에서 재현). `diff` 뒤에 넣어야 한다.
+        cmd.insert(cmd.index("diff") + 1, "--cached")
     try:
         raw = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, text=True, encoding="utf-8")
     except Exception:
