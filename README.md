@@ -1,235 +1,110 @@
-# 김대리 (officeclaw)
+# 김대리
 
-**개인정보 보호 중심의 로컬 AI 업무 에이전트.** Excel 파일도, AI 추론(Ollama 로컬 LLM)도 사용자 PC를 떠나지 않는다.
-채팅창에 "합계를 표 아래에 넣어줘"처럼 말하면 데스크톱 Excel을 직접 편집한다. 변경 작업은 승인을 거친다.
+**엑셀에 말로 일을 시키는 업무 비서입니다.** "합계를 표 아래에 넣어줘"처럼 평소 말투로 적으면 내 PC의 Excel에서 바로 처리합니다.
+파일도 AI도 내 컴퓨터 밖으로 나가지 않습니다. 내용을 바꾸는 작업은 실행 전에 확인을 물어봅니다.
 
-| 하고 싶은 것 | 볼 곳 |
+| 하고 싶은 것 | 보는 곳 |
 |---|---|
-| 앱을 설치해서 쓰고 싶다 | [1. 설치해서 쓰기](#1-설치해서-쓰기) |
-| 코드를 받아서 실행·개발하고 싶다 | [2. 개발 환경 — 명령 하나로](#2-개발-환경--명령-하나로) |
-| 매일 치는 명령(실행·로그·테스트·커밋) | [3. 매일 쓰는 명령](#3-매일-쓰는-명령) |
-| 구조·설계·측정 기록을 읽고 싶다 | [4. 구조와 문서](#4-구조와-문서) |
-
-> 이 문서의 명령과 경로는 **2026-09-06 새 PC(Rust·모델 없는 Windows 11)에서 실제로 돌려 확인**한 것만 적었다.
-> 확인 못 한 것은 그렇다고 적어 두었다. 설계 설명과 측정 노트는 `docs/`로 옮겼다([4절](#4-구조와-문서)).
+| Windows에 설치하고 싶다 | **[Windows 설치 안내](https://claude.ai/code/artifact/e4354599-27b5-414c-8723-65d29922b9c1)** (단계별, 복사 버튼 포함) |
+| Mac에 설치하고 싶다 | **[Mac 설치 안내](https://claude.ai/code/artifact/89905586-97dd-41eb-9383-c7f219fff0a3)** (Apple Silicon, 실기 검증 전) |
+| 쓰는 법이 궁금하다 | [처음 켰을 때](#처음-켰을-때) · [이렇게 시키면 됩니다](#이렇게-시키면-됩니다) |
+| 뭔가 안 된다 | [안 될 때](#안-될-때) |
+| 개발자다 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) |
 
 ---
 
-## 1. 설치해서 쓰기
+## 이런 일을 시킬 수 있습니다
 
-**준비물**: Windows 10/11, 데스크톱 Excel(Microsoft 365 또는 2016 이상), 디스크 여유 15GB, 인터넷(모델 내려받기 1회).
+- **표 정리**: 합계·평균 넣기, 정렬, 중복 정리, 조건에 맞는 행만 남기기
+- **꾸미기**: 머리글 색과 굵기, 테두리, 숫자에 콤마, 조건에 맞는 칸만 색칠
+- **차트와 시트**: 선그래프·막대·도넛 차트 만들기, 시트 추가·이름 바꾸기
+- **값 채우기**: Excel에서 넣을 자리를 복사해 채팅창에 붙이고 값을 이어 적으면 그 자리에 씁니다
+- **수식**: "E열에 A에서 C 뺀 값" 같은 말이나 `=AVERAGE(D2:D6)` 같은 수식 그대로
 
-1. **설치파일 내려받기** — 릴리스는 소스 저장소가 아니라 [`sadStoneTurtle/kdr_release`](https://github.com/sadStoneTurtle/kdr_release/releases)에 올라간다.
-   파일 이름은 `kimdaeri-windows-x86_64-setup.exe`(Windows), `kimdaeri-macos-aarch64.dmg`(Apple Silicon Mac)이다.
-   **2026-09-06 현재 발행된 릴리스가 0건이다.** 그전까지는 [2절](#2-개발-환경--명령-하나로)의 개발자 경로로 실행한다.
-2. **첫 실행** — 설치 마법사가 Ollama 설치(winget)와 기동을 점검하고 범용 대화 모델을 받는다.
-3. **모델 두 개 준비** — 앱은 범용 대화용 `skt/A.X-4.0-Light:latest`와 Excel 계획용 `ax7bplanner-v3:latest`를 쓴다.
-   **둘 다 Ollama 공개 레지스트리에 없다.** 마법사는 플래너를 받지 않고, 범용 모델도 레지스트리 이름으로는 실패하므로
-   아래 네 줄을 한 번 친다(약 9GB).
+## 준비물
 
-   ```powershell
-   ollama pull hf.co/jayusop/A.X-4.0-Light-Q4_K_M-GGUF
-   ollama cp   hf.co/jayusop/A.X-4.0-Light-Q4_K_M-GGUF:latest skt/A.X-4.0-Light:latest
-   ollama pull hf.co/PJiNH/ax7bplanner-v3-GGUF
-   ollama cp   hf.co/PJiNH/ax7bplanner-v3-GGUF:latest ax7bplanner-v3:latest
-   ```
+- Windows 10/11 (64비트) 또는 Apple Silicon Mac
+- 데스크톱 Excel (Microsoft 365 또는 2016 이상)
+- 디스크 여유 15GB와 인터넷 (AI 모델 약 9GB를 한 번 내려받습니다)
+- 저장소 접근 권한 (비공개 저장소라 담당자가 GitHub 계정에 권한을 줘야 합니다)
 
-   `ollama list`에 두 이름이 보이면 준비 끝이다. 앱이 쓰는 모델은 이 둘뿐이다(`hf.co/…` 태그는 같은 파일의 별칭).
-4. **첫 명령** — Excel 파일을 열고 채팅창에 이렇게 말한다(전부 실측 통과한 문장이다).
-   - `합계를 표 아래에 한 줄로 넣어줘` / `밑에 합계 한줄 부탁해`
-   - `첫줄 남색 배경으로 하고 글자는 흰색 굵게 부탁` / `표 전체 테두리좀 둘러줘`
-   - `클레임 10 넘는 데만 빨갛게 칠해줘` / `상태가 대기인 애들만 분홍으로`
-   - `주문건수 많은 순으로 정렬해줘` / `수도권 행만 남기고 나머지는 치워줘`
-   - `정시배송률 가지고 선그래프 하나 뽑아줘` / `요약이라는 이름으로 시트 추가좀`
-   - Excel에서 범위를 드래그해 Ctrl+C → 채팅창에 Ctrl+V → `지역,주문건수; 수도권,10452 입력해줘` (쉼표=칸, 세미콜론=행)
+## 설치하기
 
-   더 많은 예시와 되묻기·정정 흐름은 [docs/demo-branch-notes.md](docs/demo-branch-notes.md)의 "Excel Live 질문 예시".
+자세한 순서는 위 설치 안내 링크에 있습니다. 요약하면 명령 세 줄이 전부입니다. 약 20~40분 걸리고, 대부분은 내려받는 시간입니다.
 
----
-
-## 2. 개발 환경 — 명령 하나로
-
-셋업 스크립트 하나가 도구·의존성·모델을 전부 준비한다. 저장소는 비공개라 GitHub 접근 권한이 있어야 클론된다.
-
-### Windows
+**Windows** — PowerShell에서:
 
 ```powershell
 git clone -b openclaw_jinh_demo https://github.com/sadStoneTurtle/officeclaw.git
 cd officeclaw
 powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
-npm run tauri:dev
 ```
 
-`setup.ps1`이 하는 일(순서대로): winget으로 Node·Rust(rustup)·Ollama·uv·Python 설치 → MSVC 빌드 도구 확인(없으면 설치) →
-`npm ci` → `uv sync --extra dev`(venv는 `%LOCALAPPDATA%\officeclaw\venvs\python-sidecar`, OneDrive 밖) →
-Tauri externalBin 자리 파일 → `cargo fetch` · `npm run build` · `cargo check` → 모델 두 개 pull + 이름 맞추기.
-첫 실행은 모델 9GB 포함 20~40분 걸린다(2026-09-06 새 PC 실측 16분). 다시 돌리면 이미 된 단계는 건너뛴다.
-
-**엑셀 파일은 저장소 루트의 `엑셀 작업 폴더/`에 둔다.** 소스 트리에서 앱을 돌리면 사이드카가 이 폴더를 워크스페이스로 쓴다
-(git에는 안 올라간다). 데모 워크북 `AI_Excel_Automation_Demo.xlsx`가 시작 파일로 들어 있다. 다른 곳을 쓰려면
-`OFFICE_CLAW_WORKSPACE_DIR` 환경변수로 바꾼다. 온보딩 3단계의 폴더 칸은 고르는 게 아니라 이 경로가 자동으로 채워지는 칸이고,
-누르면 탐색기로 열린다. 로컬 엔진이 켜질 때까지(첫 구동 최대 2분) 비어 있을 수 있다.
-**어느 파일에 명령할지는 워크스페이스 목록에서 .xlsx를 한 번 클릭해 고른다**(행에 "대상" 배지가 붙고 채팅 헤더에 이름이 뜬다). 더블클릭이나 "Excel로 열기"는 Excel 앱으로 여는 것이다. 홈 화면의 문서 카드도 같다(클릭=대상, 더블클릭=열기).
-
-### macOS (Apple Silicon)
+**Mac** — 터미널에서 (Xcode 개발 도구와 Homebrew가 먼저 있어야 합니다. 안내 1단계 참고):
 
 ```bash
-brew install ollama            # setup.sh는 Ollama를 설치하지 않는다 — 감지만 한다
-xcode-select --install         # Xcode CLT
-git clone -b openclaw_jinh_demo https://github.com/sadStoneTurtle/officeclaw.git && cd officeclaw
+git clone -b openclaw_jinh_demo https://github.com/sadStoneTurtle/officeclaw.git
+cd officeclaw
 ./scripts/setup.sh
+```
+
+설치가 끝나면 **창을 새로 열고** 켭니다.
+
+```
+cd officeclaw
 npm run tauri:dev
 ```
 
-> **macOS 실기 검증은 아직 0회다.** 첫 구동에서 어긋나는 항목은 `개발일지.md`에 실측으로 남겨 달라.
-> 첫 엑셀 명령에서 "Excel 제어 허용?" 팝업이 뜬다(시스템 설정 → 개인정보 보호 → 자동화). 거부하면 모든 라이브 명령이 실패한다.
-> 라이브 모드에서 조건부 서식 3종(데이터 막대·색조·수식)과 입력 유효성 검사는 macOS Excel 자동화 API가 없어 불가하다.
+처음에는 조립하느라 2~3분 걸리고, 그다음부터는 금방 뜹니다. 클릭 한 번으로 끝나는 설치 파일은 준비 중입니다.
 
-### 셋업 옵션
+## 처음 켰을 때
 
-| Windows `setup.ps1` | macOS `setup.sh` | 뜻 |
-|---|---|---|
-| `-DryRun` | `--dry-run` | 실행 없이 단계만 출력 |
-| `-SkipBuild` | `--skip-build` | `npm run build`·`cargo check` 생략 |
-| `-BuildSidecar` | `--build-sidecar` | 배포용 사이드카 단일 실행파일까지 빌드(Nuitka + PyInstaller, 개발에는 불필요) |
-| `-NoAutoInstallTools` | `--no-auto-install-tools` | 도구 자동 설치 끄기 |
-| `-PlannerHfRepo "<계정>/<저장소>"` | `OFFICECLAW_PLANNER_HF_REPO=…` | 플래너 GGUF를 받을 HF 저장소(기본 `PJiNH/ax7bplanner-v3-GGUF`) |
-| `-GeneralHfRepo "<계정>/<저장소>"` | `OFFICECLAW_GENERAL_HF_REPO=…` | 범용 모델 GGUF를 받을 HF 저장소(기본 `jayusop/A.X-4.0-Light-Q4_K_M-GGUF`) |
+"김대리 시작하기" 안내가 세 단계로 뜹니다.
 
-### 안 될 때
+1. **파일 설치** — 자동으로 확인됩니다.
+2. **AI 엔진 준비** — 목록에서 **skt/A.X-4.0-Light**가 기본으로 골라져 있습니다. 그대로 확인을 누릅니다. 엑셀 계획용 모델은 함께 준비됩니다.
+3. **워크스페이스 지정** — 폴더 경로가 자동으로 채워집니다. 잠깐 비어 있으면 채워질 때까지 기다렸다가 확인을 누릅니다.
 
-| 증상 | 원인과 조치 |
+Mac은 첫 엑셀 명령에서 "Excel을 제어하려고 합니다" 창이 뜹니다. **허용**해야 합니다.
+
+**엑셀 파일은 `officeclaw` 안의 `엑셀 작업 폴더`에 둡니다.** 김대리는 이 폴더 안의 파일만 다룹니다. 연습용으로 `AI_Excel_Automation_Demo.xlsx`가 들어 있습니다.
+
+- 파일 목록에서 **한 번 클릭** = 그 파일을 작업 대상으로 고릅니다("대상" 표시가 붙습니다).
+- **더블클릭** = Excel로 엽니다. Excel에서 열어 둔 채로 시키면 그 파일에 바로 반영됩니다.
+
+## 이렇게 시키면 됩니다
+
+셀 주소를 몰라도 됩니다. 아래는 실제로 통과한 문장들입니다.
+
+- `합계를 표 아래에 한 줄로 넣어줘` / `밑에 합계 한줄 부탁해`
+- `첫줄 남색 배경으로 하고 글자는 흰색 굵게` / `표 전체 테두리좀 둘러줘`
+- `클레임 10 넘는 데만 빨갛게 칠해줘` / `상태가 대기인 애들만 분홍으로`
+- `주문건수 많은 순으로 정렬해줘` / `수도권 행만 남기고 나머지는 치워줘`
+- `정시배송률 가지고 선그래프 하나 뽑아줘` / `요약이라는 이름으로 시트 추가좀`
+
+**표 채우기**: Excel에서 넣을 자리를 드래그해 복사(Ctrl+C / ⌘C), 채팅창에 붙여넣기(Ctrl+V / ⌘V) 한 뒤 값을 이어 적습니다. 쉼표가 칸, 세미콜론이 줄입니다.
+
+```
+지역,주문건수,출고건수; 수도권,10452,10120; 충청권,3892,3773 입력해줘
+```
+
+## 안 될 때
+
+| 이런 화면이 보이면 | 이렇게 하세요 |
 |---|---|
-| `failed to run 'cargo metadata' … program not found` | Rust가 없거나, 셸이 설치 전 PATH를 물려받았다(VS Code·Cursor 통합 터미널은 **에디터를 재시작**해야 새 PATH를 본다). `npm run tauri:dev`는 `scripts/with-tool-path.mjs`를 거쳐 `~\.cargo\bin`을 스스로 찾으니 최신 코드면 그대로 되고, 안 되면 `setup.ps1`을 안 돌린 것이다. |
-| `os error 5` 빌드 실패 | 앱이 이미 떠 있다. 먼저 닫는다. |
-| `스크립트 실행이 … 정책 때문에` | `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1`로 친다. |
-| 채팅은 되는데 Excel 계획이 엉망 / "플래너가 조용히 죽음" | 모델이 없다. `ollama list`에 `ax7bplanner-v3`·`skt/A.X-4.0-Light`가 있어야 한다. 없으면 `setup.ps1` 재실행 또는 [1절 3번](#1-설치해서-쓰기). |
-| 파이썬을 고쳤는데 반영이 안 됨 | 옛 사이드카가 포트 19532에 살아 있다. [3절](#3-매일-쓰는-명령)의 "사이드카 죽였다 켜기". |
-| 명령마다 20~30초 걸리다 "…초 안에 답하지 못했습니다" 또는 엉뚱한 되묻기 | GPU가 없거나 작은 PC(내장 그래픽)라 플래너가 CPU로 돈다. 사용자 환경변수 `EXCEL_LIVE_PARSE_TIMEOUT_SECONDS=45`를 두고 앱을 재시작한다(2026-09-06 Intel Arc A350M PC 실측: 기본 10초로는 매번 타임아웃). |
-| `failed to locate pyvenv.cfg` | `services/sidecar/.venv`가 OneDrive로 옮겨 온 껍데기다. 지우고 `setup.ps1`을 다시 돌린다. |
+| `cargo … program not found` / `cargo: command not found` | 설치 전에 열어 둔 창입니다. 창을 새로 열고 다시 켭니다. 편집기 안 터미널이면 편집기를 재시작합니다. |
+| `os error 5` 로 실행 실패 | 김대리가 이미 켜져 있습니다. 창을 닫고 다시 켭니다. |
+| "스크립트 실행이 정책 때문에…" (Windows) | 설치 명령을 `-ExecutionPolicy Bypass`까지 포함해 그대로 붙여넣습니다. |
+| 채팅은 되는데 엑셀 작업이 엉망 | AI 모델이 없습니다. 설치 명령을 다시 실행하면 모델만 받고 끝납니다. |
+| 명령마다 20~30초 걸리다 "…초 안에 답하지 못했습니다" | 그래픽카드가 없거나 작은 PC입니다. Windows는 `setx EXCEL_LIVE_PARSE_TIMEOUT_SECONDS 45`, Mac은 `~/.zshrc`에 `export EXCEL_LIVE_PARSE_TIMEOUT_SECONDS=45`를 넣고 껐다 켭니다. |
+| 파일을 더블클릭해도 Excel이 안 뜸 | 2026-09-06 이후 버전에서 고쳤습니다. `officeclaw` 폴더에서 `git pull` 후 다시 켭니다. |
+| Mac에서 엑셀 작업이 전부 실패 | 자동화 권한을 거부한 것입니다. 시스템 설정 → 개인정보 보호 및 보안 → 자동화에서 김대리 아래 Excel을 켭니다. |
+
+더 자세한 원인과 개발 관련 내용은 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)에 있습니다.
 
 ---
 
-## 3. 매일 쓰는 명령
-
-**인터프리터 규약**: 파이썬 명령은 전부 `cd services/sidecar` 한 뒤 `uv run python …`으로 친다.
-`uv`가 없으면 `sh scripts/py-run.sh …`가 프로젝트 venv를 찾아 준다.
-
-```powershell
-# 앱 (Rust + Vite + webview). Rust를 고쳤으면 재시작해야 새 IPC가 등록된다.
-npm run tauri:dev
-# UI 레이아웃만 볼 때 (Tauri 없음 → invoke()는 전부 실패)
-cd apps/desktop; npm run dev
-
-# 사이드카를 따로 띄울 때 / 파이썬을 고친 뒤 죽였다 켜기 (앱을 껐다 켜도 옛 사이드카가 남는다)
-Get-CimInstance Win32_Process | ? { $_.CommandLine -match 'office_claw_sidecar' } | % { Stop-Process -Id $_.ProcessId -Force }
-cd services/sidecar; uv run python -m office_claw_sidecar --port 19532 --auth-token dev-token
-
-# 모델이 다 있는지
-curl -H "Authorization: Bearer dev-token" localhost:19532/health     # missing_models 가 [] 여야 한다
-
-# 로그 — logs/chat_log.jsonl 을 직접 열지 말 것(한 턴이 2KB 한 줄)
-cd services/sidecar
-uv run python scripts/show_turns.py --log ../../logs/chat_log.jsonl -n 5          # 최근 5턴
-uv run python scripts/show_turns.py --log ../../logs/chat_log.jsonl --failed -n 8 # 깨진 턴만
-
-# 야간 게이트 — 세션을 시작하면 이것부터 본다. 맨 위에 ❌가 있으면 그게 첫 작업이다.
-Get-Content logs\nightly\LATEST.md -TotalCount 20
-```
-
-### 커밋 전 검사 (CI 미러)
-
-`.github/workflows/pr-check.yml`의 잡 5개를 그대로 미러링한다. `lefthook`이 pre-commit·pre-push로 자동 실행하지만
-(`cd apps/desktop && npm ci`를 해야 훅이 설치된다), PR 전 한 번 직접 돌리는 걸 권한다.
-
-```bash
-# 0. 개발일지 — 코드가 바뀌었는데 개발일지.md 가 안 바뀌면 커밋이 막힌다(devlog-guard)
-node scripts/check-devlog-update.mjs --staged
-# 1. Python 사이드카 (CI는 uvx 가 아니라 uv run ruff 다)
-cd services/sidecar && uv run ruff check . && uv run pytest -q
-# 2. Frontend
-cd apps/desktop && npm ci && npm run lint && npm run test:unit && npm run build
-# 3. Rust — cargo fmt --check 가 가장 자주 떨어진다
-cd apps/desktop/src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings
-# 4. Flutter 모바일 (CI는 3.44.6 고정)
-cd apps/mobile && flutter pub get --enforce-lockfile && flutter analyze && flutter test
-```
-
-- **코드를 고친 턴은 `개발일지.md`에 한 항목을 남긴다** — 증상·원인(파일:줄)·조치·측정(실행 id)·남은 것. 양식은 `CLAUDE.md` §1.
-- `tests/test_noop_honesty.py` 한 건은 Ollama 플래너 모델이 있어야 통과한다(모델 없는 PC에서는 1 failed가 정상, 2026-09-06 실측).
-- CI에 없는 검증: `cd services/relay && uv run pytest -q`, `scripts/verify-local-stack.ps1`, `scripts/verify-excel-live-e2e.mjs`(Excel 필요, 사이드카를 `--auth-token dev-token`으로 띄워 둘 것).
-- 프로토콜 스키마를 고쳤으면 `cd packages/protocol/python && uv run python ../scripts/export_schema.py` 재생성 후 diff가 비어야 한다.
-
-### 그 외 자주 쓰는 것
-
-```bash
-# 중계 서버 (모바일 연동 테스트)
-cd services/relay && uv sync --extra dev && uv run python -m oc_relay      # PORT 기본 8787
-# 모바일 (실기기는 데스크톱 페어링 화면의 relay 주소를 127.0.0.1 대신 LAN IP로)
-cd apps/mobile && flutter pub get && flutter run
-# 명령 진단 배터리 — 고치기 전/후를 잰다
-cd services/sidecar && uv run python scripts/run_command_diagnostics.py -n 3 --label before-<작업이름>
-```
-
----
-
-## 4. 구조와 문서
-
-```
-officeclaw/
-├─ apps/desktop/        Tauri 앱 — React 프론트(src/) + Rust 셸(src-tauri/)
-├─ apps/mobile/         Flutter 앱 — 릴레이로 데스크톱을 원격 조종
-├─ services/sidecar/    Python FastAPI 사이드카 — Excel 편집(xlwings·openpyxl)·LLM·권한
-├─ services/relay/      중계 서버 — 라우팅 헤더만 읽는 content-blind 릴레이
-├─ packages/            공용 계약 — protocol(스키마·프레임), py-shared(auth·codec)
-├─ scripts/             setup.ps1 / setup.sh / dev.ps1 / dev.sh / with-tool-path.mjs / nightly-gates.ps1 …
-├─ 엑셀 작업 폴더/       개발기 워크스페이스 — 앱이 읽고 쓰는 엑셀 파일 (git 제외)
-├─ datasets/ deploy/ train/ artifacts/   플래너 SFT 데이터·Modelfile·학습·LoRA(가중치는 git 밖)
-├─ docs/  logs/  config/                 문서 · 실행 로그(chat_log·nightly) · 게이트 기준선
-├─ CLAUDE.md            작업 규율과 명령 원문 (개발일지 규칙, 측정 절차, 코드 원칙)
-└─ 개발일지.md           실측 기록 — "무엇을 재 봤고 무엇이 반증됐는가"
-```
-
-**LLM 경로**: Ollama OpenAI 호환 API(`/v1/chat/completions`) 단일 경로. 계획은 `planner_model`(`ax7bplanner-v3`, 계획 JSON 전용 SFT),
-고수준 분해와 일반 대화는 `model`(`skt/A.X-4.0-Light`). 권한(SAFE/CONFIRM/DENIED)은 `tool_registry.py`가 소유한다.
-
-| 읽을 것 | 무엇 |
-|---|---|
-| [docs/architecture.md](docs/architecture.md) | 계층별 역할, Excel tool-calling 흐름, 모바일 원격 제어 흐름 (README에서 분리) |
-| [docs/demo-branch-notes.md](docs/demo-branch-notes.md) | 데모 브랜치 설계·측정 노트 — 질문 예시, 확신 3분기, 게이트, 트레이스, 플래너 학습 (README에서 분리) |
-| [docs/build-and-release.md](docs/build-and-release.md) | 윈도우 네이티브 빌드·배포, 사이드카 하드닝(Nuitka + PyInstaller) |
-| [CLAUDE.md](CLAUDE.md) | 개발일지 규칙, 에이전트 동작을 고칠 때의 측정 절차, 모듈 지도 |
-| [개발일지.md](개발일지.md) | 날짜별 실측 기록 (330개 항목) |
-| 하위 README | [services/relay](services/relay/README.md) · [packages/protocol](packages/protocol/README.md) · [packages/py-shared](packages/py-shared/README.md) · [logs](logs/README.md) · [datasets/distill](datasets/distill/README.md) |
-
-### 진단·감사 보고서 — 발행된 아티팩트 (claude.ai 링크)
-
-> 코드 밖에 있는 문서들 — 회의·인수인계·실측 대조는 전부 여기서 찾는다.
-> 링크는 소유자 계정으로 발행된 것이라 처음 열 때 claude.ai 로그인이 필요할 수 있다.
-> 문서를 갱신할 때는 새로 만들지 말고 **같은 URL로 재발행**한다(새 URL이 생기면 이 표가 낡는다).
-
-| 문서 | 무엇인가 | 누가 읽나 | 최신 |
-|------|----------|-----------|------|
-| [Office Claw 에이전트 진단](https://claude.ai/code/artifact/74b35322-e0eb-4b73-9fd6-d4fa982bef63) | 구조 지도 · 문제 4가지 · 반복 고리 · 8/19~25 변화(게이트·감사 라운드·반증) · 방향 · 핵심 숫자 · 결정 5항 | 회의 참석자, 처음 보는 사람 | 2026-08-25 v5 |
-| [Office Claw 구현 플로우](https://claude.ai/code/artifact/20c4452e-8a69-4e5b-be46-cd9e72d9f82d) | React → Rust → 사이드카 → LLM → 엑셀 전 구간을 함수·줄 번호·JSON 필드명 단위로. 승인 왕복, 매크로 루프, 함정 10가지 | 개발자, 이식·인수인계 | 2026-08-25 v3 |
-| [chat_log 판독 가이드](https://claude.ai/code/artifact/e4d7a612-231a-40ae-9061-724ec0f4e5f5) | 판단 로그(턴당 JSON 한 줄)의 13키 해부 · routes/stages 판독법 · 사용자 문제를 원인 층까지 지목해 개선으로 잇는 루프 · 실전 판독 예제 | 로그로 문제를 추적하려는 사람 | 2026-09-01 |
-| [사람 말투 대화 전록](https://claude.ai/code/artifact/cb1553b2-14a5-4b77-81f6-7bb021cac066) | 8개 데모 대시보드를 좌표 없는 사람 문장(오타·반말·정정 포함)과 실제 붙여넣기 흐름으로 만든 **대화 전문** — 되묻기·해석 카드·실행 리포트가 순서 그대로, 5라운드 반복 판정 | 실사용 흐름을 보고 싶은 사람 | 2026-08-19 |
-| [이미지 대 엑셀 대조](https://claude.ai/code/artifact/214f38f7-0f4d-49b8-8879-5d5e76685082) | 예시 6종의 목표 이미지(왼쪽)와 대화만으로 만들어진 실제 엑셀 파일 렌더(오른쪽)를 시트별로 나란히 | 결과물을 눈으로 확인하려는 사람 | 2026-08-18 |
-| [명령 인식·계획 정확도](https://claude.ai/code/artifact/1845c30a-5434-4b60-80d6-6e8faba21c90) | 다양한 명령을 넣었을 때 무엇을 할지 맞게 인식·계획하는지 — 게이트 안(99.4%)과 밖(68%)을 갈라 잰 실측, 과제별 표와 오인식 해부 | 정확도를 수치로 보려는 사람 | 2026-08-25 |
-| [Office-Claw 견고성 감사](https://claude.ai/code/artifact/110e2634-4a76-40bd-b0a0-a4b77d1ed472) | 대형 모델에 맡기듯 여러 방향에서 찔러 본 기록 — 라우팅 누수·정체성 이탈·프롬프트 주입 등 발견 F-01~F-09와 수정 순서 | 보안·견고성 검토자 | 2026-08-16 |
-
-### 핵심 설계 원칙
-
-1. **상태는 모듈이 소유** — 도메인 로직·상태는 `lib/` 모듈 안에, UI는 store 구독만
-2. **표시와 데이터 분리** — `lib/*.js`(데이터) → `components/ui/*.jsx`(primitive) → 도메인 UI(조합)
-3. **중복 fetch 없음** — 같은 데이터는 중앙 store/manager 1곳에서
-4. **IPC 단일 진입점** — 모든 Tauri invoke는 `lib/api.js` 경유
-5. **계약은 SSOT 하나** — 프로토콜은 `packages/protocol`, Excel 함수 명세는 `excel_tool_schemas.py`, 권한은 `tool_registry.py`
-6. **브랜드 색은 SVG가 원본** — `apps/desktop/src/assets/brand-logo-*.svg` / `brand-wordmark.svg`의 값을 코드로 옮길 뿐, 새 색을 코드에서 짓지 않는다
-
-### 현재 상태와 한계 (2026-09-06)
-
-- 릴리스 타깃은 **Apple Silicon macOS + Windows x64** 둘뿐이다. Intel Mac은 의도적으로 뺐다(러너 비용).
-- 발행된 릴리스 0건. macOS 실기 검증 0회. 표시명은 **김대리**, 번들 식별자는 `com.kimdaeri.app`.
-- 모바일 원격 승인 UI와 데스크톱 QR 카운트다운은 구현돼 있다. E2E 암호화·재연결 재개·Redis 라우팅은 미구현.
-- 플래너는 v3를 유지한다(v5r은 2026-08-20 삭제). 정확도 수치는 위 아티팩트 표의 "명령 인식·계획 정확도".
+- Windows 설치 안내: https://claude.ai/code/artifact/e4354599-27b5-414c-8723-65d29922b9c1
+- Mac 설치 안내: https://claude.ai/code/artifact/89905586-97dd-41eb-9383-c7f219fff0a3
+- 개발자 안내: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) · 작업 규율: [CLAUDE.md](CLAUDE.md) · 실측 기록: [개발일지.md](개발일지.md)
+- Windows 명령은 2026-09-06 새 Windows 11 PC에서 실제로 실행해 확인했습니다. Mac은 설치 스크립트 검토와 드라이런까지만 했고 실제 Mac에서는 아직 돌려 보지 않았습니다.
