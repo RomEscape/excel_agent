@@ -223,6 +223,17 @@ export async function excelLiveStatus() {
 }
 
 /**
+ * 워크스페이스 목록에서 고른 통합문서를 에이전트 대상으로 잡는다(파일 엔진).
+ *
+ * @param {string} workbookId 절대경로·워크스페이스 상대경로·파일명 중 하나
+ * @returns {Promise<{ selected: boolean, workbook_id: string, name: string, active_sheet: string }>}
+ */
+export async function excelLiveSelectWorkbook(workbookId) {
+  const raw = await call("excel_live_select_workbook", { workbookId });
+  return parseResponse(raw);
+}
+
+/**
  * 현재 Excel 선택 영역 주소만 빠르게 조회한다.
  *
  * 붙여넣기 프로브 전용 — 전체 명령 파이프라인("지금 선택한 범위 읽어줘")은

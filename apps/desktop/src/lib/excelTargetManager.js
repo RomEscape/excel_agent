@@ -10,7 +10,7 @@
 // CLAUDE.md §4: 상태는 모듈이 소유하고 UI는 구독해서 읽기만 한다.
 // 중복 fetch 금지 — 이 매니저 하나만 사이드카에 묻는다.
 
-import { excelLiveStatus, excelLiveCommand } from "./api.js";
+import { excelLiveStatus, excelLiveCommand, excelLiveSelectWorkbook } from "./api.js";
 
 const listeners = new Set();
 
@@ -18,6 +18,7 @@ let state = {
   available: false,
   engine: "",
   workbookName: "",
+  workbookId: "",
   sheetName: "",
   selection: "",
   readOnly: false,
@@ -45,18 +46,46 @@ export async function refreshExcelTarget() {
   try {
     const status = await excelLiveStatus();
     const books = Array.isArray(status?.workbooks) ? status.workbooks : [];
-    const first = books[0] || {};
+    // 사이드카가 선택된 통합문서를 알려 주면 그것이 대상이다. 없으면 첫 항목(옛 사이드카 호환).
+    const selectedId = String(status?.selected_workbook_id || "").toLowerCase();
+    const chosen =
+      (selectedId &&
+        books.find((b) => String(b?.workbook_id || b?.id || "").toLowerCase() === selectedId)) ||
+      books[0] ||
+      {};
     emit({
       available: Boolean(status?.available),
       engine: String(status?.engine || ""),
       // 사이드카가 name/id 중 무엇을 주는지 버전마다 달라서 둘 다 본다.
-      workbookName: String(first?.name || first?.id || ""),
+      workbookName: String(chosen?.name || chosen?.id || ""),
+      workbookId: String(chosen?.workbook_id || chosen?.id || ""),
+      sheetName: String(chosen?.active_sheet || state.sheetName || ""),
       error: "",
     });
   } catch (err) {
     // 사이드카가 죽어 있어도 화면은 살아 있어야 한다.
     emit({ available: false, workbookName: "", error: String(err?.message || err) });
   }
+  return state;
+}
+
+/**
+ * 목록에서 클릭한 통합문서를 대상으로 잡는다(파일 엔진).
+ *
+ * 2026-09-06: 이 경로가 없어서 대상은 늘 "가장 최근 수정된 파일"이었고, 사용자는 파일을
+ * 눌러도 아무 일도 안 일어난다고 봤다. 실패는 던진다 — 화면이 이유를 보여 줘야 한다.
+ */
+export async function selectExcelTarget(workbookIdOrName) {
+  const out = await excelLiveSelectWorkbook(String(workbookIdOrName || ""));
+  emit({
+    workbookName: String(out?.name || workbookIdOrName || ""),
+    workbookId: String(out?.workbook_id || ""),
+    sheetName: String(out?.active_sheet || ""),
+    selection: "",
+    error: "",
+  });
+  // 사이드카 기준으로 한 번 더 맞춘다(엔진·읽기전용 등).
+  await refreshExcelTarget();
   return state;
 }
 

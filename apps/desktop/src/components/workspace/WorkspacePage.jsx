@@ -28,7 +28,7 @@ import {
   readStoredChatWidth,
   resolveWorkspaceLayout,
 } from "@/lib/workspaceLayout.js";
-import { noteExcelTargetFromResult } from "@/lib/excelTargetManager.js";
+import { noteExcelTargetFromResult, selectExcelTarget } from "@/lib/excelTargetManager.js";
 import {
   decideExcelRoute,
   isChatFallbackResponse,
@@ -439,7 +439,15 @@ function FilePreview({ file, onClose }) {
 // 템플릿: "이 파일 요약해줘 - {name}" → 클립보드 복사 + 봇 딥링크 알림.
 //
 
-function FileList({ files, botUsername, onNavigate, onOpenFile, compact = false }) {
+function FileList({
+  files,
+  botUsername,
+  onNavigate,
+  onOpenFile,
+  onSelectExcel,
+  selectedName = "",
+  compact = false,
+}) {
   const [copiedPath, setCopiedPath] = useState(null);
 
   const handleCopyTemplate = async (e, entry) => {
@@ -469,19 +477,32 @@ function FileList({ files, botUsername, onNavigate, onOpenFile, compact = false 
       {files.map((entry) => {
         const isCopied = copiedPath === entry.path;
         const deepLink = botUsername ? `https://t.me/${botUsername}` : null;
+        const isExcel = !entry.is_dir && EXCEL_EXT.has(getExt(entry.name || ""));
+        const isTarget = isExcel && Boolean(selectedName) && entry.name === selectedName;
         return (
           <div
             key={entry.path}
             // min-w-0: 행 자체가 부모보다 좁아질 수 있어야 이름 칸이 말줄임된다.
             // 이게 없으면 좁은 창에서 행이 카드 밖으로 넘치거나 글자가 세로로 흐른다.
-            className="flex min-w-0 items-center gap-3 px-3 py-2.5 hover:bg-muted/40 cursor-pointer group transition-colors"
+            className={cn(
+              "flex min-w-0 items-center gap-3 px-3 py-2.5 hover:bg-muted/40 cursor-pointer group transition-colors",
+              isTarget && "bg-primary/10 hover:bg-primary/15",
+            )}
+            // 엑셀 파일 한 번 클릭 = 에이전트 대상으로 선택. Excel 로 여는 건 hover 버튼(더블클릭도 됨).
+            // 2026-09-06: 클릭이 곧바로 Excel 을 띄우던 때는 대상을 바꿀 방법이 없었다.
             onClick={() => {
               if (entry.is_dir) {
                 onNavigate(entry.path);
+              } else if (isExcel && onSelectExcel) {
+                onSelectExcel(entry);
               } else {
                 onOpenFile(entry);
               }
             }}
+            onDoubleClick={() => {
+              if (isExcel) onOpenFile(entry);
+            }}
+            title={isExcel ? "클릭: 대상으로 선택 · 더블클릭: Excel 로 열기" : undefined}
           >
             {entry.is_dir ? (
               <Folder className="h-4 w-4 shrink-0 text-blue-500" />
@@ -490,6 +511,11 @@ function FileList({ files, botUsername, onNavigate, onOpenFile, compact = false 
             )}
             <span className="flex-1 min-w-0 text-sm truncate" title={entry.name}>
               {entry.name}
+              {isTarget && (
+                <span className="ml-2 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                  대상
+                </span>
+              )}
             </span>
             {!entry.is_dir && (
               <span className="text-xs text-muted-foreground shrink-0 whitespace-nowrap">
@@ -507,6 +533,19 @@ function FileList({ files, botUsername, onNavigate, onOpenFile, compact = false 
             {/* hover 액션 — 파일에 한해서 */}
             {!entry.is_dir && (
               <div className="ml-1 flex shrink-0 items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                {isExcel && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenFile(entry);
+                    }}
+                    className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-0.5 text-[11px] font-medium hover:bg-muted"
+                    title="Excel 앱으로 열기"
+                  >
+                    Excel로 열기
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={(e) => handleCopyTemplate(e, entry)}
@@ -1770,6 +1809,8 @@ export default function WorkspacePage() {
   const [uploading, setUploading] = useState(false);
   const [creatingExcel, setCreatingExcel] = useState(false);
   const [uploadMessage, setUploadMessage] = useState("");
+  // 목록에서 "대상" 배지를 붙이기 위한 구독 — 폴링은 상단 ExcelTargetBar 쪽이 이미 하므로 0.
+  const excelTargetForList = useExcelTarget(0);
   const [botUsername] = useState(null); // 텔레그램 제거(dev 병합)로 항상 null — 딥링크 UI는 자연히 숨는다
 
   // 채팅 사이드 패널 상태 — localStorage persist
@@ -1888,6 +1929,17 @@ export default function WorkspacePage() {
       return;
     }
     setPreviewFile(file);
+  }, []);
+
+  // 목록에서 엑셀 파일을 클릭하면 에이전트 대상으로 잡는다(파일 엔진). 실패 이유는 화면에 보여 준다.
+  const handleSelectExcel = useCallback(async (file) => {
+    setError("");
+    try {
+      const out = await selectExcelTarget(file.path);
+      setUploadMessage(`대상 통합문서: ${out?.workbookName || file.name}`);
+    } catch (err) {
+      setError(`대상 선택 실패: ${toUserMessage(err)}`);
+    }
   }, []);
 
   const handleOpenFolder = useCallback(async () => {
@@ -2200,6 +2252,8 @@ export default function WorkspacePage() {
                   botUsername={botUsername}
                   onNavigate={handleNavigate}
                   onOpenFile={handleOpenFile}
+                  onSelectExcel={handleSelectExcel}
+                  selectedName={excelTargetForList?.workbookName || ""}
                   compact={!stacked && chatOpen && containerWidth - appliedChatWidth < 560}
                 />
               )}

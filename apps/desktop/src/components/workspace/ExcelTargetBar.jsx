@@ -20,7 +20,7 @@ export function ExcelTargetBar({ target, className }) {
         )}
       >
         <FileSpreadsheet className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        <span>열린 엑셀 파일이 없습니다 — 파일을 열면 여기에 표시됩니다.</span>
+        <span>대상 엑셀 파일이 없습니다 — 왼쪽 목록에서 .xlsx 파일을 클릭하면 여기에 표시됩니다.</span>
       </div>
     );
   }

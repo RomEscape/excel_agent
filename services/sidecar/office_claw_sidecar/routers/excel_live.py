@@ -17,6 +17,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from pathlib import Path
+
 from pydantic import BaseModel, Field
 
 from office_claw_sidecar.command_audit import get_command_audit_logger
@@ -8443,10 +8445,58 @@ _ACTION_SUMMARY = {
 def get_status():
     service = get_excel_live_service()
     available = service.is_available()
+    workbooks = service.list_workbooks() if available else []
+    # 파일 엔진의 목록은 "최근 수정 순"이라 첫 항목이 대상이 아닐 수 있다. 프론트(ExcelTargetBar)는
+    # 첫 항목을 대상으로 보여 주므로, 선택된 통합문서를 앞으로 옮기고 id 도 따로 알려 준다
+    # (2026-09-06 "파일 선택이 안 되는데" — 클릭해도 대상이 안 바뀌고 표시도 안 바뀌던 실사고).
+    selected = ""
+    try:
+        selected = str(service.get_selected_workbook_id() or "")
+    except Exception:
+        selected = ""
+    if selected:
+        lowered = selected.lower()
+        head = [w for w in workbooks if str(w.get("workbook_id", "")).lower() == lowered]
+        if head:
+            workbooks = head + [w for w in workbooks if w is not head[0]]
     return {
         "available": available,
         "engine": str(getattr(service, "engine", "xlwings") or "xlwings"),
-        "workbooks": service.list_workbooks() if available else [],
+        "selected_workbook_id": selected,
+        "workbooks": workbooks,
+    }
+
+
+class SelectWorkbookRequest(BaseModel):
+    workbook_id: str
+
+
+@router.post("/select-workbook")
+def select_workbook(req: SelectWorkbookRequest):
+    """워크스페이스 목록에서 클릭한 통합문서를 에이전트의 대상으로 잡는다.
+
+    2026-09-06: 파일 엔진에는 대상을 고르는 UI 경로가 없어 언제나 "가장 최근 수정된 파일"이
+    대상이었다. 사용자는 목록의 파일을 눌러도 아무 일도 안 일어난다고 봤다.
+    workbook_id 는 절대경로·워크스페이스 상대경로·파일명 중 무엇이든 된다(_resolve_workbook_path).
+    """
+    service = get_excel_live_service()
+    if not service.is_available():
+        raise HTTPException(status_code=409, detail="Excel Live 를 쓸 수 없습니다.")
+    try:
+        out = service.select_workbook(str(req.workbook_id or "").strip())
+    except Exception as exc:
+        raise _map_error(exc)
+    wb_id = str(out.get("workbook_id") or req.workbook_id)
+    sheet = ""
+    try:
+        sheet = str(service.list_sheets(wb_id).get("active_sheet") or "")
+    except Exception:
+        sheet = ""
+    return {
+        "selected": True,
+        "workbook_id": wb_id,
+        "name": Path(wb_id).name,
+        "active_sheet": sheet,
     }
 
 

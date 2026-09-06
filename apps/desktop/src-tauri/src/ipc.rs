@@ -259,6 +259,27 @@ pub async fn excel_live_save_workbook(
     .await
 }
 
+/// 워크스페이스 목록에서 클릭한 통합문서를 에이전트의 대상으로 잡는다.
+///
+/// 2026-09-06: 파일 엔진에는 대상을 고르는 경로가 없어 "가장 최근 수정된 파일"이 늘 대상이었다.
+/// `workbook_id` 는 사이드카가 절대경로·상대경로·파일명 모두 받는다.
+#[tauri::command]
+pub async fn excel_live_select_workbook(
+    state: State<'_, Mutex<SidecarState>>,
+    workbook_id: String,
+) -> Result<String, String> {
+    let body = serde_json::json!({ "workbook_id": workbook_id });
+    sidecar_request(
+        &state,
+        Method::POST,
+        "/excel-live/select-workbook",
+        Some(body),
+        Some(Duration::from_secs(10)),
+        "대상 통합문서 선택 실패",
+    )
+    .await
+}
+
 // ── Maintenance commands ─────────────────────────────────────────────────────
 
 #[tauri::command]

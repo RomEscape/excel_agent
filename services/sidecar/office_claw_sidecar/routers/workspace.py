@@ -76,6 +76,8 @@ async def list_files(path: str = Query(default="", description="워크스페이�
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"파일 목록 조회 실패: {e}")
 
+    # `.gitkeep` 같은 숨김 파일은 사용자 작업물이 아니다 — 목록에 떠서 "이건 뭐지"가 됐다(2026-09-06).
+    entries = [e for e in entries if not str(e.get("name", "")).startswith(".")]
     return {
         "files": entries,
         "workspace": str(sandbox.WORKSPACE_ROOT),

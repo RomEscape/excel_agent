@@ -69,6 +69,7 @@ Tauri externalBin 자리 파일 → `cargo fetch` · `npm run build` · `cargo c
 (git에는 안 올라간다). 데모 워크북 `AI_Excel_Automation_Demo.xlsx`가 시작 파일로 들어 있다. 다른 곳을 쓰려면
 `OFFICE_CLAW_WORKSPACE_DIR` 환경변수로 바꾼다. 온보딩 3단계의 폴더 칸은 고르는 게 아니라 이 경로가 자동으로 채워지는 칸이고,
 누르면 탐색기로 열린다. 로컬 엔진이 켜질 때까지(첫 구동 최대 2분) 비어 있을 수 있다.
+**어느 파일에 명령할지는 워크스페이스 목록에서 .xlsx를 한 번 클릭해 고른다**(행에 "대상" 배지가 붙고 채팅 헤더에 이름이 뜬다). 더블클릭이나 "Excel로 열기"는 Excel 앱으로 여는 것이다.
 
 ### macOS (Apple Silicon)
 
