@@ -24,6 +24,11 @@ _MAX_COLS = 26
 _SAMPLE_ROWS = 3
 _MAX_CELL_TEXT = 24
 _CACHE_TTL_SECONDS = 20.0
+# 라이브(xlwings) 엔진은 **사용자가 언제든 Excel 에서 타자할 수 있다.** 20초 캐시를 그대로
+# 쓰면 방금 친 열 이름·행이 플래너에게 안 보인다(2026-09-06 실측: 타자 직후 재생성해도
+# 같은 객체가 나왔고 used_range 가 A1:C3 에 머물렀다). 한 명령이 안에서 여러 번 읽는
+# 비용만 아끼면 되므로 짧게 잡는다. 파일 엔진은 우리만 파일을 바꾸므로 그대로 20초.
+_LIVE_CACHE_TTL_SECONDS = 3.0
 # 필터 값("완료된 것만")을 실제 셀 값으로 확정하려면 열마다 어떤 값이 들어 있는지 알아야 한다.
 # 활성 시트만 조금 더 깊게 읽어 저카디널리티 열의 값 후보를 모은다.
 _CATEGORY_SCAN_ROWS = 40
@@ -170,6 +175,42 @@ def _blocks_with_headers(
     return out
 
 
+def _resolve_digest_workbook_id(service: Any, workbook_id: str | None) -> str | None:
+    """다이제스트가 읽을 통합문서를 하나로 확정한다. 못 정하면 None(예전 동작).
+
+    라이브 엔진의 `read_range` 는 지목이 없으면 폴백 없이 거절하므로, 여기서 활성·선택
+    통합문서의 경로를 미리 구해 둬야 머리글과 예시행이 채워진다(2026-09-06 감사).
+    조회는 전부 편의라 실패하면 조용히 원래 값을 돌려준다.
+    """
+    if workbook_id:
+        return workbook_id
+    getter = getattr(service, "get_selected_workbook_id", None)
+    if callable(getter):
+        try:
+            selected = str(getter() or "").strip()
+            if selected:
+                return selected
+        except Exception:
+            pass
+    # 라이브 엔진: 선택이 없으면 활성 통합문서의 경로. (파일 엔진에는 이 메서드가 없을 수 있다.)
+    path_getter = getattr(service, "get_workbook_path", None)
+    if callable(path_getter):
+        try:
+            path = str(path_getter(None) or "").strip()
+            if path:
+                return path
+        except Exception:
+            pass
+    try:
+        rows = service.list_workbooks() or []
+        if len(rows) == 1:
+            # 여러 개면 어느 것이 사용자의 관심사인지 알 수 없다 — 예전처럼 엔진에 맡긴다.
+            return str(rows[0].get("workbook_id") or "").strip() or None
+    except Exception:
+        pass
+    return None
+
+
 def build_workbook_digest(
     service: Any,
     *,
@@ -181,8 +222,20 @@ def build_workbook_digest(
 
     실패해도 명령 처리를 막지 않도록 예외는 모두 삼키고 부분 결과를 돌려준다.
     """
+    # 대상 통합문서를 **먼저 확정한다**(2026-09-06 감사).
+    #
+    # 프론트는 workbook_id 를 항상 null 로 보내고(WorkspacePage 가 그렇게 부른다) 사용자가
+    # 파일을 클릭하지 않았으면 선택도 비어 있다. 그런데 `list_sheets`·`get_used_range_ref` 는
+    # 활성 통합문서로 폴백하는 반면 `read_range` 는 폴백 없이 WorkbookNotFoundError 를 던진다.
+    # 그래서 시트 목록과 사용 범위는 채워지고 **머리글·예시행만 통째로 비었다** — 플래너는
+    # 사용자가 방금 타자한 열 이름을 못 본 채 파라미터를 추측했다. 여기서 한 번 확정해
+    # 아래 모든 호출이 같은 통합문서를 보게 한다.
+    workbook_id = _resolve_digest_workbook_id(service, workbook_id)
+
     cache_key = str(workbook_id or "__selected__")
     now = time.monotonic()
+    # 라이브 엔진은 사용자가 그 사이에 타자했을 수 있어 캐시를 짧게 잡는다.
+    ttl = _LIVE_CACHE_TTL_SECONDS if str(getattr(service, "engine", "")) == "xlwings" else _CACHE_TTL_SECONDS
     if use_cache:
         cached = _digest_cache.get(cache_key)
         if cached and cached[0] > now:
@@ -240,7 +293,7 @@ def build_workbook_digest(
         digest["sheets"].append(entry)
 
     if use_cache:
-        _digest_cache[cache_key] = (now + _CACHE_TTL_SECONDS, digest)
+        _digest_cache[cache_key] = (now + ttl, digest)
     return digest
 
 

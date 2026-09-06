@@ -3311,10 +3311,44 @@ class ExcelLiveService:
         path = self.get_workbook_path(workbook_id)
         try:
             wb = self._resolve_workbook(workbook_id)
+        except Exception:
+            return ""
+
+        # 저장되지 않은 사용자 편집을 조용히 버리지 않는다(2026-09-06 감사).
+        #
+        # 위 설명은 "읽기 전용에만 쓴다"고 못 박았지만, COM 쓰기 거부 폴백
+        # (`routers/excel_live.py::_execute_action`)은 상태 플래그를 다시 보지 않고
+        # 예외 코드만으로 여기를 부른다 — 정품 미인증 Excel 은 ReadOnly=False 로도
+        # 쓰기를 거부하므로 **편집 가능한 통합문서가 저장 없이 닫히는 경로**가 실재했다.
+        # 사용자가 방금 친 값이 사라진다. 파괴는 여기서만 일어나므로 여기서 막는다.
+        if self._workbook_has_unsaved_changes(wb):
+            try:
+                wb.save()
+            except Exception as exc:
+                raise ExcelLiveError(
+                    "Excel에 저장되지 않은 변경이 있어 통합문서를 닫지 못했습니다. "
+                    "Excel에서 직접 저장(Ctrl+S)한 뒤 다시 시도해 주세요."
+                ) from exc
+
+        try:
             wb.close()
         except Exception:
             return ""
         return path
+
+    @staticmethod
+    def _workbook_has_unsaved_changes(wb: Any) -> bool:
+        """Excel 의 `Saved` 플래그. 못 읽으면 **안전한 쪽(있다)** 으로 답한다.
+
+        모르면서 "없다"고 답하면 그 순간 사용자의 작업이 사라진다.
+        """
+        try:
+            saved = getattr(getattr(wb, "api", None), "Saved", None)
+        except Exception:
+            return True
+        if saved is None:
+            return True
+        return not bool(saved)
 
     def open_workbook_in_excel(self, path: str) -> bool:
         """파일을 Excel에서 다시 연다. 편집 결과를 사용자가 바로 보게 하기 위함.

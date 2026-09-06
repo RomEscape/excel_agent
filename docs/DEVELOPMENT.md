@@ -42,6 +42,13 @@ npm run tauri:dev
 > 첫 엑셀 명령에서 "Excel 제어 허용?" 팝업이 뜬다(시스템 설정 → 개인정보 보호 → 자동화). 거부하면 모든 라이브 명령이 실패한다.
 > 라이브 모드에서 조건부 서식 3종(데이터 막대·색조·수식)과 입력 유효성 검사는 macOS Excel 자동화 API가 없다. 2026-09-06 부터 `ExcelLiveService._darwin_file_roundtrip`이 저장→닫기→openpyxl 적용→다시 열기로 처리한다(실행 취소 목록에 안 남음, 미저장 통합문서는 거절, 실기 검증 전).
 
+> **다른 파이썬 프로젝트에서 `uv sync` 를 돌리기 전에 읽어라.** 셋업이
+> `UV_PROJECT_ENVIRONMENT` 를 사용자 환경변수로 박아 둔다(사이드카 venv). 그 상태로
+> `services/relay` 나 다른 프로젝트에서 `uv sync` 를 돌리면 **같은 venv 를 그 프로젝트에
+> 맞춰 정리하면서 사이드카 패키지를 지운다**(2026-09-06 실측: 프로젝트 A 동기화 뒤 B 를
+> 동기화하니 `Uninstalled 1 package`). 그 프로젝트에서는 앞에 붙여 덮어써라:
+> `UV_PROJECT_ENVIRONMENT=.venv uv sync` (PowerShell 은 `$env:UV_PROJECT_ENVIRONMENT=".venv"`).
+
 ### 셋업 옵션
 
 | Windows `setup.ps1` | macOS `setup.sh` | 뜻 |

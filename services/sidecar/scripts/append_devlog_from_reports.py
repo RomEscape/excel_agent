@@ -102,7 +102,9 @@ def _build_section(
     date_label = now.strftime("%Y-%m-%d")
     time_label = now.strftime("%H:%M:%S")
     lines: list[str] = []
-    lines.append(f"## {date_label} — 자동 품질 리포트")
+    # 제목에 시각을 넣는다 — 하루에 여러 번 돌면 날짜만으로는 순서를 알 수 없다(CLAUDE.md §1).
+    weekday = "월화수목금토일"[now.weekday()]
+    lines.append(f"## {date_label} ({weekday}) {now:%H:%M} KST — 자동 품질 리포트")
     lines.append("")
     lines.append(f"- 기록 시각(KST): `{date_label} {time_label}`")
     lines.append(f"- 자동 기록 ID: `{auto_id}`")

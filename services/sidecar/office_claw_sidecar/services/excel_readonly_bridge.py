@@ -96,6 +96,44 @@ def restore_workbook(service: Any, path: str) -> bool:
 #   0x800AC472 (-2146777988) — 다른 작업이 진행 중이라 거부(모달 대화상자 등).
 _COM_WRITE_REFUSAL_CODES = frozenset({-2146827284, -2146777988})
 
+# Excel 이 "지금은 못 받는다"고 되돌려보내는 COM 오류들 — 거부가 아니라 **사용 중**이다.
+#   0x80010001 (-2147418111) RPC_E_CALL_REJECTED — 셀 편집 모드(커서가 셀 안에서 깜빡임),
+#     모달 대화상자, 드래그 중 등. 사용자가 Esc 한 번 누르면 풀린다.
+#   0x8001010A (-2147417846) RPC_E_SERVERCALL_RETRYLATER — 잠깐 뒤 다시 부르면 된다.
+# 이걸 쓰기 거부로 오인해 파일 엔진 폴백을 타면 **사용자가 편집 중인 통합문서를 닫는다.**
+# 2026-09-06 감사 전까지 코드 전체에 이 두 코드의 처리가 한 건도 없어, 화면에는
+# "Excel Live 오류: (-2147418111, 'Call was rejected by callee.', None, None)" 이 그대로 떴다.
+_COM_BUSY_CODES = frozenset({-2147418111, -2147417846})
+
+
+def _has_com_code(exc: BaseException, codes: frozenset[int]) -> bool:
+    args = getattr(exc, "args", ()) or ()
+    for arg in args:
+        if isinstance(arg, int) and arg in codes:
+            return True
+        if isinstance(arg, (tuple, list)):
+            for inner in arg:
+                if isinstance(inner, int) and inner in codes:
+                    return True
+    return False
+
+
+def looks_like_com_busy(exc: BaseException) -> bool:
+    """Excel 이 지금 응답할 수 없는 상태인가(셀 편집 중·대화상자 열림).
+
+    거부(`looks_like_com_write_refusal`)와 반드시 갈라야 한다 — 거부는 파일 엔진으로
+    우회하지만, 사용 중은 **기다렸다 다시 부르는 것**이 맞다. 우회하려고 통합문서를
+    닫으면 사용자가 지금 치고 있던 내용이 사라진다.
+    """
+    return _has_com_code(exc, _COM_BUSY_CODES)
+
+
+#: 사용 중일 때 사용자에게 보여 줄 말. 원인과 할 일을 같이 적는다.
+COM_BUSY_MESSAGE = (
+    "Excel이 지금 다른 작업 중이라 명령을 받지 못했습니다. "
+    "셀을 편집 중이면 Enter나 Esc를 누르고, 열려 있는 대화상자를 닫은 뒤 다시 시도해 주세요."
+)
+
 
 def looks_like_com_write_refusal(exc: BaseException) -> bool:
     """이 예외가 "Excel이 쓰기를 거부했다"인가.

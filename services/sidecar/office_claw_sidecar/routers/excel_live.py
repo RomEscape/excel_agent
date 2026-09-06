@@ -156,7 +156,9 @@ from office_claw_sidecar.services.excel_planner_prompt import (
     render_conversation_history,
 )
 from office_claw_sidecar.services.excel_readonly_bridge import (
+    COM_BUSY_MESSAGE,
     can_bridge,
+    looks_like_com_busy,
     release_workbook,
     restore_workbook,
 )
@@ -7006,7 +7008,7 @@ def _execute_action(
             raise ExcelEditBlockedError(block.reason, code=block.code)
 
     try:
-        return _dispatch_action(
+        return _dispatch_with_recovery(
             action=action, params=params, workbook_id=workbook_id, sheet_name=sheet_name
         )
     except Exception as exc:
@@ -7029,6 +7031,48 @@ def _execute_action(
             invalidate_excel_engine_cache()
             restore_workbook(service, bridge.path)
             invalidate_workbook_digest()
+
+
+#: Excel 이 사용 중일 때 다시 부르기까지 기다리는 시간(초). 셀 편집·대화상자는 사람이
+#: 치우는 데 몇 초가 걸리므로 길게 기다리지 않는다 — 두 번 더 해 보고 안내로 넘긴다.
+_COM_BUSY_RETRY_DELAYS = (0.4, 1.2)
+
+
+def _dispatch_with_recovery(
+    *,
+    action: str,
+    params: dict[str, Any],
+    workbook_id: str | None,
+    sheet_name: str | None,
+) -> dict[str, Any]:
+    """액션을 실행하되 **스스로 나을 수 있는 두 가지 실패**를 처리한다(2026-09-06 감사).
+
+    1) Excel 사용 중(RPC_E_CALL_REJECTED): 셀 편집 모드·대화상자다. 잠깐 기다렸다 다시
+       부른다. 끝내 안 되면 무엇을 하라는지 말한다 — 파일 엔진으로 우회하면 안 된다
+       (사용자가 편집 중인 통합문서를 닫게 된다).
+    2) 엔진 오선택: 엔진은 "Excel 에 열린 통합문서가 있는가"로 고르고 그 판정에 5초
+       캐시가 붙어 있다. 사용자가 Excel 을 막 열었거나 막 닫은 5초 안에는 틀린 엔진을
+       고른다(실측: 파일 엔진이 잠긴 파일에 409, 또는 라이브 엔진이 "Excel 인스턴스를
+       찾지 못했습니다"). 캐시를 버리고 한 번만 다시 고른다.
+    """
+    for delay in (*_COM_BUSY_RETRY_DELAYS, None):
+        try:
+            return _dispatch_action(
+                action=action, params=params, workbook_id=workbook_id, sheet_name=sheet_name
+            )
+        except ExcelConnectionError:
+            # 연결 실패는 엔진을 잘못 고른 신호일 수 있다. 딱 한 번 다시 고른다.
+            invalidate_excel_engine_cache()
+            return _dispatch_action(
+                action=action, params=params, workbook_id=workbook_id, sheet_name=sheet_name
+            )
+        except Exception as exc:
+            if not looks_like_com_busy(exc):
+                raise
+            if delay is None:
+                raise ExcelConnectionError(COM_BUSY_MESSAGE) from exc
+            time.sleep(delay)
+    raise ExcelConnectionError(COM_BUSY_MESSAGE)
 
 
 def _dispatch_action(

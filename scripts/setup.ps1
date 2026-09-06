@@ -115,6 +115,16 @@ function Initialize-ToolPaths {
     Add-PathIfExists -PathEntry "$env:APPDATA\npm"
     Add-PathIfExists -PathEntry $NpmGlobalPrefix
     Add-PathIfExists -PathEntry (Join-Path $NpmGlobalPrefix "bin")
+
+    # winget 이 **방금** 깐 도구는 이 셸의 PATH 에 없다 — winget 은 새 프로세스에만
+    # 반영되기 때문이다. 그래서 도구 0개인 새 PC 에서 uv·Ollama 를 설치하고도 곧바로
+    # "찾지 못했습니다"로 빠져, 모델을 하나도 안 받은 채 "통합 설치 완료"가 찍혔다
+    # (2026-09-06 새 PC 시뮬레이션 실측). 설치 위치를 직접 넣어 준다.
+    Add-PathIfExists -PathEntry "$env:LOCALAPPDATA\Microsoft\WinGet\Links"
+    Add-PathIfExists -PathEntry "$env:LOCALAPPDATA\Programs\Ollama"
+    Add-PathIfExists -PathEntry "$env:ProgramFiles\Ollama"
+    Add-PathIfExists -PathEntry "$env:USERPROFILE\.local\bin"
+    Add-PathIfExists -PathEntry "$env:LOCALAPPDATA\Programs\uv\bin"
 }
 
 function Add-MsvcLinkerPaths {
@@ -361,6 +371,9 @@ Write-Host "OPENCLAW_HOME=$env:OPENCLAW_HOME"
 Write-Host "CARGO_HOME=$env:CARGO_HOME"
 Write-Host "NPM_CONFIG_PREFIX=$env:NPM_CONFIG_PREFIX"
 Write-Host "UV_PROJECT_ENVIRONMENT=$env:UV_PROJECT_ENVIRONMENT"
+Write-Host "  ↳ 이 값은 사용자 환경변수로 저장됩니다. 다른 파이썬 프로젝트에서 'uv sync'를 돌리면" -ForegroundColor DarkGray
+Write-Host "    같은 venv 를 쓰다가 사이드카 패키지가 지워집니다. 그럴 땐 그 프로젝트에서" -ForegroundColor DarkGray
+Write-Host "    UV_PROJECT_ENVIRONMENT=.venv 를 지정하세요 (docs/DEVELOPMENT.md)." -ForegroundColor DarkGray
 if (Get-Command openclaw -ErrorAction SilentlyContinue) {
     Write-Host "OPENCLAW_CLI=detected"
 } else {

@@ -92,6 +92,8 @@ const ERROR_MAPPINGS = [
     pattern: /HTTP [45]\d{2}/,
     message: "서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
   },
+  // 위 HTTP 규칙보다 **아래**에 둬도 상관없다 — 사이드카가 지어 준 한국어 안내는
+  // toUserMessage 맨 앞의 extractSidecarDetail 이 먼저 가로챈다(2026-09-06 감사).
 
   // Keychain / credential store
   {
@@ -239,6 +241,42 @@ const ERROR_MAPPINGS = [
  * @param {string} [fallback] - Optional custom fallback message
  * @returns {string} Korean user-friendly error message
  */
+/** 한글이 한 글자라도 있는가 — 사이드카가 사람 보라고 쓴 문장의 지문. */
+function hasHangul(text) {
+  return /[가-힣]/.test(String(text || ""));
+}
+
+/**
+ * Rust 가 넘긴 `HTTP 409: {"detail":"…"}` 에서 사이드카가 쓴 한국어 안내를 꺼낸다.
+ *
+ * 2026-09-06 감사 실측: 사이드카는 "'260906.xlsx' 파일이 Excel에서 열려 있어 저장할 수
+ * 없습니다. Excel에서 해당 파일을 닫고 다시 시도하거나…" 처럼 **원인과 할 일을 정확히**
+ * 말해 주는데, 아래 패턴 표의 `HTTP [45]\d{2}` 가 먼저 걸려 전부 "서버 오류가
+ * 발생했습니다"로 바뀌고 있었다. 사용자는 무엇을 해야 할지 알 길이 없었다.
+ *
+ * @returns {string} 쓸 만한 안내이거나 빈 문자열
+ */
+export function extractSidecarDetail(raw) {
+  const text = String(raw || "");
+  const m = text.match(/HTTP\s+[45]\d{2}\s*:\s*([\s\S]+)$/);
+  if (!m) return "";
+  const body = m[1].trim();
+  let detail = "";
+  try {
+    const parsed = JSON.parse(body);
+    const d = parsed && typeof parsed === "object" ? parsed.detail : null;
+    detail = typeof d === "string" ? d : "";
+  } catch {
+    // JSON 이 아니면 본문 자체가 문장일 수 있다.
+    detail = body;
+  }
+  detail = detail.trim();
+  // 한국어 안내만 통과시킨다. 영어 스택트레이스·COM 덤프를 그대로 보여 주면
+  // 예전의 "Excel Live 오류: (-2147418111, 'Call was rejected by callee.'…)" 로 되돌아간다.
+  if (!detail || !hasHangul(detail) || detail.length > 300) return "";
+  return detail;
+}
+
 export function toUserMessage(error, fallback) {
   const raw =
     error instanceof Error
@@ -246,6 +284,12 @@ export function toUserMessage(error, fallback) {
       : typeof error === "string"
       ? error
       : String(error);
+
+  // 사이드카가 지어 준 한국어 안내가 있으면 그것이 가장 정확하다 — 패턴 표보다 먼저 본다.
+  // "'260906.xlsx' 파일이 Excel에서 열려 있어 저장할 수 없습니다…" 처럼 원인과 할 일을
+  // 같이 말해 주는 문장이, 예전에는 전부 "서버 오류가 발생했습니다"로 바뀌었다.
+  const detail = extractSidecarDetail(raw);
+  if (detail) return detail;
 
   for (const { pattern, message } of ERROR_MAPPINGS) {
     if (pattern.test(raw)) {
