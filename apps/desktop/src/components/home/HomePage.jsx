@@ -36,6 +36,8 @@ import useAppStore from "@/store/appStore";
 import useChatStore from "@/store/chatStore";
 import useDocumentStore from "@/store/documentStore";
 import useStatusStore from "@/store/statusStore";
+import { useExcelTarget } from "@/hooks/useExcelTarget.js";
+import { selectExcelTarget } from "@/lib/excelTargetManager.js";
 import { getOllamaStatus } from "@/lib/statusTokens";
 
 /** 시간대에 맞는 인사 — 와이어프레임의 `좋은 아침입니다`. */
@@ -82,6 +84,9 @@ export default function HomePage() {
   // 삭제 모드 — 카드를 눌러 고르고 확인 다이얼로그로 지운다.
   const [deleteMode, setDeleteMode] = useState(false);
   const [selected, setSelected] = useState(() => new Set());
+  // 에이전트 대상(채팅 헤더와 같은 출처). 폴링은 워크스페이스 쪽이 하므로 구독만.
+  const excelTarget = useExcelTarget(0);
+  const [targetError, setTargetError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
@@ -116,6 +121,18 @@ export default function HomePage() {
       handleSubmit();
     }
   };
+
+  // 엑셀 카드 한 번 클릭 = 에이전트 대상으로 선택. 다른 종류(pdf·docx)는 예전처럼 곧바로 연다.
+  const handleSelectDoc = useCallback((doc) => {
+    if (doc.kind !== "excel") {
+      openDocument(doc.path);
+      return;
+    }
+    setTargetError("");
+    selectExcelTarget(doc.path).catch((err) => {
+      setTargetError(`대상 선택 실패: ${String(err?.message || err)}`);
+    });
+  }, []);
 
   const toggleSelect = useCallback((path) => {
     setSelected((prev) => {
@@ -265,6 +282,11 @@ export default function HomePage() {
             {error}
           </p>
         )}
+        {targetError && (
+          <p className="mt-3 w-full rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {targetError}
+          </p>
+        )}
 
         {/* 문서 카드 그리드 */}
         <div className="mt-4 grid w-full grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-5">
@@ -273,7 +295,9 @@ export default function HomePage() {
               key={doc.path}
               doc={doc}
               selected={selected.has(doc.path)}
+              active={doc.kind === "excel" && Boolean(excelTarget?.workbookName) && doc.name === excelTarget.workbookName}
               onOpen={openDocument}
+              onSelect={handleSelectDoc}
               onToggleSelect={deleteMode ? toggleSelect : undefined}
             />
           ))}

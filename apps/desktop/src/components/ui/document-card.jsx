@@ -24,24 +24,47 @@ const KIND_STYLE = {
 /**
  * @param {{path: string, name: string, kind: string, age: string}} doc
  * @param {boolean} selected 삭제 모드에서 고른 상태
- * @param {(path: string) => void} onOpen
- * @param {(path: string) => void} [onToggleSelect] 있으면 선택 모드로 동작한다
+ * @param {boolean} [active] 에이전트가 지금 대상으로 잡은 문서
+ * @param {(path: string) => void} onOpen 더블클릭 — OS 기본 앱(Excel)으로 연다
+ * @param {(doc: object) => void} [onSelect] 한 번 클릭 — 에이전트 대상으로 잡는다. 없으면 클릭이 곧 열기
+ * @param {(path: string) => void} [onToggleSelect] 있으면 삭제 선택 모드로 동작한다
+ *
+ * 2026-09-06: 클릭 한 번이 곧 Excel 열기였다. 대상을 고를 방법이 없었고, 사용자는 "더블클릭하면
+ * 열려야 하는 것 아니냐"고 했다. 워크스페이스 목록과 같은 규칙으로 맞춘다.
  */
-export function DocumentCard({ doc, selected, onOpen, onToggleSelect }) {
+export function DocumentCard({ doc, selected, active = false, onOpen, onSelect, onToggleSelect }) {
   const style = KIND_STYLE[doc.kind] ?? KIND_STYLE.excel;
   const Icon = style.icon;
   const selectable = typeof onToggleSelect === "function";
+  const targetable = !selectable && typeof onSelect === "function";
+
+  const handleClick = () => {
+    if (selectable) onToggleSelect(doc.path);
+    else if (targetable) onSelect(doc);
+    else onOpen?.(doc.path);
+  };
 
   return (
     <button
       type="button"
-      onClick={() => (selectable ? onToggleSelect(doc.path) : onOpen?.(doc.path))}
-      title={selectable ? `${doc.name} 선택` : `${doc.name} 열기`}
+      onClick={handleClick}
+      onDoubleClick={() => {
+        if (!selectable) onOpen?.(doc.path);
+      }}
+      title={
+        selectable
+          ? `${doc.name} 선택`
+          : targetable
+            ? `${doc.name} — 클릭: 대상으로 선택 · 더블클릭: 열기`
+            : `${doc.name} 열기`
+      }
       className={cn(
         "group flex w-full flex-col overflow-hidden rounded-xl border text-left transition-colors",
         selected
           ? "border-destructive ring-2 ring-destructive/30"
-          : "border-border hover:border-primary/50"
+          : active
+            ? "border-primary ring-2 ring-primary/30"
+            : "border-border hover:border-primary/50"
       )}
     >
       {/* 썸네일 자리 */}
@@ -59,6 +82,11 @@ export function DocumentCard({ doc, selected, onOpen, onToggleSelect }) {
         <Icon className={cn("h-4 w-4 shrink-0", style.tint)} />
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
           {doc.name}
+          {active && (
+            <span className="ml-2 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+              대상
+            </span>
+          )}
         </span>
         <span className="shrink-0 text-[11px] text-muted-foreground">{doc.age}</span>
       </span>

@@ -690,22 +690,27 @@ pub async fn open_workspace_file(
     // 4) OS 기본 앱으로 열기
     #[cfg(target_os = "macos")]
     let result = std::process::Command::new("open").arg(&target_str).status();
+    // Windows: 예전엔 `powershell -Command Start-Process -FilePath <경로>` 였는데, -Command 뒤 인자를
+    // PowerShell 이 공백으로 다시 쪼개서 `C:\...\바탕 화면\...` 처럼 공백이 든 경로는 항상 실패했다
+    // (2026-09-06 실측: 종료코드 1, Excel 안 뜸. 개발기 경로엔 공백이 없어 안 드러났다).
+    // 게다가 종료코드를 안 봐서 실패가 `ok:true` 로 보고됐다. rundll32 는 argv 를 그대로 받는다.
     #[cfg(target_os = "windows")]
-    let result = std::process::Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-Command",
-            "Start-Process",
-            "-FilePath",
-            &target_str,
-        ])
+    let result = std::process::Command::new("rundll32.exe")
+        .args(["url.dll,FileProtocolHandler", &target_str])
         .status();
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let result = std::process::Command::new("xdg-open")
         .arg(&target_str)
         .status();
 
-    result.map_err(|e| format!("파일 열기 실패: {}", e))?;
+    let status = result.map_err(|e| format!("파일 열기 실패: {}", e))?;
+    if !status.success() {
+        return Err(format!(
+            "파일 열기 실패 (종료코드 {}): {}",
+            status.code().unwrap_or(-1),
+            path
+        ));
+    }
 
     let response = serde_json::json!({
         "ok": true,
