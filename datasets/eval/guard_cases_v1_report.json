@@ -8,7 +8,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 20.8
+  "secs": 20.6
  },
  {
   "idx": 2,
@@ -19,7 +19,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 2.9
+  "secs": 3.5
  },
  {
   "idx": 3,
@@ -30,7 +30,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 16.9
+  "secs": 20.0
  },
  {
   "idx": 4,
@@ -41,7 +41,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 16.9
+  "secs": 20.0
  },
  {
   "idx": 5,
@@ -52,7 +52,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 17.0
+  "secs": 20.1
  },
  {
   "idx": 6,
@@ -63,7 +63,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 16.8
+  "secs": 20.0
  },
  {
   "idx": 7,
@@ -74,7 +74,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 16.7
+  "secs": 20.1
  },
  {
   "idx": 8,
@@ -85,7 +85,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 2.9
+  "secs": 3.5
  },
  {
   "idx": 9,
@@ -96,7 +96,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 2.9
+  "secs": 3.5
  },
  {
   "idx": 10,
@@ -107,7 +107,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 3.0
+  "secs": 3.5
  },
  {
   "idx": 11,
@@ -118,7 +118,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 17.0
+  "secs": 20.2
  },
  {
   "idx": 12,
@@ -129,7 +129,7 @@
   "card": false,
   "action": "excel_live.set_formula",
   "detail": "수식 적용 — A2 · 수식 1칸",
-  "secs": 2.9
+  "secs": 3.6
  },
  {
   "idx": 13,
@@ -140,7 +140,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:C5",
-  "secs": 24.0
+  "secs": 28.4
  },
  {
   "idx": 14,
@@ -151,7 +151,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:C5",
-  "secs": 24.0
+  "secs": 28.3
  },
  {
   "idx": 15,
@@ -162,7 +162,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:C5",
-  "secs": 24.0
+  "secs": 27.9
  },
  {
   "idx": 16,
@@ -173,7 +173,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:C5",
-  "secs": 26.5
+  "secs": 31.0
  },
  {
   "idx": 17,
@@ -184,7 +184,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:C5",
-  "secs": 24.2
+  "secs": 27.4
  },
  {
   "idx": 18,
@@ -195,7 +195,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:C5",
-  "secs": 23.9
+  "secs": 27.9
  },
  {
   "idx": 19,
@@ -206,7 +206,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:C5",
-  "secs": 23.6
+  "secs": 27.4
  },
  {
   "idx": 20,
@@ -218,7 +218,7 @@
   "card": false,
   "action": "excel_live.clarify",
   "detail": "정렬 안 됨: [88, 94, 71, 83]",
-  "secs": 9.6
+  "secs": 11.3
  },
  {
   "idx": 21,
@@ -229,7 +229,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:C5",
-  "secs": 23.2
+  "secs": 29.6
  },
  {
   "idx": 22,
@@ -240,7 +240,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:C5",
-  "secs": 26.6
+  "secs": 30.9
  },
  {
   "idx": 23,
@@ -251,7 +251,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:C5",
-  "secs": 23.7
+  "secs": 27.6
  },
  {
   "idx": 24,
@@ -262,7 +262,7 @@
   "card": true,
   "action": "excel_live.sort_range",
   "detail": "정렬 — A1:C5",
-  "secs": 23.4
+  "secs": 27.5
  },
  {
   "idx": 25,
@@ -273,7 +273,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — C2:C5 · 값 4개 삭제",
-  "secs": 19.6
+  "secs": 23.4
  },
  {
   "idx": 26,
@@ -284,7 +284,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — C2:C5 · 값 4개 삭제",
-  "secs": 19.4
+  "secs": 23.2
  },
  {
   "idx": 27,
@@ -295,7 +295,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — C2:C5 · 값 4개 삭제",
-  "secs": 19.3
+  "secs": 23.5
  },
  {
   "idx": 28,
@@ -306,7 +306,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — C2:C5 · 값 4개 삭제",
-  "secs": 19.6
+  "secs": 23.3
  },
  {
   "idx": 29,
@@ -317,7 +317,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — C2:C5 · 값 4개 삭제",
-  "secs": 19.6
+  "secs": 23.2
  },
  {
   "idx": 30,
@@ -328,7 +328,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — C2:C5 · 값 4개 삭제",
-  "secs": 19.4
+  "secs": 23.4
  },
  {
   "idx": 31,
@@ -339,7 +339,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — C2:C5 · 값 4개 삭제",
-  "secs": 19.8
+  "secs": 23.1
  },
  {
   "idx": 32,
@@ -350,7 +350,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — C2:C5 · 값 4개 삭제",
-  "secs": 19.6
+  "secs": 23.1
  },
  {
   "idx": 33,
@@ -361,7 +361,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — C2:C5 · 값 4개 삭제",
-  "secs": 19.4
+  "secs": 23.2
  },
  {
   "idx": 34,
@@ -372,7 +372,7 @@
   "card": true,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — C2:C5 · 값 4개 삭제",
-  "secs": 21.1
+  "secs": 24.2
  },
  {
   "idx": 35,
@@ -383,7 +383,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — C2:C5 · 값 4개 삭제",
-  "secs": 19.7
+  "secs": 23.2
  },
  {
   "idx": 36,
@@ -394,7 +394,7 @@
   "card": false,
   "action": "excel_live.clear_range",
   "detail": "내용 비우기 — C2:C5 · 값 4개 삭제",
-  "secs": 19.6
+  "secs": 23.1
  },
  {
   "idx": 37,
@@ -405,7 +405,7 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — A1:F1",
-  "secs": 16.9
+  "secs": 19.7
  },
  {
   "idx": 38,
@@ -416,7 +416,7 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — A1:F1",
-  "secs": 16.9
+  "secs": 20.0
  },
  {
   "idx": 39,
@@ -427,7 +427,7 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — A1:F1",
-  "secs": 16.5
+  "secs": 19.7
  },
  {
   "idx": 40,
@@ -438,7 +438,7 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — A1:F1",
-  "secs": 16.7
+  "secs": 19.9
  },
  {
   "idx": 41,
@@ -449,7 +449,7 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — A1:F1",
-  "secs": 16.8
+  "secs": 20.2
  },
  {
   "idx": 42,
@@ -460,7 +460,7 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — A1:F1",
-  "secs": 16.7
+  "secs": 20.0
  },
  {
   "idx": 43,
@@ -471,7 +471,7 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — A1:F1",
-  "secs": 16.7
+  "secs": 19.9
  },
  {
   "idx": 44,
@@ -482,7 +482,7 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — A1:F1",
-  "secs": 16.8
+  "secs": 20.1
  },
  {
   "idx": 45,
@@ -493,7 +493,7 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — A1:F1",
-  "secs": 16.9
+  "secs": 20.0
  },
  {
   "idx": 46,
@@ -504,7 +504,7 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — A1:F1",
-  "secs": 16.5
+  "secs": 19.9
  },
  {
   "idx": 47,
@@ -515,7 +515,7 @@
   "card": false,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — A1:F1",
-  "secs": 16.7
+  "secs": 20.1
  },
  {
   "idx": 48,
@@ -526,7 +526,7 @@
   "card": true,
   "action": "excel_live.merge_cells",
   "detail": "셀 병합 — A1:F1",
-  "secs": 22.8
+  "secs": 25.8
  },
  {
   "idx": 49,
@@ -537,7 +537,7 @@
   "card": true,
   "action": "excel_live.filter_rows",
   "detail": "행 필터 — A1:D5 · 제거된 행 없음",
-  "secs": 21.0
+  "secs": 24.9
  },
  {
   "idx": 50,
@@ -548,7 +548,7 @@
   "card": true,
   "action": "excel_live.filter_rows",
   "detail": "행 필터 — A1:D5 · 제거된 행 없음",
-  "secs": 21.0
+  "secs": 24.5
  },
  {
   "idx": 51,
@@ -559,7 +559,7 @@
   "card": true,
   "action": "excel_live.filter_rows",
   "detail": "행 필터 — A1:D5 · 제거된 행 없음",
-  "secs": 21.2
+  "secs": 24.5
  },
  {
   "idx": 52,
@@ -570,7 +570,7 @@
   "card": true,
   "action": "excel_live.filter_rows",
   "detail": "행 필터 — A1:D5 · 제거된 행 없음",
-  "secs": 21.1
+  "secs": 24.7
  },
  {
   "idx": 53,
@@ -581,7 +581,7 @@
   "card": true,
   "action": "excel_live.filter_rows",
   "detail": "행 필터 — A1:D5 · 제거된 행 없음",
-  "secs": 21.1
+  "secs": 24.4
  },
  {
   "idx": 54,
@@ -592,7 +592,7 @@
   "card": true,
   "action": "excel_live.filter_rows",
   "detail": "행 필터 — A1:D5 · 제거된 행 없음",
-  "secs": 21.3
+  "secs": 24.7
  },
  {
   "idx": 55,
@@ -603,7 +603,7 @@
   "card": true,
   "action": "excel_live.filter_rows",
   "detail": "행 필터 — A1:D5 · 제거된 행 없음",
-  "secs": 20.9
+  "secs": 24.5
  },
  {
   "idx": 56,
@@ -614,7 +614,7 @@
   "card": true,
   "action": "excel_live.filter_rows",
   "detail": "행 필터 — A1:D5 · 제거된 행 없음",
-  "secs": 23.4
+  "secs": 26.9
  },
  {
   "idx": 57,
@@ -625,7 +625,7 @@
   "card": true,
   "action": "excel_live.filter_rows",
   "detail": "행 필터 — A1:D5 · 제거된 행 없음",
-  "secs": 21.0
+  "secs": 25.0
  },
  {
   "idx": 58,
@@ -636,7 +636,7 @@
   "card": true,
   "action": "excel_live.filter_rows",
   "detail": "행 필터 — A1:D5 · 제거된 행 없음",
-  "secs": 20.7
+  "secs": 24.8
  },
  {
   "idx": 59,
@@ -647,7 +647,7 @@
   "card": true,
   "action": "excel_live.filter_rows",
   "detail": "행 필터 — A1:D5 · 제거된 행 없음",
-  "secs": 21.0
+  "secs": 25.0
  },
  {
   "idx": 60,
@@ -658,7 +658,7 @@
   "card": true,
   "action": "excel_live.filter_rows",
   "detail": "행 필터 — A1:D5 · 제거된 행 없음",
-  "secs": 20.9
+  "secs": 24.6
  },
  {
   "idx": 61,
@@ -669,7 +669,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 14.0
+  "secs": 16.7
  },
  {
   "idx": 62,
@@ -680,7 +680,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 14.2
+  "secs": 16.8
  },
  {
   "idx": 63,
@@ -692,7 +692,7 @@
   "card": false,
   "action": "excel_live.chart",
   "detail": "차트 없음",
-  "secs": 4.2
+  "secs": 4.3
  },
  {
   "idx": 64,
@@ -715,7 +715,7 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 14.2
+  "secs": 16.8
  },
  {
   "idx": 66,
@@ -774,7 +774,7 @@
   "card": true,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:B7",
-  "secs": 17.9
+  "secs": 20.4
  },
  {
   "idx": 71,
@@ -786,7 +786,7 @@
   "card": false,
   "action": "excel_live.chart",
   "detail": "차트 없음",
-  "secs": 3.4
+  "secs": 3.3
  },
  {
   "idx": 72,
@@ -797,6 +797,6 @@
   "card": false,
   "action": "excel_live.create_chart",
   "detail": "차트를 생성합니다. — A1:F6",
-  "secs": 14.1
+  "secs": 16.6
  }
 ]

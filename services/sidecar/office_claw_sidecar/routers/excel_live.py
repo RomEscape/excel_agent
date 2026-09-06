@@ -8913,7 +8913,7 @@ def _drop_trailing_verification(steps: list[PlanStep]) -> list[PlanStep]:
     return steps[:-1]
 
 
-_NEGATION_VERBS = r"(저장|삭제|지우|정렬|병합|실행|바꾸|넣|칠하|만들|고정|복사|이동|옮기|보내|삽입|추가|변경|수정|적용|그리|그려)"
+_NEGATION_VERBS = r"(저장|삭제|지우|정렬|병합|실행|바꾸|넣|칠하|만들|고정|복사|이동|옮기|보내|삽입|추가|변경|수정|적용|그리|그려|필터|거르|걸)"
 # "저장 안 해도 돼요" · "저장 말고" 처럼 **하지**가 없는 부정도 같은 뜻이다
 # (2026-08-19 블라인드 게이트: 이 두 꼴이 그대로 실행돼 파일이 저장됐다).
 _NEGATION_TAIL = (
@@ -8926,6 +8926,43 @@ _NEGATION_TAIL = (
     # (2026-08-20 파괴 게이트: 크로스시트 수식 요청이 통째로 무시됐다).
     r"|말고|말아|말아라|말아\s*주|나중에(?!도)|이따가|보류"
 )
+
+
+_UNIVERSAL_HOLD = re.compile(
+    # ① 아무것도/아무 작업도 … 하지 마·말·않·안 해  ② 그냥/그대로/일단 … 둬·놔둬·냅둬·두자
+    # ③ 보류(단독)  — 셋 다 실행 의미가 없는 전면 보류다(2026-09-06 복합 코퍼스 실측:
+    # "지금은 아무것도 하지 마"·"일단 보류할게"·"필터는 걸지 마 … 놔둬"가 카드로 샜다).
+    r"아무\s*(?:것|거|작업|일|짓)?\s*도?\s*(?:안\s*(?:해|하|건드)|하지\s*(?:마|말|않)|실행하지\s*(?:마|말|않)|만지지\s*(?:마|말))"
+    r"|(?:그냥|그대로|일단은?|당분간|지금은)\s*(?:냅?둬|놔\s*둬|놔\s*두|그대로\s*둬|두자|둡시다|두세요|넘어가)"
+    # "보류"는 반드시 보류-접미사나 보류-문맥과 함께여야 한다 — 단독 "보류"는
+    # "G7에 보류 작성"처럼 **쓸 값**일 수 있다(2026-09-06 50-commands 실측 오탐).
+    r"|(?:일단|지금은?|그냥|오늘은?|당분간|우선)\s*보류"
+    r"|(?<![가-힣])보류(?:하자|하겠|할게|할래|합시다|해요|하죠|하는|한다|중이|중입|예정|하기로)"
+)
+
+
+def _universal_hold(text: str) -> bool:
+    """문장 전체가 "지금은 아무것도 하지 마"류 전면 보류인가.
+
+    _negated_command는 특정 동사(저장·삭제…)에만 걸려 "아무것도 하지 마"·"보류"·
+    목록에 없는 동사의 "걸지 마"를 놓쳤다. 오탐을 막으려 **부분 보류**("A열은 그대로
+    두고 B열 정렬")는 제외한다 — 그런 문장엔 뒤에 실행 동사가 남는다.
+    """
+    message = str(text or "")
+    if not _UNIVERSAL_HOLD.search(message):
+        return False
+    # 마지막 보류 표현 이후에 실행 동사가 남아 있으면(예: "그대로 두고 정렬해줘") 부분 보류.
+    last = max(
+        (m.end() for m in _UNIVERSAL_HOLD.finditer(message)),
+        default=0,
+    )
+    trailing = message[last:]
+    if re.search(
+        r"(정렬|필터|강조|칠|테두리|합계|평균|집계|차트|그래프|수식|삭제|지워|추가|넣|만들|저장|바꿔|정리)",
+        trailing,
+    ):
+        return False
+    return True
 
 
 def _negated_command(text: str) -> str | None:
@@ -9088,6 +9125,14 @@ async def _run_command(
         substitution = re.search(r"(대신|말고)\s", str(req.message or "")) and not re.search(
             r"(?:하지|지)\s*말고", str(req.message or "")
         )
+        # 전면 보류("지금은 아무것도 하지 마"·"일단 보류")도 실행 요청이 아니다.
+        if _universal_hold(str(req.message or "")):
+            return ExcelLiveActionResponse(
+                ok=True,
+                action="excel_live.noop",
+                reason="네, 지금은 아무 작업도 하지 않겠습니다. 다음 작업을 말씀해 주세요.",
+                result={"noop": True, "negated": "전면 보류"},
+            )
         if negated and not substitution:
             return ExcelLiveActionResponse(
                 ok=True,
@@ -9752,7 +9797,12 @@ async def _run_command(
         # 단순 색 채우기 요청은 fast path로 즉시 실행하는 편이 안정적이다.
         # 단, 색을 **말한 적 없는** 문장("조건부로 칠해주세요")은 규칙이 노란색을
         # 지어내 칠했다(2026-09-06 285턴 코퍼스 실측) — 색 없는 문장은 놓아준다.
-        if _quick_extract_colors(req.message):
+        # 예외: "색 없애"류 제거는 흰색이 자명해 색 이름이 필요 없다(빠른 계획이
+        # 이미 fill_color='none'으로 냈다) — 그건 fast path 유지한다(pytest 실측).
+        _quick_fill_color = str(
+            (quick_plan_for_parse[0].params or {}).get("fill_color") or ""
+        ).lower() if quick_plan_for_parse else ""
+        if _quick_extract_colors(req.message) or _quick_fill_color == "none":
             should_parse_with_llm = False
             llm_decision_reason = "fill_range_fast_path"
     if row_write_confirmed and quick_first_action == "excel_live.write_range":
@@ -11125,6 +11175,9 @@ _UNSTATED_PARAM_RULES: tuple[tuple[frozenset[str], re.Pattern[str], str], ...] =
         frozenset({"excel_live.set_formula"}),
         re.compile(
             r"(합계|총합|총계|소계|평균|개수|건수|곱|나누|나눈|더하|더한|빼|뺀|차이"
+            # 파괴 게이트 3건 실측(2026-09-06 0300): "합쳐서"·"결석 합 A2"가 근거로
+            # 안 잡혀 정상 지시가 되묻기로 뒤집혔다 — 합의 활용형과 단독형을 넣는다.
+            r"|합쳐|합치|합산|누계|(?<![가-힣])합(?![가-힣])"
             r"|비중|비율|퍼센트|%|백분율|누적|순위|검산|증감|성장률|수익률|마진|이익"
             r"|최댓값|최솟값|최대|최소|표준편차|분산|중앙값"
             r"|sum|average|avg|count|max|min|if|vlookup|xlookup|concat|round)",
@@ -11147,6 +11200,15 @@ def _unstated_param_problem(message: str, plan: list[PlanStep], session_key: str
     previous = _pending_clarifications.get(session_key)
     if previous is not None:
         text = f"{text} {getattr(previous, 'original_message', '') or ''}"
+    # 수식 계획이 **이미 구체적 수식을 들고 있으면** 계산 내용은 정해진 것이다 —
+    # "I1:I10에 =A1*2", 크로스시트 참조, _operation_action_plan이 세운 수식 등.
+    # 이때 근거 어휘가 없다고 되물으면 정상 실행이 뒤집힌다(2026-09-06 pytest 6건 실측).
+    if any(
+        s.action == "excel_live.set_formula"
+        and _looks_like_a_formula(str((s.params or {}).get("formula_a1") or (s.params or {}).get("formula") or ""))
+        for s in plan
+    ):
+        actions = actions - {"excel_live.set_formula"}
     for targets, evidence, question in _UNSTATED_PARAM_RULES:
         if actions & targets and not evidence.search(text):
             return question
