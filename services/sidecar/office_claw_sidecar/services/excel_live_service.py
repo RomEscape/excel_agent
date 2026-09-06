@@ -2171,6 +2171,80 @@ class ExcelLiveService:
             "has_header": bool(has_header),
         }
 
+    # ── macOS: AppleScript 사전에 없는 서식은 파일 왕복으로 ─────────────────────
+    #
+    # 2026-09-06 사용자: "맥에서 Excel 켜진 상태에서도 동작돼야 하는데 해결할 수 없나".
+    # Mac용 Excel 자동화 사전에는 데이터 막대·색조·수식 조건부 서식·유효성 검사가 없다.
+    # 대신 파일 엔진(openpyxl)은 넷 다 되므로: Excel에 저장·닫기 → 파일 엔진 적용 →
+    # 같은 파일을 다시 열어 시트·선택을 복원한다. 사용자 눈에는 1~2초 닫혔다 열리고,
+    # Excel의 실행 취소 이력이 끊긴다 — 결과 note 에 그렇다고 적는다.
+    # **실기(Mac) 검증 전** — 이 PC(Windows)에서는 단위 테스트로 순서만 고정했다
+    # (tests/test_darwin_file_roundtrip.py).
+    _DARWIN_ROUNDTRIP_NOTE = (
+        "macOS Excel 자동화에 없는 기능이라 파일을 잠시 닫았다 다시 열어 적용했습니다"
+        "(이 작업은 Excel의 실행 취소 목록에 남지 않습니다)."
+    )
+
+    def _darwin_file_roundtrip(
+        self,
+        workbook_id: str | None,
+        sheet_name: str | None,
+        method_name: str,
+        *args: Any,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Excel(AppleScript)에 API가 없는 작업을 저장→닫기→파일 엔진 적용→다시 열기로 해낸다."""
+        target_id = workbook_id or self._selected_workbook_id
+        if not target_id:
+            raise WorkbookNotFoundError("workbook_id가 필요합니다.")
+        wb = self._find_workbook(target_id)
+        path = str(getattr(wb, "fullname", "") or "").strip()
+        if not path:
+            raise ExcelLiveError(
+                "아직 파일로 저장되지 않은 통합문서입니다. Excel에서 먼저 저장해 주세요 — "
+                "macOS에서는 이 작업을 파일에 적용한 뒤 다시 엽니다."
+            )
+        sheet_to_restore = str(sheet_name or "").strip() or self._active_sheet_name(wb)
+        selection = ""
+        try:
+            selection = str(self.get_active_selection_ref(target_id, None) or "")
+        except Exception:
+            selection = ""
+        try:
+            wb.save()
+        except Exception as exc:
+            raise ExcelLiveError(f"적용 전 저장에 실패했습니다: {exc}") from exc
+        try:
+            wb.close()
+        except Exception as exc:
+            raise ExcelLiveError(f"파일을 잠시 닫지 못해 적용을 중단했습니다: {exc}") from exc
+
+        from office_claw_sidecar.services.excel_live_file_service import FileExcelLiveService
+
+        file_service = FileExcelLiveService()
+        try:
+            result = getattr(file_service, method_name)(path, sheet_to_restore, *args, **kwargs)
+        finally:
+            # 적용이 실패해도 파일은 다시 열어 준다 — 닫힌 채 두면 사용자는 파일이 사라진 줄 안다.
+            reopened = self.open_workbook_in_excel(path)
+        result = dict(result or {})
+        if reopened:
+            try:
+                wb2 = self._find_workbook(path)
+                self._selected_workbook_id = self._workbook_id(wb2)
+                if sheet_to_restore:
+                    sheet_obj = self._find_sheet(wb2, sheet_to_restore)
+                    sheet_obj.activate()
+                    if selection:
+                        sheet_obj.range(selection).select()
+            except Exception:
+                pass
+            result["note"] = self._DARWIN_ROUNDTRIP_NOTE
+        else:
+            result["note"] = "파일에는 적용됐지만 Excel에서 다시 열지 못했습니다. 파일을 직접 다시 열어 주세요."
+        result["applied_via"] = "file_roundtrip"
+        return result
+
     def apply_formula_cf(
         self,
         workbook_id: str | None,
@@ -2191,11 +2265,12 @@ class ExcelLiveService:
         sheet = self._find_sheet(self._find_workbook(target_id), sheet_name)
         rng = self._resolve_target_range(sheet, target_range)
         # 조건부 서식 규칙은 COM(FormatConditions) 전용 — macOS AppleScript api에는
-        # 대응물이 없어 깊은 AttributeError로 죽는다. 명확히 말하고 물러난다
-        # (dev 병합의 색 정책과 같은 취지: 조용한 오동작보다 시끄러운 거절).
+        # 대응물이 없어 깊은 AttributeError로 죽는다. 2026-08-30 까지는 시끄럽게 거절했고,
+        # 2026-09-06 부터는 파일 왕복(_darwin_file_roundtrip)으로 실제 적용한다.
         if sys.platform == "darwin":
-            raise ExcelLiveError(
-                "조건부 서식 규칙은 macOS Excel의 AppleScript 자동화에 API가 없어 라이브 모드에서는 불가합니다 — 파일 엔진(EXCEL_LIVE_ENGINE=file)은 지원합니다."
+            # 2026-09-06: 거절 대신 파일 왕복(저장→닫기→openpyxl→다시 열기). 범위는 해석된 주소로 넘긴다.
+            return self._darwin_file_roundtrip(
+                target_id, sheet_name, "apply_formula_cf", str(rng.address), formula_text, fill_color, font_color
             )
         condition = rng.api.FormatConditions.Add(Type=2, Formula1=formula_text)
         red, green, blue = self._hex_to_rgb(fill_color)
@@ -2221,11 +2296,12 @@ class ExcelLiveService:
         sheet = self._find_sheet(self._find_workbook(target_id), sheet_name)
         rng = self._resolve_target_range(sheet, target_range)
         # 조건부 서식 규칙은 COM(FormatConditions) 전용 — macOS AppleScript api에는
-        # 대응물이 없어 깊은 AttributeError로 죽는다. 명확히 말하고 물러난다
-        # (dev 병합의 색 정책과 같은 취지: 조용한 오동작보다 시끄러운 거절).
+        # 대응물이 없어 깊은 AttributeError로 죽는다. 2026-08-30 까지는 시끄럽게 거절했고,
+        # 2026-09-06 부터는 파일 왕복(_darwin_file_roundtrip)으로 실제 적용한다.
         if sys.platform == "darwin":
-            raise ExcelLiveError(
-                "조건부 서식 규칙은 macOS Excel의 AppleScript 자동화에 API가 없어 라이브 모드에서는 불가합니다 — 파일 엔진(EXCEL_LIVE_ENGINE=file)은 지원합니다."
+            return self._darwin_file_roundtrip(
+                target_id, sheet_name, "apply_color_scale", str(rng.address),
+                min_color=min_color, mid_color=mid_color, max_color=max_color,
             )
         scale = rng.api.FormatConditions.AddColorScale(3)
         for index, hex_code in ((1, min_color), (2, mid_color), (3, max_color)):
@@ -2247,12 +2323,10 @@ class ExcelLiveService:
         sheet = self._find_sheet(self._find_workbook(target_id), sheet_name)
         rng = self._resolve_target_range(sheet, target_range)
         # 조건부 서식 규칙은 COM(FormatConditions) 전용 — macOS AppleScript api에는
-        # 대응물이 없어 깊은 AttributeError로 죽는다. 명확히 말하고 물러난다
-        # (dev 병합의 색 정책과 같은 취지: 조용한 오동작보다 시끄러운 거절).
+        # 대응물이 없어 깊은 AttributeError로 죽는다. 2026-08-30 까지는 시끄럽게 거절했고,
+        # 2026-09-06 부터는 파일 왕복(_darwin_file_roundtrip)으로 실제 적용한다.
         if sys.platform == "darwin":
-            raise ExcelLiveError(
-                "조건부 서식 규칙은 macOS Excel의 AppleScript 자동화에 API가 없어 라이브 모드에서는 불가합니다 — 파일 엔진(EXCEL_LIVE_ENGINE=file)은 지원합니다."
-            )
+            return self._darwin_file_roundtrip(target_id, sheet_name, "apply_data_bar", str(rng.address), color=color)
         bar = rng.api.FormatConditions.AddDatabar()
         red, green, blue = self._hex_to_rgb(color)
         bar.BarColor.Color = red + (green << 8) + (blue << 16)
@@ -2466,16 +2540,20 @@ class ExcelLiveService:
         error_message: str | None = None,
     ) -> dict[str, Any]:
         """입력 유효성(드롭다운/숫자/날짜 제한)을 설정한다."""
-        if sys.platform == "darwin":
-            # COM 전용 경로 — macOS에서는 깊은 AttributeError 대신 명확히 거절한다
-            # (2026-08-30 macOS 감사, 조용한 오동작보다 시끄러운 거절).
-            raise ExcelLiveError("입력 유효성 검사는 macOS Excel의 AppleScript 자동화에 API가 없어 라이브 모드에서는 불가합니다 — 파일 엔진(EXCEL_LIVE_ENGINE=file)은 지원합니다.")
         target_id = workbook_id or self._selected_workbook_id
         if not target_id:
             raise WorkbookNotFoundError("workbook_id가 필요합니다.")
         wb = self._find_workbook(target_id)
         ws = self._find_sheet(wb, sheet_name)
         rng = self._resolve_target_range(ws, target_range)
+        if sys.platform == "darwin":
+            # 2026-09-06: COM 전용이라 거절하던 것을 파일 왕복으로(저장→닫기→openpyxl→다시 열기).
+            return self._darwin_file_roundtrip(
+                target_id, sheet_name, "set_data_validation",
+                target_range=str(rng.address), validation_type=validation_type, source=source,
+                minimum=minimum, maximum=maximum, allow_blank=allow_blank,
+                show_error=show_error, error_message=error_message,
+            )
         api_rng = getattr(rng, "api", None)
         if api_rng is None:
             raise ExcelLiveError("유효성 검사를 적용할 수 없습니다. Excel API 객체를 찾지 못했습니다.")

@@ -29,6 +29,9 @@ import {
   resolveWorkspaceLayout,
 } from "@/lib/workspaceLayout.js";
 import { noteExcelTargetFromResult, selectExcelTarget } from "@/lib/excelTargetManager.js";
+import { refreshWorkbookPreview, setWorkbookPreviewOpen } from "@/lib/workbookPreviewManager";
+import { useWorkbookPreview } from "@/hooks/useWorkbookPreview.js";
+import { WorkbookPreview } from "@/components/workspace/WorkbookPreview.jsx";
 import {
   decideExcelRoute,
   isChatFallbackResponse,
@@ -1021,6 +1024,8 @@ function ChatSidePanel({ sidecarState }) {
           const addr = String(excelResult?.result?.address || "").toUpperCase();
           if (addr) setLastExcelRangeRef(addr);
           noteExcelTargetFromResult(excelResult);
+          // 앱 안 미리보기를 결과에 맞춰 다시 읽는다 — "시켰더니 뭐가 바뀌었나"가 바로 보여야 한다.
+          refreshWorkbookPreview();
 
           const answer = formatExcelLiveResult(excelResult?.action, excelResult?.result, excelResult?.reason);
           const text = commands.length > 1 ? `[${i + 1}/${commands.length}] ${answer}` : answer;
@@ -1811,6 +1816,9 @@ export default function WorkspacePage() {
   const [uploadMessage, setUploadMessage] = useState("");
   // 목록에서 "대상" 배지를 붙이기 위한 구독 — 폴링은 상단 ExcelTargetBar 쪽이 이미 하므로 0.
   const excelTargetForList = useExcelTarget(0);
+  // 앱 안 통합문서 미리보기(2026-09-06). 대상이 바뀌면 훅이 알아서 다시 읽는다.
+  const workbookPreview = useWorkbookPreview(excelTargetForList?.workbookName || "");
+  const showWorkbookPreview = Boolean(excelTargetForList?.workbookName) && workbookPreview.open;
   const [botUsername] = useState(null); // 텔레그램 제거(dev 병합)로 항상 null — 딥링크 UI는 자연히 숨는다
 
   // 채팅 사이드 패널 상태 — localStorage persist
@@ -2237,8 +2245,9 @@ export default function WorkspacePage() {
           </div>
         )}
 
-        {/* 파일 목록 + 미리보기 (좌우 split) */}
-        <div className="flex flex-1 gap-4 min-h-0 min-w-0">
+        {/* 파일 목록 + 미리보기 (좌우 split). 대상 통합문서가 있으면 그 아래에 앱 안 미리보기가 붙는다. */}
+        <div className="flex flex-1 flex-col gap-3 min-h-0 min-w-0">
+        <div className={cn("flex gap-4 min-h-0 min-w-0", showWorkbookPreview ? "max-h-[38%] shrink-0" : "flex-1")}>
           <Card className="flex-1 min-w-0 overflow-auto">
             <CardContent className="p-0">
               {loading ? (
@@ -2266,6 +2275,33 @@ export default function WorkspacePage() {
               <FilePreview file={previewFile} onClose={() => setPreviewFile(null)} />
             </div>
           )}
+        </div>
+
+        {/* 앱 안 통합문서 미리보기 — 대상 파일의 값을 표로. 명령 뒤마다 다시 읽는다. */}
+        {showWorkbookPreview && (
+          <WorkbookPreview
+            className="flex-1"
+            data={workbookPreview.data}
+            sheet={workbookPreview.sheet}
+            loading={workbookPreview.loading}
+            error={workbookPreview.error}
+            updatedAt={workbookPreview.updatedAt}
+            onOpenInExcel={() => {
+              const name = excelTargetForList?.workbookName;
+              const entry = files.find((f) => f.name === name);
+              if (entry) handleOpenFile(entry);
+            }}
+          />
+        )}
+        {Boolean(excelTargetForList?.workbookName) && !workbookPreview.open && (
+          <button
+            type="button"
+            onClick={() => setWorkbookPreviewOpen(true)}
+            className="self-start text-xs text-primary underline-offset-2 hover:underline"
+          >
+            {excelTargetForList.workbookName} 미리보기 열기
+          </button>
+        )}
         </div>
       </div>
 

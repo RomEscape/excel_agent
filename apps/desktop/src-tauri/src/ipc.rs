@@ -280,6 +280,44 @@ pub async fn excel_live_select_workbook(
     .await
 }
 
+/// 앱 안 미리보기용 통합문서 스냅샷(값만). 2026-09-06 "화면 안에서 엑셀 파일 확인".
+#[tauri::command]
+pub async fn excel_live_preview(
+    state: State<'_, Mutex<SidecarState>>,
+    workbook_id: Option<String>,
+    sheet_name: Option<String>,
+    max_rows: Option<u32>,
+    max_cols: Option<u32>,
+) -> Result<String, String> {
+    let mut query: Vec<String> = Vec::new();
+    if let Some(v) = workbook_id.filter(|s| !s.trim().is_empty()) {
+        query.push(format!("workbook_id={}", urlencoding::encode(&v)));
+    }
+    if let Some(v) = sheet_name.filter(|s| !s.trim().is_empty()) {
+        query.push(format!("sheet_name={}", urlencoding::encode(&v)));
+    }
+    if let Some(v) = max_rows {
+        query.push(format!("max_rows={}", v));
+    }
+    if let Some(v) = max_cols {
+        query.push(format!("max_cols={}", v));
+    }
+    let path = if query.is_empty() {
+        "/excel-live/preview".to_string()
+    } else {
+        format!("/excel-live/preview?{}", query.join("&"))
+    };
+    sidecar_request(
+        &state,
+        Method::GET,
+        &path,
+        None,
+        Some(Duration::from_secs(20)),
+        "통합문서 미리보기 조회 실패",
+    )
+    .await
+}
+
 // ── Maintenance commands ─────────────────────────────────────────────────────
 
 #[tauri::command]

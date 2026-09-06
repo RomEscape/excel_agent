@@ -78,6 +78,7 @@ pub fn run() {
             ipc::excel_live_submit_approval,
             ipc::excel_live_save_workbook,
             ipc::excel_live_select_workbook, // 2026-09-06: 목록 클릭으로 대상 통합문서 선택
+            ipc::excel_live_preview,         // 2026-09-06: 앱 안 통합문서 미리보기
             ipc::excel_live_list_backups,
             ipc::excel_live_restore_last_backup,
             ipc::harness_feedback,

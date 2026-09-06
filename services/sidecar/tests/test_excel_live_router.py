@@ -3160,3 +3160,83 @@ def test_safe_read_command_logs_safe_once(monkeypatch):
     grades = [r["grade"] for r in audit.logged]
     assert grades.count("SAFE") == 1
     assert grades.count("CONFIRM") == 0
+
+
+# ---------------------------------------------------------------------------
+# 2026-09-06 앱 안 통합문서 미리보기 — GET /excel-live/preview
+# 사용자: "화면 안에서 엑셀 파일 확인이 가능하게, 엑셀 UI 옆에 대화창".
+# ---------------------------------------------------------------------------
+
+
+def test_preview_returns_sheets_and_clipped_values(monkeypatch):
+    """기본 호출 — 선택 통합문서·활성 시트의 사용 범위를 값으로 돌려준다."""
+    fake = _FakeExcelService()
+    from datetime import datetime
+    from decimal import Decimal
+
+    fake._written["A1:C8"] = [
+        ["품목", "수량", "일자"],
+        ["볼트", 12, datetime(2026, 9, 6, 9, 30)],
+        ["너트", Decimal("3.5"), None],
+    ]
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: fake)
+
+    resp = client.get("/excel-live/preview", headers=HEADERS)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["workbook_id"] == r"C:\work\sales.xlsx"
+    assert body["name"] == "sales.xlsx"
+    assert body["sheets"] == ["Sheet1", "Sheet2"]
+    assert body["active_sheet"] == "Sheet1" and body["sheet"] == "Sheet1"
+    assert body["used_range"] == "A1:C8"
+    assert body["range"] == "A1:C8"
+    assert body["truncated"] is False
+    # JSON 으로 못 나가는 값이 문자열·숫자로 바뀌어 나온다.
+    assert body["values"][1] == ["볼트", 12, "2026-09-06 09:30:00"]
+    assert body["values"][2] == ["너트", 3.5, None]
+
+
+def test_preview_clips_to_max_rows_and_cols_and_flags_truncation(monkeypatch):
+    """사용 범위가 한도보다 크면 앞부분만 읽고 truncated=True — 큰 표로 앱이 멈추지 않게."""
+    fake = _FakeExcelService()
+    seen = {}
+
+    def _used(workbook_id, sheet_name):
+        return "$B$3:$AZ$500"
+
+    def _read(workbook_id, sheet_name, range_ref):
+        seen["range"] = range_ref
+        return {"values": [["x"]], "address": range_ref, "row_count": 1, "col_count": 1}
+
+    fake.get_used_range_ref = _used
+    fake.read_range = _read
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: fake)
+
+    resp = client.get(
+        "/excel-live/preview",
+        params={"sheet_name": "Sheet2", "max_rows": 10, "max_cols": 5},
+        headers=HEADERS,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["sheet"] == "Sheet2"
+    assert body["used_range"] == "B3:AZ500"
+    assert seen["range"] == "B3:F12"
+    assert body["truncated"] is True
+
+
+def test_preview_unknown_sheet_is_404(monkeypatch):
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", _one_fake())
+    resp = client.get("/excel-live/preview", params={"sheet_name": "없는시트"}, headers=HEADERS)
+    assert resp.status_code == 404
+
+
+def test_preview_empty_sheet_gives_no_values(monkeypatch):
+    """빈 시트(사용 범위 없음)면 values=[] 로 조용히 — 500 이 아니다."""
+    fake = _FakeExcelService()
+    fake.get_used_range_ref = lambda workbook_id, sheet_name: ""
+    monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: fake)
+    resp = client.get("/excel-live/preview", headers=HEADERS)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["values"] == [] and body["range"] == "" and body["truncated"] is False

@@ -16,7 +16,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -8498,6 +8498,92 @@ def select_workbook(req: SelectWorkbookRequest):
         "name": Path(wb_id).name,
         "active_sheet": sheet,
     }
+
+
+def _preview_json_safe(values: list[list[Any]]) -> list[list[Any]]:
+    """미리보기 응답용 — datetime·Decimal·NaN 을 JSON 이 받는 값으로."""
+    import math
+    from datetime import date as _date
+    from datetime import datetime as _datetime
+    from decimal import Decimal
+
+    out: list[list[Any]] = []
+    for row in values or []:
+        cells: list[Any] = []
+        for cell in row if isinstance(row, list) else [row]:
+            if cell is None or isinstance(cell, (str, bool, int)):
+                cells.append(cell)
+            elif isinstance(cell, float):
+                cells.append(None if math.isnan(cell) or math.isinf(cell) else cell)
+            elif isinstance(cell, Decimal):
+                cells.append(float(cell))
+            elif isinstance(cell, (_datetime, _date)):
+                cells.append(cell.isoformat(sep=" ") if isinstance(cell, _datetime) else cell.isoformat())
+            else:
+                cells.append(str(cell))
+        out.append(cells)
+    return out
+
+
+@router.get("/preview")
+def get_workbook_preview(
+    workbook_id: str | None = Query(default=None),
+    sheet_name: str | None = Query(default=None),
+    max_rows: int = Query(default=200, ge=1, le=2000),
+    max_cols: int = Query(default=40, ge=1, le=200),
+):
+    """앱 안에서 통합문서를 보여 주기 위한 읽기 전용 스냅샷(값만, 서식 없음).
+
+    2026-09-06 사용자 요청 "화면 안에서 엑셀 파일 확인이 가능하게, 엑셀 옆에 대화창".
+    Excel 창을 앱에 박아 넣을 수는 없으므로 사용 중인 엔진(파일이면 openpyxl, 열려 있으면
+    xlwings)으로 사용 범위를 읽어 표로 그린다. 명령이 끝날 때마다 프론트가 다시 부른다.
+    """
+    service = get_excel_live_service()
+    if not service.is_available():
+        raise HTTPException(status_code=409, detail="Excel Live 를 쓸 수 없습니다.")
+    try:
+        wb_id = _resolve_workbook_id(service, workbook_id)
+        info = service.list_sheets(wb_id)
+        sheets = [str(x) for x in (info.get("sheets") or [])]
+        active = str(info.get("active_sheet") or (sheets[0] if sheets else ""))
+        sheet = str(sheet_name or "").strip() or active
+        if sheets and sheet not in sheets:
+            raise WorksheetNotFoundError(f"시트를 찾을 수 없습니다: {sheet}")
+        used = str(service.get_used_range_ref(wb_id, sheet) or "").replace("$", "").upper()
+        values: list[list[Any]] = []
+        address = ""
+        truncated = False
+        m = re.match(r"^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$", used) if used else None
+        if m:
+            c1, r1 = _col_to_idx(m.group(1)), int(m.group(2))
+            c2 = _col_to_idx(m.group(3)) if m.group(3) else c1
+            r2 = int(m.group(4)) if m.group(4) else r1
+            if r2 - r1 + 1 > max_rows:
+                r2 = r1 + max_rows - 1
+                truncated = True
+            if c2 - c1 + 1 > max_cols:
+                c2 = c1 + max_cols - 1
+                truncated = True
+            clipped = f"{_idx_to_col(c1)}{r1}:{_idx_to_col(c2)}{r2}"
+            read = service.read_range(wb_id, sheet, clipped)
+            values = _preview_json_safe(list(read.get("values") or []))
+            address = str(read.get("address") or clipped)
+        return {
+            "workbook_id": wb_id,
+            "name": Path(wb_id).name,
+            "engine": str(getattr(service, "engine", "") or ""),
+            "sheets": sheets,
+            "active_sheet": active,
+            "sheet": sheet,
+            "used_range": used,
+            "range": address,
+            "values": values,
+            "truncated": truncated,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _map_error(exc)
 
 
 @router.get("/selection")

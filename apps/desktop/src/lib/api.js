@@ -234,6 +234,22 @@ export async function excelLiveSelectWorkbook(workbookId) {
 }
 
 /**
+ * 앱 안 미리보기용 통합문서 스냅샷(값만, 읽기 전용).
+ *
+ * @param {{ workbookId?: string, sheetName?: string, maxRows?: number, maxCols?: number }} [opts]
+ * @returns {Promise<{ workbook_id: string, name: string, engine: string, sheets: string[], active_sheet: string, sheet: string, range: string, values: unknown[][], truncated: boolean }>}
+ */
+export async function excelLivePreview(opts = {}) {
+  const raw = await call("excel_live_preview", {
+    workbookId: opts.workbookId ?? null,
+    sheetName: opts.sheetName ?? null,
+    maxRows: opts.maxRows ?? null,
+    maxCols: opts.maxCols ?? null,
+  });
+  return parseResponse(raw);
+}
+
+/**
  * 현재 Excel 선택 영역 주소만 빠르게 조회한다.
  *
  * 붙여넣기 프로브 전용 — 전체 명령 파이프라인("지금 선택한 범위 읽어줘")은

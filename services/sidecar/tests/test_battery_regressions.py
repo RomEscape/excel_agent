@@ -6530,43 +6530,54 @@ class TestMacWriteRefusalDetection:
 
 
 class TestMacGuardsRefuseLoudly:
-    """macOS P2(2026-08-30): '준비 중' 가드는 전멸 — AppleScript에 API가 없는 4종만
-    플랫폼 한계로 거절하고(파일 엔진 안내 포함), 나머지는 전부 구현됐다.
+    """macOS P2(2026-08-30): '준비 중' 가드는 전멸. 2026-09-06 후속 — AppleScript 에 API 가
+    없는 4종(데이터 막대·색조·수식 조건부 서식·유효성 검사)도 이제 거절하지 않고
+    저장→닫기→파일 엔진 적용→다시 열기(`_darwin_file_roundtrip`)로 처리한다.
+    사용자: "맥에서 환경 켜진 상태에서 동작되어야 하는데 해결할 수 없는 거야?" → 1안 채택.
 
     구현 7종(틀 고정·표 변환·시트 보호·인쇄·메모·VBA·PQ)은 xlwings _xlmac 관용구
     기준 다윈 분기 — 가드 문구가 다시 생기면 구현이 후퇴한 것이다.
     """
 
-    STILL_GUARDED = [
-        ("set_data_validation", {"workbook_id": "wb", "sheet_name": "S", "target_range": "A1"}),
-    ]
+    ROUNDTRIP = ["apply_formula_cf", "apply_color_scale", "apply_data_bar", "set_data_validation"]
     IMPLEMENTED = [
         "freeze_panes", "convert_to_excel_table", "protect_sheet",
         "set_print_area", "add_cell_comment", "run_vba_macro", "refresh_power_query",
     ]
 
-    def test_잔여_가드는_플랫폼_한계를_명시한다(self, monkeypatch):
+    def test_잔여_4종은_거절이_아니라_파일_왕복으로_간다(self, monkeypatch):
+        """다윈에서 set_data_validation 이 예외 대신 `_darwin_file_roundtrip` 을 부른다."""
         from office_claw_sidecar.services import excel_live_service as m
-        from office_claw_sidecar.services.excel_live_service import ExcelLiveError, ExcelLiveService
 
         monkeypatch.setattr(m.sys, "platform", "darwin", raising=False)
-        svc = ExcelLiveService()
-        for name, kwargs in self.STILL_GUARDED:
-            try:
-                getattr(svc, name)(**kwargs)
-            except ExcelLiveError as exc:
-                assert "AppleScript" in str(exc) and "파일 엔진" in str(exc), (name, str(exc))
-            else:
-                raise AssertionError(f"{name}: darwin 한계 거절이 발동하지 않았다")
+        svc = m.ExcelLiveService.__new__(m.ExcelLiveService)
+        svc._selected_workbook_id = None
+        calls = []
+        monkeypatch.setattr(svc, "_find_workbook", lambda wid: object(), raising=False)
+        monkeypatch.setattr(svc, "_find_sheet", lambda wb, name: object(), raising=False)
+        monkeypatch.setattr(m.ExcelLiveService, "_resolve_target_range", staticmethod(lambda ws, ref: type("R", (), {"address": "$A$1"})()), raising=False)
+        monkeypatch.setattr(
+            svc,
+            "_darwin_file_roundtrip",
+            lambda *a, **kw: calls.append((a, kw)) or {"ok": True, "applied_via": "file_roundtrip"},
+            raising=False,
+        )
+        out = svc.set_data_validation("wb", "S", target_range="A1", validation_type="list", source="a,b")
+        assert out["applied_via"] == "file_roundtrip"
+        assert calls and calls[0][0][2] == "set_data_validation", calls
+        assert calls[0][1]["validation_type"] == "list" and calls[0][1]["source"] == "a,b"
 
-    def test_조건부서식_3종도_같은_한계_문구다(self, monkeypatch):
+    def test_조건부서식_3종과_유효성검사는_왕복_경로를_탄다(self):
+        """소스 핀 — 다윈 분기가 `raise` 로 되돌아가면 여기서 잡힌다."""
         import inspect
 
         from office_claw_sidecar.services import excel_live_service as m
 
-        for name in ("apply_formula_cf", "apply_color_scale", "apply_data_bar"):
+        for name in self.ROUNDTRIP:
             source = inspect.getsource(getattr(m.ExcelLiveService, name))
-            assert "AppleScript" in source and "파일 엔진" in source, name
+            assert "_darwin_file_roundtrip(" in source, f"{name}: 파일 왕복 분기가 없다"
+            assert "준비 중" not in source, f"{name}: 가드가 되살아났다"
+            assert "물러난다" not in source, f"{name}: 옛 거절 주석이 남아 있다"
 
     def test_구현_7종에는_가드_문구가_없다(self):
         import inspect
