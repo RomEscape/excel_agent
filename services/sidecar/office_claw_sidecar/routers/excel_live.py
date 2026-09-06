@@ -9126,16 +9126,26 @@ _NEGATION_TAIL = (
 )
 
 
-_UNIVERSAL_HOLD = re.compile(
-    # ① 아무것도/아무 작업도 … 하지 마·말·않·안 해  ② 그냥/그대로/일단 … 둬·놔둬·냅둬·두자
-    # ③ 보류(단독)  — 셋 다 실행 의미가 없는 전면 보류다(2026-09-06 복합 코퍼스 실측:
-    # "지금은 아무것도 하지 마"·"일단 보류할게"·"필터는 걸지 마 … 놔둬"가 카드로 샜다).
+#: 전면 보류(절대) — 실행 의미가 전혀 없는 말. 앞에 실행 동사가 있어도 전면 보류다:
+#: "정렬하려다 아니다, 지금은 아무것도 하지 마"(철회 문형).
+_UNIVERSAL_HOLD_ABSOLUTE = re.compile(
     r"아무\s*(?:것|거|작업|일|짓)?\s*도?\s*(?:안\s*(?:해|하|건드)|하지\s*(?:마|말|않)|실행하지\s*(?:마|말|않)|만지지\s*(?:마|말))"
-    r"|(?:그냥|그대로|일단은?|당분간|지금은)\s*(?:냅?둬|놔\s*둬|놔\s*두|그대로\s*둬|두자|둡시다|두세요|넘어가)"
     # "보류"는 반드시 보류-접미사나 보류-문맥과 함께여야 한다 — 단독 "보류"는
     # "G7에 보류 작성"처럼 **쓸 값**일 수 있다(2026-09-06 50-commands 실측 오탐).
     r"|(?:일단|지금은?|그냥|오늘은?|당분간|우선)\s*보류"
     r"|(?<![가-힣])보류(?:하자|하겠|할게|할래|합시다|해요|하죠|하는|한다|중이|중입|예정|하기로)"
+)
+#: 약한 보류 — "그냥 둬"는 그 자체로는 전면 보류지만 **범위를 좁히는 말**로도 쓰인다.
+#: 2026-09-06 파괴 게이트 실측: "결석 열 비우고 나머지는 그대로 둬"를 전면 보류로 읽어
+#: 지워야 할 열을 안 지우고 noop 했다(미검출 오실행 1). 그래서 이 갈래는 조건이 붙는다.
+_UNIVERSAL_HOLD_SOFT = re.compile(
+    r"(?:그냥|그대로|일단은?|당분간|지금은)\s*(?:냅?둬|놔\s*둬|놔\s*두|그대로\s*둬|두자|둡시다|두세요|넘어가)"
+)
+#: "나머지는", "다른 건" — 보류의 대상을 일부로 한정하는 말. 있으면 전면 보류가 아니다.
+_HOLD_SCOPE_LIMITER = re.compile(r"나머지|나머진|다른\s*(?:건|것|거|열|행|칸|셀)|그\s*외|이외|외에는")
+_HOLD_EXECUTE_VERB = re.compile(
+    r"정렬|필터|강조|칠|테두리|합계|평균|집계|차트|그래프|수식|삭제|지워|지우|비워|비우"
+    r"|추가|넣|만들|저장|바꿔|정리|병합|합쳐|초기화"
 )
 
 
@@ -9143,21 +9153,26 @@ def _universal_hold(text: str) -> bool:
     """문장 전체가 "지금은 아무것도 하지 마"류 전면 보류인가.
 
     _negated_command는 특정 동사(저장·삭제…)에만 걸려 "아무것도 하지 마"·"보류"·
-    목록에 없는 동사의 "걸지 마"를 놓쳤다. 오탐을 막으려 **부분 보류**("A열은 그대로
-    두고 B열 정렬")는 제외한다 — 그런 문장엔 뒤에 실행 동사가 남는다.
+    목록에 없는 동사의 "걸지 마"를 놓쳤다. 여기서 그걸 받되 **부분 보류는 제외**한다 —
+    "그대로 두고 B열 정렬"(뒤에 실행 동사)과 "결석 열 비우고 나머지는 그대로 둬"
+    (앞에 실행 동사 + 범위 한정어) 둘 다 전면 보류가 아니다.
     """
     message = str(text or "")
-    if not _UNIVERSAL_HOLD.search(message):
+    absolute = list(_UNIVERSAL_HOLD_ABSOLUTE.finditer(message))
+    if absolute:
+        # 보류 표현 **뒤에** 실행 동사가 이어지면 부분 보류다("아무것도 하지 말고 정렬만").
+        if _HOLD_EXECUTE_VERB.search(message[absolute[-1].end():]):
+            return False
+        return True
+    soft = _UNIVERSAL_HOLD_SOFT.search(message)
+    if soft is None:
         return False
-    # 마지막 보류 표현 이후에 실행 동사가 남아 있으면(예: "그대로 두고 정렬해줘") 부분 보류.
-    last = max(
-        (m.end() for m in _UNIVERSAL_HOLD.finditer(message)),
-        default=0,
-    )
-    trailing = message[last:]
-    if re.search(
-        r"(정렬|필터|강조|칠|테두리|합계|평균|집계|차트|그래프|수식|삭제|지워|추가|넣|만들|저장|바꿔|정리)",
-        trailing,
+    # 범위 한정어가 있으면 보류가 아니라 **작업 범위를 좁히는 말**이다.
+    if _HOLD_SCOPE_LIMITER.search(message):
+        return False
+    # 문장 어디든(앞이든 뒤든) 실행 동사가 따로 있으면 그 작업은 해야 한다.
+    if _HOLD_EXECUTE_VERB.search(message[: soft.start()]) or _HOLD_EXECUTE_VERB.search(
+        message[soft.end():]
     ):
         return False
     return True
