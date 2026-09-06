@@ -7578,3 +7578,36 @@ class TestPasteBelowOffset:
 
         r = parse_rangeless_row_write("여기 아래에 수도권,10452 넣어줘", "B5")
         assert r["params"]["start_cell"] == "B6"
+
+
+class TestPasteWriteWithTimeAdverbAndPositionNoun:
+    """2026-09-06 GUI 실사고(새 PC, Intel Arc): "지금 이 위치에 <줄바꿈> 주차,…; … 입력해주라".
+
+    '위치'가 자리말 명사 목록에 없고 '지금'도 안 벗겨져 값 나열 파서가 빗나갔다. GPU 없는 PC라
+    플래너까지 29초 타임아웃 → 슬롯 되묻기 "개수 세기로 이해했어요"(값 낱말 '건수' 오인)가 나갔다.
+    이 문형은 규칙이 받아야 한다 — 플래너에 갈 이유가 없다.
+    """
+
+    BASE = (
+        "주차,정시배송률,지연건수; 3/26-4/1,93.5,410; 4/2-4/8,94.1,395; 4/9-4/15,94.8,388; "
+        "4/16-4/22,95.2,401; 4/23-4/29,95.6,372; 4/30-5/6,95.9,365; 5/7-5/13,96.1,350; 5/14-5/20,96.3,342"
+    )
+
+    @pytest.mark.parametrize(
+        "lead, verb",
+        [
+            ("지금 이 위치에 \n", "입력해주라"),
+            ("현재 위치에 ", "입력해줘"),
+            ("이 지점에 ", "넣어줘"),
+            ("커서 위치에 ", "써줘"),
+            ("여기에 \n", "입력해줘"),
+        ],
+    )
+    def test_the_grid_is_written_at_the_pasted_range(self, lead, verb) -> None:
+        from office_claw_sidecar.services.excel_live_agent import parse_rangeless_row_write
+
+        out = parse_rangeless_row_write(f"{lead}{self.BASE} {verb}", "C1:E9")
+        assert out is not None and out["action"] == "excel_live.write_range", (lead, verb, out)
+        values = out["params"]["values_2d"]
+        assert out["params"]["start_cell"] == "C1"
+        assert len(values) == 9 and values[0][0] == "주차" and values[-1][-1] == 342

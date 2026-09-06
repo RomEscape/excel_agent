@@ -105,6 +105,7 @@ npm run tauri:dev
 | `스크립트 실행이 … 정책 때문에` | `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1`로 친다. |
 | 채팅은 되는데 Excel 계획이 엉망 / "플래너가 조용히 죽음" | 모델이 없다. `ollama list`에 `ax7bplanner-v3`·`skt/A.X-4.0-Light`가 있어야 한다. 없으면 `setup.ps1` 재실행 또는 [1절 3번](#1-설치해서-쓰기). |
 | 파이썬을 고쳤는데 반영이 안 됨 | 옛 사이드카가 포트 19532에 살아 있다. [3절](#3-매일-쓰는-명령)의 "사이드카 죽였다 켜기". |
+| 명령마다 20~30초 걸리다 "…초 안에 답하지 못했습니다" 또는 엉뚱한 되묻기 | GPU가 없거나 작은 PC(내장 그래픽)라 플래너가 CPU로 돈다. 사용자 환경변수 `EXCEL_LIVE_PARSE_TIMEOUT_SECONDS=45`를 두고 앱을 재시작한다(2026-09-06 Intel Arc A350M PC 실측: 기본 10초로는 매번 타임아웃). |
 | `failed to locate pyvenv.cfg` | `services/sidecar/.venv`가 OneDrive로 옮겨 온 껍데기다. 지우고 `setup.ps1`을 다시 돌린다. |
 
 ---

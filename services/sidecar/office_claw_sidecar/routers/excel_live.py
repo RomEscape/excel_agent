@@ -10245,11 +10245,14 @@ async def _run_command(
             plan_obtained=parsed is not None,
         )
 
+        # 타임아웃은 의도 힌트가 있어도 타임아웃이다. 예전엔 힌트("건수"→formula)가 있으면 이 분기를
+        # 건너뛰고 슬롯 되묻기로 떨어져 "개수 세기로 이해했어요"가 나갔다 — 사용자는 모델이 늦은 게
+        # 아니라 앱이 못 알아들은 걸로 읽는다(2026-09-06 GPU 없는 새 PC 실사고, 29초 뒤 오답 되묻기).
         if (
             parsed is None
             and not quick_action_plan
             and fallback_rule_step is None
-            and not operation_hints.get("intent")
+            and (not operation_hints.get("intent") or isinstance(parse_error, asyncio.TimeoutError))
         ):
             if isinstance(parse_error, asyncio.TimeoutError):
                 # 되묻기 문구만 주면 사용자는 "왜 못 알아들었지"로 읽는다. 실제

@@ -570,11 +570,19 @@ class FileExcelLiveService(ExcelLiveService):
         for fp in self._list_workspace_workbooks(limit=200):
             active_sheet = self._selected_sheet_by_workbook.get(str(fp), "")
             if not active_sheet:
-                wb = self._load_wb(fp)
+                # 워크스페이스의 다른 파일이 Excel 에 열려 있으면(잠금, PermissionError) 그 한 파일 때문에
+                # 목록 전체가 예외로 죽어 /status·시트 해석·선택 프로브가 통째로 실패했다
+                # (2026-09-06 실측: 사용자가 260906.xlsx 를 Excel 로 연 채 다른 파일에 명령 → 핀 4개 실패).
+                # 못 여는 파일은 활성 시트를 비워 두고 목록에는 남긴다.
                 try:
-                    active_sheet = wb.active.title if wb.sheetnames else ""
-                finally:
-                    wb.close()
+                    wb = self._load_wb(fp)
+                except ExcelLiveError:
+                    active_sheet = ""
+                else:
+                    try:
+                        active_sheet = wb.active.title if wb.sheetnames else ""
+                    finally:
+                        wb.close()
             rows.append(
                 {
                     "workbook_id": str(fp),

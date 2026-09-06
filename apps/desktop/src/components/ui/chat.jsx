@@ -135,7 +135,7 @@ export function MessageBubble({ role, children, time, actions, footer }) {
       <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
         <div
           className={cn(
-            "whitespace-pre-wrap break-words rounded-xl px-3.5 py-2.5 text-xs leading-relaxed",
+            "select-text cursor-text whitespace-pre-wrap break-words rounded-xl px-3.5 py-2.5 text-xs leading-relaxed",
             isUser
               ? "max-w-[80%] bg-primary text-primary-foreground"
               : "w-full bg-chat-bubble text-chat-bubble-foreground"

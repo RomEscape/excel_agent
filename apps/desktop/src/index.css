@@ -171,6 +171,14 @@ textarea,
   -webkit-user-select: text;
   user-select: text;
 }
+/* 채팅 말풍선·문서 본문은 드래그해 복사할 수 있어야 한다. 전역 `* { user-select: none }`은
+   자식 요소마다 다시 적용되므로 컨테이너와 그 자손에 함께 풀어 준다(2026-09-06 사용자 요청:
+   "채팅 내용도 드래그해서 복사할 수 있게"). */
+.select-text,
+.select-text * {
+  -webkit-user-select: text;
+  user-select: text;
+}
 
 /* Custom scrollbar for the sidebar and content areas */
 ::-webkit-scrollbar {
