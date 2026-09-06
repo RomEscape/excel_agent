@@ -31,6 +31,22 @@ from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 
+
+def _load_workbook_retrying(path, attempts: int = 4):
+    """OneDrive 동기화가 파일을 잡는 찰나를 넘긴다(2026-09-06 실측: 게이트가 여기서 죽었다).
+
+    읽기 전용 접근이라 재시도가 데이터를 바꾸지 않는다. 끝내 안 되면 원래 예외를 그대로
+    올린다 — 조용히 삼키면 측정이 거짓말을 한다.
+    """
+    for attempt in range(attempts):
+        try:
+            return load_workbook(path)
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(0.3 * (attempt + 1))
+    raise AssertionError("unreachable")
+
 from office_claw_sidecar.routers.excel_live import (
     ApprovalResponse,
     ExcelLiveCommandRequest,
@@ -524,7 +540,7 @@ async def run_one(idx: int, row: dict, llm) -> dict:
     action = str(getattr(resp, "action", ""))
     asked = bool(result.get("ask_follow_up")) or "clarify" in action
     ok = bool(getattr(resp, "ok", False))
-    wb = load_workbook(WB)
+    wb = _load_workbook_retrying(WB)
     try:
         # 문장-인지 오라클이 있으면 그쪽이 우선이다 — 과제 오라클은 정본(canonical)
         # 기준이라 생략형 문장에 과잉 요구를 할 수 있다.
