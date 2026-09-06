@@ -2199,6 +2199,30 @@ def _col_after(letters: str) -> str:
     return out
 
 
+#: "헤더는 내가 다 넣었고" — 머리글이 **작업 대상**이 아니라 **이미 끝난 배경**이라는 서술.
+#: 이걸 못 가르면 데이터 쓰기 문장이 머리글 쓰기로 둔갑한다(2026-09-06 GUI 실사고:
+#: 사용자가 넣어 둔 머리글 행이 26칸 가로쓰기로 덮였다).
+_HEADER_ALREADY_DONE = re.compile(
+    r"(?:헤더|머리글|컬럼\s*명|열\s*이름|header)\s*(?:는|은|도|까지|의)?\s*"
+    r"(?:내가|제가|이미|벌써|다|전부|미리)?\s*"
+    r"(?:다\s*)?(?:넣었|넣어\s*놨|넣어\s*뒀|넣어놓|입력했|입력해\s*놨|작성했|작성해\s*놨"
+    r"|만들었|만들어\s*놨|했|해\s*놨|해\s*뒀|완료|있으니|있으니까|있어서|있고|되어\s*있|돼\s*있)",
+    re.IGNORECASE,
+)
+
+
+#: "이 데이터들을", "이 값들을" — 값 격자 뒤에 붙는 지시어+총칭어 군말. 조각 **전체**가
+#: 이 꼴일 때만 떼어낸다(값 안의 '데이터'라는 실제 낱말은 건드리지 않는다).
+_DEMONSTRATIVE_FILLER_GROUP = re.compile(
+    r"^(?:이|요|그|저)?\s*(?:데이터|값|내용|자료|정보|항목|것|거)\s*들?\s*(?:을|를|이|가|은|는)?$"
+)
+
+
+def header_is_background(text: str) -> bool:
+    """머리글 언급이 '이미 해 뒀다'는 배경 서술인가(= 작업 대상이 아닌가)."""
+    return bool(_HEADER_ALREADY_DONE.search(str(text or "")))
+
+
 def parse_rangeless_row_write(text: str, target_range: str) -> dict | None:
     """범위 없이 값 나열+쓰기 동사만 있는 문장 — 붙여넣기 뒤의 자연스러운 형태.
 
@@ -2222,7 +2246,22 @@ def parse_rangeless_row_write(text: str, target_range: str) -> dict | None:
     _head_zone = re.split(r"[,;\n]", source, maxsplit=1)[0]
     _place_below = bool(re.search(r"(?:아래|밑)\s*에", _head_zone))
     _place_side = bool(re.search(r"(?:옆|오른쪽)\s*에", _head_zone))
-    if not source or "=" in source or "수식" in source or "헤더" in lowered_src or "header" in lowered_src:
+    # "헤더"가 있어도 그게 **이미 끝났다는 배경 서술**이면 이 문장은 데이터 쓰기다 —
+    # 낱말만 보고 물러나면 세미콜론 격자를 읽을 줄 아는 이 파서가 빠지고, 쉼표로만
+    # 쪼개는 머리글 폴백이 대신 들어온다(2026-09-06 GUI 실사고).
+    _header_word = "헤더" in lowered_src or "header" in lowered_src or "머리글" in source
+    if _header_word and header_is_background(source):
+        _header_word = False
+        # 배경 절("헤더는 내가 다 넣었고")을 통째로 떼어낸다 — 안 떼면 그 문장이
+        # 첫 칸 값으로 들어간다(2026-09-06 GUI 실사고: 값 격자 앞에 붙어 있었다).
+        _bg = _HEADER_ALREADY_DONE.search(source)
+        if _bg is not None and _bg.start() <= 40:
+            source = source[_bg.end():]
+            # 남은 연결어미와 줄바꿈을 정리한다: "…넣었" + "고 그 밑에 \n수도권,…"
+            source = re.sub(r"^\s*(?:고|며|이고|으며|는데|지만|으니까?|으니|니까)\s*", "", source)
+            source = source.lstrip(" ,\n\t")
+        lowered_src = source.lower()
+    if not source or "=" in source or "수식" in source or _header_word:
         return None
     verb = _PASTE_WRITE_VERB_TAIL.search(source)
     if verb is not None:
@@ -2288,6 +2327,11 @@ def parse_rangeless_row_write(text: str, target_range: str) -> dict | None:
     ):
         return None
     row_groups = [g.strip() for g in re.split(r"[;\n]", body) if g.strip()]
+    # "…,145,0 \n이 데이터들을 넣어줘" — 마지막 조각이 지시어+총칭어뿐이면 값이 아니라
+    # 군말이다. 안 떼면 1칸짜리 행으로 남아 아래 폭 검사에서 **격자 전체가 버려지고**,
+    # 쉼표로만 쪼개는 머리글 폴백이 대신 들어온다(2026-09-06 GUI 실사고).
+    while len(row_groups) > 1 and _DEMONSTRATIVE_FILLER_GROUP.match(row_groups[-1]):
+        row_groups.pop()
     if _ROW_WRITE_FORMAT_VOCAB.search(body) and (
         not row_groups or len(_split_header_tokens(row_groups[0])) < 3
     ):

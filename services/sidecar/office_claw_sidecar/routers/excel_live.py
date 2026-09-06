@@ -89,6 +89,7 @@ from office_claw_sidecar.services.excel_live_agent import (
     clarify_question_from_plan,
     extract_create_table_slot_hints,
     extract_font_params,
+    header_is_background,
     looks_like_existing_table_convert,
     normalize_common_typos,
     parse_cell_arithmetic_write,
@@ -3163,6 +3164,14 @@ def _quick_header_write_step(text: str, preferred_cell: str) -> dict[str, Any] |
     목록이 명시된 문장은 추론할 게 없으므로 규칙으로 확정한다.
     """
     if not _HEADER_INTENT_PATTERN.search(text) or _TABLE_CREATE_INTENT_PATTERN.search(text):
+        return None
+    # "헤더는 내가 다 넣었고 그 밑에 …" — 머리글은 이미 끝났다는 배경이다.
+    # 이걸 머리글 목록으로 읽어 사용자가 넣어 둔 머리글 행을 덮었다(2026-09-06 GUI 실사고).
+    if header_is_background(text):
+        return None
+    # 세미콜론은 **줄 구분자**다(되묻기 문구가 그렇게 안내한다) — 값에 ';'가 섞였다면
+    # 한 줄짜리 머리글 목록이 아니라 여러 행 데이터 격자다.
+    if ";" in str(text or ""):
         return None
     # "머리글은, 글씨는 흰색 굵게" / "머리글 줄 고정해줘, 내려도 계속 보이게" — 서식·고정 문장의 쉼표 조각을
     # 머리글 목록으로 읽어 **표 첫 줄을 덮어썼다**(2026-08-19 블라인드 게이트: 머리글 서식 6건·틀 고정 5건).
