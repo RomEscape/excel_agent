@@ -22,10 +22,11 @@
  */
 
 /**
- * 추천 모델 — 4B 파라미터라 일반 노트북에서 돌고 tool-calling을 지원한다.
- * appStore의 llmConfig 기본값과 같아야 한다.
+ * 추천(=고정) 대화 모델. appStore의 llmConfig 기본값·사이드카 local_stack/presets.py 와 같아야 한다.
+ * 2026-09-06: 온보딩이 여전히 `qwen3:4b`(2026-06 잔재)를 체크리스트에 찍고 있었다. 앱이 실제로
+ * 쓰는 모델은 둘뿐이라(대화 A.X-4.0-Light, 계획 ax7bplanner-v3) 사용자에게 고르게 하지 않는다.
  */
-export const RECOMMENDED_MODEL = "qwen3:4b";
+export const RECOMMENDED_MODEL = "skt/A.X-4.0-Light:latest";
 
 /**
  * 제조사 판별 — 모델 ID 접두사로 맞춘다.

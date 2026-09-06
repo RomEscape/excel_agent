@@ -33,12 +33,12 @@ test("toModelId — `/api/tags` 객체와 사이드카 문자열을 모두 받�
 test("buildModelOptions — 객체 배열(Rust ollama_status 경로)", () => {
   const opts = buildModelOptions([
     { name: "qwen2.5-coder:14b" },
-    { name: "qwen3:4b" },
+    { name: RECOMMENDED_MODEL },
     { name: "qwen2.5:7b" },
   ]);
   assert.deepEqual(
     opts.map((o) => o.id),
-    ["qwen3:4b", "qwen2.5-coder:14b", "qwen2.5:7b"],
+    [RECOMMENDED_MODEL, "qwen2.5-coder:14b", "qwen2.5:7b"],
     "추천이 맨 위, 나머지는 이름순"
   );
   assert.ok(opts.every((o) => o.installed === true));
@@ -58,11 +58,11 @@ test("buildModelOptions — 중복 제거·빈 입력 방어", () => {
 });
 
 test("buildModelChoices — 미설치 후보가 목록에 끼되 installed:false로 구분된다", () => {
-  const opts = buildModelChoices([{ name: "qwen2.5:7b" }], ["qwen3:4b", "qwen3:8b"]);
+  const opts = buildModelChoices([{ name: "qwen2.5:7b" }], [RECOMMENDED_MODEL, "qwen3:8b"]);
   const byId = Object.fromEntries(opts.map((o) => [o.id, o]));
 
   assert.equal(byId["qwen2.5:7b"].installed, true);
-  assert.equal(byId["qwen3:4b"].installed, false, "안 받은 모델을 받은 것처럼 표시하면 안 된다");
+  assert.equal(byId[RECOMMENDED_MODEL].installed, false, "안 받은 모델을 받은 것처럼 표시하면 안 된다");
   assert.equal(byId["qwen3:8b"].installed, false);
   assert.equal(opts[0].id, RECOMMENDED_MODEL, "추천은 미설치여도 맨 위");
 });
@@ -79,7 +79,7 @@ test("pickDefaultModel — 저장된 선택이 목록에 있으면 유지된다"
 });
 
 test("pickDefaultModel — 저장된 선택이 없으면 추천 → 첫 항목 순", () => {
-  const withRec = buildModelChoices(["qwen2.5:7b"], ["qwen3:4b"]);
+  const withRec = buildModelChoices(["qwen2.5:7b"], [RECOMMENDED_MODEL]);
   assert.equal(pickDefaultModel(withRec, "지워진모델:1b"), RECOMMENDED_MODEL);
 
   const noRec = buildModelOptions(["gemma2:2b", "llama3.2:1b"]);
@@ -92,7 +92,9 @@ test("describeModel — 제조사·태그 분해는 기존 계약 유지", () =>
   assert.equal(m.name, "qwen3");
   assert.equal(m.tag, "4b");
   assert.equal(m.brand, "Qwen");
-  assert.equal(m.recommended, true);
+  // 2026-09-06: 추천(=고정) 모델은 skt/A.X-4.0-Light:latest 다. qwen3:4b 는 더 이상 추천이 아니다.
+  assert.equal(m.recommended, false);
+  assert.equal(describeModel(RECOMMENDED_MODEL).recommended, true);
   assert.equal(describeModel("듣도보도못한모델").brand, "로컬 모델");
 });
 

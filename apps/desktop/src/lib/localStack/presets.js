@@ -33,12 +33,9 @@ export const LOCAL_STACK_MODEL_OPTIONS = Object.freeze([
     note: "에이닷 경량 계열 · 한국어 자연어 명령 안정성 우선",
     presetId: QWEN3_OPENCLAW_PRESET.id,
   },
-  {
-    id: "qwen3:8b",
-    label: "qwen3:8b (~5~6GB)",
-    note: "정확도 향상(중간 사양 권장)",
-  },
 ]);
+// 2026-09-06: `qwen3:8b` 선택지를 뺐다. 앱은 대화 A.X-4.0-Light + 계획 ax7bplanner-v3 둘로만 검증됐고,
+// 사용자가 다른 모델을 고르면 플래너와 어긋난 채 "조용히 나빠지는" 상태가 된다.
 
 export const DEFAULT_OLLAMA_MODEL = QWEN3_OPENCLAW_PRESET.ollamaModel;
 

@@ -26,23 +26,22 @@ import {
   Sparkles,
   AlertTriangle,
   RefreshCw,
-  Copy,
   ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BrandMark } from "@/components/ui/logo";
 import { Card, CardContent } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
 import {
   FileChecklist,
   FolderField,
   InstallProgress,
-  ModelSelectField,
   WizardSteps,
 } from "@/components/ui/wizard";
-import { RECOMMENDED_MODEL } from "@/lib/modelCatalog";
 import { useOllamaModels } from "@/hooks/useOllamaModels";
+import { DEFAULT_MODEL, PLANNER_MODEL, hasModelInstalled } from "@/lib/localAISetup";
+import { STATUS_MODULES } from "@/lib/statusManager";
 import useAppStore from "@/store/appStore";
+import useStatusStore from "@/store/statusStore";
 import {
   saveLLMSettings,
   openWorkspaceFolder,
@@ -93,11 +92,18 @@ function StepDots({ current }) {
 
 function StepLLM({ onNext, onPrev }) {
   const setLLMConfig = useAppStore((s) => s.setLLMConfig);
-  const llmConfig = useAppStore((s) => s.llmConfig);
 
-  const [model, setModel] = useState(llmConfig.model);
+  // 2026-09-06: 모델은 사용자가 고르지 않는다. 앱이 쓰는 둘(대화·엑셀 계획)을 그대로 받는다.
+  // 예전 셀렉트는 설치된 태그(별칭·hf.co 출처·플래너)까지 다 보여 줘 "뭘 골라야 하나"가 됐다.
+  const model = DEFAULT_MODEL;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [pulling, setPulling] = useState(""); // 받는 중인 모델 id
+  const [pullError, setPullError] = useState("");
+  const installedModels = useStatusStore((s) => s.modules.ollama.models);
+  const chatReady = hasModelInstalled(installedModels, DEFAULT_MODEL);
+  const plannerReady = hasModelInstalled(installedModels, PLANNER_MODEL);
+  const bothReady = chatReady && plannerReady;
 
   // 모델 목록은 중앙 statusStore(= Rust `ollama_status` → `/api/tags`)를 구독한다.
   // 예전에는 여기서 사이드카 `healthCheck()`를 따로 불렀는데, 그러면 (1) 설치
@@ -105,20 +111,34 @@ function StepLLM({ onNext, onPrev }) {
   // 멀쩡한데도 "설치되어 있지 않아요"로 보인다. 엔진 설치 여부는 로컬 판정이라
   // 사이드카를 거칠 이유가 없다.
   const {
-    options: modelOptions,
-    installedCount,
     installed: ollamaInstalled,
     running: ollamaRunning,
     loading: ollamaLoading,
     refresh: recheckOllama,
-    pickDefault,
   } = useOllamaModels();
 
-  // 목록이 준비되면 선택값을 맞춘다 — 저장된 값이 목록에 있으면 그대로 두고,
-  // 없을 때만 추천 → 첫 항목 순으로 고른다.
-  useEffect(() => {
-    setModel((cur) => pickDefault(cur || llmConfig.model));
-  }, [pickDefault, llmConfig.model]);
+  // 두 모델을 차례로 받는다. 이미 있는 쪽은 건너뛴다. 실패는 그대로 보여 준다(모델 없이는 앱이 반쪽이다).
+  const handlePullModels = async () => {
+    setPullError("");
+    const todo = [
+      [DEFAULT_MODEL, chatReady],
+      [PLANNER_MODEL, plannerReady],
+    ].filter(([, ready]) => !ready);
+    try {
+      for (const [id] of todo) {
+        setPulling(id);
+        const result = await STATUS_MODULES.ollama.pullModel(id);
+        if (result && result.ok === false) {
+          throw new Error(result.message || `${id} 다운로드 실패`);
+        }
+      }
+      await recheckOllama();
+    } catch (err) {
+      setPullError(toUserMessage(err, "모델을 받지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요."));
+    } finally {
+      setPulling("");
+    }
+  };
 
   const handleNext = async () => {
     setSaving(true);
@@ -188,7 +208,8 @@ function StepLLM({ onNext, onPrev }) {
             <FileChecklist
               items={[
                 { name: "로컬 AI 엔진", state: "active" },
-                { name: `AI 모델 (${RECOMMENDED_MODEL})`, state: "pending" },
+                { name: "대화 모델 (A.X-4.0-Light)", state: "pending" },
+                { name: "엑셀 계획 모델 (ax7bplanner-v3)", state: "pending" },
               ]}
             />
 
@@ -226,56 +247,59 @@ function StepLLM({ onNext, onPrev }) {
         </Card>
       )}
 
-      {/* Ollama 설치됨, 모델 없음 — 와이어프레임 A-2(설치 완료) → A-3(모델 설치) 사이 */}
-      {!ollamaLoading && ollamaInstalled && ollamaRunning && installedCount === 0 && (
-        <Card className="border-blue-300 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20">
-          <CardContent className="space-y-2 py-3">
-            <InstallProgress value={50} label="로컬 AI 엔진 설치 완료" detail="1/2 단계" />
+      {/* Ollama 실행 중 — 앱이 쓰는 모델 두 개의 상태. 고르는 게 아니라 받는 것이다(2026-09-06). */}
+      {!ollamaLoading && ollamaInstalled && ollamaRunning && (
+        <Card className={bothReady ? "border-primary/40 bg-primary/5" : "border-blue-300 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20"}>
+          <CardContent className="space-y-3 py-4">
+            <InstallProgress
+              value={bothReady ? 100 : chatReady || plannerReady ? 66 : 33}
+              label={bothReady ? "AI 준비 완료" : "AI 모델 준비"}
+              detail={`${1 + Number(chatReady) + Number(plannerReady)}/3 단계`}
+            />
             <FileChecklist
               items={[
                 { name: "로컬 AI 엔진", state: "done" },
-                { name: `AI 모델 (${RECOMMENDED_MODEL})`, state: "active" },
+                {
+                  name: "대화 모델 (A.X-4.0-Light, 4.4GB)",
+                  state: chatReady ? "done" : pulling === DEFAULT_MODEL ? "active" : "pending",
+                },
+                {
+                  name: "엑셀 계획 모델 (ax7bplanner-v3, 4.4GB)",
+                  state: plannerReady ? "done" : pulling === PLANNER_MODEL ? "active" : "pending",
+                },
               ]}
             />
-            <p className="text-xs font-medium text-blue-700 dark:text-blue-400">
-              로컬 AI 엔진이 설치되었어요. 이제 AI 모델을 받아야 해요.
-            </p>
-            <p className="text-xs text-blue-600 dark:text-blue-500">
-              터미널에서 추천 모델을 받아주세요:
-            </p>
-            <div className="flex items-center gap-2 rounded bg-blue-100 dark:bg-blue-900/40 px-3 py-2">
-              <code className="flex-1 text-xs font-mono">ollama pull skt/A.X-4.0-Light:latest</code>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-6 px-2 text-xs"
-                onClick={() => navigator.clipboard.writeText("ollama pull skt/A.X-4.0-Light:latest")}
-              >
-                <Copy className="h-3 w-3" />
-              </Button>
-            </div>
-            <Button size="sm" variant="outline" className="w-full text-xs" onClick={recheckOllama}>
-              <RefreshCw className="h-3 w-3 mr-1" />
-              모델 확인
-            </Button>
+            {bothReady ? (
+              <p className="text-xs text-muted-foreground">
+                김대리가 쓰는 AI 모델 두 개가 모두 준비됐어요. 다른 모델은 고를 필요가 없습니다.
+              </p>
+            ) : (
+              <>
+                <p className="text-xs text-blue-700 dark:text-blue-400">
+                  {pulling
+                    ? `받는 중이에요 — ${pulling === DEFAULT_MODEL ? "대화 모델" : "엑셀 계획 모델"}. 인터넷 속도에 따라 몇 분 걸립니다.`
+                    : "김대리에 딱 맞는 모델 두 개를 받습니다(약 9GB, 한 번만). 다른 모델은 필요 없습니다."}
+                </p>
+                <Button
+                  size="sm"
+                  className="w-full text-xs"
+                  onClick={handlePullModels}
+                  disabled={Boolean(pulling)}
+                >
+                  {pulling ? (
+                    <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                  ) : null}
+                  {pulling ? "받는 중..." : "AI 모델 두 개 받기"}
+                </Button>
+                {pullError && <p className="text-xs text-destructive">{pullError}</p>}
+                <Button size="sm" variant="outline" className="w-full text-xs" onClick={recheckOllama} disabled={Boolean(pulling)}>
+                  <RefreshCw className="h-3 w-3 mr-1" />
+                  다시 확인
+                </Button>
+              </>
+            )}
           </CardContent>
         </Card>
-      )}
-
-      {/* Ollama 모델 선택 — 와이어프레임 A-3/A-4 (제조사 아이콘 + `추천` 배지) */}
-      {!ollamaLoading && ollamaInstalled && ollamaRunning && installedCount > 0 && (
-        <div className="space-y-2">
-          <Label>설치할 AI 모델을 선택해주세요.</Label>
-          <ModelSelectField
-            options={modelOptions}
-            value={model}
-            onChange={setModel}
-            placeholder="모델을 선택해주세요."
-          />
-          <p className="text-xs text-muted-foreground">
-            AI 모델은 추후에 언제든 변경이 가능합니다.
-          </p>
-        </div>
       )}
 
       {error && (
@@ -289,8 +313,8 @@ function StepLLM({ onNext, onPrev }) {
           <ChevronLeft className="mr-1 h-4 w-4" />
           이전
         </Button>
-        <Button className="flex-1" onClick={handleNext} disabled={saving}>
-          {saving ? "저장 중..." : "다음"}
+        <Button className="flex-1" onClick={handleNext} disabled={saving || !bothReady}>
+          {saving ? "저장 중..." : bothReady ? "다음" : "모델 두 개가 준비되면 다음"}
           <ChevronRight className="ml-1 h-4 w-4" />
         </Button>
       </div>
