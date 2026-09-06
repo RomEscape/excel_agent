@@ -85,12 +85,26 @@ hydrate_path() {
   fi
 
   # 사용자 로컬 셸 설정에서 nvm/homebrew PATH가 들어오도록 시도.
+  #
+  # `|| true` 로는 못 막는다(2026-09-06 실측): `set -u` 아래에서 남의 rc 가 미정의 변수를
+  # 참조하면 셸이 **그 자리에서 종료**한다(재현 exit=127, 다음 줄 미도달). 남의 파일이라
+  # 내용을 보증할 수 없으므로 source 동안만 -e·-u 를 끄고 곧바로 되돌린다.
+  # `$(set +o)` 로 저장하면 안 된다 — bash 는 명령 치환 안에서 errexit 을 끄므로
+  # 저장본에 `set +o errexit` 이 찍혀 복원할 때 -e 가 꺼진다(2026-09-06 실측).
+  # 현재 셸의 플래그(`$-`)를 서브셸 없이 직접 본다.
+  local _restore_e=0 _restore_u=0
+  case $- in *e*) _restore_e=1 ;; esac
+  case $- in *u*) _restore_u=1 ;; esac
+  set +eu
   for f in "$HOME/.zprofile" "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.bashrc"; do
     if [[ -f "$f" ]]; then
       # shellcheck source=/dev/null
       source "$f" >/dev/null 2>&1 || true
     fi
   done
+  [ "$_restore_e" = 1 ] && set -e
+  [ "$_restore_u" = 1 ] && set -u
+  return 0
 }
 
 try_install_with_brew() {
@@ -306,6 +320,21 @@ if command -v ollama >/dev/null 2>&1; then
   fi
 else
   echo "[주의] ollama를 찾지 못해 모델 준비를 건너뜁니다."
+fi
+
+# ── 연습용 워크북(2026-09-06) — setup.ps1 과 같은 이유·같은 규칙 ──────────────
+WORK_DIR="$PROJECT_DIR/엑셀 작업 폴더"
+DEMO_SRC="$PROJECT_DIR/복잡한 엑셀 작업을 위한 자료/AI_Excel_Automation_Demo.xlsx"
+mkdir -p "$WORK_DIR"
+if ! ls "$WORK_DIR"/*.xlsx >/dev/null 2>&1; then
+  if [[ -f "$DEMO_SRC" ]]; then
+    cp "$DEMO_SRC" "$WORK_DIR/AI_Excel_Automation_Demo.xlsx"
+    echo "[완료] 연습용 워크북을 '엑셀 작업 폴더'에 넣었습니다 (AI_Excel_Automation_Demo.xlsx)"
+  else
+    echo "[주의] 연습용 워크북 원본을 찾지 못했습니다: $DEMO_SRC"
+  fi
+else
+  echo "[건너뜀] '엑셀 작업 폴더'에 이미 엑셀 파일이 있습니다"
 fi
 
 echo "=== 통합 설치 완료 ==="

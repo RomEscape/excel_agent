@@ -16,7 +16,8 @@
  */
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { ExcelTargetBar } from "./ExcelTargetBar.jsx";
-import { buildPasteBlock, displayMessageText, isExcelSelectionPaste, pasteHasValues } from "@/lib/excelPaste.js";
+import { displayMessageText, isExcelClipboardCandidate } from "@/lib/excelPaste.js";
+import { appendPasteBlock, probeExcelPaste } from "@/lib/excelPasteManager";
 // 범위 판정·"여기" 접두는 순수 함수로 뺐다(테스트 가능, 러너와 규칙 공유).
 import { applyRangeContextToCommand, hasExplicitRangeInCommand } from "@/lib/excelRangeContext.js";
 import { useExcelTarget } from "@/hooks/useExcelTarget.js";
@@ -92,7 +93,6 @@ import {
   openWorkspaceFile,
   agentChat,
   excelLiveCommand,
-  excelLiveSelection,
   traceClientEvent,
   excelLiveStatus,
   excelLiveSubmitApproval,
@@ -1351,50 +1351,23 @@ function ChatSidePanel({ sidecarState }) {
   const handlePaste = useCallback(
     async (event) => {
       const pasted = event.clipboardData?.getData("text/plain") ?? "";
-      // 평범한 붙여넣기는 건드리지 않는다. 단 **빈 범위**를 복사하면 Excel이 클립보드에
-      // `\r\n`만 넣으므로(2026-08-25 실측) 공백뿐인 붙여넣기도 선택 주소를 물어본다.
-      if (!isExcelSelectionPaste(pasted)) return;
+      // 평범한 붙여넣기는 건드리지 않는다. 표·빈 범위·값 든 한 칸만 Excel 에 "지금 선택이
+      // 어디냐"를 묻는다. 판정과 프로브는 ChatPanel 과 같은 모듈이다(2026-09-06 감사).
+      if (!isExcelClipboardCandidate(pasted)) return;
 
       event.preventDefault();
-      // 주소 조회는 전용 경량 엔드포인트로 한다. 예전엔 전체 명령 파이프라인
-      // ("지금 선택한 범위 읽어줘")을 탔는데, LLM이 바쁘면 수십 초가 걸리고
-      // 사이드카 재시작 창과 겹치면 통째로 실패했다(2026-08-17 실측 — 사용자가
-      // "복사했는데 뭐가 안 올라가네"를 봤다).
-      let address = "";
-      let selectionEmpty = null;
-      try {
-        const out = await excelLiveSelection();
-        address = String(out?.address || "").toUpperCase();
-        selectionEmpty = typeof out?.empty === "boolean" ? out.empty : null;
-      } catch {
-        // Excel이 꺼져 있거나 다른 앱에서 복사한 경우다. 아래에서 처리한다.
-      }
-      if (address) setLastExcelRangeRef(address);
-      if (!address && !pasted.trim()) {
+      const decision = await probeExcelPaste(pasted, { sessionId: excelSessionKey() });
+      if (decision.address) setLastExcelRangeRef(decision.address);
+      if (decision.kind === "unreadable") {
         // 빈 셀 복사 + 주소 실패: 넣을 것이 공백뿐이다. 조용히 아무것도 안 넣으면
         // 사용자는 앱이 고장 났다고 생각한다 — 이유를 말한다.
         addAgentMessage({
           role: "system",
-          text: "엑셀 선택 범위를 읽지 못했습니다. Excel 연결을 확인하고 다시 복사해 주세요.",
+          text: "엑셀 선택 범위를 읽지 못했습니다. Excel 에서 그 파일을 열어 둔 채 다시 복사해 주세요.",
         });
         return;
       }
-      // 같은 통합문서에서 복사했으면 값은 그 범위에 이미 있으니 주소만 남긴다.
-      // 선택 영역은 비어 있는데 붙여넣은 표에는 값이 있다 = 다른 앱·통합문서에서
-      // 가져온 데이터다 — 값을 살려 보내야 "입력해줘"가 그 자리에 쓴다
-      // (2026-08-19: 전에는 값이 통째로 사라져 "복붙한 값이 안 들어간다"가 됐다).
-      const keepValues = selectionEmpty === true && pasteHasValues(pasted);
-      // 붙여넣기 사고("복붙했는데 값이 안 들어간다")는 이 세 값이 있어야 재현된다.
-      traceClientEvent({
-        kind: "paste_probe",
-        session_id: excelSessionKey(),
-        detail: { address: address || "(없음)", selection_empty: selectionEmpty, keep_values: keepValues, pasted_chars: pasted.length, why: address ? "선택 주소 인식" : "선택 주소 없음" },
-      });
-      const block = buildPasteBlock(pasted, address, { keepValues });
-      setInput((prev) => {
-        if (!prev) return block;
-        return prev.endsWith("\n") ? `${prev}${block}` : `${prev}\n${block}`;
-      });
+      setInput((prev) => appendPasteBlock(prev, decision.block));
     },
     [excelSessionKey, addAgentMessage]
   );
@@ -1690,7 +1663,7 @@ function ChatSidePanel({ sidecarState }) {
                 >
                   <span
                     className={cn(
-                      "inline-block max-w-full break-words rounded-lg px-3 py-1.5 text-xs",
+                      "inline-block max-w-full whitespace-pre-wrap break-words rounded-lg px-3 py-1.5 text-xs",
                       msg.role === "user"
                         ? "bg-primary text-primary-foreground"
                         : "border border-border bg-background"

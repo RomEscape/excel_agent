@@ -7,7 +7,7 @@
 |---|---|
 | Windows에 설치하고 싶다 | **[Windows 설치 안내](https://claude.ai/code/artifact/e4354599-27b5-414c-8723-65d29922b9c1)** (단계별, 복사 버튼 포함) |
 | Mac에 설치하고 싶다 | **[Mac 설치 안내](https://claude.ai/code/artifact/89905586-97dd-41eb-9383-c7f219fff0a3)** (Apple Silicon, 실기 검증 전) |
-| 쓰는 법이 궁금하다 | [처음 켰을 때](#처음-켰을-때) · [이렇게 시키면 됩니다](#이렇게-시키면-됩니다) |
+| 쓰는 법이 궁금하다 | [처음 켰을 때](#처음-켰을-때) · [이렇게 시키면 됩니다](#이렇게-시키면-됩니다) · **[실제 대화 기록](https://claude.ai/code/artifact/fafd2b50-7387-41ea-a0c8-0fce37e2ff0e)** (8건 421턴 전문) |
 | 뭔가 안 된다 | [안 될 때](#안-될-때) |
 | 개발자다 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) |
 
@@ -67,7 +67,7 @@ npm run tauri:dev
 
 Mac은 첫 엑셀 명령에서 "Excel을 제어하려고 합니다" 창이 뜹니다. **허용**해야 합니다.
 
-**엑셀 파일은 `officeclaw` 안의 `엑셀 작업 폴더`에 둡니다.** 김대리는 이 폴더 안의 파일만 다룹니다. 연습용으로 `AI_Excel_Automation_Demo.xlsx`가 들어 있습니다.
+**엑셀 파일은 `officeclaw` 안의 `엑셀 작업 폴더`에 둡니다.** 김대리는 이 폴더 안의 파일만 다룹니다. 설치가 끝나면 연습용 `AI_Excel_Automation_Demo.xlsx`가 자동으로 들어갑니다. 이 폴더가 비어 있으면 김대리를 켤 때도 한 부 넣어 줍니다.
 
 - 파일 목록에서 **한 번 클릭** = 그 파일을 작업 대상으로 고릅니다("대상" 표시가 붙습니다).
 - **더블클릭** = Excel로 엽니다. Excel에서 열어 둔 채로 시키면 그 파일에 바로 반영됩니다.
@@ -75,6 +75,8 @@ Mac은 첫 엑셀 명령에서 "Excel을 제어하려고 합니다" 창이 뜹�
 ## 이렇게 시키면 됩니다
 
 셀 주소를 몰라도 됩니다. 아래는 실제로 통과한 문장들입니다.
+
+더 많은 예가 필요하면 **[실제 대화 기록](https://claude.ai/code/artifact/fafd2b50-7387-41ea-a0c8-0fce37e2ff0e)**을 보세요. 물류·외식·건설·마케팅 등 8가지 상황에서 사람이 시킨 말과 김대리의 답 421턴을 한 글자도 다듬지 않고 실었습니다. 낱말로 찾을 수 있습니다.
 
 - `합계를 표 아래에 한 줄로 넣어줘` / `밑에 합계 한줄 부탁해`
 - `첫줄 남색 배경으로 하고 글자는 흰색 굵게` / `표 전체 테두리좀 둘러줘`
@@ -106,5 +108,6 @@ Mac은 첫 엑셀 명령에서 "Excel을 제어하려고 합니다" 창이 뜹�
 
 - Windows 설치 안내: https://claude.ai/code/artifact/e4354599-27b5-414c-8723-65d29922b9c1
 - Mac 설치 안내: https://claude.ai/code/artifact/89905586-97dd-41eb-9383-c7f219fff0a3
+- 실제 대화 기록(8건 421턴 전문): https://claude.ai/code/artifact/fafd2b50-7387-41ea-a0c8-0fce37e2ff0e
 - 개발자 안내: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) · 작업 규율: [CLAUDE.md](CLAUDE.md) · 실측 기록: [개발일지.md](개발일지.md)
 - Windows 명령은 2026-09-06 새 Windows 11 PC에서 실제로 실행해 확인했습니다. Mac은 설치 스크립트 검토와 드라이런까지만 했고 실제 Mac에서는 아직 돌려 보지 않았습니다.

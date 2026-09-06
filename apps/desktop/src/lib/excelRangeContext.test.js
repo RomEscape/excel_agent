@@ -157,3 +157,18 @@ test("여기 지시어에는 붙여넣기 범위를 접두한다", () => {
   assert.equal(applyRangeContextToCommand("정렬 좀", "A1:D9"), "정렬 좀");
   assert.equal(applyRangeContextToCommand("A2:B3 여기에 넣어줘", "A1:D9"), "A2:B3 여기에 넣어줘");
 });
+
+
+test("stripContextBlock — 붙여넣기 안내 태그와 📋 안내 줄도 걷어낸다(2026-09-06 감사 발견 7)", () => {
+  const withNote = "[[EXCEL_RANGE:C1:H6]]\n[[EXCEL_PASTE_NOTE]]엑셀에서 붙여넣은 6행 × 6열 — C1:H6 범위로 인식했습니다[[/EXCEL_PASTE_NOTE]]\n여기에 입력해줘";
+  assert.equal(stripContextBlock(withNote), "여기에 입력해줘");
+  const redisplayed = "📋 엑셀에서 붙여넣은 6행 × 6열 — C1:H6 범위로 인식했습니다\n여기에 입력해줘";
+  assert.equal(stripContextBlock(redisplayed), "여기에 입력해줘");
+  const outside = "📋 밖에서 가져온 표 3행 × 2열 — D1:E3부터 넣습니다\n지역\t주문건수\n수도권\t10452 입력해줘";
+  assert.equal(stripContextBlock(outside), "지역\t주문건수\n수도권\t10452 입력해줘");
+});
+
+test("toOutboundCommand — 붙여넣기 블록이 있으면 '여기' 명령 앞에 범위가 선다", () => {
+  const raw = "[[EXCEL_RANGE:C1:H6]]\n[[EXCEL_PASTE_NOTE]]엑셀에서 붙여넣은 6행 × 6열 — C1:H6 범위로 인식했습니다[[/EXCEL_PASTE_NOTE]]\n여기에 입력해줘";
+  assert.equal(toOutboundCommand(raw), "C1:H6 여기에 입력해줘");
+});

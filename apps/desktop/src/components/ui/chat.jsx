@@ -330,6 +330,7 @@ export const ChatComposer = React.forwardRef(function ChatComposer(
     header,
     focused = false,
     minHeight = 72,
+    onPaste,
   },
   ref
 ) {
@@ -371,6 +372,7 @@ export const ChatComposer = React.forwardRef(function ChatComposer(
           value={value}
           onChange={(e) => onChange?.(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={onPaste}
           disabled={disabled}
           placeholder={placeholder}
           className="max-h-[160px] w-full resize-none bg-transparent text-xs leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"

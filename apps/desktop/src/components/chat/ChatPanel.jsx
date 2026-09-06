@@ -35,6 +35,8 @@ import { ExcelTargetBar } from "@/components/workspace/ExcelTargetBar.jsx";
 import { useExcelTarget } from "@/hooks/useExcelTarget.js";
 import { cn } from "@/lib/utils";
 import { panelToggleLabel } from "@/lib/chatPanel";
+import { isExcelClipboardCandidate } from "@/lib/excelPaste.js";
+import { appendPasteBlock, probeExcelPaste } from "@/lib/excelPasteManager";
 import {
   sendMessage,
   retryFromMessage,
@@ -62,6 +64,8 @@ const QUICK_PROMPTS = Object.freeze([
 
 export default function ChatPanel() {
   const agentMessages = useAppStore((s) => s.agentMessages);
+  const addAgentMessage = useAppStore((s) => s.addAgentMessage);
+  const activeSessionId = useAppStore((s) => s.activeSessionId);
   // 지금 에이전트가 어느 엑셀 파일을 보고 있는지 — 채팅 패널에도 항상 보인다.
   // 이게 없어서 "처리 중인 파일이 안 보인다"는 지적이 나왔다(2026-09-01).
   const excelTarget = useExcelTarget();
@@ -126,10 +130,36 @@ export default function ChatPanel() {
     composerRef.current?.focus();
   }, []);
 
-  // 입력창에 범위 참조가 들어 있으면 첨부 칩을 띄운다.
+  // Excel 에서 복사한 셀을 붙여넣으면 값 대신 범위 배지를 넣는다 — 워크스페이스
+  // 인라인 채팅과 같은 판정(lib/excelPaste)·같은 프로브(lib/excelPasteManager).
+  // 2026-09-06 감사: 이 패널에만 훅이 없어 Excel 표가 원시 탭 텍스트로 전송됐다.
+  const handlePaste = useCallback(
+    async (event) => {
+      const pasted = event.clipboardData?.getData("text/plain") ?? "";
+      if (!isExcelClipboardCandidate(pasted)) return;
+      event.preventDefault();
+      const decision = await probeExcelPaste(pasted, { sessionId: activeSessionId || "" });
+      if (decision.kind === "unreadable") {
+        addAgentMessage({
+          role: "system",
+          text: "엑셀 선택 범위를 읽지 못했습니다. Excel 에서 그 파일을 열어 둔 채 다시 복사해 주세요.",
+        });
+        return;
+      }
+      setInput((prev) => appendPasteBlock(prev, decision.block));
+      composerRef.current?.focus();
+    },
+    [activeSessionId, addAgentMessage]
+  );
+
+  // 입력창에 범위 참조가 들어 있으면 첨부 칩을 띄운다. 붙여넣기 안내가 있으면 그 문구로.
   const rangeRef = useMemo(() => {
     const m = input.match(/\[\[EXCEL_RANGE:([A-Z0-9:]+)\]\]/i);
     return m ? m[1].toUpperCase() : null;
+  }, [input]);
+  const pasteNote = useMemo(() => {
+    const m = input.match(/\[\[EXCEL_PASTE_NOTE\]\]([\s\S]*?)\[\[\/EXCEL_PASTE_NOTE\]\]/i);
+    return m ? m[1].trim() : "";
   }, [input]);
 
   const clearRangeRef = useCallback(() => {
@@ -137,6 +167,7 @@ export default function ChatPanel() {
       prev
         .replace(/\[\[EXCEL_RANGE:[A-Z0-9:]+\]\]/gi, "")
         .replace(/\[\[EXCEL_VALUES_TSV\]\][\s\S]*?\[\[\/EXCEL_VALUES_TSV\]\]/gi, "")
+        .replace(/\[\[EXCEL_PASTE_NOTE\]\][\s\S]*?\[\[\/EXCEL_PASTE_NOTE\]\]/gi, "")
         .trim()
     );
   }, []);
@@ -315,6 +346,7 @@ export default function ChatPanel() {
             onChange={setInput}
             onSubmit={handleSubmit}
             onAttach={handleInsertRange}
+            onPaste={handlePaste}
             busy={sending}
             disabled={sending}
             focused={!!rangeRef}
@@ -322,7 +354,7 @@ export default function ChatPanel() {
               <div className="flex flex-col gap-2">
                 {rangeRef && (
                   <AttachmentChip
-                    name={`선택 범위 ${rangeRef}`}
+                    name={pasteNote ? `📋 ${pasteNote}` : `선택 범위 ${rangeRef}`}
                     onRemove={clearRangeRef}
                   />
                 )}

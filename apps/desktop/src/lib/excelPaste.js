@@ -50,6 +50,64 @@ export function isExcelSelectionPaste(text) {
   return raw.length > 0 && raw.trim() === "";
 }
 
+/**
+ * 값이 든 **한 칸**을 복사한 클립보드처럼 보이는가 — Excel 은 한 칸을 복사하면
+ * `값\r\n`(Mac 은 `값\r`) 한 줄을 넣는다. 탭도 공백도 없어서 예전 관문은 이걸
+ * 문장으로 취급했고, "이 칸부터 넣어 줘"라고 한 칸을 복사하는 흐름이 막혔다
+ * (2026-09-06 사용자: "셀 복사 붙여넣기 해도 범위 표기가 안 보인다").
+ *
+ * 다른 앱에서 복사한 한 줄도 같은 모양이므로 이것만으로 배지를 붙이지는 않는다 —
+ * 사이드카가 돌려준 **원시 선택 한 칸의 값**과 글자가 같을 때만 배지다(decidePasteBlock).
+ */
+export function looksLikeSingleCellPaste(text) {
+  const raw = String(text ?? "");
+  return /^[^\t\r\n]+(\r\n|\r|\n)$/.test(raw) && raw.trim() !== "";
+}
+
+/** 붙여넣기 훅이 기본 동작을 막고 프로브를 시도할 가치가 있는가. */
+export function isExcelClipboardCandidate(text) {
+  return isExcelSelectionPaste(text) || looksLikeSingleCellPaste(text);
+}
+
+/**
+ * 붙여넣기 + Excel 선택 프로브 결과 → 채팅창에 넣을 것(순수 — 두 채팅창이 같이 쓴다).
+ *
+ * @param {string} pasted 클립보드 text/plain
+ * @param {{address?: string, raw_address?: string, has_real_selection?: boolean, empty?: boolean|null, single_value?: string|null}|null} selection
+ *   사이드카 GET /excel-live/selection 응답. null 이면 Excel 을 못 읽은 것.
+ * @returns {{kind: "badge"|"text"|"unreadable", block: string, address: string, keepValues: boolean}}
+ *   badge — block 을 입력창에 넣는다(마크업). text — 붙여넣은 글자를 그대로 넣는다.
+ *   unreadable — 넣을 것이 공백뿐이고 Excel 도 못 읽었다: 호출부가 이유를 말한다.
+ */
+export function decidePasteBlock(pasted, selection) {
+  const text = String(pasted ?? "");
+  const sel = selection && typeof selection === "object" ? selection : {};
+  const address = String(sel.address || "").toUpperCase();
+  // 옛 사이드카는 has_real_selection 을 안 보낸다 — 그때는 주소가 있으면 진짜로 본다.
+  const real = sel.has_real_selection === undefined ? Boolean(address) : Boolean(sel.has_real_selection && address);
+  const asText = { kind: "text", block: text, address: "", keepValues: false };
+
+  if (looksLikeSingleCellPaste(text)) {
+    const raw = String(sel.raw_address || "").toUpperCase();
+    const value = sel.single_value == null ? null : String(sel.single_value);
+    if (real && raw && !raw.includes(":") && value !== null && value.trim() === text.trim()) {
+      return { kind: "badge", block: buildPasteBlock(text, raw, { single: true }), address: raw, keepValues: false };
+    }
+    return asText;
+  }
+
+  const blank = text.length > 0 && text.trim() === "";
+  if (blank) {
+    if (!real) return { kind: "unreadable", block: "", address: "", keepValues: false };
+    return { kind: "badge", block: buildPasteBlock(text, address), address, keepValues: false };
+  }
+
+  if (!looksLikeExcelPaste(text)) return asText;
+  if (!real) return asText; // Excel 을 못 읽으면 값을 버리지 않는다 — 표를 그대로 둔다
+  const keepValues = sel.empty === true && pasteHasValues(text);
+  return { kind: "badge", block: buildPasteBlock(text, address, { keepValues }), address, keepValues };
+}
+
 /** 붙여넣은 표의 크기. 미리보기 문구에 쓴다. */
 export function pasteShape(text) {
   const lines = String(text ?? "")
@@ -110,6 +168,10 @@ export function buildPasteBlock(text, address, options = {}) {
   const ref = String(address || "").toUpperCase();
   if (!ref) return String(text ?? "");
   const keepValues = Boolean(options && options.keepValues);
+  if (options && options.single) {
+    // 값이 든 한 칸 — 값은 그 칸에 이미 있으니 주소만 남긴다.
+    return [`[[EXCEL_RANGE:${ref}]]`, `[[EXCEL_PASTE_NOTE]]엑셀에서 복사한 ${ref} 한 칸으로 인식했습니다[[/EXCEL_PASTE_NOTE]]`].join("\n");
+  }
   // 행×열은 **범위에서** 센다. 붙여넣은 텍스트로 세면 빈 줄이 걸러져
   // "9행 × 4열 — A1:D13"처럼 서로 안 맞는 숫자가 나간다(2026-08-17 실측 —
   // 사용자가 "인식되는 범위도 다르고"라고 지적한 그 화면). 값은 어차피

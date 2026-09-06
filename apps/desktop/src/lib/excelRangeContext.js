@@ -25,11 +25,19 @@ export function extractRangeTag(text) {
   return m ? m[1].toUpperCase() : null;
 }
 
-/** 태그와 값 블록을 모두 제거한 순수 명령문만 남긴다. */
+/**
+ * 태그와 값 블록을 모두 제거한 순수 명령문만 남긴다.
+ *
+ * 붙여넣기 안내(`[[EXCEL_PASTE_NOTE]]…`)와, 말풍선에 남았던 사람용 안내 줄(`📋 …인식했습니다`,
+ * 재시도·편집으로 되돌아온 문장)도 걷어낸다 — 2026-08-17 에 안내 문구가 명령에 섞여
+ * 사이드카로 간 사고가 ChatPanel 경로에서 재현될 수 있었다(2026-09-06 감사 발견 7).
+ */
 export function stripContextBlock(text) {
   return String(text || "")
     .replace(/\[\[EXCEL_RANGE:[A-Z0-9:]+\]\]/gi, "")
     .replace(/\[\[EXCEL_VALUES_TSV\]\][\s\S]*?\[\[\/EXCEL_VALUES_TSV\]\]/gi, "")
+    .replace(/\[\[EXCEL_PASTE_NOTE\]\][\s\S]*?\[\[\/EXCEL_PASTE_NOTE\]\]/gi, "")
+    .replace(/^📋 [^\n]*(인식했습니다|넣습니다)[ \t]*$/gm, "")
     .trim();
 }
 

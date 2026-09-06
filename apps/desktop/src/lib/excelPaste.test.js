@@ -9,6 +9,9 @@ import {
   pasteHasValues,
   pasteShape,
   rangeShape,
+  decidePasteBlock,
+  isExcelClipboardCandidate,
+  looksLikeSingleCellPaste,
 } from "./excelPaste.js";
 
 // Excel에서 A1:D3을 복사하면 이런 모양으로 붙는다.
@@ -142,4 +145,81 @@ test("빈 범위 주소로도 안내 블록이 범위 기준으로 만들어진�
   const out = buildPasteBlock("\r\n", "A1:D6");
   assert.match(out, /\[\[EXCEL_RANGE:A1:D6\]\]/);
   assert.match(out, /엑셀에서 붙여넣은 6행 × 4열 — A1:D6 범위로 인식했습니다/);
+});
+
+
+// ─── 2026-09-06 감사: 두 채팅창이 공유하는 순수 판정 ───────────────────────────
+const TSV_3x2 = "지역\t주문건수\r\n수도권\t10452\r\n충청권\t3892\r\n";
+
+test("looksLikeSingleCellPaste — Excel 한 칸(값\\r\\n)만 참, 표·공백·문장은 거짓", () => {
+  assert.equal(looksLikeSingleCellPaste("10452\r\n"), true);
+  assert.equal(looksLikeSingleCellPaste("수도권\r"), true); // Mac Excel
+  assert.equal(looksLikeSingleCellPaste("\r\n"), false); // 빈 칸은 다른 경로
+  assert.equal(looksLikeSingleCellPaste("합계 넣어줘"), false); // 줄 끝 없음 = 타자
+  assert.equal(looksLikeSingleCellPaste(TSV_3x2), false);
+  assert.equal(looksLikeSingleCellPaste("a\r\nb\r\n"), false); // 한 열 여러 행
+});
+
+test("isExcelClipboardCandidate — 표, 빈 범위, 값 든 한 칸이 프로브 대상", () => {
+  assert.equal(isExcelClipboardCandidate(TSV_3x2), true);
+  assert.equal(isExcelClipboardCandidate("\r\n"), true);
+  assert.equal(isExcelClipboardCandidate("10452\r\n"), true);
+  assert.equal(isExcelClipboardCandidate("합계 넣어줘"), false);
+  assert.equal(isExcelClipboardCandidate(""), false);
+});
+
+test("decidePasteBlock — 같은 통합문서의 표: 값을 버리고 주소 배지", () => {
+  const d = decidePasteBlock(TSV_3x2, { address: "A1:B3", empty: false, has_real_selection: true });
+  assert.equal(d.kind, "badge");
+  assert.equal(d.address, "A1:B3");
+  assert.equal(d.keepValues, false);
+  assert.match(d.block, /\[\[EXCEL_RANGE:A1:B3\]\]/);
+  assert.match(d.block, /엑셀에서 붙여넣은 3행 × 2열 — A1:B3 범위로 인식했습니다/);
+  assert.doesNotMatch(d.block, /수도권\t10452/);
+});
+
+test("decidePasteBlock — 선택이 비었는데 표에 값이 있으면 밖에서 온 표: 값을 살린다", () => {
+  const d = decidePasteBlock(TSV_3x2, { address: "D1:E3", empty: true, has_real_selection: true });
+  assert.equal(d.kind, "badge");
+  assert.equal(d.keepValues, true);
+  assert.match(d.block, /밖에서 가져온 표 3행 × 2열 — D1:E3부터 넣습니다/);
+  assert.match(d.block, /수도권\t10452/);
+});
+
+test("decidePasteBlock — Excel 을 못 읽으면(파일 모드·꺼짐) 표를 그대로 둔다, 값을 잃지 않는다", () => {
+  const off = decidePasteBlock(TSV_3x2, null);
+  assert.equal(off.kind, "text");
+  assert.equal(off.block, TSV_3x2);
+  // 파일 엔진은 사용 영역을 주소로 돌려주지만 진짜 선택이 아니다 — 배지로 쓰면 값이 사라진다(감사 발견 3)
+  const file = decidePasteBlock(TSV_3x2, { address: "A1:F7", empty: false, has_real_selection: false });
+  assert.equal(file.kind, "text");
+  assert.equal(file.block, TSV_3x2);
+});
+
+test("decidePasteBlock — 빈 범위 복사: 주소가 있으면 배지, 없으면 unreadable", () => {
+  const ok = decidePasteBlock("\r\n", { address: "C1:H6", empty: true, has_real_selection: true });
+  assert.equal(ok.kind, "badge");
+  assert.match(ok.block, /6행 × 6열 — C1:H6/);
+  assert.equal(decidePasteBlock("\r\n", null).kind, "unreadable");
+  assert.equal(decidePasteBlock("\r\n", { address: "A1:F7", has_real_selection: false }).kind, "unreadable");
+});
+
+test("decidePasteBlock — 값 든 한 칸: 원시 선택 한 칸의 값과 같을 때만 배지", () => {
+  const sel = { address: "A1:C4", raw_address: "B7", single_value: "10452", empty: false, has_real_selection: true };
+  const d = decidePasteBlock("10452\r\n", sel);
+  assert.equal(d.kind, "badge");
+  assert.equal(d.address, "B7");
+  assert.match(d.block, /엑셀에서 복사한 B7 한 칸으로 인식했습니다/);
+  // 값이 다르면 다른 앱에서 온 한 줄이다 — 글자를 그대로 둔다
+  const other = decidePasteBlock("메모 한 줄\r\n", sel);
+  assert.equal(other.kind, "text");
+  assert.equal(other.block, "메모 한 줄\r\n");
+  // 옛 사이드카(raw_address 없음)는 확장된 범위만 주므로 배지를 안 붙인다 — 퇴행 없음
+  const legacy = decidePasteBlock("10452\r\n", { address: "A1:C4", empty: false });
+  assert.equal(legacy.kind, "text");
+});
+
+test("decidePasteBlock — 옛 사이드카 응답(has_real_selection 없음)은 주소가 있으면 진짜로 본다", () => {
+  const d = decidePasteBlock(TSV_3x2, { address: "A1:B3", empty: false });
+  assert.equal(d.kind, "badge");
 });

@@ -17,7 +17,10 @@ import { toToolSteps } from "@/lib/toolSteps";
 import {
   toOutboundCommand,
   buildRangeContextBlock,
+  extractRangeTag,
+  hasExplicitRangeInCommand,
 } from "@/lib/excelRangeContext";
+import { displayMessageText } from "@/lib/excelPaste.js";
 import {
   excelLiveCommand,
   excelLiveSubmitApproval,
@@ -174,7 +177,8 @@ export function retryFromMessage(index, options = {}) {
   while (userIdx >= 0 && agentMessages[userIdx].role !== "user") userIdx -= 1;
   if (userIdx < 0) return;
 
-  const prompt = String(agentMessages[userIdx].text ?? "");
+  // 재시도는 사람용 문구(📋 안내 포함)가 아니라 입력 원문(마크업 포함)으로 — 안내가 명령에 섞이지 않게.
+  const prompt = String(agentMessages[userIdx].raw ?? agentMessages[userIdx].text ?? "");
   setAgentMessages(agentMessages.slice(0, userIdx));
   setToolSteps([]);
 
@@ -202,9 +206,19 @@ export async function sendMessage(rawInput) {
   } = app();
   const { setSending, setTaskLabel, setPendingExcelApproval, setToolSteps } = chat();
 
-  // 보낼 명령문은 참조 블록을 정리한 형태, 화면에 남는 건 사용자가 친 원문.
+  // 보낼 명령문은 참조 블록을 정리한 형태. 화면·저장에는 사람용 문구를 쓴다 —
+  // `[[EXCEL_RANGE:…]]` 마크업은 모델과의 약속이지 사람에게 보일 말이 아니다
+  // (인라인 채팅은 2026-08-17 부터 그랬고, 이 경로는 2026-09-06 감사에서 맞췄다).
   const message = toOutboundCommand(trimmed);
-  addAgentMessage({ role: "user", text: trimmed, time: stamp() });
+  const displayText = displayMessageText(trimmed);
+  addAgentMessage({ role: "user", text: displayText, raw: trimmed, time: stamp() });
+  // 붙여넣기로 인식한 범위는 문장에 범위가 없을 때 문맥 범위로 같이 보낸다 —
+  // 되묻기("어디에 넣을까요?")가 위치를 알고 물을 수 있게(감사 발견 8).
+  const pasteRef = extractRangeTag(trimmed);
+  const contextRange = pasteRef && !hasExplicitRangeInCommand(message) ? pasteRef : null;
+  const clientContext = pasteRef
+    ? { raw_message: trimmed, display_text: displayText, paste_ref: pasteRef, surface: "chat_panel" }
+    : { surface: "chat_panel" };
   // 지난 턴의 스텝 칩을 비운다 — 안 비우면 어느 요청의 진행인지 알 수 없다.
   setToolSteps([]);
 
@@ -214,7 +228,7 @@ export async function sendMessage(rawInput) {
     sid = crypto.randomUUID();
     setActiveSessionId(sid);
   }
-  persistSilent(sid, "user", trimmed);
+  persistSilent(sid, "user", displayText);
 
   setSending(true);
   setTaskLabel("AI가 처리하는 중...");
@@ -222,7 +236,7 @@ export async function sendMessage(rawInput) {
     // 리베이스 후 시그니처가 (message, wb, sheet, sessionId, approve, …)로
     // 바뀌었는데 옛 자리(approve 위치에 history 배열)로 호출해 Rust 역직렬화가
     // 즉사했다 — 채팅 패널발 명령이 사이드카에 닿지도 못한 원인(2026-09-01).
-    const res = await excelLiveCommand(message, null, null, sid, false);
+    const res = await excelLiveCommand(message, null, null, sid, false, contextRange, clientContext);
     // 이번 턴에 실제로 실행된 액션 → 툴 진행 스텝 칩 (와이어프레임 B-7).
     setToolSteps(toToolSteps(res?.executed_actions));
 

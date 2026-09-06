@@ -1,6 +1,7 @@
 """Application configuration and platform-specific paths."""
 
 import os
+import shutil
 import platform
 import time
 from pathlib import Path
@@ -45,7 +46,34 @@ def get_workspace_root() -> Path:
         repo_root = _detect_workspace_root()
         root = (repo_root / DEV_WORKSPACE_DIRNAME) if repo_root is not None else (get_data_dir() / "Workspace")
     root.mkdir(parents=True, exist_ok=True)
+    if not override and repo_root is not None:
+        _seed_demo_workbook(repo_root, root)
     return root
+
+
+#: 연습용 워크북 원본(추적됨). `엑셀 작업 폴더/*` 는 gitignore 라 새 clone 엔 비어 있다.
+DEMO_WORKBOOK_SOURCE = Path("복잡한 엑셀 작업을 위한 자료") / "AI_Excel_Automation_Demo.xlsx"
+
+
+def _seed_demo_workbook(repo_root: Path, workspace_root: Path) -> Path | None:
+    """워크스페이스에 엑셀 파일이 하나도 없으면 연습용 워크북을 한 부 넣는다.
+
+    2026-09-06 실클론 감사: README 는 "연습용 AI_Excel_Automation_Demo.xlsx 가 들어 있다"고
+    했지만 폴더가 gitignore 라 새 clone 엔 없었다. setup 스크립트도 같은 일을 하지만
+    셋업을 건너뛰거나 git pull 만 한 사람을 위해 첫 실행에서도 채운다. 이미 어떤
+    .xlsx 든 있으면 손대지 않는다(사용자 파일 우선). 실패는 조용히 — 이건 편의다.
+    """
+    try:
+        if any(workspace_root.glob("*.xlsx")):
+            return None
+        src = repo_root / DEMO_WORKBOOK_SOURCE
+        if not src.is_file():
+            return None
+        dst = workspace_root / src.name
+        shutil.copy2(src, dst)
+        return dst
+    except OSError:
+        return None
 
 
 def get_app_db_path() -> Path:

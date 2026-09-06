@@ -337,6 +337,24 @@ if (Get-Command ollama -ErrorAction SilentlyContinue) {
     Write-Host "[주의] ollama를 찾지 못해 모델 준비를 건너뜁니다." -ForegroundColor Yellow
 }
 
+# ── 연습용 워크북(2026-09-06) ────────────────────────────────────────────────
+# `엑셀 작업 폴더/*` 는 사용자 파일이라 gitignore 다. 그래서 새 clone 엔 README 가 말하는
+# AI_Excel_Automation_Demo.xlsx 가 없었다(실클론 감사에서 발견). 원본은 추적되는
+# `복잡한 엑셀 작업을 위한 자료/` 에 있으니 폴더가 비어 있을 때만 한 부 복사한다.
+$WorkDir = Join-Path $ProjectDir "엑셀 작업 폴더"
+$DemoSrc = Join-Path $ProjectDir "복잡한 엑셀 작업을 위한 자료\AI_Excel_Automation_Demo.xlsx"
+Ensure-Directory $WorkDir
+if (-not (Get-ChildItem -Path $WorkDir -Filter *.xlsx -File -ErrorAction SilentlyContinue)) {
+    if (Test-Path $DemoSrc) {
+        Copy-Item -Path $DemoSrc -Destination (Join-Path $WorkDir "AI_Excel_Automation_Demo.xlsx")
+        Write-Host "[완료] 연습용 워크북을 '엑셀 작업 폴더'에 넣었습니다 (AI_Excel_Automation_Demo.xlsx)"
+    } else {
+        Write-Host "[주의] 연습용 워크북 원본을 찾지 못했습니다: $DemoSrc" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "[건너뜀] '엑셀 작업 폴더'에 이미 엑셀 파일이 있습니다"
+}
+
 Write-Host ""
 Write-Host "=== 통합 설치 완료 ===" -ForegroundColor Green
 Write-Host "OPENCLAW_HOME=$env:OPENCLAW_HOME"

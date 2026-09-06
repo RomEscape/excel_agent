@@ -50,6 +50,10 @@ dev = [
     # 이후 누군가 `uv sync` 를 돌리는 순간 지워지고, 그게 컴파일 도중이면
     # `operations_binary_matmult.h file not found` 같은 엉뚱한 C 에러로 나타난다.
     "nuitka>=4.1",
+    # 배터리·스모크 스크립트(run_command_battery.py, smoke_excel_live_*.py)가 사이드카를
+    # HTTP 로 두드린다. 앱 코드는 httpx 만 쓰므로 번들에는 안 들어간다 — 새 clone 의
+    # 새 venv 에서 `ModuleNotFoundError: requests` 로 배터리가 죽던 것(2026-09-06 감사).
+    "requests>=2.32",
 ]
 
 [project.scripts]
