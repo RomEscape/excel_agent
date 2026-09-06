@@ -3,7 +3,16 @@ const headers = {
   Authorization: "Bearer dev-token",
   "Content-Type": "application/json",
 };
-const workbookId = "C:\\Users\\asdjj\\officeclaw\\Workspace\\text_1.xlsx";
+// 이 개발기 절대경로가 박혀 있어 다른 머신에선 무조건 실패했다(2026-09-06 클론 실측).
+// 환경변수로 덮을 수 있고, 없으면 사이드카가 쓰는 워크스페이스 기본값을 조립한다.
+const workspace =
+  process.env.OFFICE_CLAW_WORKSPACE_DIR ||
+  (process.platform === "win32"
+    ? `${process.env.LOCALAPPDATA}\\office_claw\\Workspace`
+    : `${process.env.HOME}/.local/share/office_claw/Workspace`);
+const sep = process.platform === "win32" ? "\\" : "/";
+const workbookId =
+  process.env.OFFICECLAW_E2E_WORKBOOK || `${workspace}${sep}text_1.xlsx`;
 const sheetName = "Sheet1";
 
 async function post(path, body) {
