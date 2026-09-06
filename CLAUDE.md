@@ -52,12 +52,18 @@
 `uv`가 있으면 `uv run`을 그대로 쓰면 된다. 없거나 못 믿겠으면 아래 venv 인터프리터가 확실하다(셋업이 만들어 둔다).
 
 ```powershell
-$PY = "$env:LOCALAPPDATA\officeclaw\venvs\python-sidecar\Scripts\python.exe"
+$PY   = "$env:LOCALAPPDATA\officeclaw\venvs\python-sidecar\Scripts\python.exe"
+$RUFF = "$env:LOCALAPPDATA\officeclaw\venvs\python-sidecar\Scripts\ruff.exe"
 $env:PYTHONUTF8 = "1"
 ```
 
 문서의 `uv run python X` 는 전부 `& $PY X` 로 바꿔 읽는다.
 `uv`를 복구하려면: `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`
+
+> **`services/sidecar/.venv` 는 쓰지 않는다.** OneDrive 안이라 `uv sync` 가 기존
+> 디렉터리를 지우려다 `os error 5`(액세스 거부)로 죽는다 — 2026-09-06 실측으로
+> `.venv`·LOCALAPPDATA 양쪽 다 재생성에 실패했다. 도구를 더 넣을 때는 재생성이
+> 없는 `uv pip install --python $PY <패키지>` 를 쓴다(ruff 를 이렇게 넣었다).
 
 ### 실행
 
@@ -89,7 +95,7 @@ cd services/sidecar; & $PY -m office_claw_sidecar --port 19532 --auth-token dev-
 
 ```powershell
 cd apps/desktop/src-tauri;      cargo fmt --check; cargo clippy --all-targets -- -D warnings
-cd services/sidecar; .\.venv\Scripts\ruff.exe check .; & $PY -m pytest -q
+cd services/sidecar; & $RUFF check .; & $PY -m pytest -q
 cd ..;             npm run lint --if-present; npm run test:unit --if-present
 ```
 
