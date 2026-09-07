@@ -11438,6 +11438,18 @@ def _unstated_param_problem(message: str, plan: list[PlanStep], session_key: str
 _WRITE_ACTION_NOUNS = frozenset(
     {"입력", "기입", "작성", "기록", "쓰기", "타이핑", "값", "내용", "데이터", "텍스트"}
 )
+#: 무엇을 가리키는 말이지 **쓸 콘텐츠가 아니다.** "나머지도 채워줘"의 '나머지도'가
+#: A1에 값으로 박혀 사람이 친 머리글 '제품'을 덮었다(2026-09-08 시드 배터리 실측).
+#: 조사까지 붙은 꼴을 그대로 적는다 — 접미사 규칙으로 잡으면 '강원도'·'경기도' 같은
+#: 진짜 값이 함께 걸린다.
+_ANAPHORIC_WRITE_TOKENS = frozenset(
+    {
+        "나머지", "나머지도", "나머지를", "나머지는",
+        "전부", "전부다", "모두", "다",
+        "그거", "그것", "이거", "이것", "요거", "저거", "저것",
+        "그것들", "이것들", "빈칸", "빈칸도", "나머지것",
+    }
+)
 
 
 def _fabricated_write_value_problem(message: str, plan: list[PlanStep], session_key: str) -> str:
@@ -11461,7 +11473,7 @@ def _fabricated_write_value_problem(message: str, plan: list[PlanStep], session_
         if len(flat) != 1:
             continue  # 서로 다른 값들은 어딘가에서 말한 목록이다 — 여기서 판단하지 않는다.
         token = next(iter(flat))
-        if token not in _WRITE_ACTION_NOUNS:
+        if token not in _WRITE_ACTION_NOUNS and token not in _ANAPHORIC_WRITE_TOKENS:
             continue
         # 인용 표현 — 그 낱말을 쓰라고 명시한 문장은 실행한다.
         quoted = re.search(

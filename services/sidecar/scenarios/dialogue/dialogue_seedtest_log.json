@@ -1,0 +1,19 @@
+[
+ {
+  "turn": 1,
+  "zone": "작업물",
+  "text": "지금 표에 뭐가 들어 있는지 보여줘",
+  "paste": "",
+  "ui": {},
+  "expect": "ok",
+  "action": "excel_live.read_range",
+  "ok": true,
+  "why": "",
+  "asked": false,
+  "interpretation": false,
+  "reply": "엑셀 변경 작업을 실행합니다. — A1:E2",
+  "secs": 17.7,
+  "parts": 1,
+  "context_range": ""
+ }
+]

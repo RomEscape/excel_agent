@@ -363,6 +363,7 @@ def assess(
     if _WHOLE_SCOPE.search(str(message or "")):
         return ScopeVerdict(checked=False, why="전체를 지목한 문장")
 
+    no_stated_scope = False
     stated = stated_scope(
         message=message, context_range=context_range, active_sheet=active_sheet, extra_refs=extra_refs
     )
@@ -381,11 +382,17 @@ def assess(
             for s in steps or []
             if isinstance(s, dict) and str(s.get("action") or "") == "excel_live.clear_range"
         ]
-        if not clearing:
-            return ScopeVerdict(checked=False, why="문장이 자리를 가리키지 않음")
-        footprint = write_footprint(clearing, active_sheet, resolve_placeholder)
-        if not footprint:
-            return ScopeVerdict(checked=False, why="문장이 자리를 가리키지 않음")
+        if clearing:
+            footprint = write_footprint(clearing, active_sheet, resolve_placeholder)
+            if not footprint:
+                return ScopeVerdict(checked=False, why="문장이 자리를 가리키지 않음")
+        else:
+            # **쓰기도 본다.** 위 주석의 "보통은 활성 셀 쓰기"라는 가정은 붙여넣기 흐름에서만
+            # 성립한다 — 그때는 프런트가 context_range를 준다. 사람이 Excel에 직접 타자해 둔
+            # 상태에는 그 문맥이 없어 여기로 빠지고, 플래너가 A1부터 덮어써도 아무도 못 막았다.
+            # 2026-09-08 시드 배터리 실측: 사람이 친 머리글(제품·카테고리…)과 첫 데이터 행이
+            # 통째로 사라지고 그 자리에 명령문 조각('나머지도')까지 값으로 박혔다.
+            no_stated_scope = True
 
     risky: list[RiskyCell] = []
     for rect in footprint:
@@ -416,4 +423,9 @@ def assess(
             cell = row[c - bc1] if isinstance(row, list) and 0 <= c - bc1 < len(row) else None
             if not _is_blank(cell):
                 risky.append(RiskyCell(rect.sheet, f"{idx_to_col(c)}{r}", cell))
+    if no_stated_scope and len(risky) < 2:
+        # 자리를 안 짚은 **한 칸** 쓰기는 통과시킨다 — "마우스 판매량 320으로 바꿔줘"처럼
+        # 값 하나 고치는 게 대부분이고, 여기까지 카드를 띄우면 성가시기만 하다.
+        # 여러 칸을 덮는 경우만 위험으로 본다(머리글 행·기존 데이터가 통째로 날아가는 부류).
+        return ScopeVerdict(checked=False, why="지목 없는 한 칸 쓰기")
     return ScopeVerdict(risky=risky)

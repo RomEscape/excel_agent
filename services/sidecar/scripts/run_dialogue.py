@@ -178,10 +178,47 @@ def _reply_text(resp, result, approval_summary: str) -> str:
     return str(getattr(resp, "reason", ""))
 
 
+def apply_seed(workbook_path) -> None:
+    """각본의 `seed`를 워크북에 미리 써 넣는다 — **사람이 직접 타자해 둔 상태** 재현.
+
+    붙여넣기 턴과 다른 점: 프런트가 넘겨 주는 범위 문맥(`lastExcelRangeRef`)이 **없다**.
+    사람이 Excel에서 값을 치고 곧장 채팅으로 넘어온 상황이라, 에이전트는 통합문서를
+    스스로 읽어 무엇이 어디 있는지 알아내야 한다. 실사용에서 가장 흔한 형태다
+    (2026-09-08 사용자 지시: "사람이 직접 셀 안에 값을 입력하고 그 상황에서 작업을 맡기는").
+
+    각본 형식: {"seed": {"작업물": {"start": "A1", "rows": [["지역","매출"], ["수도권", 100]]}}}
+    """
+    seed = SC.get("seed") or {}
+    if not seed:
+        return
+    wb = load_workbook(workbook_path)
+    for sheet_name, spec in seed.items():
+        ws = wb[sheet_name] if sheet_name in wb.sheetnames else wb.create_sheet(sheet_name)
+        start = str(spec.get("start") or "A1").upper()
+        found = re.match(r"^([A-Z]{1,3})(\d{1,7})$", start)
+        base_row = int(found.group(2)) if found else 1
+        base_col = 1
+        if found:
+            base_col = 0
+            for ch in found.group(1):
+                base_col = base_col * 26 + (ord(ch) - 64)
+        for r_off, row in enumerate(spec.get("rows") or []):
+            for c_off, value in enumerate(row):
+                if value is None or value == "":
+                    continue
+                ws.cell(row=base_row + r_off, column=base_col + c_off, value=value)
+    # 사람은 빈 기본 시트를 남겨 두지 않는다 — 시드가 다른 시트를 만들었으면 지운다.
+    if "Sheet" in wb.sheetnames and len(wb.sheetnames) > 1 and "Sheet" not in seed:
+        del wb["Sheet"]
+    wb.save(workbook_path)
+
+
 async def run_once(round_no: int) -> list[dict]:
     if WB.exists():
         WB.unlink()
     Workbook().save(WB)
+    # 각본이 `seed`를 주면 사람이 이미 타자해 둔 상태로 만들고 시작한다.
+    apply_seed(WB)
     print(f"[라운드 {round_no}] {WB.name} · {len(TURNS)}턴")
     llm = get_llm_service()
     session = f"{SESSION_BASE}-r{round_no}"
