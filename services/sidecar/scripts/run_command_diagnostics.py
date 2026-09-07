@@ -28,6 +28,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+# 호출자가 PYTHONUTF8=1 을 안 붙여도 한국어 출력이 죽지 않게 한다(2026-09-07 실측:
+# cp949 콘솔에서 첫 print 가 UnicodeEncodeError 로 죽어 '로그가 잘린다'로 보였다).
+from _console import force_utf8
+
+force_utf8()
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))

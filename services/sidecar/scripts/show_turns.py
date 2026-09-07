@@ -42,6 +42,12 @@ from office_claw_sidecar.services.trace_report import (
     source_label,
 )
 
+# 호출자가 PYTHONUTF8=1 을 안 붙여도 한국어 출력이 죽지 않게 한다(2026-09-07 실측:
+# cp949 콘솔에서 첫 print 가 UnicodeEncodeError 로 죽어 '로그가 잘린다'로 보였다).
+from _console import force_utf8
+
+force_utf8()
+
 
 def _build_filter(args) -> Callable[[dict], bool]:
     """거르기 조건을 술어 하나로 묶는다. 한 번 보기와 실시간 보기가 같은 조건을 쓴다."""
