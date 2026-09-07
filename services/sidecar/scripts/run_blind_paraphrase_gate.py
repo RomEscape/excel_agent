@@ -509,6 +509,11 @@ def _reset_workbook_file() -> None:
     WB.unlink()  # 여기까지 왔으면 진짜 문제다 — 조용히 넘기지 않는다
 
 
+#: 한 문장에 허용하는 시간(초). 정상일 때 3~4초(p95 3.3초)라 120초면 충분히 넉넉하다.
+#: 2026-09-07: 상한이 없어 응답 없는 요청 하나가 624문장 측정을 3시간 멈춰 세웠다.
+SENTENCE_TIMEOUT_S = 120.0
+
+
 async def run_one(idx: int, row: dict, llm) -> dict:
     task = TASKS[row["task"]]
     _reset_workbook_file()
@@ -595,7 +600,18 @@ async def main() -> None:
     llm = get_llm_service()
     out = []
     for i, r in enumerate(rows, 1):
-        res = await run_one(i, r, llm)
+        try:
+            res = await asyncio.wait_for(run_one(i, r, llm), timeout=SENTENCE_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            # 건너뛰지 않고 **오류로 센다** — 요약의 `오류 N`에 드러나야 측정이 정직하다.
+            res = {
+                "idx": i, **r,
+                "outcome": "ERROR",
+                "card": False,
+                "action": "",
+                "detail": f"시간 초과({SENTENCE_TIMEOUT_S:.0f}초) — 응답이 오지 않아 다음 문장으로 넘어감",
+                "secs": SENTENCE_TIMEOUT_S,
+            }
         out.append(res)
         flag = {"PASS_RULE": "OK ", "PASS_CARD": "OKc", "ASK": "ASK", "WRONG": "BAD", "ERROR": "ERR"}[res["outcome"]]
         print(f"[{i:3d}/{len(rows)}] {flag} {r['task']:18s} {r['text'][:48]}" + (f"  → {res['detail'][:70]}" if res["outcome"] in {"WRONG", "ERROR", "ASK"} else ""))
