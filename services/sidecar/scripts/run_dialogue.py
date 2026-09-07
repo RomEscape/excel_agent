@@ -66,11 +66,22 @@ _SPLIT_SEPS = [
     r"\s+그\s*다음(?:으로)?\s+(?!(?:줄|행|칸|열|시트|탭|표|페이지|단계))",
     r"\s+다음(?:으로)?\s+(?!(?:줄|행|칸|열|시트|탭|표|페이지|단계))",
     r"\s+이후\s+", r"\s*하고\s+", r"\s+then\s+", r"\s+and then\s+",
+    # 하다형이 아닌 동사의 연결어미 `-고` — 프런트(excelCommandUtils.js)와 같은 규칙.
+    # 파이썬 lookbehind 는 대안의 폭이 같아야 해서 글자 수로 나눠 둔다.
+    r"(?<=(?:내고|넣고|걸고|뽑고))\s+",
+    r"(?<=(?:만들고|지우고|바꾸고|채우고|매기고))\s+",  # 남기고 제외: 조건 공유 문형
 ]
 
 
 _FILLER_ONLY_PART = re.compile(
     r"^(?:(?:아|어|음|응|네|넵|옙|예|ㅇㅇ|ㅇㅋ|ㅋㅋ+|ㅎㅎ+|흠|오|아하|좋아|그래|ok|okay|그럼|자|그|이|저|일단|먼저|우선|그냥|아니|근데|그런데|그리고|그리구|또)[\s,.!~]*)+$",
+    re.I,
+)
+
+
+#: 전면 보류 — 라우터 `_UNIVERSAL_HOLD_ABSOLUTE` 와 같은 뜻(CLAUDE.md §6).
+_WHOLE_SENTENCE_HOLD = re.compile(
+    r"아무\s*(?:것|거|작업|일|짓)?\s*도?\s*(?:안\s*(?:해|하|건드)|하지\s*(?:마|말|않)|실행하지\s*(?:마|말|않)|만지지\s*(?:마|말))|(?:일단|지금은?|그냥|오늘은?|당분간|우선)\s*보류|보류(?:하자|하겠|할게|할래|합시다|해요|하죠|하기로)",
     re.I,
 )
 
@@ -83,6 +94,10 @@ def split_composite(raw: str) -> list[str]:
     if not text:
         return []
     if looks_like_value_list_write(text):
+        return [text]
+    # 문장 끝의 전면 보류가 앞 절을 지배한다 — 쪼개면 앞 조각이 실행돼 버린다
+    # (2026-09-07 복합 배터리 실측). 프런트와 같은 규칙.
+    if _WHOLE_SENTENCE_HOLD.search(text):
         return [text]
     parts = [text]
     for sep in _SPLIT_SEPS:

@@ -64,6 +64,8 @@ before/after를 재고, 일반화는 **블라인드 게이트**로 잰다 — �
       PowerShell `Get-Date` 를 쓴다. 지난 항목의 시각은 지어내지 말고
       `git blame --line-porcelain -- 개발일지.md` 의 author 시각에서 가져온다.
 - [ ] 커밋 메시지에도 같은 수치를
+- [ ] **용어는 `CLAUDE.md` §6 용어집대로** — 새 말을 지어내지 말고, 없는 개념이면 표에 먼저 한 줄을 추가한다.
+      (2026-09-07: 같은 개념이 두 이름으로 불린 사례 3건 — 미검출 오실행/조용한 오실행 등 — 이 발견돼 표를 만들었다.)
 
 양식과 예시 → [references/devlog-format.md](references/devlog-format.md)
 

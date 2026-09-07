@@ -54,6 +54,26 @@ def _action_seq(action_plan: Any) -> list[str]:
     return out
 
 
+#: 같은 데이터 효과를 내는데 이름만 둘인 액션 — **채점에서만** 묶는다.
+#: 2026-08-18 v5r 판정: 오답 21건 중 13건이 sort_range↔sort_rows, 4건이
+#: group_by_aggregate↔pivot_table 이었다. 이건 모델의 이해 실패가 아니라 어휘 설계
+#: 문제이므로, 접지 않으면 채점이 실력이 아니라 이름 고르기를 재게 된다.
+#: `filter ↔ highlight` 는 접지 않는다 — 행을 지우는 것과 색을 칠하는 것은 다르다.
+ACTION_ALIASES = {
+    "excel_live.sort_rows": "excel_live.sort_range",
+    "excel_live.pivot_table": "excel_live.group_by_aggregate",
+}
+
+
+def normalize_action(action: str) -> str:
+    """별칭을 대표 이름으로. 모르는 액션은 그대로 둔다."""
+    return ACTION_ALIASES.get(action, action)
+
+
+def normalize_seq(seq: list[str]) -> list[str]:
+    return [normalize_action(a) for a in seq]
+
+
 CLARIFY_ACTION = "excel_live.clarify"
 
 
@@ -81,6 +101,8 @@ async def _eval_model(
     parse_ok = 0
     first_action_match = 0
     exact_action_seq_match = 0
+    # 접기 전(문자열 정확 일치) 수치도 같이 센다 — 접기가 얼마나 걷어냈는지 보이게.
+    first_action_match_strict = 0
     latencies: list[int] = []
     # 분류별 집계. 전체 정답률 하나로는 무엇이 나빠졌는지 알 수 없다.
     by_category: dict[str, dict[str, int]] = {}
@@ -128,6 +150,7 @@ async def _eval_model(
             "predicted_action_seq": [],
             "ok_parse": False,
             "match_first_action": False,
+            "match_first_action_strict": False,
             "match_exact_action_seq": False,
             "elapsed_ms": 0,
             "error": "",
@@ -151,10 +174,17 @@ async def _eval_model(
 
             if seq:
                 parse_ok += 1
+            # 별칭을 정규화한 이름으로 채점한다. 원본 이름은 case 에 그대로 남아 있어
+            # "모델이 실제로 무엇을 골랐는지"는 보고서에서 여전히 확인할 수 있다.
+            normalized_expected = normalize_seq(expected_seq)
+            normalized_seq = normalize_seq(seq)
             if seq and seq[0] == expected_seq[0]:
+                case["match_first_action_strict"] = True
+                first_action_match_strict += 1
+            if normalized_seq and normalized_seq[0] == normalized_expected[0]:
                 case["match_first_action"] = True
                 first_action_match += 1
-            if seq == expected_seq:
+            if normalized_seq == normalized_expected:
                 case["match_exact_action_seq"] = True
                 exact_action_seq_match += 1
         except Exception as exc:
@@ -194,6 +224,12 @@ async def _eval_model(
         "first_action_match_rate": round((first_action_match / total), 4) if total else 0.0,
         "exact_action_seq_match": exact_action_seq_match,
         "exact_action_seq_match_rate": round((exact_action_seq_match / total), 4) if total else 0.0,
+        # 접기 전 수치 — 접기가 걷어낸 양이 곧 "이름 고르기" 잡음의 크기다.
+        "first_action_match_strict": first_action_match_strict,
+        "first_action_match_strict_rate": (
+            round((first_action_match_strict / total), 4) if total else 0.0
+        ),
+        "action_aliases": ACTION_ALIASES,
         "clarify": {
             "expected": clarify_expected,
             "hit": clarify_hit,
