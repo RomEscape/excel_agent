@@ -23,7 +23,11 @@ const ERROR_MAPPINGS = [
     message: "로컬 AI 엔진이 실행되지 않고 있습니다. 로컬 AI 설정에서 [자동 시작]을 눌러주세요.",
   },
   {
-    pattern: /Connection refused|tcp connect error|error trying to connect/i,
+    // reqwest 가 연결 자체에 실패하면 "error sending request for url (…)" 로 온다.
+    // 이 꼴이 표에 없어 **영문 원문이 그대로 화면에 샜다**(2026-09-08 GUI 실측:
+    // "대상 선택 실패: … error sending request for url (http://127.0.0.1:19532/…)").
+    pattern:
+      /Connection refused|tcp connect error|error trying to connect|error sending request/i,
     message: "백그라운드 서비스에 연결할 수 없습니다. 앱을 재시작해 주세요.",
   },
   {

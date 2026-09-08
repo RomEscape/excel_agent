@@ -17,8 +17,9 @@
  * 전송은 lib/chatManager.js가 소유한다.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FilePlus2, Trash2, Upload } from "lucide-react";
+import { FilePlus2, RefreshCw, Trash2, Upload } from "lucide-react";
 
+import { toUserMessage } from "@/lib/errorMessages";
 import { BrandMark } from "@/components/ui/logo";
 import { DocumentCard, MoreDocumentsTile } from "@/components/ui/document-card";
 import AlertDialog from "@/components/ui/dialog";
@@ -130,7 +131,10 @@ export default function HomePage() {
     }
     setTargetError("");
     selectExcelTarget(doc.path).catch((err) => {
-      setTargetError(`대상 선택 실패: ${String(err?.message || err)}`);
+      // 원문(`error sending request for url …`)을 그대로 띄우면 사용자가 할 수 있는
+      // 일이 없다. WorkspacePage 는 이미 toUserMessage 를 쓰는데 여기만 빠져 있었다
+      // (2026-09-08 GUI 실측: 영문 오류가 그대로 화면에 떴다).
+      setTargetError(`대상 선택 실패: ${toUserMessage(err)}`);
     });
   }, []);
 
@@ -246,6 +250,15 @@ export default function HomePage() {
             label="문서 업로드"
             onClick={() => fileInputRef.current?.click()}
             disabled={busy}
+          />
+          {/* 목록 새로고침 — 오류 문구가 "목록을 새로고침한 뒤 다시 시도해 주세요"라고
+              안내하는데 정작 누를 곳이 없었다(2026-09-08 GUI 실측). 사람이 Excel에서
+              파일을 직접 만들거나 지운 뒤에도 이 버튼이 필요하다. */}
+          <DocumentAction
+            icon={RefreshCw}
+            label="목록 새로고침"
+            onClick={() => refreshDocuments()}
+            disabled={busy || loading}
           />
           <div className="flex-1" />
           {deleteMode ? (
