@@ -40,6 +40,10 @@ from office_claw_sidecar.services.excel_live_service import (
     get_excel_live_service,
     invalidate_excel_engine_cache,
 )
+from office_claw_sidecar.services.excel_workbook_diff import (
+    diff_fingerprints,
+    fingerprint_workbook,
+)
 from office_claw_sidecar.services.llm_service import get_llm_service
 
 ROUTER = Path(__file__).resolve().parents[1] / "office_claw_sidecar" / "routers" / "excel_live.py"
@@ -234,6 +238,14 @@ async def run_once(round_no: int) -> list[dict]:
         invalidate_excel_engine_cache()
         svc = get_excel_live_service()
         svc.select_workbook(str(WB))
+        # **이 턴이 실제로 무엇을 건드렸는지**를 파일에서 재려고 전/후 지문을 뜬다.
+        # 응답의 자기보고만 보면 1칸을 칠하든 8칸을 칠하든 같은 `ok` 다
+        # (2026-09-08 실측: seedC t9). CLAUDE.md §3-7.
+        try:
+            before_print = fingerprint_workbook(WB)
+        except Exception as exc:
+            before_print = None
+            print(f"[{i:3d}] 지문 실패(전): {type(exc).__name__}")
         if ui.get("activate_sheet"):
             # 사람이 Excel에서 시트 탭을 클릭했다 — 채팅이 아니라 UI 동작이다.
             try:
@@ -300,6 +312,14 @@ async def run_once(round_no: int) -> list[dict]:
             print(f"[{i:3d}] 예외  {raw[:44]}  {type(error).__name__}")
             continue
 
+        wrote_desc, wrote_cells = "", -1
+        if before_print is not None:
+            try:
+                _d = diff_fingerprints(before_print, fingerprint_workbook(WB))
+                wrote_desc, wrote_cells = _d.describe(), _d.cell_count
+            except Exception as exc:
+                print(f"[{i:3d}] 지문 실패(후): {type(exc).__name__}")
+
         cmd, resp, result, ctx = results[-1]
         action = str(getattr(resp, "action", ""))
         asked = bool(result.get("ask_follow_up")) or "clarify" in action
@@ -336,6 +356,9 @@ async def run_once(round_no: int) -> list[dict]:
             "action": action, "ok": good, "why": why, "asked": asked, "interpretation": interpretation,
             "reply": reply[:600], "secs": round(time.time() - t0, 1),
             "parts": len(parts), "context_range": ctx or "",
+            # 파일에서 잰 실제 발자국. 판정에는 아직 쓰지 않는다 — 먼저 얼마나
+            # 어긋나는지 재고 나서 눈금을 바꾼다(CLAUDE.md §3).
+            "wrote": wrote_desc, "wrote_cells": wrote_cells,
         }
         log.append(entry)
         flag = "OK  " if good else "FAIL"
