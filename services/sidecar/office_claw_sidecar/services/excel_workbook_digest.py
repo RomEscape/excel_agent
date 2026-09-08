@@ -338,6 +338,16 @@ def first_free_column(used_range: str) -> str:
     return out
 
 
+def _last_used_row(used_range: str) -> int:
+    """사용범위의 마지막 행 번호. 못 읽으면 0(=모름)."""
+    found = re.search(r":[A-Za-z]{1,3}(\d{1,7})$", str(used_range or "").strip())
+    if found:
+        return int(found.group(1))
+    # 한 칸짜리 사용범위("A1")도 그 행이 마지막 행이다.
+    single = re.match(r"^[A-Za-z]{1,3}(\d{1,7})$", str(used_range or "").strip())
+    return int(single.group(1)) if single else 0
+
+
 def render_workbook_digest(digest: dict[str, Any], *, max_chars: int = 1600) -> str:
     """프롬프트에 넣을 수 있는 짧은 텍스트로 변환한다."""
     sheets = digest.get("sheets") or []
@@ -351,7 +361,17 @@ def render_workbook_digest(digest: dict[str, Any], *, max_chars: int = 1600) -> 
         used = str(sheet.get("used_range") or "")
         free = first_free_column(used)
         free_note = f" 빈열={free}부터" if free else ""
-        lines.append(f"- 시트 {name}{marker} 사용범위={used or '비어있음'}{free_note}")
+        # **다음 빈 행**을 함께 알려 준다. 빈 열만 있고 빈 행이 없으면 "이어서 넣어줘"에
+        # 어디부터 써야 하는지 알 길이 없어, 잡힌 범위 좌상단부터 덮어써 사람이 친
+        # 머리글이 사라진다(2026-09-08 시드 배터리 실측). 이어 붙일 자리를 아는 것이
+        # "작업 중인 파일을 읽고 이어갈 작업을 판단"하는 일의 첫 조건이다.
+        free_row_note = ""
+        last_row = _last_used_row(used)
+        if last_row:
+            free_row_note = f" 빈행={last_row + 1}부터"
+        lines.append(
+            f"- 시트 {name}{marker} 사용범위={used or '비어있음'}{free_note}{free_row_note}"
+        )
         columns = sheet.get("columns") or []
         if columns:
             rendered = " | ".join(

@@ -12,7 +12,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "값 입력 — A4:F5 · 값 12개 기록",
-  "secs": 4.5,
+  "secs": 4.8,
   "parts": 1,
   "context_range": ""
  },
@@ -29,7 +29,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "정렬 — A1:F5",
-  "secs": 6.3,
+  "secs": 6.8,
   "parts": 1,
   "context_range": "A4:F5"
  },
@@ -46,7 +46,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "1. 수식 적용 — C6 · 수식 1칸\n2. 수식 적용 — D6 · 수식 1칸\n3. 수식 적용 — E6 · 수식 1칸\n4. 수식 적용 — F6 · 수식 1칸\n5. 값 입력 — A6 · 값 1개 기록",
-  "secs": 14.0,
+  "secs": 14.8,
   "parts": 1,
   "context_range": "A1:F5"
  },
@@ -63,7 +63,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "조건부 강조 — F1:F6 · 2개 셀",
-  "secs": 3.2,
+  "secs": 3.4,
   "parts": 1,
   "context_range": "A6"
  },
@@ -80,7 +80,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "차트를 생성합니다. — A1:F6",
-  "secs": 3.2,
+  "secs": 3.4,
   "parts": 1,
   "context_range": "F1:F6"
  },
@@ -97,7 +97,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "엑셀 변경 작업을 실행합니다.",
-  "secs": 5.3,
+  "secs": 5.5,
   "parts": 1,
   "context_range": "A1:F6"
  },
@@ -114,7 +114,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "집계표(피벗 형태)를 생성합니다. — A1:B4 · 4×2",
-  "secs": 3.7,
+  "secs": 3.9,
   "parts": 1,
   "context_range": "A1:F6"
  },
@@ -131,7 +131,7 @@
   "asked": false,
   "interpretation": true,
   "reply": "엑셀 변경 작업을 실행합니다.",
-  "secs": 4.3,
+  "secs": 4.5,
   "parts": 1,
   "context_range": "A1:B4"
  },
@@ -148,7 +148,7 @@
   "asked": true,
   "interpretation": false,
   "reply": "어떤 값을 넣을까요? 값을 쉼표로, 줄은 세미콜론(;)으로 구분해 적어 주세요. 예: 지역,주문건수; 수도권,10452",
-  "secs": 4.8,
+  "secs": 5.0,
   "parts": 1,
   "context_range": "A1:B4"
  },
@@ -165,7 +165,7 @@
   "asked": false,
   "interpretation": false,
   "reply": "빠른 규칙 기반 실행 계획",
-  "secs": 1.2,
+  "secs": 1.3,
   "parts": 1,
   "context_range": "A1:B4"
  }
