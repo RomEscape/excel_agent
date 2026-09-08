@@ -12,6 +12,7 @@
  * UI 컴포넌트는 `components/ui/status.jsx`의 StatusDot/StatusBadge/StatusRow를 사용한다.
  */
 
+import { STALE_MESSAGE } from "@/lib/sidecarHealth";
 import {
   Check,
   AlertTriangle,
@@ -108,6 +109,11 @@ export function getLLMStatus({ sidecarState, llmReachable, model }) {
   }
   if (sidecarState === "error") {
     return { tone: "warning", label: fullLabel, sub: "앱과 연결할 수 없어요" };
+  }
+  // 응답은 오지만 **예전 버전**이 답하고 있는 경우. 연결됨으로 보이면 사용자는
+  // 원인을 짐작할 길이 없다 — 초록불을 거두고 눌러야 할 것을 말해 준다.
+  if (sidecarState === "stale") {
+    return { tone: "warning", label: fullLabel, sub: STALE_MESSAGE };
   }
   return llmReachable
     ? { tone: "ok", label: fullLabel }

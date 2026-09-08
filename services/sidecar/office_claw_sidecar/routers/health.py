@@ -3,6 +3,8 @@
 import httpx
 from fastapi import APIRouter
 
+from office_claw_sidecar.sidecar_identity import describe_running_sidecar
+
 router = APIRouter()
 
 
@@ -47,4 +49,7 @@ async def health_check():
         "ollama_status": ollama_status,
         "ollama_models": ollama_models,
         "missing_models": missing_models,
+        # 앱이 **자기가 띄운 사이드카인지** 대조할 수 있게 신원을 함께 낸다. 이게 없으면
+        # 정리되지 않고 남은 옛 사이드카에 붙어도 초록불이다(2026-09-08 실측).
+        "sidecar": describe_running_sidecar(),
     }

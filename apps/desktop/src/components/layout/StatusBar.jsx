@@ -23,6 +23,7 @@ import {
   getLLMStatus,
   getSecurityStatus,
 } from "@/lib/statusTokens";
+import { describeSidecarHealth } from "@/lib/sidecarHealth";
 
 // 페이지 키 → 한국어 라벨 (좌측 breadcrumb용)
 const PAGE_LABELS = {
@@ -126,7 +127,9 @@ export default function StatusBar() {
   const checkHealth = useCallback(async () => {
     try {
       const result = await healthCheck();
-      setSidecarStatus({ state: "ok", message: "연결됨" });
+      // 응답이 왔다는 것과 **맞는 사이드카가 답했다는 것**은 다르다.
+      const health = describeSidecarHealth(result);
+      setSidecarStatus({ state: health.state, message: health.message });
       setLLMReachable(result?.ollama_status === "connected");
     } catch {
       setSidecarStatus({ state: "error", message: "연결 오류" });

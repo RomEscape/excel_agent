@@ -10,6 +10,17 @@
 set -e
 
 if command -v uv >/dev/null 2>&1; then
+    # pytest·ruff 는 `[project.optional-dependencies] dev` 에 있고, `uv run` 은 extra 를
+    # 기본으로 넣지 않는다 — 그냥 부르면 "No module named pytest" 로 죽는다
+    # (2026-09-08 실측: uv 가 프로젝트 venv 를 잠금파일대로 맞추면서 pytest 를 걷어내
+    #  pre-commit 의 python-pins 훅이 커밋을 막았다).
+    # 다만 extra 를 늘 동기화해 두면 PyInstaller 번들에 그대로 실리므로(pyproject 주석)
+    # **그 extra 가 실제로 필요한 명령일 때만** 붙인다.
+    case " $* " in
+        *" -m pytest "*|*" -m ruff "*)
+            exec uv run --extra dev python "$@"
+            ;;
+    esac
     exec uv run python "$@"
 fi
 

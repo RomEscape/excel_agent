@@ -139,6 +139,14 @@ npm run test:unit --if-present             # 현재: node --test src/lib/*.test.
 ```
 
 - 빠른 확인이면 `npm run build`만 돌려도 import 경로 깨짐은 잡힘.
+- **`npm run build` 의 종료코드를 반드시 본다.** 경로에 한글이 있으면(이 개발기의
+  `바탕 화면/동화책 프로젝트/…` 가 그렇다) 이미 `dist/` 가 있는 상태의 재빌드가
+  `✓ 1711 modules transformed.` 직후 **오류 한 줄 없이** 죽는다 —
+  `0xC0000409`(PowerShell `-1073740791`, Git Bash `127`). 메시지가 없어 `| tail` 로만
+  보면 성공처럼 보이고, 실제로 이 개발기의 과거 "build OK" 기록 일부가 그렇게 적혔다.
+  원인은 OneDrive 도 `dist` 도 아니라 **node(v24.11.1)의 재귀 삭제가 non-ASCII 경로에서
+  죽는 것**이다(2026-09-08 실측: ASCII 경로 ok / 한글 경로 죽음, 손수 재귀는 ok).
+  `scripts/clean-dist.mjs` 가 빌드 앞에서 한 항목씩 지워 우회한다.
 
 #### Flutter 모바일 (`apps/mobile`)
 

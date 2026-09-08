@@ -56,6 +56,11 @@ pub async fn spawn_sidecar(app: &AppHandle) -> Result<(), String> {
             println!("[office-claw] Dev mode: sidecar not ready. Attempting auto-launch...");
             spawn_dev_sidecar_process(port, &auth_token)?;
             wait_for_ready(port, &auth_token).await?;
+        } else {
+            // 이미 떠 있는 것을 그대로 쓴다 — 그게 **정리되지 않고 남은 옛 사이드카**일
+            // 수 있다. 파이썬을 고친 뒤 사이드카를 안 죽였으면 앱은 옛 코드와 대화하게
+            // 되는데, 증상은 엉뚱한 곳(파일을 못 찾음)에서 난다(2026-09-08 실측).
+            warn_if_stale(port, &auth_token).await;
         }
 
         println!("[office-claw] Sidecar ready on port {}", port);
@@ -121,6 +126,45 @@ async fn probe_health(port: u16, auth_token: &str, timeout: Duration) -> bool {
         client.get(&url).bearer_auth(auth_token).timeout(timeout).send().await,
         Ok(resp) if resp.status().is_success()
     )
+}
+
+/// 채택한 사이드카가 자기 소스보다 먼저 뜬 것이면 콘솔에 크게 알린다.
+///
+/// 판정은 사이드카가 한다(`sidecar_identity.describe_running_sidecar`) — 소스 위치는
+/// 환경마다 달라(소스 트리 vs 설치본) 앱이 알 수 없기 때문이다. 여기서는 결과만 읽는다.
+/// 죽이지는 않는다: 그 프로세스는 사람이 손으로 띄운 것일 수 있다.
+async fn warn_if_stale(port: u16, auth_token: &str) {
+    let client = reqwest::Client::new();
+    let url = format!("http://127.0.0.1:{}/health", port);
+    let Ok(resp) = client
+        .get(&url)
+        .bearer_auth(auth_token)
+        .timeout(Duration::from_millis(800))
+        .send()
+        .await
+    else {
+        return;
+    };
+    let Ok(body) = resp.json::<serde_json::Value>().await else {
+        return;
+    };
+
+    // `sidecar` 블록 자체가 없으면 이 필드를 내려주지 않던 시절의 사이드카다.
+    let Some(info) = body.get("sidecar") else {
+        eprintln!(
+            "[office-claw] 경고: 포트 {}의 사이드카가 신원을 밝히지 못합니다 — 옛 버전입니다. 죽였다 다시 띄우세요.",
+            port
+        );
+        return;
+    };
+    if info.get("code_stale").and_then(|v| v.as_bool()) == Some(true) {
+        eprintln!(
+            "[office-claw] 경고: 포트 {}의 사이드카(pid {})가 예전 소스로 돌고 있습니다.              워크스페이스={}. 죽였다 다시 띄우세요.",
+            port,
+            info.get("pid").and_then(|v| v.as_i64()).unwrap_or(-1),
+            info.get("workspace_dir").and_then(|v| v.as_str()).unwrap_or("?")
+        );
+    }
 }
 
 /// Poll the sidecar health endpoint until it responds.
