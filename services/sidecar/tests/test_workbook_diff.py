@@ -234,3 +234,67 @@ def test_차트를_그리면_잡힌다(tmp_path):
     diff = diff_fingerprints(before, fingerprint_workbook(path))
     assert "작업물: 차트" in diff.sheet_changes
     assert diff.touched
+
+
+def test_엑셀_표를_만들면_잡힌다(tmp_path):
+    """`ws.tables` 는 dict 가 아니라 TableList 다 — `items()` 가 (이름, **범위 문자열**)을
+    준다. `tbl.ref` 로 다루면 AttributeError 가 나고, 그걸 except 가 삼켜 전·후 모두
+    빈 목록이 되어 **표 생성을 영영 못 봤다**(2026-09-10 실측: 서비스는 created:True,
+    파일에도 표가 있는데 발자국은 "바뀐 것 없음"). 삼키는 except 는 눈금을 조용히 멀게 한다."""
+    from openpyxl.worksheet.table import Table
+
+    path = _book(tmp_path)
+    before = fingerprint_workbook(path)
+    wb = load_workbook(path)
+    wb["작업물"].add_table(Table(displayName="T1", ref="A1:C3"))
+    wb.save(path)
+    wb.close()
+    diff = diff_fingerprints(before, fingerprint_workbook(path))
+    assert "작업물: 표" in diff.sheet_changes
+    assert diff.touched
+
+
+def test_시트_메타를_읽다_조용히_실패하지_않는다(tmp_path):
+    """메타 항목이 하나라도 예외로 비면 그 종류의 변화를 통째로 못 본다.
+
+    항목이 **전부 존재하는지**만 확인한다 — 값이 아니라 존재를 본다.
+    """
+    from office_claw_sidecar.services.excel_workbook_diff import _META_LABEL
+
+    path = _book(tmp_path)
+    meta = fingerprint_workbook(path).sheets["작업물"]
+    missing = [key for key in _META_LABEL if key not in meta]
+    assert not missing, f"시트 메타에서 빠진 항목: {missing}"
+
+
+def test_시트보호_인쇄영역_데이터유효성_정의된이름을_잡는다(tmp_path):
+    """`_save_wb` 는 부르는데 지문에 안 보이던 넷 — 정상 동작이 "무실행"으로
+    뒤집히던 자리다(2026-09-10 조사). 면제하지 않고 지문에 넣어 눈금을 넓혔다."""
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    for label, mutate, expect in (
+        ("작업물: 시트보호", lambda wb: setattr(wb["작업물"].protection, "sheet", True), None),
+        ("작업물: 인쇄영역", lambda wb: setattr(wb["작업물"], "print_area", "A1:C3"), None),
+        (
+            "작업물: 데이터유효성",
+            lambda wb: wb["작업물"].add_data_validation(
+                DataValidation(type="decimal", operator="greaterThan", formula1="0", sqref="B2:B3")
+            ),
+            None,
+        ),
+        ("통합문서: 정의된이름", lambda wb: wb.defined_names.add(_named_range()), None),
+    ):
+        path = _book(tmp_path, f"{abs(hash(label))}.xlsx")
+        before = fingerprint_workbook(path)
+        wb = load_workbook(path)
+        mutate(wb)
+        wb.save(path)
+        wb.close()
+        diff = diff_fingerprints(before, fingerprint_workbook(path))
+        assert label in diff.sheet_changes, f"{label} 를 못 잡았다: {diff.describe()}"
+
+
+def _named_range():
+    from openpyxl.workbook.defined_name import DefinedName
+
+    return DefinedName("매출표", attr_text="'작업물'!$A$1:$C$3")

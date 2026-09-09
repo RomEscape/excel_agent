@@ -183,10 +183,14 @@ def _sheet_meta(ws: Any) -> dict[str, Any]:
         )
     except Exception:
         meta["cf"] = []
-    try:
-        meta["tables"] = sorted(f"{name}={tbl.ref}" for name, tbl in (getattr(ws, "tables", {}) or {}).items())
-    except Exception:
-        meta["tables"] = []
+    # `ws.tables` 는 dict 가 아니라 `TableList` 이고 `items()` 가 (이름, **범위 문자열**)
+    # 을 준다. `tbl.ref` 로 다루면 AttributeError 가 나는데, 그걸 except 가 삼켜
+    # 전·후 모두 빈 목록이 되어 **표 생성을 영영 못 봤다** — 서비스는 `created: True`
+    # 를 냈고 파일에도 표가 있었는데 발자국은 "바뀐 것 없음"이었다(2026-09-10 실측).
+    # 삼키는 except 는 이렇게 눈금을 조용히 멀게 만든다.
+    meta["tables"] = sorted(
+        f"{name}={ref}" for name, ref in dict(getattr(ws, "tables", {}) or {}).items()
+    )
     meta["autofilter"] = str(getattr(getattr(ws, "auto_filter", None), "ref", "") or "")
     # 차트는 칸에도 시트 속성에도 안 남는다 — 따로 세지 않으면 "차트 그려줘"가
     # 아무것도 안 해도 '바뀐 것 없음'이 되어 통과한다(2026-09-08 실측: 시드 배터리 2턴).
@@ -202,6 +206,20 @@ def _sheet_meta(ws: Any) -> dict[str, Any]:
         meta["images"] = len(list(getattr(ws, "_images", []) or []))
     except Exception:
         meta["images"] = 0
+    # 아래 넷은 `_save_wb` 를 부르는데도 지문에 안 보여서 정상 동작이 "무실행"으로
+    # 뒤집히던 것들이다(2026-09-10 조사). **면제 목록에 넣는 대신 지문에 넣는다** —
+    # 면제하면 그 액션이 진짜로 아무것도 안 했을 때를 영영 못 본다.
+    try:
+        prot = getattr(ws, "protection", None)
+        meta["protection"] = bool(getattr(prot, "sheet", False))
+    except Exception:
+        meta["protection"] = False
+    try:
+        dvs = getattr(getattr(ws, "data_validations", None), "dataValidation", None) or []
+        meta["validations"] = sorted(f"{dv.type}:{dv.sqref}" for dv in dvs)
+    except Exception:
+        meta["validations"] = []
+    meta["print_area"] = str(getattr(ws, "print_area", "") or "")
     try:
         meta["hidden_rows"] = sorted(
             n for n, dim in (getattr(ws, "row_dimensions", {}) or {}).items() if getattr(dim, "hidden", False)
@@ -223,6 +241,8 @@ def _sheet_meta(ws: Any) -> dict[str, Any]:
 class WorkbookFingerprint:
     cells: dict[tuple[str, int, int], tuple] = field(default_factory=dict)
     sheets: dict[str, dict[str, Any]] = field(default_factory=dict)
+    #: 통합문서 수준(시트에 안 딸린 것) — 지금은 정의된 이름뿐이다.
+    book: dict[str, Any] = field(default_factory=dict)
     truncated: list[str] = field(default_factory=list)
 
 
@@ -231,6 +251,10 @@ def fingerprint_workbook(path: str | Path) -> WorkbookFingerprint:
     out = WorkbookFingerprint()
     wb = load_workbook(str(path), data_only=False)
     try:
+        try:
+            out.book["defined_names"] = sorted(str(n) for n in (wb.defined_names or {}))
+        except Exception:
+            out.book["defined_names"] = []
         for name in wb.sheetnames:
             ws = wb[name]
             out.sheets[name] = _sheet_meta(ws)
@@ -295,6 +319,9 @@ _META_LABEL = {
     "col_widths": "열너비",
     "charts": "차트",
     "images": "그림",
+    "protection": "시트보호",
+    "validations": "데이터유효성",
+    "print_area": "인쇄영역",
 }
 
 
@@ -316,6 +343,9 @@ def diff_fingerprints(before: WorkbookFingerprint, after: WorkbookFingerprint) -
     for sheet, cells in per_sheet.items():
         diff.ranges[sheet] = compress_cells(cells)
         diff.cell_count += len(cells)
+
+    if before.book.get("defined_names") != after.book.get("defined_names"):
+        diff.sheet_changes.append("통합문서: 정의된이름")
 
     for sheet in sorted(set(before.sheets) & set(after.sheets)):
         b, a = before.sheets[sheet], after.sheets[sheet]

@@ -9,6 +9,10 @@
           친 문장이다("지역,주문건수,…; 수도권,… 넣어줘"). 2026-08-18 GUI 실측 화면
           그대로 — 사람은 "시트 A1:F6에 …" 같은 좌표 문장을 치지 않는다.
   ui    : {"activate_sheet": "지역성과"} — 사람이 Excel에서 시트 탭을 클릭했다(채팅 아님).
+  may_noop: true — "중복된 행 **있으면** 제거해줘"처럼 조건이 안 맞으면 아무것도 안 하는
+          것이 옳은 턴. 이 표시가 없으면 `expect=ok` 인데 파일이 그대로인 것은 실패다.
+          러너가 문장을 보고 짐작하지 않는다 — 짐작하게 하면 진짜 무실행까지 봐준다
+          (2026-09-10 실측: 낱말 매칭이 서술형의 "숫자만 있으면 됩니다"까지 잡았다).
 
 GUI(`WorkspacePage.jsx handleSend`)와 **같은 순서·같은 규칙**으로 요청을 만든다:
   마크업 제거 → 복합문 분리(splitExcelCompositeCommand) → "여기/이 범위" 지시어면
@@ -50,6 +54,62 @@ ROUTER = Path(__file__).resolve().parents[1] / "office_claw_sidecar" / "routers"
 _router_src = ROUTER.read_text(encoding="utf-8")
 EXECUTABLE = set(re.findall(r'action == "(excel_live\.[a-z_]+)"', _router_src))
 EXECUTABLE |= set(re.findall(r'"(excel_live\.[a-z_]+)"', _router_src))
+
+#: **파일을 안 바꾸는 것이 정상인 액션.** 이 액션들에는 발자국을 요구하지 않는다.
+#:
+#: 나머지 액션이 `expect=ok` 로 성공했다면서 워크북에 흔적이 하나도 없으면 그건
+#: 무실행이다 — 시스템이 자기 입으로 "0개 셀 치환"이라 말하면서 합격한 사례가 있다
+#: (2026-09-08 seedD t1·t4 실측).
+#:
+#: 분류 근거는 `_save_wb` 호출 유무가 **아니다.** 그 기준으로는 `sort_range`·
+#: `filter_rows`·`pivot_table` 이 읽기 전용으로 잡히는데, 실측에서 이들은 발자국을
+#: 남긴다(정렬 4칸 등). 액션이 하는 일과 53턴 실측을 함께 보고 손으로 골랐다.
+#: 목록에는 **라우터가 실제로 내놓는 이름만** 둔다. 서비스 내부 헬퍼 이름을 넣어 두면
+#: 판정에 아무 영향이 없으면서 목록을 못 믿게 만든다(2026-09-10 감사: 죽은 항목 11개,
+#: 그중 `not_excel` 은 저장소 어디에도 없는 이름이었다 — 진짜는 `not_excel_request`).
+NO_WRITE_ACTIONS = frozenset({
+    # 조회·계산 — 값을 알려 줄 뿐 워크북을 바꾸지 않는다.
+    "excel_live.read_range",
+    "excel_live.list_sheets",
+    "excel_live.list_workbooks",
+    "excel_live.calculate_column_stat",
+    # 도크스트링이 "시트는 수정하지 않는 읽기 전용 분석"이라 못박는다. 빠져 있어서
+    # "지역별 매출 합계 알려줘"가 무실행으로 오판될 뻔했다(2026-09-10 감사).
+    "excel_live.group_by_aggregate",
+    "excel_live.validate_data",
+    "excel_live.verify_formula_result",
+    # `output_sheet` 를 줬을 때만 쓴다. 러너는 params 를 안 보므로 면제해 두되,
+    # 그 대가로 "중복 목록을 별도 시트로 뽑아줘"의 무실행은 못 잡는다.
+    "excel_live.compare_ranges",
+    "excel_live.find_duplicates",
+    # 선택·저장·내보내기 — 통합문서 내용은 그대로다.
+    "excel_live.select_workbook",
+    "excel_live.select_sheet",   # 활성 시트 인덱스만 바뀐다
+    "excel_live.recalculate",    # calcPr 플래그만 세운다
+    "excel_live.save_workbook",  # 파일 엔진에선 완전한 no-op(편집이 매번 저장한다)
+    "excel_live.export_pdf",
+    # 파일 엔진에서 항상 예외 — 성공할 수가 없어 판정에 닿지 않는다(문서화용).
+    "excel_live.refresh_power_query",
+    "excel_live.run_vba_macro",
+    # 실행이 아닌 응답.
+    "excel_live.noop",
+    "excel_live.clarify",
+    "excel_live.not_excel_request",
+    "excel_live.safety_stop",
+    "excel_live.macro_abort",
+    # 계획 제안 — 사람이 확인해야 실행된다("23단계로 나눴습니다. 확인 후 실행해 주세요").
+    # 이걸 무실행으로 세면 정상 동작을 실패로 만드는 오탐이 된다. 다만 이 턴이
+    # 보고서를 **만들었다는 뜻은 아니다** — 요약에서 따로 센다.
+    "excel_live.macro_plan",
+})
+
+# `forecast_linear` 는 **항상 쓴다** — `write_range` 가 무조건이고 `output_start` 기본값이
+# `A1` 이라 머리글을 덮는다(실측 `6칸 · 작업물!A1:B3`). "조회·계산"으로 보고 면제했다가
+# 감사에서 잡혔다. 면제하면 예측 턴의 무실행을 영영 못 본다 — 목록에 두지 않는다.
+#
+# `protect_sheet`·`define_named_range`·`set_print_area`·`set_data_validation` 도 면제
+# 대상으로 보였지만, **면제 대신 지문을 넓혔다**(`excel_workbook_diff`). 면제는 그 액션이
+# 진짜로 아무것도 안 했을 때를 영영 못 보게 만든다.
 
 SCENARIO = Path(sys.argv[1])
 SC = json.loads(SCENARIO.read_text(encoding="utf-8"))
@@ -350,14 +410,32 @@ async def run_once(round_no: int) -> list[dict]:
                 ):
                     good = False
                     why = "오실행(집계를 값으로 씀)"
+
+        # ── 파일에서 잰 발자국을 판정에 물린다 ──────────────────────────────
+        # 응답의 자기보고만 보면 "0개 셀 치환"이라고 말하면서도 합격했다
+        # (2026-09-08 실측: seedD t1·t4). 시스템이 무엇을 했다고 말했는지가 아니라
+        # **파일이 무엇을 겪었는지**로 가른다(CLAUDE.md §3-7).
+        if before_print is not None and wrote_cells >= 0:
+            touched = wrote_desc != "바뀐 것 없음"
+            if expect == "ok":
+                # `may_noop`: "중복된 행 **있으면** 제거해줘" 처럼 조건이 안 맞으면
+                # 아무것도 안 하는 것이 옳은 턴. 각본이 밝힌다 — 러너가 문장을 보고
+                # 짐작하면 진짜 무실행까지 같이 봐준다.
+                if good and not turn.get("may_noop") and action not in NO_WRITE_ACTIONS and not touched:
+                    good = False
+                    why = "무실행(성공이라 했지만 파일이 그대로)"
+            elif good and touched:
+                # 되묻거나 보류해 놓고 파일을 바꾸면 그것이 미검출 오실행이다.
+                good = False
+                why = f"미검출 오실행({'되물으면서' if expect == 'ask' else '보류인데'} {wrote_desc})"
+
         reply = _reply_text(resp, result, approval_summary)
         entry = {
             "turn": i, "zone": zone, "text": display, "paste": paste, "ui": ui, "expect": expect,
             "action": action, "ok": good, "why": why, "asked": asked, "interpretation": interpretation,
             "reply": reply[:600], "secs": round(time.time() - t0, 1),
             "parts": len(parts), "context_range": ctx or "",
-            # 파일에서 잰 실제 발자국. 판정에는 아직 쓰지 않는다 — 먼저 얼마나
-            # 어긋나는지 재고 나서 눈금을 바꾼다(CLAUDE.md §3).
+            # 파일에서 잰 실제 발자국. **판정에 쓴다**(위 무실행·미검출 오실행 검사).
             "wrote": wrote_desc, "wrote_cells": wrote_cells,
         }
         log.append(entry)
@@ -368,17 +446,41 @@ async def run_once(round_no: int) -> list[dict]:
         if not good:
             print(f"          action={action} {why} ctx={ctx} · {reply[:80]}")
 
-    ok = sum(1 for t in log if t["ok"])
-    print(f"성공 {ok} / {len(TURNS)}")
-    # 공통 불변식: 첫 데이터 시트 A1이 문장 텍스트로 오염되면 라운드 실패다.
+    # 공통 불변식: 시트 A1이 문장 텍스트로 오염되면 그건 실패다.
+    #
+    # **요약을 찍기 전에** 본다. 예전에는 `성공 n / m` 을 먼저 찍고 그 뒤에 검사해서,
+    # 이 줄을 정규식으로 읽는 `battery_all.py:35` 가 오염된 라운드를 만점으로 집계했다.
+    # 그리고 마지막 턴 하나만 뒤집었다 — 오염시킨 턴은 멀쩡히 합격으로 남았다.
     wb = load_workbook(WB)
     for name in wb.sheetnames:
         a1 = wb[name]["A1"].value
         if isinstance(a1, str) and len(a1) > 14 and ("줘" in a1 or "해" in a1[-2:]):
             print(f"  !! {name}!A1 오염: {a1[:40]}")
-            for t in log:
-                t["ok"] = False if t["turn"] == log[-1]["turn"] else t["ok"]
+            # 그 칸을 실제로 건드린 턴을 찾아 그 턴을 실패로 만든다. 발자국이
+            # 알려 주므로 더 이상 마지막 턴에 뒤집어씌우지 않는다.
+            # 경계를 붙인다 — `작업물!A1` 을 그냥 `in` 으로 찾으면 `작업물!A10:A12` 에
+            # 걸려서, A1 은 안 건드리고 A10 만 건드린 턴이 범인으로 지목된다
+            # (`compress_cells` 가 'A10:A12' 같은 주소를 낸다).
+            marker = re.compile(rf"{re.escape(name)}!A1(?![0-9])")
+            culprits = [t for t in log if marker.search(str(t.get("wrote") or ""))]
+            for t in (culprits or log[-1:]):
+                t["ok"] = False
+                t["why"] = (t.get("why") or "") + f" · {name}!A1 오염"
     wb.close()
+
+    ok = sum(1 for t in log if t["ok"])
+    print(f"성공 {ok} / {len(TURNS)}")
+    # 점수 한 줄만 보면 "무엇이 실제로 일어났는가"를 알 수 없다. 내역을 함께 낸다.
+    commands = [t for t in log if t.get("text")]
+    touched = sum(1 for t in commands if t.get("wrote") not in ("바뀐 것 없음", "", None))
+    plans = sum(1 for t in commands if t.get("action") == "excel_live.macro_plan")
+    asked_n = sum(1 for t in commands if t.get("asked"))
+    silent = sum(1 for t in log if "미검출 오실행" in str(t.get("why") or ""))
+    idle = sum(1 for t in log if "무실행" in str(t.get("why") or ""))
+    print(
+        f"내역: 파일변화 {touched} · 계획제안 {plans}(실행 아님) · 되묻기 {asked_n} · "
+        f"무실행 {idle} · 미검출 오실행 {silent}"
+    )
     out_dir = Path(os.environ.get("DIALOGUE_LOG_DIR") or SCENARIO.parent)
     (out_dir / (SCENARIO.stem + "_log.json")).write_text(
         json.dumps(log, ensure_ascii=False, indent=1), encoding="utf-8"
