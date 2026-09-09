@@ -111,8 +111,34 @@ def _column_index_for_key(key_column: Any, header_row: list[Any], first_col_idx:
     return None
 
 
+def _resolve_sheet(service: Any, workbook_id: str | None, sheet_name: str | None) -> str | None:
+    """시트 이름이 비어 있으면 활성 시트로 채운다.
+
+    라우터가 `req.sheet_name`(실사용에서는 대개 `None`)을 그대로 검증에 넘긴다.
+    그러면 `read_range` 가 `WorksheetNotFoundError` 를 던지고, `verify_effect` 의
+    예외 삼킴에 걸려 **사후조건 검사가 통째로 통과**한다. 검사를 켜 두고도 한 번도
+    안 돈 것이다.
+
+    2026-09-09 실측 — 같은 호출에 시트 이름만 달리 줬을 때:
+
+        sheet_name=None   → (True, '')                              ← 검사 죽음
+        sheet_name='작업물' → (False, "replace_not_applied:'32'…")   ← 검사 살아남
+
+    실행 경로는 시트가 비면 활성 시트를 쓰므로, 검증도 같은 시트를 봐야 짝이 맞는다.
+    """
+    name = str(sheet_name or "").strip()
+    if name:
+        return name
+    try:
+        info = service.list_sheets(workbook_id) or {}
+    except Exception:
+        return sheet_name
+    active = str(info.get("active_sheet") or info.get("active") or "").strip()
+    return active or sheet_name
+
+
 def _read(service: Any, workbook_id: str | None, sheet_name: str | None, range_ref: str) -> list[list[Any]]:
-    payload = service.read_range(workbook_id, sheet_name, range_ref)
+    payload = service.read_range(workbook_id, _resolve_sheet(service, workbook_id, sheet_name), range_ref)
     values = payload.get("values") if isinstance(payload, dict) else None
     return values if isinstance(values, list) else []
 
@@ -679,6 +705,14 @@ def _verify_format_effect(
         # 찾을 글자가 그대로 남아 있으면 치환은 일어나지 않은 것이다(2026-08-19 게이트 5건).
         find_text = str(params.get("find_text") or "").strip()
         if not find_text or not target:
+            return None
+        # "서울"→"서울시", "32"→"320" 처럼 **바꾼 결과 안에 찾을 말이 남는** 치환이 있다.
+        # 이때는 "아직 남아 있음"으로 성패를 가릴 수 없다 — 성공해도 남아 있기 때문이다.
+        # 다만 그건 **한 칸이라도 바꿨을 때** 이야기다. 0건이면 아무것도 안 바뀐 것이므로
+        # 남아 있다는 사실이 그대로 실패의 증거가 된다.
+        # (이 검사 자체가 시트 이름이 안 넘어와 오래 죽어 있었다 — `_resolve_sheet` 참조.)
+        replaced = int(result.get("replaced_cells") or 0)
+        if replaced > 0 and find_text in str(params.get("replace_text") or ""):
             return None
         try:
             values = _read(service, workbook_id, sheet, target)

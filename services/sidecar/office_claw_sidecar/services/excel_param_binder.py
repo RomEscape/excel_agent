@@ -1318,6 +1318,21 @@ def _structural_free_mentions(text: str, headers: list[Any]) -> list[dict[str, A
     return out
 
 
+def _mention_score(text: str, headers: list[Any]) -> tuple[int, int]:
+    """시트가 원문의 열 이름을 얼마나 잘 받는지 — (겹친 열 수, 겹친 글자 수).
+
+    **개수만 세면 안 된다.** "창고재고 적은 순으로 정렬해줘"에서 `창고재고`를 가진
+    시트와 `재고`만 가진 시트가 1:1 동점이 되어, 최고점이 둘이라 옮기지 않고 활성
+    시트에 눌러앉는다. 그러면 엉뚱한 열로 정렬해 놓고 성공으로 보고한다
+    (2026-09-08 seedE t4 실측: 응답은 `정렬 — A1:H4`인데 파일은 하나도 안 바뀌었다).
+
+    같은 글자를 더 길게 받은 시트가 이긴다 — `find_header_mentions` 가 한 시트 안에서
+    이미 쓰는 "긴 표현이 이긴다" 규칙을 시트 사이로 넓힌 것뿐이다.
+    """
+    hits = {hit["header"]: hit for hit in _structural_free_mentions(text, headers)}
+    return len(hits), sum(len(str(hit.get("surface") or "")) for hit in hits.values())
+
+
 def _retarget_sheet_by_headers(
     text: str,
     entry: dict[str, Any] | None,
@@ -1338,7 +1353,7 @@ def _retarget_sheet_by_headers(
     if _EXPLICIT_RANGE_IN_TEXT.search(str(text or "")) and not _SHEET_MENTION_PATTERN.search(str(text or "")):
         return entry, prefix
     scored = [
-        (len({hit["header"] for hit in _structural_free_mentions(text, _headers(sheet))}), sheet)
+        (_mention_score(text, _headers(sheet)), sheet)
         for sheet in (digest.get("sheets") or [])
         if _headers(sheet)
     ]
@@ -1346,7 +1361,7 @@ def _retarget_sheet_by_headers(
         return entry, prefix
     best = max(score for score, _ in scored)
     leaders = [sheet for score, sheet in scored if score == best]
-    if best == 0 or len(leaders) != 1:
+    if best[0] == 0 or len(leaders) != 1:
         return entry, prefix
     target = leaders[0]
     if target is entry:

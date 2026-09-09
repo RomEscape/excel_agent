@@ -590,8 +590,19 @@ def intent_to_plan(
                     }]
         elif column and option_text and len(option_text) <= 40:
             # "비고 열 전부 미정" — 범위 대신 열 이름을 부른 경우.
+            #
+            # **문장이 그 열을 실제로 불렀을 때만이다.** 이 가지는 열 하나를 통째로 한
+            # 값으로 덮으므로, 모델이 column 을 지어내면 그대로 데이터 파괴가 된다 —
+            # "아니 90으로 되돌려줘"(열 이름 없음)에 column=단가가 붙어 C2:C7 여섯 칸이
+            # 90 이 됐다. 1,200,000·25,000 이 90 이 되고 나머지 넷은 빈칸이 됐는데도
+            # 성공으로 보고됐다(2026-09-08 시드 배터리 실측).
+            #
+            # 낱말 하나(`열`)로 보면 "파일 열어줘"·"나열해줘"에도 걸려 가드 구실을 못 한다.
+            # 모델이 고른 **그 머리글 이름**이 문장에 있는지를 본다 — `_worded` 의 취지
+            # 그대로다("모델이 고른 파라미터를 문장이 뒷받침하는가").
+            named_in_message = _worded(re.escape(str(column).strip()))
             letter, last = _column_letter(entry, column), _last_row(entry)
-            if letter and last > 2:
+            if named_in_message and letter and last > 2:
                 # `_last_row`는 사용 범위를 못 읽으면 2를 돌려준다. 그 상태로 채우면
                 # "전부"가 한 칸이 되므로, 데이터 끝을 모르면 아예 물러난다.
                 values = _shape_write_values(option_text, last - 1, 1)

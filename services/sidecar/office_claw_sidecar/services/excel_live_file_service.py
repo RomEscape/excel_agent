@@ -49,6 +49,7 @@ from office_claw_sidecar.services.excel_formula_eval import (
 )
 from office_claw_sidecar.services.excel_header_lexicon import resolve_header
 from office_claw_sidecar.services.excel_live_service import (
+    replacement_for_cell,
     _ALIGN_WORDS,
     _SCAN_EXCLUDED_DIRS,
     AmbiguousWorkbookError,
@@ -2317,37 +2318,20 @@ class FileExcelLiveService(ExcelLiveService):
             ws = self._sheet_or_raise(wb, sheet_name)
             bounds = self._range_bounds(ws, target_range)
             min_row, min_col, max_row, max_col = bounds
-            needle = find_text if match_case else find_text.lower()
             replaced = 0
             for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
                 for cell in row:
-                    value = cell.value
-                    if not isinstance(value, str):
+                    # 두 엔진이 같은 규칙을 쓴다 — 숫자 칸도 바꾸되 칸 전체가 같을 때만.
+                    new_value = replacement_for_cell(
+                        cell.value,
+                        find_text,
+                        replace_text,
+                        match_case=match_case,
+                        whole_cell=whole_cell,
+                    )
+                    if new_value is None:
                         continue
-                    haystack = value if match_case else value.lower()
-                    if whole_cell:
-                        if haystack == needle:
-                            cell.value = replace_text
-                            replaced += 1
-                        continue
-                    if needle not in haystack:
-                        continue
-                    if match_case:
-                        cell.value = value.replace(find_text, replace_text)
-                    else:
-                        # 대소문자 무시 치환은 원본 표기를 살려야 해서 위치 기반으로 잘라 붙인다.
-                        out: list[str] = []
-                        cursor = 0
-                        lowered = haystack
-                        while True:
-                            idx = lowered.find(needle, cursor)
-                            if idx == -1:
-                                out.append(value[cursor:])
-                                break
-                            out.append(value[cursor:idx])
-                            out.append(replace_text)
-                            cursor = idx + len(needle)
-                        cell.value = "".join(out)
+                    cell.value = new_value
                     replaced += 1
             self._save_wb(
                 wb,

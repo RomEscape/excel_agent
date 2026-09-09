@@ -92,6 +92,80 @@ def _is_user_workbook_path(fullname: str) -> bool:
     return not any(part in _SCAN_EXCLUDED_DIRS or str(part).startswith(".") for part in parts if part)
 
 
+def _display_text(value: object) -> str:
+    """칸 값을 사람이 화면에서 보는 글자로. 정수로 떨어지는 실수는 `.0` 을 떼어 낸다."""
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def _coerce_replacement(original: object, replace_text: str) -> object:
+    """바꿔 넣을 값의 자료형을 원래 칸에 맞춘다.
+
+    숫자 칸을 문자열로 되쓰면 SUM·정렬이 그 칸을 무시한다.
+    """
+    if isinstance(original, (int, float)) and not isinstance(original, bool):
+        raw = str(replace_text).strip().replace(",", "")
+        try:
+            return int(raw) if re.fullmatch(r"-?\d+", raw) else float(raw)
+        except (ValueError, TypeError):
+            return replace_text
+    return replace_text
+
+
+def replacement_for_cell(
+    value: object,
+    find_text: str,
+    replace_text: str,
+    *,
+    match_case: bool = False,
+    whole_cell: bool = False,
+) -> object | None:
+    """한 칸에 대한 찾아 바꾸기 결과. 바꿀 것이 없으면 `None`.
+
+    **숫자 칸도 바꾼다.** 예전에는 두 엔진 모두 `isinstance(value, str)` 이 아니면
+    건너뛰어서, "마우스 판매량이 32로 잘못 들어갔어, 320으로 고쳐줘" 가 **0개 셀 치환**
+    으로 끝났다. 32 는 숫자로 저장돼 있어 구조적으로 못 찾았다
+    (2026-09-08 시드 배터리 실측 — 시스템은 그러고도 성공으로 보고했다).
+
+    다만 문자열이 아닌 칸은 **칸 전체가 같을 때만** 바꾼다. 부분 치환을 허용하면
+    `32` 가 `1320`·`320000` 안에서도 걸려 사람이 지목하지 않은 값을 망친다.
+    """
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        haystack = value if match_case else value.lower()
+        needle = find_text if match_case else find_text.lower()
+        if whole_cell:
+            return replace_text if haystack == needle else None
+        if needle not in haystack:
+            return None
+        if match_case:
+            return value.replace(find_text, replace_text)
+        # 대소문자를 무시한 치환은 원본 표기를 살려야 해서 위치 기반으로 잘라 붙인다.
+        out: list[str] = []
+        cursor = 0
+        while True:
+            idx = haystack.find(needle, cursor)
+            if idx == -1:
+                out.append(value[cursor:])
+                break
+            out.append(value[cursor:idx])
+            out.append(replace_text)
+            cursor = idx + len(needle)
+        return "".join(out)
+
+    shown = _display_text(value)
+    left = shown if match_case else shown.lower()
+    right = find_text if match_case else find_text.lower()
+    if left != right:
+        return None
+    return _coerce_replacement(value, replace_text)
+
+
 class ExcelLiveError(Exception):
     """Excel Live 서비스 기본 예외."""
 
@@ -1672,32 +1746,12 @@ class ExcelLiveService:
         values = self._normalize_values(rng.options(ndim=2).value)
         start_row = int(getattr(rng, "row", 1) or 1)
         start_col = int(getattr(rng, "column", 1) or 1)
-        needle = find_text if match_case else find_text.lower()
         replaced = 0
         for r_off, row in enumerate(values or []):
             for c_off, value in enumerate(row):
-                if not isinstance(value, str):
-                    continue
-                haystack = value if match_case else value.lower()
-                new_value: str | None = None
-                if whole_cell:
-                    if haystack == needle:
-                        new_value = replace_text
-                elif needle in haystack:
-                    if match_case:
-                        new_value = value.replace(find_text, replace_text)
-                    else:
-                        out: list[str] = []
-                        cursor = 0
-                        while True:
-                            idx = haystack.find(needle, cursor)
-                            if idx == -1:
-                                out.append(value[cursor:])
-                                break
-                            out.append(value[cursor:idx])
-                            out.append(replace_text)
-                            cursor = idx + len(needle)
-                        new_value = "".join(out)
+                new_value = replacement_for_cell(
+                    value, find_text, replace_text, match_case=match_case, whole_cell=whole_cell
+                )
                 if new_value is None:
                     continue
                 # 바뀐 칸만 쓴다 — 격자를 통째로 되쓰면 수식이 값으로 굳는다.

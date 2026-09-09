@@ -3213,24 +3213,26 @@ class TestIntentWriteValueHandlesRangesAndColumns:
         ],
     }
 
-    def _plan(self, digest=None, **intent):
+    def _plan(self, digest=None, message="", **intent):
         from office_claw_sidecar.services.excel_intent_normalizer import intent_to_plan
 
         base = {"task": "write_value", "range": None, "column": None, "option": None}
-        return intent_to_plan({**base, **intent}, digest=digest or self.DIGEST, message="")
+        return intent_to_plan({**base, **intent}, digest=digest or self.DIGEST, message=message)
 
     @pytest.mark.parametrize(
-        ("intent", "start", "cells"),
+        ("intent", "message", "start", "cells"),
         [
-            ({"range": "A12", "option": "합계"}, "A12", 1),
-            ({"range": "A2:A9", "option": "미정"}, "A2", 8),
-            ({"range": "A1:C1", "option": "가,나,다"}, "A1", 3),
+            ({"range": "A12", "option": "합계"}, "", "A12", 1),
+            ({"range": "A2:A9", "option": "미정"}, "", "A2", 8),
+            ({"range": "A1:C1", "option": "가,나,다"}, "", "A1", 3),
             # 열 이름만 부른 경우 — 머리글 아래부터 데이터 끝까지.
-            ({"column": "비고", "option": "미정"}, "F2", 8),
+            # **문장을 함께 준다.** 열 전체를 한 값으로 덮는 것은 문장이 그렇게 말했을
+            # 때만이고, 근거 없이 하면 엉뚱한 열이 통째로 날아간다(2026-09-08 seedD).
+            ({"column": "비고", "option": "미정"}, "비고 열 전부 미정으로 채워줘", "F2", 8),
         ],
     )
-    def test_it_maps(self, intent, start, cells) -> None:
-        plan = self._plan(**intent)
+    def test_it_maps(self, intent, message, start, cells) -> None:
+        plan = self._plan(message=message, **intent)
         assert plan is not None, intent
         assert plan["action"] == "excel_live.write_range"
         assert plan["params"]["start_cell"] == start
@@ -3260,7 +3262,14 @@ class TestIntentWriteValueHandlesRangesAndColumns:
                 {"name": "빈", "used_range": "A1:B1", "columns": [{"letter": "B", "header": "비고"}]}
             ],
         }
-        assert self._plan(digest=digest, column="비고", option="미정") is None
+        # 문장은 근거를 갖췄는데도 물러나야 한다 — 물러나는 이유가 '데이터 끝을 모름'
+        # 이라는 것을 보려면 근거 검사에 먼저 걸리면 안 된다.
+        assert (
+            self._plan(
+                digest=digest, column="비고", option="미정", message="비고 열 전부 미정으로 채워줘"
+            )
+            is None
+        )
 
     def test_the_shaping_is_not_duplicated(self) -> None:
         """모양 맞추기를 두 벌 두면 반드시 갈라진다 — 바인더 것을 빌려 쓴다."""
