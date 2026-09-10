@@ -231,7 +231,15 @@ def find_header_mentions(message: str, headers: list[str]) -> list[dict[str, Any
     # 앞에 나온 표현이 먼저 자리를 잡되, 같은 자리를 다투면 긴 쪽이 이긴다.
     # - "매출이익 나누기 매출": 0번 자리는 Gross_Profit이 가져가고 Sales는 뒤 자리를 쓴다.
     # - "지역별 ... Region_Chart 시트": Region은 앞의 '지역'으로 잡혀야 한다.
-    candidates.sort(key=lambda h: (h["start"], -(h["end"] - h["start"])))
+    #
+    # 같은 자리·같은 길이면 **머리글 이름 그대로**가 유의어를 이긴다. 예전엔 열 순서가
+    # 정했다 — "Salesperson을 정렬"에서 유의어 묶음(담당자·salesperson·manager)을 공유하는
+    # Manager(P열)가 Salesperson(Q열)보다 앞이라 **실제로 있는 열을 유의어가 덮어썼고**,
+    # 엉뚱한 열로 정렬됐다(2026-09-10 사용자 보고 재현).
+    def _literal(h: dict[str, Any]) -> int:
+        return 0 if normalize(h["surface"]) == normalize(h["header"]) else 1
+
+    candidates.sort(key=lambda h: (h["start"], -(h["end"] - h["start"]), _literal(h)))
     claimed: list[tuple[int, int]] = []
     taken: set[str] = set()
     result: list[dict[str, Any]] = []

@@ -887,11 +887,17 @@ pub async fn workspace_write_file_binary(
         }
     }
 
-    // 3. 워크스페이스 루트 확인 및 생성 — 목록과 같은 루트(사이드카 소유)
-    let workspace_root = match sidecar_workspace_root(&state).await {
-        Some(root) => root,
-        None => workspace_dir().ok_or_else(|| "홈 디렉토리를 찾을 수 없습니다".to_string())?,
-    };
+    // 3. 워크스페이스 루트 — **목록을 내는 사이드카가 답할 때만** 쓴다.
+    //
+    // 예전엔 사이드카가 5초 안에 답하지 못하면 로컬 추정 경로로 조용히 폴백해 파일을
+    // 썼다. 그 경로는 목록에 절대 안 나오므로 사용자에게는 "업로드가 안 됨"으로
+    // 보였다(2026-09-10 사용자 보고; 폴백 폴더에 `text_1.xlsx` 가 실제로 남아 있었다).
+    // 텍스트 업로드(`workspace_write_file`)는 원래 사이드카를 거쳐 실패가 드러나는데
+    // 엑셀(binary) 업로드만 이렇게 새고 있었다. 이제 같은 계약이다 — 못 물으면 실패.
+    let workspace_root = sidecar_workspace_root(&state).await.ok_or_else(|| {
+        "백그라운드 서비스에 연결할 수 없어 업로드하지 못했습니다. 잠시 후 다시 시도하거나 앱을 재시작해 주세요."
+            .to_string()
+    })?;
     if !workspace_root.exists() {
         std::fs::create_dir_all(&workspace_root)
             .map_err(|e| format!("워크스페이스 폴더 생성 실패: {}", e))?;
@@ -1101,10 +1107,41 @@ fn dirs_home() -> Option<std::path::PathBuf> {
         .or_else(|| std::env::var_os("USERPROFILE").map(std::path::PathBuf::from))
 }
 
-/// 워크스페이스 루트 (~/officeclaw/Workspace). 경로 단일 출처.
-/// Python sandbox(config.get_workspace_root)와 동일한 위치를 가리킨다.
+/// 사이드카에 못 물었을 때의 **폴백** 워크스페이스 루트.
+///
+/// 예전 값 `~/officeclaw/Workspace` 는 파이썬(`config.get_workspace_root`)이 **한 번도
+/// 쓴 적 없는 경로**였다 — 파이썬은 설치본이면 `<LOCALAPPDATA>/office_claw/Workspace`,
+/// 소스 트리면 `<repo>/엑셀 작업 폴더` 를 쓴다. 그래서 사이드카가 5초 안에 답하지 못한
+/// 순간의 업로드가 아무도 목록에 올리지 않는 폴더로 들어갔다(2026-09-10 사용자 보고
+/// "업로드가 제대로 진행되지 않습니다"; 그 폴더에 `text_1.xlsx` 가 실제로 남아 있었다).
+/// 파이썬의 설치본 기본값과 같은 곳으로 맞춘다. 소스 트리 실행은 사이드카가 답할 때만
+/// 맞으므로, 그쪽은 `sidecar_workspace_root` 가 책임진다.
 fn workspace_dir() -> Option<std::path::PathBuf> {
-    dirs_home().map(|home| home.join("officeclaw").join("Workspace"))
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var_os("LOCALAPPDATA")
+            .map(std::path::PathBuf::from)
+            .or_else(|| dirs_home().map(|h| h.join("AppData").join("Local")))
+            .map(|base| base.join("office_claw").join("Workspace"))
+    }
+    #[cfg(target_os = "macos")]
+    {
+        dirs_home().map(|h| {
+            h.join("Library")
+                .join("Application Support")
+                .join("office_claw")
+                .join("Workspace")
+        })
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        dirs_home().map(|h| {
+            h.join(".local")
+                .join("share")
+                .join("office_claw")
+                .join("Workspace")
+        })
+    }
 }
 
 /// 사이드카가 소유한 워크스페이스 루트(/workspace/files의 `workspace`).

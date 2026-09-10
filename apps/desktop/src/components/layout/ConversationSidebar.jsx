@@ -99,22 +99,17 @@ const SETTINGS_PAGES = new Set([
  * 접힘 상태에서 200ms hover 후 뜨는 라벨 tooltip.
  * 아이콘만 남으면 라벨이 사라지므로 이게 유일한 이름 확인 수단이다.
  */
-function RailTooltip({ label }) {
-  const [show, setShow] = useState(false);
-  const timerRef = useRef(null);
-
-  const handleEnter = () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setShow(true), 200);
-  };
-  const handleLeave = () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    setShow(false);
-  };
-  useEffect(() => () => timerRef.current && clearTimeout(timerRef.current), []);
-
+/**
+ * 접힌 레일에서 아이콘 옆에 뜨는 이름표. 호버 상태는 부모(`useRailHover`)가 쥔다.
+ *
+ * 예전엔 이 컴포넌트가 버튼 전체(`inset-0`)를 덮는 투명 층에 마우스 이벤트를 달아
+ * 호버를 감지했는데, 그 층이 **클릭까지 삼켜서 접힌 사이드바에서는 버튼이 눌리지
+ * 않았다** — 2026-09-10 사용자 보고 "좌측 LNB영역이 접혔을때 다른 버튼이 선택이 안됨".
+ * 이제 이 층은 `pointer-events-none` 이고 아무 이벤트도 받지 않는다.
+ */
+function RailTooltip({ label, show }) {
   return (
-    <span className="absolute inset-0" onMouseEnter={handleEnter} onMouseLeave={handleLeave}>
+    <span className="pointer-events-none absolute inset-0">
       {show && (
         <span
           role="tooltip"
@@ -132,8 +127,22 @@ function RailTooltip({ label }) {
  * 펼침/접힘 두 모양을 모두 그린다.
  */
 function NavButton({ icon: Icon, label, active, collapsed, expanded, expandable, onClick }) {
+  // 접힌 레일의 이름표 호버는 여기(버튼을 감싸는 상자)가 감지한다. 예전엔 버튼을 덮는
+  // 투명 층이 감지했는데 그 층이 클릭까지 삼켰다 — RailTooltip 주석 참조.
+  const [hover, setHover] = useState(false);
+  const hoverTimer = useRef(null);
+  const handleEnter = () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    hoverTimer.current = setTimeout(() => setHover(true), 200);
+  };
+  const handleLeave = () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    setHover(false);
+  };
+  useEffect(() => () => hoverTimer.current && clearTimeout(hoverTimer.current), []);
+
   return (
-    <div className="relative">
+    <div className="relative" onMouseEnter={handleEnter} onMouseLeave={handleLeave}>
       <button
         type="button"
         onClick={onClick}
@@ -170,7 +179,7 @@ function NavButton({ icon: Icon, label, active, collapsed, expanded, expandable,
           </>
         )}
       </button>
-      {collapsed && <RailTooltip label={label} />}
+      {collapsed && <RailTooltip label={label} show={hover} />}
     </div>
   );
 }

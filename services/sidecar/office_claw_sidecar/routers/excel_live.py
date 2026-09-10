@@ -5058,9 +5058,14 @@ def _build_generic_excel_follow_up(message: str) -> str:
             "표/양식 목적을 먼저 정할게요. 예: 가계부, 매출, 근태, 재고. "
             "일별/월별 중 어떤 기준으로 만들지와 자동 계산 항목 포함 여부도 알려주세요."
         )
+    # 정렬·필터·중복은 **서식보다 먼저** 본다. 예전엔 아래 서식 묶음에 `정렬`·`필터`가
+    # 들어 있어 "Salesperson을 desc순으로 정렬해주세요"가 "서식 기준을 정해볼까요?"로
+    # 떨어졌다 — 2026-09-10 사용자 보고 4문장 중 3문장이 이 순서 하나 때문이었다.
+    if any(token in lowered for token in ["정렬", "필터", "중복", "순으로", "순서대로"]):
+        return "기준 열이 필요합니다. 예: 매출 열 내림차순, 상태=완료 필터, 전화번호 기준 중복 제거."
     if any(
         token in lowered
-        for token in ["서식", "깔끔", "보기 좋게", "테두리", "정렬", "열 너비", "행 높이", "제목 고정", "필터", "색깔"]
+        for token in ["서식", "깔끔", "보기 좋게", "테두리", "열 너비", "행 높이", "제목 고정", "색깔"]
     ):
         return (
             "서식 기준을 정해볼까요? 예: 제목행 강조, 열 너비 자동, 금액 콤마, 날짜 형식 통일. "
@@ -5112,12 +5117,122 @@ def _build_generic_excel_follow_up(message: str) -> str:
             "입력 제어 범위를 알려주세요. 예: 어떤 열을 드롭다운/숫자제한/날짜제한으로 둘지, "
             "수식 셀 잠금 여부."
         )
-    if any(token in lowered for token in ["합계", "평균", "계산", "수식", "함수"]):
+    # "합산"·"총액"·"얼마"도 계산이다 — "정하늘의 Sales를 합산한 결과를 조회해주세요"가
+    # 어느 묶음에도 안 걸려 맨 아래 일반 문구로 떨어졌다(2026-09-10 사용자 보고).
+    if any(token in lowered for token in ["합계", "합산", "총액", "총합", "평균", "계산", "수식", "함수", "얼마"]):
         return "계산 기준 열을 알려주세요. 예: B열 수량, C열 단가, 결과 D열. 조건 계산이면 기준값도 알려주세요."
     return (
         "어떤 작업을 원하시는지 한 단계만 더 구체화해 주세요. "
         "예: 표 생성 / 정렬·필터 / 계산 수식 / 피벗 집계 / 차트 / 검증 중 하나와 기준 열."
     )
+
+
+#: 모델이 되묻기·답변을 만들 때의 예산. 플래너가 이미 실패한 뒤라 사용자는 기다리는 중이다.
+_FOLLOW_UP_MODEL_TIMEOUT_S = 8.0
+
+_FOLLOW_UP_PROMPT = """당신은 사용자의 엑셀 파일을 이미 읽은 비서입니다. 아래 통합문서 상태와 직전 대화를 보고 사용자의 이번 말에 답하세요.
+
+규칙:
+- 실행에 필요한 정보가 빠졌으면, 무엇이 빠졌는지 **이 시트에 실제로 있는 열 이름**을 들어 한 문장으로 묻습니다.
+- 질문·아이디어·설명을 원하는 말이면 시트 내용을 근거로 바로 답합니다(2~4문장).
+- 직전 대화에서 사용자가 이미 준 정보를 다시 묻지 않습니다. 그 정보를 그대로 씁니다.
+- 없는 열·없는 값·정해진 예시 문구를 지어내지 않습니다.
+- 한국어 존댓말로, 군더더기 없이. 답변 본문만 출력합니다.
+{hint_block}
+[통합문서 상태]
+{digest}
+
+[직전 대화]
+{history}
+
+[사용자의 이번 말]
+{message}"""
+
+_FOLLOW_UP_HINT_BLOCK = """
+[시스템이 파악한 부족한 정보 — 이 뜻을 살리되 이 시트의 열 이름으로 구체적으로 묻습니다]
+{hint}
+"""
+
+
+async def _follow_up_from_model(
+    llm: Any,
+    *,
+    message: str,
+    digest_text: str,
+    history_text: str,
+    hint: str = "",
+) -> str:
+    """플래너가 못 알아들었을 때 고정 문구 대신 **모델이 시트와 대화를 보고** 답한다.
+
+    2026-09-10 사용자 보고 — "정하늘의 Sales를 합산한 결과를 조회해주세요" → 고정 문구
+    → "계산" → 다른 고정 문구 → 열까지 짚어 다시 말함 → **처음 고정 문구**. 키워드
+    사다리(`_build_generic_excel_follow_up`)는 시트도 대화도 안 보고, 되묻기 상태가 열리면
+    처음 문장으로 다시 돌아서 같은 질문이 되풀이됐다. "얼마인지 어떻게 적용하면 좋을지
+    아이디어를 내줄래?" 같은 말도 '얼마' 한 낱말에 걸려 계산 문구가 나간다.
+
+    여기서는 (1) 통합문서 상태 (2) 직전 질문·답 (3) 이번 문장을 함께 준다. 실패하면
+    빈 문자열을 돌려주고 호출부가 사다리로 물러난다 — 모델이 죽었다고 사용자를 세워
+    두지는 않는다.
+    """
+    text = str(message or "").strip()
+    if not text or llm is None:
+        return ""
+    hint_text = str(hint or "").strip()
+    prompt = _FOLLOW_UP_PROMPT.format(
+        hint_block=_FOLLOW_UP_HINT_BLOCK.format(hint=hint_text) if hint_text else "",
+        digest=str(digest_text or "").strip() or "(통합문서 상태를 읽지 못했습니다)",
+        history=str(history_text or "").strip() or "(없음)",
+        message=text,
+    )
+    try:
+        reply = await asyncio.wait_for(
+            llm.chat(
+                [{"role": "user", "content": prompt}],
+                temperature=0.3,
+                timeout=_FOLLOW_UP_MODEL_TIMEOUT_S - 1.5,
+            ),
+            timeout=_FOLLOW_UP_MODEL_TIMEOUT_S,
+        )
+    except Exception as exc:
+        trace_note("follow_up_model", outcome="failed", error=f"{type(exc).__name__}: {exc}"[:160])
+        return ""
+    answer = str(reply or "").strip()
+    # 모델이 JSON 이나 코드 펜스를 두르면 벗긴다 — 화면에 그대로 보이는 글이다.
+    answer = re.sub(r"^```[a-zA-Z]*\s*|\s*```$", "", answer).strip()
+    if not answer or len(answer) > 800:
+        trace_note("follow_up_model", outcome="rejected", length=len(answer))
+        return ""
+    trace_note("follow_up_model", outcome="used", length=len(answer))
+    return answer
+
+
+async def _follow_up_or_ladder(
+    llm: Any, message: str, context: dict[str, Any] | None, *, canned: str = ""
+) -> str:
+    """모델이 만든 답이 있으면 그것, 없으면 고정 문구.
+
+    `context` 는 `_run_command` 의 `parse_context_base` — 통합문서 상태 텍스트와
+    직전 대화가 이미 들어 있다. 호출부마다 두 값을 꺼내 넘기지 않게 dict 째 받는다.
+
+    `canned` 는 규칙이 이미 고른 되묻기 문구(`_operation_follow_up` 의 17개 중 하나).
+    비어 있으면 키워드 사다리가 대신 고른다. 어느 쪽이든 **모델에는 힌트로만** 준다 —
+    무엇이 부족한지는 규칙이 맞게 짚었어도, 그걸 "예: 상태 열" 같은 지어낸 예시로
+    묻는 것이 사용자를 헛돌게 했다(2026-09-10 보고). 모델이 응답 못 하면 그 문구 그대로.
+    """
+    ctx = context or {}
+    fallback = str(canned or "").strip() or _build_generic_excel_follow_up(message)
+    # 힌트에서 **예시 꼬리를 뗀다.** "어떤 열을 기준으로 필터할까요? 예: 상태 열"을 통째로
+    # 주니 모델이 그 '상태 열'을 그대로 베껴 냈다(2026-09-10 실측: 25자 답 = 힌트 원문).
+    # 이 시트에 없는 열 이름이 힌트 안에 있으면 "지어내지 마라"는 규칙이 이기지 못한다.
+    hint_for_model = re.split(r"\s*(?:예|예시|예를\s*들어|예컨대)\s*[:：]", fallback, maxsplit=1)[0].strip()
+    answer = await _follow_up_from_model(
+        llm,
+        message=message,
+        digest_text=str(ctx.get("workbook_digest_text") or ""),
+        history_text=str(ctx.get("conversation_history_text") or ""),
+        hint=hint_for_model,
+    )
+    return answer or fallback
 
 
 def _ordered_column_letters(text: str) -> list[str]:
@@ -8350,6 +8465,19 @@ def _step_preview_line(index: int, action: str, params: dict[str, Any] | None) -
 def _result_count_phrase(action: str, result: dict[str, Any] | None) -> str:
     """실행 결과의 규모를 사람 말로 — "몇 셀이 어떻게 됐는지"까지가 보고다."""
     r = result or {}
+    # 조회는 **답이 곧 결과**다. "정하늘의 Sales 합산 조회"에 "엑셀 변경 작업을 실행합니다"만
+    # 나가고 숫자가 없었다(2026-09-10 사용자 보고). 통계값은 여기서 바로 말한다.
+    if action == "excel_live.calculate_column_stat" and r.get("value") is not None:
+        label = {"sum": "합계", "average": "평균", "count": "개수", "max": "최댓값", "min": "최솟값"}.get(
+            str(r.get("stat") or ""), str(r.get("stat") or "통계")
+        )
+        value = r.get("value")
+        shown = f"{value:,.0f}" if isinstance(value, (int, float)) and float(value).is_integer() else f"{value:,}"
+        header = str(r.get("header") or r.get("column") or "").strip()
+        count = r.get("numeric_count")
+        where = f"{header} 열" if header else ""
+        tail = f", 숫자 {int(count)}개" if count is not None else ""
+        return f" · {where} {label} = {shown}{tail}".replace("  ", " ")
     emptied = r.get("emptied_values")
     if action == "excel_live.clear_range" and emptied is not None:
         return f" · 값 {int(emptied or 0)}개 삭제"
@@ -10405,7 +10533,7 @@ async def _run_command(
                 # 함께 실어 보낸다.
                 elapsed_ms = int((time.time() - parse_started_at) * 1000)
                 planner_model = get_planner_model_name()
-                follow = _build_generic_excel_follow_up(req.message)
+                follow = await _follow_up_or_ladder(llm, req.message, parse_context_base)
                 reason = (
                     f"{follow}\n"
                     f"(모델 {planner_model}이 {parse_timeout_seconds:.0f}초 안에 답하지 못했습니다 — "
@@ -10430,7 +10558,7 @@ async def _run_command(
                 )
             if isinstance(parse_error, ValueError):
                 if _looks_like_excel_request(req.message):
-                    follow = _build_generic_excel_follow_up(req.message)
+                    follow = await _follow_up_or_ladder(llm, req.message, parse_context_base)
                     return ExcelLiveActionResponse(
                         ok=True,
                         action="excel_live.clarify",
@@ -11013,6 +11141,11 @@ async def _run_command(
         )
         if op_slot is not None:
             follow_up = _operation_follow_up(op_slot)
+            if follow_up:
+                # 되묻기는 처음 문장(`raw_message`)이 아니라 **이번 문장**과 시트를 보고 모델이
+                # 만든다. 규칙이 고른 문구는 힌트로만 — 사용자가 답을 줘도 같은 질문이
+                # 돌던 원인(2026-09-10 보고).
+                follow_up = await _follow_up_or_ladder(llm, req.message, parse_context_base, canned=follow_up)
             rescued_plan: list[PlanStep] | None = None
             if follow_up:
                 # 되묻기 전에 바인더에게 기회를 준다.
@@ -11088,7 +11221,7 @@ async def _run_command(
 
     if not action_plan:
         if _looks_like_excel_request(req.message):
-            follow = _build_generic_excel_follow_up(req.message)
+            follow = await _follow_up_or_ladder(llm, req.message, parse_context_base)
             return ExcelLiveActionResponse(
                 ok=True,
                 action="excel_live.clarify",
@@ -11176,6 +11309,10 @@ async def _run_command(
                 digest=workbook_digest,
             )
             intent_follow_up = _operation_follow_up(intent_slot) if intent_slot else ""
+            if intent_follow_up:
+                intent_follow_up = await _follow_up_or_ladder(
+                    llm, req.message, parse_context_base, canned=intent_follow_up
+                )
             if intent_slot is not None and intent_follow_up:
                 _pending_operation_slots[session_key] = intent_slot
                 return ExcelLiveActionResponse(
@@ -11190,7 +11327,7 @@ async def _run_command(
                         "validation_error": str(validation_error),
                     },
                 )
-        follow = _build_generic_excel_follow_up(req.message)
+        follow = await _follow_up_or_ladder(llm, req.message, parse_context_base)
         if _looks_like_excel_request(req.message) or action_plan:
             return ExcelLiveActionResponse(
                 ok=True,
@@ -11298,6 +11435,8 @@ async def _run_command(
             parsed=None,
         )
         follow_up = _operation_follow_up(ambiguity_slot) if ambiguity_slot else ""
+        if follow_up:
+            follow_up = await _follow_up_or_ladder(llm, req.message, parse_context_base, canned=follow_up)
         if ambiguity_slot is not None and follow_up:
             _pending_operation_slots[session_key] = ambiguity_slot
             return ExcelLiveActionResponse(
