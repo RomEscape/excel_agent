@@ -22,8 +22,13 @@ if (-not (Test-Path $python)) { $python = "python" }
 
 if (-not $Tag) { $Tag = ($Candidate -replace "[:.]", "-") }
 $evalSet = Join-Path $root "datasets\eval\planner_eval_v1.jsonl"
-$shadowOut = Join-Path $root "logs\eval_shadow_$Tag.json"
-$gateOut = Join-Path $root "logs\eval_gate_$Tag.json"
+# 산출물은 저장소 밖 reports 폴더로 — 저장소 logs\ 에는 chat_log.jsonl 하나만 남긴다(2026-09-10).
+# 파이썬(office_claw_sidecar.config.get_reports_dir)과 같은 규칙. 없으면 만든다.
+$reports = $env:OFFICE_CLAW_REPORTS_DIR
+if (-not $reports) { $reports = Join-Path $env:LOCALAPPDATA "office_claw\reports" }
+New-Item -ItemType Directory -Force -Path $reports | Out-Null
+$shadowOut = Join-Path $reports "eval_shadow_$Tag.json"
+$gateOut = Join-Path $reports "eval_gate_$Tag.json"
 $thresholds = Join-Path $sidecar "config\planner_gate_thresholds.json"
 
 Push-Location $sidecar

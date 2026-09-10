@@ -11,10 +11,13 @@
 명령 하나 칠 때마다 그 턴이 펼쳐진다.
 
     python scripts/show_turns.py --follow                      # 터미널에서 실시간
-    python scripts/show_turns.py --follow --out ../../logs/turns.txt  # 파일로 (에디터에서 열어 두기)
+    python scripts/show_turns.py --follow --out <reports>/turns.txt  # 파일로 (에디터에서 열어 두기)
 
 `--out`은 에디터에서 계속 열어 두는 용도다. jsonl을 직접 읽는 것보다 훨씬 편하고,
-다른 거르기 옵션(`--failed`·`--human`·`--grep`)과 같이 쓸 수 있다.
+다른 거르기 옵션(`--failed`·`--human`·`--grep`)과 같이 쓸 수 있다. `<reports>` 는
+`office_claw_sidecar.config.get_reports_dir()` (기본 %LOCALAPPDATA%/office_claw/reports) —
+저장소 `logs/` 에는 `chat_log.jsonl` 만 둔다(2026-09-10). 그 파일에는 턴 줄 말고도
+이벤트·플래너 승격 줄(`record` 필드)이 섞여 있는데, 이 뷰어는 `turn_id` 있는 턴만 펼친다.
 
 PowerShell에서 한글이 깨지면 콘솔 인코딩 문제다. 로그 파일 자체는 UTF-8이다.
 
@@ -47,6 +50,11 @@ from office_claw_sidecar.services.trace_report import (
 from _console import force_utf8
 
 force_utf8()
+
+
+def _turns(path: Path) -> list[dict]:
+    """턴 줄만 읽는다 — 같은 파일의 이벤트·플래너 승격 줄(`turn_id` 없음)은 건너뛴다."""
+    return [t for t in read_turns(path) if "turn_id" in t]
 
 
 def _build_filter(args) -> Callable[[dict], bool]:
@@ -99,7 +107,7 @@ def _follow(path: Path, args, keep: Callable[[dict], bool]) -> int:
     first_pass = True
     try:
         while True:
-            for turn in read_turns(path):
+            for turn in _turns(path):
                 turn_id = str(turn.get("turn_id", ""))
                 if turn_id in seen:
                     continue
@@ -111,7 +119,7 @@ def _follow(path: Path, args, keep: Callable[[dict], bool]) -> int:
                     emit("\n" + render(turn, show_prompt=args.prompt))
             if first_pass:
                 first_pass = False
-                recent = [t for t in read_turns(path) if keep(t)][-max(args.count, 0) :]
+                recent = [t for t in _turns(path) if keep(t)][-max(args.count, 0) :]
                 for turn in recent:
                     emit("\n" + render(turn, show_prompt=args.prompt))
             time.sleep(1.0)
@@ -145,7 +153,7 @@ def main() -> int:
     if args.follow:
         return _follow(path, args, keep)
 
-    turns = [t for t in read_turns(path) if keep(t)]
+    turns = [t for t in _turns(path) if keep(t)]
     if not turns:
         print(f"  기록이 없습니다: {path}")
         return 0

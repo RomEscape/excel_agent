@@ -16,7 +16,10 @@ LLM을 쓰지 않으므로 GPU가 학습에 묶여 있어도 돌릴 수 있다.
 
 각 부류마다 "예전 판정(몇 칸을 건드렸나)"과 "지금 판정"을 나란히 찍는다.
 
-    python scripts/run_verifier_gap.py --output-json ../../logs/verifier_gap.json
+    python scripts/run_verifier_gap.py --output-json <reports>/verifier_gap.json
+
+`<reports>` 는 `office_claw_sidecar.config.get_reports_dir()` — 기본 %LOCALAPPDATA%/office_claw/reports.
+저장소 `logs/` 에는 `chat_log.jsonl` 만 둔다(2026-09-10).
 
 `run_verifier_suite.py`와 역할이 다르다. 이쪽은 **여러 액션에 걸친 넓이** —
 정렬·필터·차트까지 10종 케이스에서 두 부류를 가른다. 저쪽은 **write/clear

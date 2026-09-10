@@ -18,7 +18,16 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-LOCK_PATH = ROOT / "logs/nightly/.running.lock"
+# 산출물 폴더 경로는 사이드카 config 한 곳이 소유한다(패키지 __init__ 은 __version__ 한 줄이라 가볍다).
+sys.path.insert(0, str(ROOT / "services" / "sidecar"))
+from office_claw_sidecar.config import get_reports_dir
+
+#: 자물쇠는 산출물 폴더 <reports>/nightly 에 둔다 — 저장소 `logs/` 에는 `chat_log.jsonl` 하나만
+#: 남기기로 했다(2026-09-10). 기본 %LOCALAPPDATA%/office_claw/reports, 환경변수 OFFICE_CLAW_REPORTS_DIR.
+LOCK_PATH = get_reports_dir() / "nightly" / ".running.lock"
+#: 2026-09-10 이전 코드가 자물쇠를 쥐던 자리. **읽기만 한다** — 옛 코드로 뜬 긴 실행(그날 밤
+#: 03:00 게이트)이 여기를 쥐고 있는 동안 새 코드가 겹쳐 돌면 결과가 뒤섞인다.
+LEGACY_LOCK_PATH = ROOT / "logs" / "nightly" / ".running.lock"
 #: pid를 못 읽는 낡은 형식의 자물쇠에만 쓰는 폴백 — pid가 있으면 생존 검사가 우선한다.
 STALE_SECONDS = 10 * 3600
 
@@ -55,6 +64,20 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
+def _live_holder(path: Path) -> str:
+    """그 자리의 자물쇠를 산 프로세스가 쥐고 있으면 그 내용, 아니면 빈 문자열."""
+    if not path.exists():
+        return ""
+    text = path.read_text(encoding="utf-8", errors="replace").strip()
+    match = re.search(r"pid=(\d+)", text)
+    if match:
+        # pid가 죽었으면 즉시 스테일 — 2026-08-30 03:01 실측: 예약 게이트가
+        # CONTROL_C_EXIT로 죽으며 남긴 락이 다음 예약까지 막을 뻔했다.
+        return text if _pid_alive(int(match.group(1))) else ""
+    age = time.time() - path.stat().st_mtime
+    return text if age < STALE_SECONDS else ""
+
+
 class RunLock:
     """자물쇠를 잡거나, 못 잡으면 누가 쥐고 있는지 알려 준다."""
 
@@ -66,21 +89,12 @@ class RunLock:
 
     def __enter__(self) -> RunLock:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        if self.path.exists():
-            text = self.path.read_text(encoding="utf-8", errors="replace").strip()
-            match = re.search(r"pid=(\d+)", text)
-            if match:
-                # pid가 죽었으면 즉시 스테일 — 2026-08-30 03:01 실측: 예약 게이트가
-                # CONTROL_C_EXIT로 죽으며 남긴 락이 다음 예약까지 막을 뻔했다.
-                if _pid_alive(int(match.group(1))):
-                    self.held_by = text
-                    return self
-            else:
-                age = time.time() - self.path.stat().st_mtime
-                if age < STALE_SECONDS:
-                    self.held_by = text
-                    return self
-            # 죽은 프로세스의 자물쇠다. 영원히 막히는 게 더 나쁘다.
+        for path in (self.path, LEGACY_LOCK_PATH):
+            holder = _live_holder(path)
+            if holder:
+                self.held_by = holder
+                return self
+        # 있어도 죽은 프로세스의 자물쇠다. 영원히 막히는 게 더 나쁘다.
         self.path.write_text(f"{self.owner} pid={os.getpid()}", encoding="utf-8")
         self.acquired = True
         return self

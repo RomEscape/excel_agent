@@ -18,11 +18,13 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _run_lock import LOCK_PATH, RunLock  # noqa: E402
-
 ROOT = Path(__file__).resolve().parent.parent
 SIDECAR = ROOT / "services" / "sidecar"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(SIDECAR))
+from _run_lock import LOCK_PATH, RunLock
+from office_claw_sidecar.config import get_reports_dir
+
 PY = Path(os.environ["LOCALAPPDATA"]) / "officeclaw/venvs/python-sidecar/Scripts/python.exe"
 CASES = ROOT / "datasets/eval/blind_paraphrases_v1.jsonl"
 REPORT = CASES.with_name(CASES.stem + "_report.json")
@@ -63,7 +65,8 @@ def main() -> int:
     time.sleep(60)
     # 산출 디렉터리는 **측정 당일**(게이트가 끝난 날) 기준 — 무장 시점(자정 전)
     # 날짜로 잡으면 전날 보고서를 덮어쓴다.
-    out = ROOT / "logs/measurements" / f"intent-first-gate-{dt.date.today():%m%d}"
+    # 산출물은 저장소 밖 <reports>/measurements 로(2026-09-10: 저장소 logs/ 에는 chat_log.jsonl 하나만).
+    out = get_reports_dir() / "measurements" / f"intent-first-gate-{dt.date.today():%m%d}"
     out.mkdir(parents=True, exist_ok=True)
 
     # 3) 오늘 새벽 게이트가 남긴 A팔(기본 모드) 보고서를 보존

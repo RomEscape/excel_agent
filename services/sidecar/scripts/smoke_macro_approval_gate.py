@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from fastapi.testclient import TestClient
 from openpyxl import Workbook, load_workbook
 
+from office_claw_sidecar.config import get_reports_dir
 from office_claw_sidecar.main import app
 from office_claw_sidecar.routers import excel_live as excel_live_router
 from office_claw_sidecar.services.excel_macro_planner import MacroStepPlan
@@ -122,7 +123,8 @@ def main() -> int:
         "sub_commands": SUB_COMMANDS,
         "초": round(time.time() - t0, 2),
     }
-    out_dir = Path(__file__).resolve().parent.parent.parent / "logs" / "e2e"
+    # 산출물은 저장소 logs/e2e 가 아니라 reports/e2e 로(2026-09-10: logs/ 에는 chat_log.jsonl 만).
+    out_dir = get_reports_dir() / "e2e"
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / f"{run_id}.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"

@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from office_claw_sidecar.config import get_chat_log_path
+from office_claw_sidecar.services import decision_trace
 
 # 실패를 어디 탓으로 볼 것인가. 위에서부터 먼저 맞는 것을 쓴다 —
 # 실행이 터졌으면 그게 원인이지, 그 뒤 검증 결과를 볼 필요가 없다.
@@ -292,18 +292,11 @@ def render(turn: dict[str, Any], *, show_prompt: bool = False) -> str:
 
 
 def read_turns(path: Path | None = None) -> Iterator[dict[str, Any]]:
-    """chat_log.jsonl을 위에서부터 읽는다. 깨진 줄은 건너뛴다."""
-    log_path = path or get_chat_log_path()
-    if not log_path.exists():
-        return
-    with log_path.open("r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(entry, dict):
-                yield entry
+    """chat_log.jsonl 의 **턴 줄만** 위에서부터 낸다. 깨진 줄과 없는 파일은 빈 결과.
+
+    같은 파일에 `record` 줄(이벤트·플래너 승격, `turn_id` 없음)이 섞여 있다. 이름이
+    read_turns 인 함수가 그 줄까지 내면 호출처마다 `"turn_id" in t` 를 되풀이해야
+    하고, 빠뜨린 곳은 turn_id 없는 유령 턴을 받는다(test_trace_source_tagging 이
+    실제로 그렇게 깨졌었다). 읽기 규칙은 `decision_trace.iter_turns` 한 곳이 소유한다.
+    """
+    yield from decision_trace.iter_turns(path)

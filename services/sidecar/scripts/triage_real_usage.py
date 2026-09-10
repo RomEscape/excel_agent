@@ -24,20 +24,29 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-LOG = Path(__file__).resolve().parents[3] / "logs" / "chat_log.jsonl"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from office_claw_sidecar.config import get_chat_log_path
+
+# chat_log 위치는 config 가 정한다(= <저장소>/logs/chat_log.jsonl). 경로를 여기 박지 않는다.
+LOG = get_chat_log_path()
 REAL_PREFIX = "excel-live::ui::"
 
 
 def load_turns(path: Path) -> list[dict]:
+    """턴 줄만 읽는다 — 같은 파일의 이벤트·플래너 승격 줄(`turn_id` 없음)은 건너뛴다."""
     turns = []
     for ln in path.read_text(encoding="utf-8", errors="replace").splitlines():
         try:
-            turns.append(json.loads(ln))
+            rec = json.loads(ln)
         except json.JSONDecodeError:
             continue
+        if isinstance(rec, dict) and "turn_id" in rec:
+            turns.append(rec)
     return turns
 
 

@@ -39,9 +39,10 @@
 
 ```bash
 cd python-sidecar
+REPORTS="$LOCALAPPDATA/office_claw/reports"   # 산출물은 저장소 logs/ 밖 (docs/logs.md)
 uv run python scripts/verify_excel_complex_scenarios.py \
   --scenario-pack ../datasets/excel_complex_scenarios_v1.json \
-  --output-json ../logs/excel_complex_verify_report.json \
+  --output-json "$REPORTS/excel_complex_verify_report.json" \
   --model skt/A.X-4.0-Light:latest
 ```
 
@@ -57,12 +58,13 @@ uv run python scripts/verify_excel_complex_scenarios.py \
 
 ```bash
 cd python-sidecar
+REPORTS="$LOCALAPPDATA/office_claw/reports"   # 산출물은 저장소 logs/ 밖 (docs/logs.md)
 uv run python scripts/eval_release_gate.py \
-  --shadow-report ../logs/eval_ax7b_shadow.json \
-  --hard-smoke-report ../logs/smoke_excel_ko_hard_tasks.json \
-  --complex-report ../logs/excel_complex_verify_report.json \
+  --shadow-report "$REPORTS/eval_ax7b_shadow.json" \
+  --hard-smoke-report "$REPORTS/smoke_excel_ko_hard_tasks.json" \
+  --complex-report "$REPORTS/excel_complex_verify_report.json" \
   --thresholds-json ../python-sidecar/release_gate_thresholds.v1.json \
-  --output-json ../logs/eval_release_gate.json
+  --output-json "$REPORTS/eval_release_gate.json"
 ```
 
 > 권장 정책: `complex pass_rate >= 0.95`, `critical_failures == 0`, `min scenarios >= 30`

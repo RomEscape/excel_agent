@@ -20,6 +20,7 @@ from openpyxl.styles import PatternFill
 from openpyxl.utils.cell import range_boundaries
 from openpyxl.worksheet.cell_range import CellRange
 
+from office_claw_sidecar.config import get_reports_dir
 from office_claw_sidecar.routers.excel_live import ExcelLiveCommandRequest, post_command
 from office_claw_sidecar.services.llm_service import (
     get_llm_service,
@@ -726,7 +727,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-json",
         type=Path,
-        default=Path(__file__).resolve().parents[3] / "logs" / "excel_complex_verify_report.json",
+        # 산출물은 저장소 logs/ 가 아니라 reports 로(2026-09-10: logs/ 에는 chat_log.jsonl 만).
+        default=get_reports_dir() / "excel_complex_verify_report.json",
     )
     parser.add_argument("--model", type=str, default="", help="검증 시 사용할 planner 모델(선택)")
     parser.add_argument("--turn-timeout-seconds", type=float, default=45.0)

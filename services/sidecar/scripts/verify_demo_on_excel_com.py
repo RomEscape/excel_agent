@@ -38,6 +38,7 @@ from verify_excel_complex_scenarios import (
     _run_turn,
 )
 
+from office_claw_sidecar.config import get_reports_dir
 from office_claw_sidecar.services.llm_service import get_llm_service
 
 
@@ -157,15 +158,16 @@ async def main() -> None:
         default=Path(__file__).resolve().parents[3] / "datasets" / "excel_demo_scenarios_v1.json",
     )
     parser.add_argument("--scenario-id", type=str, default="")
+    # 산출물은 저장소 logs/ 가 아니라 reports 로(2026-09-10: logs/ 에는 chat_log.jsonl 만).
     parser.add_argument(
         "--artifact-dir",
         type=Path,
-        default=Path(__file__).resolve().parents[3] / "logs" / "demo_com_artifacts",
+        default=get_reports_dir() / "demo_com_artifacts",
     )
     parser.add_argument(
         "--output-json",
         type=Path,
-        default=Path(__file__).resolve().parents[3] / "logs" / "excel_demo_com_report.json",
+        default=get_reports_dir() / "excel_demo_com_report.json",
     )
     parser.add_argument("--turn-timeout-seconds", type=float, default=90.0)
     args = parser.parse_args()

@@ -7,9 +7,11 @@
     uv run python scripts/run_command_diagnostics.py --analyze <실행id>  # 다시 안 돌리고 분석만
     uv run python scripts/run_command_diagnostics.py --analyze-all      # 쌓인 실행 전부
 
-실행마다 `logs/diagnostics/<실행id>.jsonl`에 턴을 그대로 남기고, 같은 이름의
+실행마다 `<reports>/diagnostics/<실행id>.jsonl`에 턴을 그대로 남기고, 같은 이름의
 `.report.json`에 집계를 남긴다. **덮어쓰지 않으므로** 이력이 쌓인다. 나중에
-`scripts/show_turns.py --log logs/diagnostics/<실행id>.jsonl`로 개별 턴을 펼쳐 볼 수 있다.
+`scripts/show_turns.py --log <reports>/diagnostics/<실행id>.jsonl`로 개별 턴을 펼쳐 볼 수 있다.
+`<reports>` 는 `office_claw_sidecar.config.get_reports_dir()` — 기본 %LOCALAPPDATA%/office_claw/reports,
+환경변수 OFFICE_CLAW_REPORTS_DIR 로 바꾼다. 저장소 `logs/` 에는 `chat_log.jsonl` 만 둔다(2026-09-10).
 
 로컬 LLM을 실제로 부르므로 케이스당 수 초가 걸린다. 12케이스 × 3회면 몇 분 걸린다.
 
@@ -38,7 +40,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-DIAG_DIR = ROOT.parent / "logs" / "diagnostics"
+from office_claw_sidecar.config import get_reports_dir
+
+DIAG_DIR = get_reports_dir() / "diagnostics"
 
 
 def _run_id(label: str) -> str:
@@ -168,7 +172,8 @@ def _print_effects(summary: dict[str, Any]) -> None:
 def _read(path: Path):
     from office_claw_sidecar.services.trace_report import read_turns
 
-    return read_turns(path)
+    # 턴 줄만 — 이벤트·플래너 승격 줄이 같은 파일에 섞여도 집계가 흔들리지 않게.
+    return (turn for turn in read_turns(path) if "turn_id" in turn)
 
 
 def _analyze(paths: list[Path]) -> None:

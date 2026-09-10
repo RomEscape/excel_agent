@@ -1,5 +1,7 @@
 """대화 러너 로그(_log.json) + chat_log.jsonl 을 합쳐 실패 턴을 경로와 함께 보여 준다.
 
+chat_log 위치는 `office_claw_sidecar.config.get_chat_log_path()` (= <저장소>/logs/chat_log.jsonl).
+
 사용: PYTHONUTF8=1 python scripts/dialogue_failures.py <dialogue_exN_log.json> [...]
 """
 
@@ -9,13 +11,17 @@ import json
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 # 호출자가 PYTHONUTF8=1 을 안 붙여도 한국어 출력이 죽지 않게 한다(2026-09-07 실측:
 # cp949 콘솔에서 첫 print 가 UnicodeEncodeError 로 죽어 '로그가 잘린다'로 보였다).
 from _console import force_utf8
 
+from office_claw_sidecar.config import get_chat_log_path
+
 force_utf8()
 
-CHAT_LOG = Path(__file__).resolve().parents[3] / "logs" / "chat_log.jsonl"
+CHAT_LOG = get_chat_log_path()
 
 
 def _records(session_prefix: str) -> list[dict]:
@@ -26,6 +32,9 @@ def _records(session_prefix: str) -> list[dict]:
         try:
             rec = json.loads(line)
         except Exception:
+            continue
+        # 2026-09-10 부터 이벤트·플래너 승격 줄이 같은 파일에 들어온다 — 턴만 고른다.
+        if not isinstance(rec, dict) or "turn_id" not in rec:
             continue
         if str(rec.get("session_id") or "").startswith(session_prefix) and rec.get("endpoint") == "excel-live/command":
             out.append(rec)

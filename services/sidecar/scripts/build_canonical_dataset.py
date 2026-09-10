@@ -13,7 +13,12 @@ import json
 import sys
 from pathlib import Path
 
-LOG = Path(__file__).resolve().parents[3] / "logs" / "chat_log.jsonl"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from office_claw_sidecar.config import get_chat_log_path
+
+# chat_log 위치는 config 가 정한다(= <저장소>/logs/chat_log.jsonl). 경로를 여기 박지 않는다.
+LOG = get_chat_log_path()
 OUT = Path(__file__).resolve().parents[3] / "datasets" / "train" / "canonical_translate_v1.jsonl"
 
 
@@ -149,6 +154,9 @@ def main() -> int:
             try:
                 e = json.loads(line)
             except json.JSONDecodeError:
+                continue
+            # 2026-09-10 부터 이벤트·플래너 승격 줄이 같은 파일에 들어온다 — 턴만 센다.
+            if not isinstance(e, dict) or "turn_id" not in e:
                 continue
             total += 1
             out = e.get("outcome") or {}

@@ -7,7 +7,8 @@
 야간 게이트와 **같은 자물쇠**를 쓴다 — 겹치면 결과가 뒤섞인다(CLAUDE.md §2).
 9시간짜리라 03:00 게이트와 반드시 겹치는데, 자물쇠 덕에 게이트가 조용히 비켜 간다.
 
-결과: `logs/nightly/battery-<날짜>.md` · `logs/nightly/BATTERY_LATEST.md`
+결과: `<reports>/nightly/battery-<날짜>.md` · `<reports>/nightly/BATTERY_LATEST.md`
+      (reports = %LOCALAPPDATA%/office_claw/reports, 환경변수 OFFICE_CLAW_REPORTS_DIR 로 바꿀 수 있다)
 종료코드: 0 전부 통과 · 1 실패 있음 · 2 실행 불가(자물쇠·인터프리터)
 """
 from __future__ import annotations
@@ -22,13 +23,16 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _run_lock import RunLock
-
 ROOT = Path(__file__).resolve().parent.parent
 SIDECAR = ROOT / "services" / "sidecar"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(SIDECAR))
+from _run_lock import RunLock
+from office_claw_sidecar.config import get_reports_dir
+
 SCENARIOS = SIDECAR / "scenarios/dialogue"
-OUT_DIR = ROOT / "logs/nightly"
+# 산출물은 저장소 밖 <reports>/nightly 로 — 저장소 logs/ 에는 chat_log.jsonl 하나만 남긴다(2026-09-10).
+OUT_DIR = get_reports_dir() / "nightly"
 PY = Path(
     os.environ.get("OFFICECLAW_PY")
     or (Path(os.environ.get("LOCALAPPDATA", str(Path.home() / ".cache"))) / "officeclaw/venvs/python-sidecar/Scripts/python.exe")
@@ -97,7 +101,7 @@ def render(rows: list[dict], stamp: str, elapsed: float) -> str:
     for r in rows:
         mark = "" if r["ok"] == r["total"] else " ❌"
         lines.append(f"| {r['각본']} | {r['ok']}/{r['total']}{mark} | {r['초']}초 |")
-    lines += ["", "</details>", "", f"로그: `logs/nightly/battery-{stamp}-*.txt`", ""]
+    lines += ["", "</details>", "", f"로그: `{OUT_DIR / f'battery-{stamp}-*.txt'}`", ""]
     return "\n".join(lines)
 
 

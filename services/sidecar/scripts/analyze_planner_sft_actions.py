@@ -9,7 +9,10 @@ Windows 콘솔이 cp949라 한글이 깨지므로 결과는 UTF-8 파일로 쓴�
 사용:
     python scripts/analyze_planner_sft_actions.py \
         --jsonl ../../datasets/distill/planner_sft_v2_train.jsonl \
-        --output ../../logs/planner_sft_action_analysis.md
+        --output <reports>/planner_sft_action_analysis.md
+
+`<reports>` 는 `office_claw_sidecar.config.get_reports_dir()` — 기본 %LOCALAPPDATA%/office_claw/reports,
+환경변수 OFFICE_CLAW_REPORTS_DIR 로 바꾼다. 저장소 `logs/` 에는 `chat_log.jsonl` 만 둔다(2026-09-10).
 """
 
 from __future__ import annotations

@@ -36,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from openpyxl import Workbook
 
+from office_claw_sidecar.config import get_reports_dir
 from office_claw_sidecar.services.excel_intent_normalizer import normalize_intent
 from office_claw_sidecar.services.excel_live_agent import normalize_common_typos
 from office_claw_sidecar.services.excel_live_file_service import FileExcelLiveService
@@ -183,7 +184,8 @@ async def main() -> None:
         "rows": out_rows,
         "초": round(time.time() - t0),
     }
-    out_path = ROOT / "logs" / f"final_agreement_{run_id}.json"
+    # 산출물은 저장소 logs/ 가 아니라 reports 로(2026-09-10: logs/ 에는 chat_log.jsonl 만).
+    out_path = get_reports_dir() / f"final_agreement_{run_id}.json"
     out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print("\n" + "=" * 78)
     for line in lines:

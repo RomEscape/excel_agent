@@ -79,19 +79,9 @@ artifacts/**
 !artifacts/**/*.md
 
 # ── 실행 로그 ──────────────────────────────────────────────────────────────
-# 데모 xlsx·게이트 JSON·진단 배터리는 실행마다 생기고 용량만 는다.
-# 숫자는 개발일지에 있고, 스크립트로 다시 만들 수 있다. 디스크에는 안 둔다.
+# logs/ 에는 chat_log.jsonl 하나만 둔다(2026-09-10 사용자 지시). 회전 조각·게이트·측정·진단 산출물은 저장소 밖 %LOCALAPPDATA%/office_claw/{chat_log_archive,reports} 로 간다(docs/logs.md). 턴당 약 2KB — 남의 파일로 작업한 턴은 커밋 전에 지운다.
 logs/*
-# 턴 트레이스만 예외. Excel Live를 고칠 때 근거가 이 파일이다.
-# 턴당 약 2KB. 명령 원문·워크북 값이 남으니 남의 파일로 작업한 턴은 커밋 전에 지운다.
 !logs/chat_log.jsonl
-# `show_turns.py --follow --out`이 만드는 사람이 읽는 형태. 로그에서 다시 만들 수 있다.
-logs/turns.txt
-# 야간 게이트 요약(.md)은 추세를 보는 근거라 남긴다. 원시 로그(.txt)와 자물쇠는 뺀다.
-!logs/nightly/
-!logs/nightly/*.md
-logs/nightly/*.txt
-logs/nightly/.running.lock
 
 # ── 임시 작업물 ────────────────────────────────────────────────────────────
 # 테스트로 만든 xlsx/pdf, 명령 출력 덤프 등. 메모(.md)는 남긴다.

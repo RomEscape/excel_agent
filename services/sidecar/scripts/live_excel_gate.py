@@ -43,7 +43,10 @@ Excel 이 없거나 **사람의 통합문서가 이미 열려 있으면 건너�
 사용:
     python scripts/live_excel_gate.py
     python scripts/live_excel_gate.py --only 행지목 --only 열지목
-    python scripts/live_excel_gate.py --json ../../logs/live_excel_gate.json
+    python scripts/live_excel_gate.py --json <reports>/live_excel_gate.json
+
+`<reports>` 는 `office_claw_sidecar.config.get_reports_dir()` — 기본 %LOCALAPPDATA%/office_claw/reports.
+저장소 `logs/` 에는 `chat_log.jsonl` 만 둔다(2026-09-10).
 """
 
 from __future__ import annotations

@@ -7,10 +7,10 @@
 > - 파이썬 명령은 전부 `cd services/sidecar && uv run python …` 기준으로 읽는다. 본문의
 >   맨 `python …`·`& $PY …`는 옛 표기다(`$PY`는 이 문서 안에 정의가 없다).
 > - `src/lib/requestPolicy.js` → `apps/desktop/src/lib/requestPolicy.js`.
-> - `logs/diagnostics/<실행id>.jsonl` → 스크립트는 실제로 `services/logs/diagnostics/`에 쓴다.
+> - `logs/diagnostics/<실행id>.jsonl` → 스크립트는 실제로 `services/logs/diagnostics/`에 쓴다. (2026-09-10 부터 진단 산출물은 저장소 밖 `reports/diagnostics/` — docs/logs.md)
 > - `ax7bplanner-v5r`는 2026-08-20에 삭제됐다. 플래너는 v3를 유지한다.
 > - 지원 액션 수는 16/26/49 세 벌로 적혀 있으나 `excel_live_plan_validator.SUPPORTED_ACTIONS`는 56(clarify 제외 55).
-> - `logs/verifier_*.json`·`logs/eval_gate_*.json`은 gitignore 대상이라 저장소에 없다.
+> - `logs/verifier_*.json`·`logs/eval_gate_*.json`은 gitignore 대상이라 저장소에 없다. (2026-09-10 부터 이런 산출물은 저장소 밖 `reports/` 로 간다 — docs/logs.md)
 > - 완전 무관 입력은 HTTP 400이 아니라 `route_to_chat: true` 응답이다. 파싱 타임아웃 기본값은 8초가 아니라 10초.
 
 # 데모 브랜치 부록 (openclaw_jinh_demo)
@@ -153,14 +153,14 @@ $env:ROBUST_REPEAT="3"; $env:EXCEL_LIVE_ENGINE="file"; & $PY scripts\run_human_r
 
 #### 실패가 다음 학습 데이터가 된다
 
-승격·최종 실패는 전부 `logs/planner_escalations.jsonl`에 적재된다.
+승격·최종 실패는 전부 `logs/planner_escalations.jsonl`(지금은 `logs/chat_log.jsonl` 의 `record=planner_escalation` 줄 — docs/logs.md)에 적재된다.
 로컬이 틀리고 상위 단계가 맞힌 순간이 가장 값진 증류 샘플이다.
 
 ```bash
 # 큐 → 학습 후보 + 사람이 볼 미해결 목록
 python scripts/build_sft_from_escalations.py \
     --output ../../datasets/distill/excel_escalation_harvest_v1.jsonl \
-    --unsolved-output ../../logs/planner_unsolved.jsonl
+    --unsolved-output "$LOCALAPPDATA/office_claw/reports/planner_unsolved.jsonl"   # 산출물은 저장소 logs/ 밖 (docs/logs.md)
 ```
 
 되묻기로 끝난 턴은 정답으로 수확하지 않는다 — 그걸 학습하면 "어려우면 물어봐라"를
@@ -191,7 +191,7 @@ python scripts/triage_real_usage.py     # 실사용 턴만 골라 실패 유형�
 
 ```powershell
 $env:OFFICE_CLAW_TRACE_TESTS = "1"; uv run pytest -q
-python scripts/show_turns.py --log ../../logs/test-runs/chat_log.jsonl --failed
+python scripts/show_turns.py --log "$env:LOCALAPPDATA/office_claw/reports/test-runs/chat_log.jsonl" --failed   # 저장소 밖 <reports>/test-runs — tests/conftest.py 가 정한다(logs/ 에는 chat_log.jsonl 하나만, docs/logs.md)
 ```
 
 ```
@@ -222,9 +222,9 @@ python scripts/run_command_diagnostics.py --case 차트    # 일부만
 python scripts/run_command_diagnostics.py --analyze-all # 쌓인 실행 전부 합쳐 분석
 ```
 
-실행마다 `logs/diagnostics/<실행id>.jsonl`에 턴을 남기고 같은 이름의 `.report.json`에
+실행마다 `reports/diagnostics/<실행id>.jsonl`(저장소 `logs/` 밖 — docs/logs.md)에 턴을 남기고 같은 이름의 `.report.json`에
 집계를 남긴다. **덮어쓰지 않으므로 이력이 쌓인다.** 개별 턴은
-`show_turns.py --log logs/diagnostics/<실행id>.jsonl`로 펼친다. 소유 모듈은
+`show_turns.py --log <reports>/diagnostics/<실행id>.jsonl`로 펼친다. 소유 모듈은
 `tests/excel_e2e/command_battery.py`(실행)와 `services/trace_digest.py`(집계)다.
 
 케이스는 다섯 부류로 갈린다.
@@ -256,7 +256,7 @@ python scripts/run_command_diagnostics.py --analyze-all # 쌓인 실행 전부 �
 비율(false pass)과 멀쩡한 작업을 막는 비율(false fail)을 같이 본다.
 
 ```powershell
-python scripts/run_verifier_suite.py          # V0·V1·V2 전부 + logs/에 저장
+python scripts/run_verifier_suite.py          # V0·V1·V2 전부 + reports/에 저장 (저장소 logs/ 밖, docs/logs.md)
 python scripts/run_verifier_suite.py --diff   # 단계 간 변화만
 ```
 
@@ -268,7 +268,7 @@ python scripts/run_verifier_suite.py --diff   # 단계 간 변화만
 
 - 변이는 `write_range` 7종(wrong_value·missing_cell·partial_write·shifted_range·extra_write·wrong_shape·narrow_address), `clear_range` 5종(no_clear·partial_clear·wrong_range_clear·value_remains·formula_remains).
 - **false fail을 같이 보는 이유**: 검증기가 항상 실패를 반환하면 false pass는 0%가 되지만 멀쩡한 작업까지 롤백되어 에이전트가 망가진다.
-- 결과는 `logs/verifier_baseline.json`·`verifier_after_write_range.json`·`verifier_after_clear_range.json`에 케이스별(요청·기대 상태·실제 상태·검증 판정·정답 판정·분류)로 보존된다.
+- 결과는 `logs/verifier_baseline.json`·`verifier_after_write_range.json`·`verifier_after_clear_range.json`(옛 위치 — 지금은 저장소 밖 `reports/`)에 케이스별(요청·기대 상태·실제 상태·검증 판정·정답 판정·분류)로 보존된다.
 - 아직 못 잡는 변이는 `extra_write` 하나 — 요청 범위 밖 부수 피해는 실행 전 전체 스냅샷이 있어야 보인다. `tests/test_verifier_mutants.py`의 `KNOWN_BLIND_SPOTS`가 이 목록을 고정한다.
 
 액션 전반의 넓이는 `scripts/run_verifier_gap.py`가 따로 본다(정렬·필터·차트 포함
@@ -329,7 +329,7 @@ LLM이 돌려준 텍스트에서 계획 JSON을 꺼내는 일은 **두 겹**으�
 
 ```powershell
 cd services/sidecar
-uv run python scripts/ab_json_only.py --limit 40   # logs/ab_json_only.json
+uv run python scripts/ab_json_only.py --limit 40   # reports/ab_json_only.json (저장소 logs/ 밖, docs/logs.md)
 uv run python scripts/probe_json_format.py         # 서버가 response_format을 받는지
 ```
 
@@ -431,7 +431,7 @@ uv run pytest tests/test_event_loop_block.py -q
 깨지면서 닫는 따옴표까지 삼켜 `ParserError`로 죽으므로, `scripts/*.ps1`은 반드시
 UTF-8 **BOM 포함**으로 저장한다.
 
-첫 실행 결과(v3 기준선 vs v5r, `logs/eval_gate_ax7bplanner-v5r-latest.json`):
+첫 실행 결과(v3 기준선 vs v5r, `logs/eval_gate_ax7bplanner-v5r-latest.json` — 옛 위치, 지금은 `reports/`):
 승격 불가. 되묻기 재현율은 0% → 100%로 올랐지만 `parse_gain`이 +2.6pp(기준 +5.0pp)에
 그쳤고 `multi`가 41.7%p 떨어졌다. 다만 `core` 회귀 대부분은 실력 저하가 아니라
 `sort_range`/`sort_rows` 라벨 충돌이었다 — 아래 참조.
@@ -532,11 +532,12 @@ Excel Live 테스트 세트는 간소화된 문서 + 러프 스모크 스크립�
 
 ```bash
 cd services/sidecar
+# 이벤트는 2026-09-10 부터 chat_log.jsonl 의 record=event 줄이다(all_events.jsonl 은 없다) — docs/logs.md
 uv run python scripts/build_excel_distill_jsonl.py \
-  --all-events ../../logs/all_events.jsonl \
+  --all-events ../../logs/chat_log.jsonl \
   --preferred-locale ko \
   --drop-non-preferred-locale \
-  --output ../../logs/excel_distill_ko_only_sample.jsonl \
+  --output "$LOCALAPPDATA/office_claw/reports/excel_distill_ko_only_sample.jsonl" \
   --limit-per-source 200 \
   --stats
 ```
@@ -616,7 +617,7 @@ v5 검증셋 34건 중 21건이 실제로 pytest 세션이었다.
 
 ```bash
 # 로그에 누구 트래픽이 얼마나 쌓였는지
-uv run python scripts/report_traffic_origin.py ../../logs/all_events.jsonl
+uv run python scripts/report_traffic_origin.py ../../logs/chat_log.jsonl   # 이벤트 줄(record=event)을 읽는다 — all_events.jsonl 은 2026-09-10 부터 없다
 
 # 오염 제거 + 중복 제거 + 출처×액션 층화 분할
 uv run python scripts/split_planner_sft.py \

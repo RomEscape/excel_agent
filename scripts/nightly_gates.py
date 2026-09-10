@@ -9,7 +9,8 @@
 기준선이 매일 자동으로 갱신되면 그런 낭비가 없다.
 
 판정: 기준선보다 **나빠지면** 종료코드 1. 좋아지는 건 막지 않는다(기준선 승격은 사람이 한다).
-결과는 `logs/nightly/<날짜>.md`와 `logs/nightly/LATEST.md`에 남는다.
+결과는 `<reports>/nightly/<날짜>.md`와 `<reports>/nightly/LATEST.md`에 남는다
+(reports = %LOCALAPPDATA%/office_claw/reports, 환경변수 OFFICE_CLAW_REPORTS_DIR 로 바꿀 수 있다).
 """
 from __future__ import annotations
 
@@ -23,17 +24,20 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _run_lock import RunLock
-
 ROOT = Path(__file__).resolve().parent.parent
 SIDECAR = ROOT / "services" / "sidecar"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(SIDECAR))
+from _run_lock import RunLock
+from office_claw_sidecar.config import get_reports_dir
+
 PY = Path(
     os.environ.get("OFFICECLAW_PY")
     or (Path(os.environ.get("LOCALAPPDATA", str(Path.home() / ".cache"))) / "officeclaw/venvs/python-sidecar/Scripts/python.exe")
 )
 BASELINE = ROOT / "config/gate_baseline.json"
-OUT_DIR = ROOT / "logs/nightly"
+# 산출물은 저장소 밖 <reports>/nightly 로 — 저장소 logs/ 에는 chat_log.jsonl 하나만 남긴다(2026-09-10).
+OUT_DIR = get_reports_dir() / "nightly"
 
 GATES = {
     "guard": {"이름": "파괴 게이트", "cases": "datasets/eval/guard_cases_v1.jsonl"},
@@ -166,7 +170,7 @@ def render(results: dict, baseline: dict, bad: list[str], stamp: str) -> str:
             lines += [f"- `{f}`" for f in fails[:20]]
             if len(fails) > 20:
                 lines.append(f"- … 그 외 {len(fails) - 20}건 (로그 참조)")
-    lines += ["", f"로그: `logs/nightly/{stamp}-*.txt`", ""]
+    lines += ["", f"로그: `{OUT_DIR / f'{stamp}-*.txt'}`", ""]
     return "\n".join(lines)
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import statistics
+import sys
 import time
 import uuid
 from dataclasses import dataclass
@@ -10,6 +11,10 @@ from pathlib import Path
 from typing import Any
 
 import requests
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from office_claw_sidecar.config import get_reports_dir
 
 BASE_URL = str(os.getenv("EXCEL_E2E_BASE_URL", "http://127.0.0.1:19532") or "http://127.0.0.1:19532")
 TOKEN = str(os.getenv("EXCEL_E2E_TOKEN", "dev-token") or "dev-token")
@@ -433,7 +438,8 @@ def run() -> None:
             for r in results
         ],
     }
-    out_dir = Path(__file__).resolve().parent.parent.parent / "logs" / "e2e"
+    # 산출물은 저장소 logs/e2e 가 아니라 reports/e2e 로(2026-09-10: logs/ 에는 chat_log.jsonl 만).
+    out_dir = get_reports_dir() / "e2e"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"smoke_reset_cycle_{run_id}.json"
     out_path.write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")

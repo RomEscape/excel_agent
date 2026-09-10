@@ -427,6 +427,10 @@ def parse_all_events(
     for idx, event in enumerate(iter_jsonl(log_path), start=1):
         if limit > 0 and len(rows) >= limit:
             break
+        # 2026-09-10 부터 이벤트는 chat_log.jsonl 의 `record == "event"` 줄이다. 턴 줄(`turn_id`)과
+        # 플래너 승격 줄은 건너뛴다. 옛 all_events.jsonl(줄에 `record` 없음)도 그대로 읽힌다.
+        if "turn_id" in event or event.get("record") not in (None, "event"):
+            continue
         if str(event.get("event_type", "")).strip() != "harness":
             continue
         payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
@@ -517,7 +521,13 @@ def main() -> None:
     parser.add_argument("--spreadsheetbench2-root", action="append", type=Path, default=[])
     parser.add_argument("--sheetcopilot-root", action="append", type=Path, default=[])
     parser.add_argument("--sheetrm-root", action="append", type=Path, default=[])
-    parser.add_argument("--all-events", action="append", type=Path, default=[])
+    parser.add_argument(
+        "--all-events",
+        action="append",
+        type=Path,
+        default=[],
+        help="harness 이벤트 줄이 든 JSONL (지금은 chat_log.jsonl 의 record=event 줄; 옛 all_events.jsonl 도 됨)",
+    )
     parser.add_argument(
         "--include-automated",
         action="store_true",

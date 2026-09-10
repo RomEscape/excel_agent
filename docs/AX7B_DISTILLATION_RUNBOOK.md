@@ -6,15 +6,15 @@
 
 - Python sidecar 실행 환경 준비
 - Ollama에 baseline 모델 설치 (`skt/A.X-4.0-Light:latest`)
-- 원천 로그 준비 (`logs/all_events.jsonl`)
+- 원천 로그 준비 (`logs/chat_log.jsonl` 의 `record=event` 줄 — 옛 `logs/all_events.jsonl` 은 2026-09-10 부터 없다, docs/logs.md)
 
 ## 1) 데이터 동결
 
 ```bash
-cd python-sidecar
+cd services/sidecar
 uv run python scripts/sample_hard_cases.py \
-  --all-events ../logs/all_events.jsonl \
-  --output-dir ../datasets/distill \
+  --all-events ../../logs/chat_log.jsonl \
+  --output-dir ../../datasets/distill \
   --stats
 ```
 
@@ -28,20 +28,20 @@ uv run python scripts/sample_hard_cases.py \
 ## 2) Teacher 라벨링 + 재시도
 
 ```bash
-cd python-sidecar
+cd services/sidecar
 uv run python scripts/teacher_label_action_plan.py \
-  --input-jsonl ../datasets/distill/excel_distill_v1_train.jsonl \
-  --output-jsonl ../datasets/distill/excel_distill_v1_teacher_labeled.jsonl \
+  --input-jsonl ../../datasets/distill/excel_distill_v1_train.jsonl \
+  --output-jsonl ../../datasets/distill/excel_distill_v1_teacher_labeled.jsonl \
   --provider ollama \
   --teacher-model skt/A.X-4.0-Light:latest \
   --stats
 ```
 
 ```bash
-cd python-sidecar
+cd services/sidecar
 uv run python scripts/teacher_label_retry.py \
-  --input-jsonl ../datasets/distill/excel_distill_v1_teacher_labeled.jsonl \
-  --output-jsonl ../datasets/distill/excel_distill_v1_teacher_labeled_retry.jsonl \
+  --input-jsonl ../../datasets/distill/excel_distill_v1_teacher_labeled.jsonl \
+  --output-jsonl ../../datasets/distill/excel_distill_v1_teacher_labeled_retry.jsonl \
   --provider ollama \
   --teacher-model skt/A.X-4.0-Light:latest \
   --stats
@@ -50,18 +50,18 @@ uv run python scripts/teacher_label_retry.py \
 ## 3) 실행 검증 게이트
 
 ```bash
-cd python-sidecar
+cd services/sidecar
 uv run python scripts/verify_distill_execution.py \
-  --input-jsonl ../datasets/distill/excel_distill_v1_teacher_labeled_retry.jsonl \
-  --output-jsonl ../datasets/distill/excel_distill_v1_verified.jsonl \
+  --input-jsonl ../../datasets/distill/excel_distill_v1_teacher_labeled_retry.jsonl \
+  --output-jsonl ../../datasets/distill/excel_distill_v1_verified.jsonl \
   --stats
 ```
 
 ```bash
-cd python-sidecar
+cd services/sidecar
 uv run python scripts/build_ax7b_training_set.py \
-  --input-jsonl ../datasets/distill/excel_distill_v1_verified.jsonl \
-  --output-jsonl ../datasets/train/ax7b_planner_sft_train.jsonl \
+  --input-jsonl ../../datasets/distill/excel_distill_v1_verified.jsonl \
+  --output-jsonl ../../datasets/train/ax7b_planner_sft_train.jsonl \
   --stats
 ```
 
@@ -102,10 +102,11 @@ Ollama 배포용 템플릿:
 ## 6) Shadow 평가
 
 ```bash
-cd python-sidecar
+cd services/sidecar
+REPORTS="$LOCALAPPDATA/office_claw/reports"   # 산출물은 저장소 logs/ 밖 (docs/logs.md)
 uv run python scripts/eval_ax7b_shadow.py \
-  --input-jsonl ../datasets/distill/excel_distill_v1_verified.jsonl \
-  --output-json ../logs/eval_ax7b_shadow.json \
+  --input-jsonl ../../datasets/distill/excel_distill_v1_verified.jsonl \
+  --output-json "$REPORTS/eval_ax7b_shadow.json" \
   --provider ollama \
   --baseline-model skt/A.X-4.0-Light:latest \
   --candidate-model officeclaw-ax7b-planner:latest \
@@ -115,36 +116,39 @@ uv run python scripts/eval_ax7b_shadow.py \
 ## 7) 승격 게이트
 
 ```bash
-cd python-sidecar
+cd services/sidecar
+REPORTS="$LOCALAPPDATA/office_claw/reports"   # 산출물은 저장소 logs/ 밖 (docs/logs.md)
 uv run python scripts/eval_release_gate.py \
-  --shadow-report ../logs/eval_ax7b_shadow.json \
-  --hard-smoke-report ../logs/smoke_excel_ko_hard_tasks.json \
-  --complex-report ../logs/excel_complex_verify_report.json \
-  --thresholds-json ../python-sidecar/release_gate_thresholds.v1.json \
-  --output-json ../logs/eval_release_gate.json
+  --shadow-report "$REPORTS/eval_ax7b_shadow.json" \
+  --hard-smoke-report "$REPORTS/smoke_excel_ko_hard_tasks.json" \
+  --complex-report "$REPORTS/excel_complex_verify_report.json" \
+  --thresholds-json release_gate_thresholds.v1.json \
+  --output-json "$REPORTS/eval_release_gate.json"
 ```
 
 ## 8) 복잡 작업 30시나리오 검증 (권장)
 
 ```bash
-cd python-sidecar
+cd services/sidecar
+REPORTS="$LOCALAPPDATA/office_claw/reports"   # 산출물은 저장소 logs/ 밖 (docs/logs.md)
 uv run python scripts/verify_excel_complex_scenarios.py \
-  --scenario-pack ../datasets/excel_complex_scenarios_v1.json \
-  --output-json ../logs/excel_complex_verify_report.json \
+  --scenario-pack ../../datasets/excel_complex_scenarios_v1.json \
+  --output-json "$REPORTS/excel_complex_verify_report.json" \
   --model skt/A.X-4.0-Light:latest
 ```
 
 산출물:
-- `logs/excel_complex_verify_report.json`
+- `<reports>/excel_complex_verify_report.json` (`get_reports_dir()`, docs/logs.md)
 
 ## 9) 개발일지 자동 append
 
 ```bash
-cd python-sidecar
+cd services/sidecar
+REPORTS="$LOCALAPPDATA/office_claw/reports"   # 산출물은 저장소 logs/ 밖 (docs/logs.md)
 uv run python scripts/append_devlog_from_reports.py \
-  --devlog ../개발일지.md \
-  --complex-report ../logs/excel_complex_verify_report.json \
-  --release-gate ../logs/eval_release_gate.json \
+  --devlog ../../개발일지.md \
+  --complex-report "$REPORTS/excel_complex_verify_report.json" \
+  --release-gate "$REPORTS/eval_release_gate.json" \
   --from-staged
 ```
 

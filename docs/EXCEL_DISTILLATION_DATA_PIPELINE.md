@@ -59,7 +59,7 @@
   },
   "metadata": {
     "created_at": "2026-07-21T00:00:00+09:00",
-    "generator": "python-sidecar/scripts/build_excel_distill_jsonl.py",
+    "generator": "services/sidecar/scripts/build_excel_distill_jsonl.py",
     "notes": []
   }
 }
@@ -96,7 +96,7 @@
 - 기본 출력: `label_status=needs_teacher_plan`
 - 활용: task category를 intent 힌트로 사용
 
-### C. OfficeClaw logs/all_events.jsonl
+### C. OfficeClaw 이벤트 줄 — `logs/chat_log.jsonl` 의 `record=event` (옛 `logs/all_events.jsonl`, 2026-09-10 부터 없다 — docs/logs.md)
 
 - 원본: `/excel-live/command` 하네스 이벤트
 - 기본 출력: `label_status=log_observed`
@@ -143,20 +143,20 @@
 
 ## 7) 스크립트
 
-- 변환 스크립트: `python-sidecar/scripts/build_excel_distill_jsonl.py`
+- 변환 스크립트: `services/sidecar/scripts/build_excel_distill_jsonl.py`
 - 사용 예시:
 
 ```bash
-cd python-sidecar
+cd services/sidecar
 uv run python scripts/build_excel_distill_jsonl.py \
-  --spreadsheetbench-root ../datasets/SpreadsheetBench \
-  --spreadsheetbench2-root ../datasets/SpreadsheetBench-2 \
-  --sheetcopilot-root ../datasets/SheetCopilot \
-  --sheetrm-root ../datasets/SheetAgent \
-  --all-events ../logs/all_events.jsonl \
+  --spreadsheetbench-root ../../datasets/SpreadsheetBench \
+  --spreadsheetbench2-root ../../datasets/SpreadsheetBench-2 \
+  --sheetcopilot-root ../../datasets/SheetCopilot \
+  --sheetrm-root ../../datasets/SheetAgent \
+  --all-events ../../logs/chat_log.jsonl \
   --preferred-locale ko \
   --drop-non-preferred-locale \
-  --output ../datasets/officeclaw_excel_distill_v1.jsonl \
+  --output ../../datasets/officeclaw_excel_distill_v1.jsonl \
   --stats
 ```
 

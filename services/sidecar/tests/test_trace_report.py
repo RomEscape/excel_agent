@@ -191,3 +191,28 @@ def test_read_turns_skips_corrupted_lines(tmp_path):
 
 def test_read_turns_on_a_missing_file_is_empty(tmp_path):
     assert list(read_turns(tmp_path / "없음.jsonl")) == []
+
+
+def test_read_turns_yields_only_turn_lines(tmp_path):
+    """같은 파일에 섞인 이벤트·플래너 승격 줄(`turn_id` 없음)은 턴이 아니다.
+
+    read_turns 가 그 줄까지 내면 호출처가 `"turn_id" in t` 를 빠뜨리는 순간
+    turn_id 없는 유령 턴이 화면·집계에 섞인다.
+    """
+    log = tmp_path / "chat_log.jsonl"
+    log.write_text(
+        "\n".join(
+            [
+                '{"turn_id":"a"}',
+                '{"record":"event","at":"2026-09-11T00:00:00+09:00","event_type":"x","payload":{}}',
+                '{"record":"planner_escalation","at":"2026-09-11T00:00:00+09:00","reason":"r"}',
+                '{"turn_id":"b"}',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    turns = list(read_turns(log))
+    assert [t["turn_id"] for t in turns] == ["a", "b"]
+    assert all("record" not in t for t in turns)

@@ -42,11 +42,12 @@ cd python-sidecar
 ## 플래너 모델 회귀 (154건 × 2모델, 약 15분)
 
 ```powershell
+$REPORTS = "$env:LOCALAPPDATA\office_claw\reports"   # 산출물은 저장소 logs/ 밖 (docs/logs.md)
 & $PY scripts\eval_ax7b_shadow.py --input-jsonl ..\datasets\eval\planner_eval_v1.jsonl `
-  --output-json ..\logs\eval_shadow.json `
+  --output-json $REPORTS\eval_shadow.json `
   --baseline-model ax7bplanner-v3:latest --candidate-model <후보>
-& $PY scripts\eval_release_gate.py --shadow-report ..\logs\eval_shadow.json `
-  --output-json ..\logs\eval_gate.json --thresholds-json config\planner_gate_thresholds.json
+& $PY scripts\eval_release_gate.py --shadow-report $REPORTS\eval_shadow.json `
+  --output-json $REPORTS\eval_gate.json --thresholds-json config\planner_gate_thresholds.json
 ```
 
 ## 진행률

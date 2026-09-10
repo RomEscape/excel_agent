@@ -11,11 +11,16 @@
 - `final_tier=failed` → 아무도 못 푼 사례. 정답이 없으니 학습에 넣으면 안 되고,
   사람이 봐야 할 목록으로 따로 뽑는다.
 
+큐는 2026-09-10 부터 별도 파일(`planner_escalations.jsonl`)이 아니라 `chat_log.jsonl` 의
+`record == "planner_escalation"` 줄이다(저장소 `logs/` 에는 chat_log 하나만 둔다). 기본 입력이
+그 파일이고, 옛 `planner_escalations.jsonl` 을 `--input` 으로 주면 그대로 읽힌다.
+
 사용:
     python scripts/build_sft_from_escalations.py \
-        --input ../../logs/planner_escalations.jsonl \
         --output ../../datasets/distill/excel_escalation_harvest_v1.jsonl \
-        --unsolved-output ../../logs/planner_unsolved.jsonl
+        --unsolved-output <reports>/planner_unsolved.jsonl
+
+`<reports>` 는 `office_claw_sidecar.config.get_reports_dir()` — 기본 %LOCALAPPDATA%/office_claw/reports.
 """
 
 from __future__ import annotations
@@ -29,12 +34,28 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from office_claw_sidecar.config import get_chat_log_path
 from office_claw_sidecar.services.excel_live_plan_validator import (
     PLANNER_ONLY_ACTIONS,
     SUPPORTED_ACTIONS,
 )
 
 SOLVED_TIERS = {"local_repair", "strong"}
+
+
+def _is_escalation_row(row: dict[str, Any]) -> bool:
+    """플래너 승격 줄인가.
+
+    chat_log 안에서는 `record == "planner_escalation"` 으로 밝힌다. 턴 줄(`turn_id` 있음)과
+    이벤트 줄(`record == "event"`)은 건너뛴다. 옛 전용 파일의 줄에는 `record` 가 없으므로
+    `final_tier` 가 있으면 승격 줄로 본다.
+    """
+    if "turn_id" in row:
+        return False
+    record = row.get("record")
+    if record is not None:
+        return str(record) == "planner_escalation"
+    return "final_tier" in row
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -49,7 +70,7 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
             parsed = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if isinstance(parsed, dict):
+        if isinstance(parsed, dict) and _is_escalation_row(parsed):
             rows.append(parsed)
     return rows
 
@@ -120,7 +141,11 @@ def harvest(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", default="../../logs/planner_escalations.jsonl")
+    parser.add_argument(
+        "--input",
+        default=str(get_chat_log_path()),
+        help="승격 줄이 든 JSONL (기본: chat_log.jsonl — record=planner_escalation 줄만 읽는다)",
+    )
     parser.add_argument("--output", required=True, help="학습에 넣을 수확 JSONL")
     parser.add_argument("--unsolved-output", default="", help="사람이 봐야 할 미해결 목록")
     args = parser.parse_args()

@@ -58,8 +58,9 @@ def test_fixture_strings_are_not_excel_commands():
 def test_untagged_traffic_is_never_counted_as_human():
     """자동화 흔적이 없다는 것만으로 사람이라고 볼 수 없다.
 
-    이 기준을 관대하게 뒀을 때 `logs/all_events.jsonl` 10,827건 중 5,844건이
-    사람으로 잡혔는데, 실제로는 요청 간격 중앙값 1.7초짜리 스윕이었다.
+    이 기준을 관대하게 뒀을 때 당시 `logs/all_events.jsonl` 10,827건 중 5,844건이
+    사람으로 잡혔는데, 실제로는 요청 간격 중앙값 1.7초짜리 스윕이었다(그 파일은
+    2026-09-10 부터 없다 — 이벤트는 `chat_log.jsonl` 의 `record: event` 줄).
     """
     payload = {"session_id": "", "workbook_id": "", "message": "매출 높은 순으로 정렬해줘"}
     origin = classify(payload)

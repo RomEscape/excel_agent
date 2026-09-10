@@ -3426,11 +3426,12 @@ class TestRetriesSkipTheIntentNormalizer:
 
 
 class TestIntentFirstIsAnExperimentSwitch:
-    """로드맵 2단계("AI가 먼저")를 **재기 위한** 스위치. 기본은 꺼짐.
+    """로드맵 2단계("AI가 먼저") 스위치. **2026-09-10 부터 기본은 켜짐.**
 
-    624 게이트 96.3% 중 규칙 경로가 492건인데 통역의 사용자체 정확도는 79%다
-    (2026-08-23 실측). 뒤집으면 그 492건이 79%짜리 판단을 먼저 거친다 —
-    좋아질지 나빠질지는 재야 안다. 켜고 끄고 각각 돌려 비교하려고 뺐다.
+    처음(2026-08-23)엔 624 게이트 96.3% 중 규칙 경로가 492건이고 통역의 정확도가
+    79%라 뒤집으면 나빠질 수 있어 꺼 두고 쟀다. 2026-09-01 까지 켠 것과 끈 것이
+    파괴 72/72 · 전록 421/421 · 말투 604=604 로 같아져 사용자 지시로 기본을 켰다.
+    끄는 길(`=0`)은 남긴다 — 비교 조건을 다시 돌릴 때 필요하다.
     """
 
     @pytest.mark.parametrize("value", ["1", "true", "on", "YES"])
@@ -3440,19 +3441,23 @@ class TestIntentFirstIsAnExperimentSwitch:
         monkeypatch.setenv("OFFICECLAW_INTENT_FIRST", value)
         assert _intent_first_enabled() is True
 
-    @pytest.mark.parametrize("value", ["", "0", "false", "no"])
-    def test_it_stays_off(self, value: str, monkeypatch) -> None:
+    @pytest.mark.parametrize("value", ["0", "false", "no", "off"])
+    def test_it_turns_off_only_when_told(self, value: str, monkeypatch) -> None:
         from office_claw_sidecar.routers.excel_live import _intent_first_enabled
 
         monkeypatch.setenv("OFFICECLAW_INTENT_FIRST", value)
         assert _intent_first_enabled() is False
 
-    def test_unset_means_off(self, monkeypatch) -> None:
-        """실험 스위치의 기본은 **꺼짐**이다 — 켜지 않으면 제품 동작이 안 바뀐다."""
+    @pytest.mark.parametrize("unset_how", ["delenv", "empty"])
+    def test_unset_means_on(self, unset_how: str, monkeypatch) -> None:
+        """기본은 **켜짐**(2026-09-10). 빈 문자열도 '정하지 않음'으로 본다."""
         from office_claw_sidecar.routers.excel_live import _intent_first_enabled
 
-        monkeypatch.delenv("OFFICECLAW_INTENT_FIRST", raising=False)
-        assert _intent_first_enabled() is False
+        if unset_how == "delenv":
+            monkeypatch.delenv("OFFICECLAW_INTENT_FIRST", raising=False)
+        else:
+            monkeypatch.setenv("OFFICECLAW_INTENT_FIRST", "")
+        assert _intent_first_enabled() is True
 
     def test_it_is_read_every_time(self, monkeypatch) -> None:
         """캐시하면 한 프로세스 안에서 A/B를 못 돌린다."""

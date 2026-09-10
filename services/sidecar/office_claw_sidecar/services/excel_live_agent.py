@@ -1453,6 +1453,35 @@ async def parse_command_plan_with_llm(
     }
 
 
+def _keep_formula_over_literal(
+    normalized: dict[str, Any], rule_plan: list[dict[str, Any]] | None
+) -> dict[str, Any] | None:
+    """의도층이 **수식 연결**을 **값 쓰기**로 낮췄으면 규칙의 수식 계획을 지킨다.
+
+    2026-09-11 실측(의도 정규화, ax4-light): "요약 시트 B2에 원본 시트 E2 값을 연결해줘"
+    → task=write_value, "B2에 원본!E2 링크 걸어줘" → write_value. 정규화 어휘에
+    '수식으로 참조'가 없어 링크 요청이 리터럴 쓰기로 떨어진다. 그대로 실행하면 B2 에
+    글자가 박히고 원본이 바뀌어도 따라가지 않는다 — 성공으로 보고되는 미검출 오실행이다.
+    규칙이 이미 `set_formula` 로 확정한 턴에서만, 그리고 의도층이 값 쓰기 계열을 냈을
+    때만 규칙 계획으로 돌아간다. 그 밖에는 의도층 판단을 그대로 둔다(AI 가 먼저).
+    """
+    if not rule_plan:
+        return None
+    rule_actions = {str((s or {}).get("action") or "") for s in rule_plan}
+    if "excel_live.set_formula" not in rule_actions:
+        return None
+    if str(normalized.get("action") or "") not in {"excel_live.write_range", "excel_live.fill_range"}:
+        return None
+    return {
+        "action_plan": [dict(s) for s in rule_plan],
+        "action": str(rule_plan[0].get("action") or ""),
+        "params": dict(rule_plan[0].get("params") or {}),
+        "reason": "수식 지킴: 의도층이 수식 연결을 값 쓰기로 낮춰 규칙 계획 복귀",
+        "intent": "edit",
+        "plan_source": "rule",
+    }
+
+
 async def parse_excel_live_command(
     message: str,
     llm_service,
@@ -1501,9 +1530,19 @@ async def parse_excel_live_command(
             mapped_action=str((normalized or {}).get("action") or ""),
             drop_reason=";".join(drops),
         )
-        if normalized is not None:
-            return normalized
         rule_plan = context.get("intent_first_rule_plan")
+        if normalized is not None:
+            guarded = _keep_formula_over_literal(normalized, rule_plan)
+            if guarded is not None:
+                trace_note(
+                    "llm_call",
+                    purpose="intent_first_formula_guard",
+                    outcome="rule_restored",
+                    replaced_action=str(normalized.get("action") or ""),
+                    mapped_action=str(guarded.get("action") or ""),
+                )
+                return guarded
+            return normalized
         if rule_plan:
             # 실험이 강제한 턴 — 의도층이 물러났으니 규칙의 확정 계획으로 복귀한다.
             # 플래너로 흘리면 규칙이 정확히 이해한 명령이 실험 탓에 회귀한다

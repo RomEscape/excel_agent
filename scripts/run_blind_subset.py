@@ -14,11 +14,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _run_lock import RunLock  # noqa: E402
-
 ROOT = Path(__file__).resolve().parent.parent
 SIDECAR = ROOT / "services" / "sidecar"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(SIDECAR))
+from _run_lock import RunLock
+from office_claw_sidecar.config import get_reports_dir
+
 PY = Path(os.environ["LOCALAPPDATA"]) / "officeclaw/venvs/python-sidecar/Scripts/python.exe"
 CASES = ROOT / "datasets/eval/blind_paraphrases_v1.jsonl"
 REPORT = CASES.with_name(CASES.stem + "_report.json")
@@ -27,7 +29,8 @@ REPORT = CASES.with_name(CASES.stem + "_report.json")
 def main() -> int:
     only = sys.argv[1]
     label = sys.argv[2] if len(sys.argv) > 2 else "subset"
-    out_dir = ROOT / "logs/measurements" / f"blind-subset-{dt.date.today():%m%d}"
+    # 산출물은 저장소 밖 <reports>/measurements 로(2026-09-10: 저장소 logs/ 에는 chat_log.jsonl 하나만).
+    out_dir = get_reports_dir() / "measurements" / f"blind-subset-{dt.date.today():%m%d}"
     out_dir.mkdir(parents=True, exist_ok=True)
     with RunLock(f"blind-subset-{label}") as lock:
         if not lock.acquired:

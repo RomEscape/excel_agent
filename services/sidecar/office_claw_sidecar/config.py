@@ -124,14 +124,41 @@ def get_logs_dir() -> Path:
     return path
 
 
-def get_unified_log_path() -> Path:
-    """통합 이벤트 JSONL 파일 경로."""
-    return get_logs_dir() / "all_events.jsonl"
-
-
 def get_chat_log_path() -> Path:
-    """대화 턴별 판단·계획·실행 추적 JSONL 파일 경로."""
+    """대화 턴별 판단·계획·실행 추적 JSONL 파일 경로.
+
+    2026-09-10 부터 **런타임 기록은 이 파일 하나뿐**이다(사용자 지시: "logs 폴더에는
+    chat_log 만"). 턴이 아닌 줄(이벤트·플래너 승격)은 `record` 필드로 종류를 밝힌다.
+    """
     return get_logs_dir() / "chat_log.jsonl"
+
+
+def get_chat_log_archive_dir() -> Path:
+    """64MB 를 넘어 옆으로 치운 chat_log 조각이 가는 곳 — 저장소 `logs/` **밖**.
+
+    `logs/` 에 `chat_log.jsonl` 하나만 남기려는 것이다. 환경변수
+    `OFFICE_CLAW_CHAT_LOG_ARCHIVE_DIR` 로 바꿀 수 있다.
+    """
+    override = str(os.getenv("OFFICE_CLAW_CHAT_LOG_ARCHIVE_DIR", "") or "").strip()
+    path = Path(override).expanduser() if override else get_data_dir() / "chat_log_archive"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def get_reports_dir() -> Path:
+    """측정·게이트·진단 스크립트의 산출물(보고서 JSON·MD, 야간 게이트 결과, 회귀
+    평가)이 가는 곳 — 저장소 `logs/` **밖**.
+
+    - 기본: <data_dir>/reports  (Windows 는 %LOCALAPPDATA%/office_claw/reports)
+    - 환경변수 `OFFICE_CLAW_REPORTS_DIR` 가 있으면 그 경로
+
+    저장소의 `logs/` 는 `chat_log.jsonl` 하나만 두기로 했다(2026-09-10). 개발일지가
+    실행 id 로 가리키는 산출물은 여기서 찾는다.
+    """
+    override = str(os.getenv("OFFICE_CLAW_REPORTS_DIR", "") or "").strip()
+    path = Path(override).expanduser() if override else get_data_dir() / "reports"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def get_credentials_registry_path() -> Path:

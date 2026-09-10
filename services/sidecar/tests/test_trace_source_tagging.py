@@ -11,8 +11,6 @@
 
 from __future__ import annotations
 
-import json
-
 from fastapi.testclient import TestClient
 
 from office_claw_sidecar.main import app
@@ -20,9 +18,8 @@ from office_claw_sidecar.services import decision_trace
 
 
 def _turns(path):
-    if not path.exists():
-        return []
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    # 같은 파일에 `record: event` 줄(하네스 이벤트)이 섞인다(2026-09-10) — 턴만 고른다.
+    return list(decision_trace.iter_turns(path))
 
 
 def test_a_turn_made_through_the_test_client_carries_its_origin(tmp_path, monkeypatch):

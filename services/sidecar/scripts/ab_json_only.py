@@ -18,6 +18,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from office_claw_sidecar.config import get_reports_dir
 from office_claw_sidecar.services.excel_live_agent import parse_command_plan_with_llm
 from office_claw_sidecar.services.llm_service import LLMService, OllamaProvider
 
@@ -79,7 +80,8 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="ax7bplanner-v5r:latest")
     parser.add_argument("--limit", type=int, default=40)
-    parser.add_argument("--output-json", default=str(ROOT / "logs" / "ab_json_only.json"))
+    # 산출물은 저장소 logs/ 가 아니라 reports 폴더로(2026-09-10: logs/ 에는 chat_log.jsonl 만).
+    parser.add_argument("--output-json", default=str(get_reports_dir() / "ab_json_only.json"))
     args = parser.parse_args()
 
     rows = []

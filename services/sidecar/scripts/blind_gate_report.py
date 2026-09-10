@@ -1,5 +1,7 @@
 """블라인드 게이트 보고서 — 결과 JSON + chat_log.jsonl(판단 경로)을 합쳐 실패를 분류한다.
 
+chat_log 위치는 `office_claw_sidecar.config.get_chat_log_path()` (= <저장소>/logs/chat_log.jsonl).
+
 사용: PYTHONUTF8=1 python scripts/blind_gate_report.py ../../datasets/eval/blind_paraphrases_v1_report.json [--pairs out.jsonl]
 """
 
@@ -11,7 +13,11 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parents[1]
-CHAT_LOG = HERE.parent / "logs" / "chat_log.jsonl"
+sys.path.insert(0, str(HERE))
+
+from office_claw_sidecar.config import get_chat_log_path
+
+CHAT_LOG = get_chat_log_path()
 
 
 def _load_routes() -> dict[str, list[dict]]:
@@ -23,6 +29,9 @@ def _load_routes() -> dict[str, list[dict]]:
         try:
             rec = json.loads(line)
         except Exception:
+            continue
+        # 2026-09-10 부터 이벤트·플래너 승격 줄이 같은 파일에 들어온다 — 턴만 고른다.
+        if not isinstance(rec, dict) or "turn_id" not in rec:
             continue
         sid = str(rec.get("session_id") or "")
         if sid.startswith("test-blind-") and rec.get("endpoint") == "excel-live/command":

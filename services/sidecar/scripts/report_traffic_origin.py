@@ -1,24 +1,43 @@
-"""all_events.jsonl에 쌓인 트래픽이 누구 것인지 집계한다.
+"""harness 이벤트로 쌓인 트래픽이 누구 것인지 집계한다.
 
 학습 데이터를 다시 만들기 전에 "이 로그에 사람이 친 명령이 실제로 몇 건인가"를
 먼저 확인하는 용도다. `traffic_origin.classify`를 그대로 쓰므로 수확기가 거를
 기준과 항상 같은 답이 나온다.
 
-    uv run python scripts/report_traffic_origin.py ../../logs/all_events.jsonl
+2026-09-10 부터 이벤트는 별도 `all_events.jsonl` 이 아니라 `chat_log.jsonl` 의
+`record == "event"` 줄이다. 인자를 생략하면 그 파일을 읽고, 턴 줄(`turn_id` 있음)은
+건너뛴다. 옛 `all_events.jsonl` 을 주면 그대로 읽힌다.
+
+    uv run python scripts/report_traffic_origin.py                      # chat_log.jsonl
+    uv run python scripts/report_traffic_origin.py <옛 all_events.jsonl>
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from office_claw_sidecar.config import get_chat_log_path
 from office_claw_sidecar.services.traffic_origin import classify
 
 ROUTE = "/excel-live/command"
+
+
+def _is_event_row(event: Any) -> bool:
+    """이벤트 줄인가 — chat_log 의 `record == "event"` 줄, 또는 옛 all_events 꼴."""
+    if not isinstance(event, dict) or "turn_id" in event:
+        return False
+    record = event.get("record")
+    if record is not None:
+        return str(record) == "event"
+    return "event_type" in event
 
 
 def iter_command_payloads(path: Path) -> Iterator[dict[str, Any]]:
@@ -31,7 +50,7 @@ def iter_command_payloads(path: Path) -> Iterator[dict[str, Any]]:
                 event = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if not isinstance(event, dict) or event.get("event_type") != "harness":
+            if not _is_event_row(event) or event.get("event_type") != "harness":
                 continue
             payload = event.get("payload")
             if not isinstance(payload, dict):
@@ -43,7 +62,13 @@ def iter_command_payloads(path: Path) -> Iterator[dict[str, Any]]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="harness 트래픽 출처 집계")
-    parser.add_argument("log_path", type=Path)
+    parser.add_argument(
+        "log_path",
+        type=Path,
+        nargs="?",
+        default=get_chat_log_path(),
+        help="이벤트 줄이 든 JSONL (기본: chat_log.jsonl — record=event 줄만 읽는다)",
+    )
     parser.add_argument("--samples", type=int, default=10, help="사람 트래픽 예시 출력 개수")
     args = parser.parse_args()
 

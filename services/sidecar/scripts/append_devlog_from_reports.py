@@ -4,11 +4,31 @@ import argparse
 import hashlib
 import json
 import subprocess
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+# 보고서 두 개의 기본 위치는 저장소 `logs/` 밖 reports 폴더다 — `get_reports_dir` 와 같은 규칙
+# (환경변수 OFFICE_CLAW_REPORTS_DIR, 없으면 %LOCALAPPDATA%/office_claw/reports). 2026-09-10 부터
+# 저장소 logs/ 에는 chat_log.jsonl 하나만 둔다. 부르는 쪽(npm `devlog:auto`, lefthook
+# `devlog-guard`)은 셸마다 환경변수 문법이 달라(cmd.exe 는 `${VAR:-…}` 를 못 푼다) 경로를
+# 넘기지 못할 수 있으므로, 인자를 생략하면 여기서 같은 곳을 보게 한다.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from office_claw_sidecar.config import get_reports_dir
+
 KST = timezone(timedelta(hours=9), name="KST")
+
+# 인자를 생략했을 때 읽는 보고서 파일 이름 — reports 폴더 기준.
+DEFAULT_COMPLEX_REPORT_NAME = "excel_complex_verify_report.json"
+DEFAULT_RELEASE_GATE_NAME = "eval_release_gate.json"
+
+
+def _default_report_path(name: str) -> Path:
+    """`get_reports_dir()/<name>`. 폴더가 없으면 get_reports_dir 가 만든다 — 그래서 `--help`
+    나 [SKIP] 으로 끝나는 경로에서는 부르지 않고, 실제로 읽을 때만 부른다."""
+    return get_reports_dir() / name
 
 
 def _now_kst() -> datetime:
@@ -159,8 +179,18 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path(__file__).resolve().parents[3] / "개발일지.md",
     )
-    parser.add_argument("--complex-report", type=Path, default=None)
-    parser.add_argument("--release-gate", type=Path, default=None)
+    parser.add_argument(
+        "--complex-report",
+        type=Path,
+        default=None,
+        help=f"복합 명령 검증 보고서 JSON. 생략하면 <reports>/{DEFAULT_COMPLEX_REPORT_NAME}",
+    )
+    parser.add_argument(
+        "--release-gate",
+        type=Path,
+        default=None,
+        help=f"플래너 회귀 게이트 보고서 JSON. 생략하면 <reports>/{DEFAULT_RELEASE_GATE_NAME}",
+    )
     parser.add_argument("--from-staged", action="store_true")
     parser.add_argument("--skip-if-devlog-staged", action="store_true", default=False)
     return parser.parse_args()
@@ -181,8 +211,12 @@ def main() -> None:
         print("[SKIP] 개발일지.md가 이미 staged 되어 자동 append를 건너뜁니다.")
         return
 
-    complex_report = _read_json_optional(args.complex_report)
-    gate_report = _read_json_optional(args.release_gate)
+    complex_report = _read_json_optional(
+        args.complex_report or _default_report_path(DEFAULT_COMPLEX_REPORT_NAME)
+    )
+    gate_report = _read_json_optional(
+        args.release_gate or _default_report_path(DEFAULT_RELEASE_GATE_NAME)
+    )
     auto_id = _build_auto_id(
         changed_files=changed_files,
         complex_report=complex_report,

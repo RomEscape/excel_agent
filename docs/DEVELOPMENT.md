@@ -98,7 +98,7 @@ uv run python scripts/show_turns.py --log ../../logs/chat_log.jsonl -n 5        
 uv run python scripts/show_turns.py --log ../../logs/chat_log.jsonl --failed -n 8 # 깨진 턴만
 
 # 야간 게이트 — 세션을 시작하면 이것부터 본다. 맨 위에 ❌가 있으면 그게 첫 작업이다.
-Get-Content logs\nightly\LATEST.md -TotalCount 20
+Get-Content $env:LOCALAPPDATA\office_claw\reports\nightly\LATEST.md -TotalCount 20   # 산출물은 저장소 logs/ 밖 (docs/logs.md)
 ```
 
 ### 커밋 전 검사 (CI 미러)
@@ -149,7 +149,7 @@ officeclaw/
 ├─ scripts/             setup.ps1 / setup.sh / dev.ps1 / dev.sh / with-tool-path.mjs / nightly-gates.ps1 …
 ├─ 엑셀 작업 폴더/       개발기 워크스페이스 — 앱이 읽고 쓰는 엑셀 파일 (git 제외)
 ├─ datasets/ deploy/ train/ artifacts/   플래너 SFT 데이터·Modelfile·학습·LoRA(가중치는 git 밖)
-├─ docs/  logs/  config/                 문서 · 실행 로그(chat_log·nightly) · 게이트 기준선
+├─ docs/  logs/  config/                 문서 · 상시 로그(chat_log.jsonl 하나 — 산출물은 저장소 밖 reports/) · 게이트 기준선
 ├─ CLAUDE.md            작업 규율과 명령 원문 (개발일지 규칙, 측정 절차, 코드 원칙)
 └─ 개발일지.md           실측 기록 — "무엇을 재 봤고 무엇이 반증됐는가"
 ```
@@ -164,7 +164,8 @@ officeclaw/
 | [docs/build-and-release.md](docs/build-and-release.md) | 윈도우 네이티브 빌드·배포, 사이드카 하드닝(Nuitka + PyInstaller) |
 | [CLAUDE.md](CLAUDE.md) | 개발일지 규칙, 에이전트 동작을 고칠 때의 측정 절차, 모듈 지도 |
 | [개발일지.md](개발일지.md) | 날짜별 실측 기록 (330개 항목) |
-| 하위 README | [services/relay](services/relay/README.md) · [packages/protocol](packages/protocol/README.md) · [packages/py-shared](packages/py-shared/README.md) · [logs](logs/README.md) · [datasets/distill](datasets/distill/README.md) |
+| [docs/logs.md](docs/logs.md) | 로그 배치 — `logs/` 에는 `chat_log.jsonl` 하나(턴·이벤트·플래너 승격), 회전 조각과 측정·게이트 산출물은 저장소 밖 |
+| 하위 README | [services/relay](services/relay/README.md) · [packages/protocol](packages/protocol/README.md) · [packages/py-shared](packages/py-shared/README.md) · [datasets/distill](datasets/distill/README.md) |
 
 ### 진단·감사 보고서 — 발행된 아티팩트 (claude.ai 링크)
 

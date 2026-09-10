@@ -4,6 +4,9 @@ verify_excel_complex_scenarios.py 가 남긴 JSON은 통과/실패가 섞여 있
 이 스크립트는 실패한 시나리오의 턴별 요청·판정·검증 결과만 보여 준다.
 
     uv run python scripts/show_scenario_failures.py [보고서경로]
+
+보고서경로를 생략하면 `get_reports_dir()/excel_complex_verify_report.json`
+(기본 %LOCALAPPDATA%/office_claw/reports) 을 읽는다 — verify_excel_complex_scenarios.py 의 기본 출력 위치.
 """
 
 from __future__ import annotations
@@ -12,7 +15,11 @@ import json
 import sys
 from pathlib import Path
 
-DEFAULT_REPORT = Path(__file__).resolve().parents[3] / "logs" / "excel_complex_verify_report.json"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from office_claw_sidecar.config import get_reports_dir
+
+DEFAULT_REPORT = get_reports_dir() / "excel_complex_verify_report.json"
 
 
 def _clip(value: object, limit: int = 300) -> str:

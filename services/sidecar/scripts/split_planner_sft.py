@@ -30,7 +30,9 @@ from pathlib import Path
 from typing import Any
 
 # 사람이 친 명령이라고 확인되지 않은 출처. `traffic_origin` 기준으로 다시 세어 보니
-# `logs/all_events.jsonl` 10,827건 중 사람으로 확인된 것이 0건이었다.
+# 당시 `logs/all_events.jsonl` 10,827건 중 사람으로 확인된 것이 0건이었다.
+# (그 파일은 2026-09-10 부터 없다 — 이벤트는 chat_log.jsonl 의 record=event 줄로 들어간다.
+# 데이터셋 이름 `officeclaw_all_events` 는 이미 만들어진 레코드와 맞추려고 그대로 둔다.)
 UNVERIFIED_DATASETS = frozenset({"officeclaw_all_events"})
 
 

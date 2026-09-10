@@ -6,9 +6,12 @@
 수정 전후를 같은 파일 이름으로 비교할 수 있게 단계별로 따로 저장한다.
 
     uv run python scripts/run_approval_gate.py                      # 요약만
-    uv run python scripts/run_approval_gate.py --save baseline      # logs/approval_gate_baseline.json
+    uv run python scripts/run_approval_gate.py --save baseline      # <reports>/approval_gate_baseline.json
     uv run python scripts/run_approval_gate.py --save after-plan-approval
     uv run python scripts/run_approval_gate.py --diff baseline after-plan-approval
+
+`<reports>` 는 `office_claw_sidecar.config.get_reports_dir()` — 기본 %LOCALAPPDATA%/office_claw/reports.
+저장소 `logs/` 에는 `chat_log.jsonl` 만 둔다(2026-09-10).
 
 PowerShell에서 한글이 깨지면:
 
@@ -27,11 +30,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-LOGS_DIR = ROOT.parent / "logs"
+from office_claw_sidecar.config import get_reports_dir
+
+REPORTS_DIR = get_reports_dir()
 
 
 def _report_path(label: str) -> Path:
-    return LOGS_DIR / f"approval_gate_{label}.json"
+    return REPORTS_DIR / f"approval_gate_{label}.json"
 
 
 def _run() -> dict[str, Any]:
@@ -116,7 +121,7 @@ def _print_diff(before: dict[str, Any], after: dict[str, Any], labels: tuple[str
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="승인 게이트 손실 측정")
-    parser.add_argument("--save", metavar="LABEL", help="logs/approval_gate_<LABEL>.json 으로 저장")
+    parser.add_argument("--save", metavar="LABEL", help="<reports>/approval_gate_<LABEL>.json 으로 저장")
     parser.add_argument(
         "--diff",
         nargs=2,
@@ -142,7 +147,7 @@ def main() -> int:
     _print_report(report)
 
     if args.save:
-        LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
         path = _report_path(args.save)
         path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"저장: {path}")

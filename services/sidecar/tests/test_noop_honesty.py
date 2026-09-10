@@ -84,7 +84,25 @@ def _command(path: Path, message: str) -> dict:
 
 
 class TestNoMatchKeepFilterDoesNotWipeTheSheet:
-    def test_the_file_is_untouched_and_the_response_says_so(self, workbook):
+    def test_the_file_is_untouched_and_the_response_says_so(self, workbook, monkeypatch):
+        # '제주'는 시트에 없는 값이라 규칙이 물러나고 플래너가 계획한다. 2026-09-11 까지
+        # 이 테스트는 그 계획을 **실제 Ollama** 에서 받고 있었다(conftest 가 모델을
+        # 거부하게 되자 사다리 되묻기로 떨어져 드러남). 검사 대상은 실행 층의 정직한
+        # 무일치 보고이므로, 플래너 계획은 목으로 고정한다.
+        async def _keep_filter_plan(_message, llm_service, context):
+            return {
+                "intent": "edit",
+                "action_plan": [
+                    {
+                        "action": "excel_live.filter_rows",
+                        "params": {"column": "지역", "operator": "==", "value": "제주", "mode": "keep"},
+                        "reason": "지역이 제주인 행만 남긴다",
+                    }
+                ],
+                "reason": "플래너 목",
+            }
+
+        monkeypatch.setattr(router, "parse_excel_live_command", _keep_filter_plan)
         body = _command(workbook, "지역이 제주인 행만 남겨줘")
         assert _data_rows(workbook) == 4, "무일치 keep 필터가 시트를 비웠다"
         assert body["ok"] is True

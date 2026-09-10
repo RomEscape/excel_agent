@@ -8,7 +8,9 @@ from __future__ import annotations
 import asyncio
 import json
 
+from office_claw_sidecar.services import decision_trace
 from office_claw_sidecar.services.excel_planner_escalation import (
+    RECORD_PLANNER_ESCALATION,
     TIER_FAILED,
     TIER_LOCAL,
     TIER_REPAIR,
@@ -198,3 +200,43 @@ def test_local_success_is_not_recorded(tmp_path):
     )
     assert record_escalation(message="정렬", result=result, log_dir=tmp_path) is None
     assert not list(tmp_path.iterdir())
+
+
+def test_without_log_dir_the_escalation_is_a_chat_log_line(tmp_path, monkeypatch):
+    """런타임 기본 경로 — `logs/` 에 `planner_escalations.jsonl` 을 만들지 않는다(2026-09-10).
+
+    승격 기록은 `chat_log.jsonl` 에 `record: planner_escalation` 줄로 들어가고, 턴을
+    읽는 `iter_turns()` 는 그 줄을 건너뛴다.
+    """
+    logs_dir = tmp_path / "logs"
+    chat_log = logs_dir / "chat_log.jsonl"
+    monkeypatch.setattr(decision_trace, "get_chat_log_path", lambda: chat_log)
+
+    parser = _Parser([GOOD_PLAN, GOOD_PLAN])
+    validations = [(False, "열 없음"), (True, "")]
+    result = _run(
+        message="금액 정렬",
+        parse=parser,
+        validate=lambda steps: validations.pop(0),
+        context={},
+        allow_strong=False,
+    )
+    returned = record_escalation(message="금액 정렬", result=result, workbook_digest={"active_sheet": "매출"})
+
+    assert returned == chat_log
+    assert [p.name for p in logs_dir.iterdir()] == ["chat_log.jsonl"]
+    assert not list(tmp_path.rglob("planner_escalations.jsonl"))
+
+    line = json.loads(chat_log.read_text(encoding="utf-8").strip())
+    assert line["record"] == RECORD_PLANNER_ESCALATION
+    assert line["at"].endswith("+09:00")
+    assert "turn_id" not in line
+    assert line["instruction"] == "금액 정렬"
+    assert line["final_tier"] == TIER_REPAIR
+    assert line["output_json"]["action_plan"][0]["action"] == "excel_live.sort_rows"
+    assert line["digest"]["active_sheet"] == "매출"
+    assert "recorded_at" in line, "기존 payload 키는 그대로 남는다"
+
+    assert list(decision_trace.iter_turns(chat_log)) == []
+    escalations = list(decision_trace.iter_records(chat_log, record=RECORD_PLANNER_ESCALATION))
+    assert [e["instruction"] for e in escalations] == ["금액 정렬"]

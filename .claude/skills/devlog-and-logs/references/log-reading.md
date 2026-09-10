@@ -1,6 +1,8 @@
 # 로그에서 무엇을 읽는가
 
 > `logs/chat_log.jsonl`을 에디터로 직접 열지 말 것 — 한 턴이 2KB짜리 한 줄이라 눈으로 못 쫓는다.
+> 같은 파일에 턴이 아닌 줄(`record=event`·`record=planner_escalation`)도 섞여 있다 — `turn_id` 가 있는 줄만 턴이다.
+> `logs/` 에는 이 파일 하나뿐이고 회전 조각·측정·게이트 산출물은 저장소 밖에 있다 → `docs/logs.md`.
 
 ## 한 턴을 훑어보기
 
@@ -15,7 +17,7 @@ $PY = "$env:LOCALAPPDATA\officeclaw\venvs\python-sidecar\Scripts\python.exe"
 한 턴에 모델을 여러 번 부르는 경로(재계획·관측 루프)는 `show_turns.py`로 부족하다 — **첫 호출만** 보여 준다:
 
 ```powershell
-& $PY services\sidecar\scripts\dump_turn_llm_calls.py logs\diagnostics\<실행id>.jsonl <turn_id> logs\turn.txt
+& $PY services\sidecar\scripts\dump_turn_llm_calls.py $env:LOCALAPPDATA\office_claw\reports\diagnostics\<실행id>.jsonl <turn_id> scratch\turn.txt
 ```
 
 ## 필드가 답해 주는 질문

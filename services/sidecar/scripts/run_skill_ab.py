@@ -33,12 +33,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from _console import force_utf8  # noqa: E402
 
+from office_claw_sidecar.config import get_reports_dir  # noqa: E402
+
 force_utf8()
 
 HERE = Path(__file__).resolve().parent
 SIDECAR = HERE.parent
 SCENARIO_DIR = SIDECAR / "scenarios" / "dialogue"
-OUT_DIR = Path(os.environ.get("SKILL_AB_OUT", str(SIDECAR.parents[1] / "logs" / "skill_ab")))
+# 산출물은 저장소 logs/ 가 아니라 reports/skill_ab 로(2026-09-10: logs/ 에는 chat_log.jsonl 만).
+OUT_DIR = Path(os.environ.get("SKILL_AB_OUT", str(get_reports_dir() / "skill_ab")))
 
 SUCCESS = re.compile(r"^성공 (\d+) / (\d+)$", re.MULTILINE)
 

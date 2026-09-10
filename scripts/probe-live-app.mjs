@@ -1,6 +1,8 @@
 // 실행 중인 앱의 sidecar에 실제 명령을 넣어 동작을 확인한다.
 // 사용: node scripts/probe-live-app.mjs <워크북경로> [시트명]
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 const base = "http://127.0.0.1:19532";
 const headers = {
@@ -13,6 +15,22 @@ const sheetName = process.argv[3] || "Sales_Data";
 if (!workbookId) {
   console.error("워크북 경로가 필요합니다.");
   process.exit(1);
+}
+
+// 산출물 폴더 — 파이썬(office_claw_sidecar.config.get_reports_dir)과 같은 규칙:
+// 환경변수 OFFICE_CLAW_REPORTS_DIR, 없으면 <앱 데이터 폴더>/office_claw/reports.
+// 저장소 logs/ 에는 chat_log.jsonl 하나만 남긴다(2026-09-10).
+function reportsDir() {
+  const home = os.homedir();
+  const base =
+    process.platform === "win32"
+      ? process.env.LOCALAPPDATA || path.join(home, "AppData", "Local")
+      : process.platform === "darwin"
+        ? path.join(home, "Library", "Application Support")
+        : path.join(home, ".local", "share");
+  const dir = process.env.OFFICE_CLAW_REPORTS_DIR || path.join(base, "office_claw", "reports");
+  mkdirSync(dir, { recursive: true });
+  return dir;
 }
 
 const COMMANDS = process.env.PROBE_COMMANDS
@@ -70,5 +88,6 @@ for (const [i, message] of COMMANDS.entries()) {
   }
 }
 
-writeFileSync("logs/probe_live_app.json", JSON.stringify(report, null, 2), "utf-8");
-console.log(`wrote logs/probe_live_app.json (${report.length} commands)`);
+const outPath = path.join(reportsDir(), "probe_live_app.json");
+writeFileSync(outPath, JSON.stringify(report, null, 2), "utf-8");
+console.log(`wrote ${outPath} (${report.length} commands)`);

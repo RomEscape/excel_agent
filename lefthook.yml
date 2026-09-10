@@ -25,8 +25,12 @@ pre-commit:
       glob: "apps/desktop/src/**/*.{ts,tsx,js,jsx}"
       root: "apps/desktop/"
       run: npm run lint --if-present
+    # 보고서 두 개는 저장소 밖 reports 폴더에서 읽는다 — 파이썬 get_reports_dir 와 같은 규칙
+    # (환경변수 OFFICE_CLAW_REPORTS_DIR, 없으면 %LOCALAPPDATA%/office_claw/reports). 2026-09-10 부터
+    # 저장소 logs/ 에는 chat_log.jsonl 하나만 둔다. 파일이 없으면 append_devlog_from_reports.py 가
+    # 그 항목을 건너뛴다(_read_json_optional → None) — macOS 는 $LOCALAPPDATA 가 비어 같은 이유로 건너뛴다.
     devlog-guard:
-      run: cd services/sidecar && sh ../../scripts/py-run.sh scripts/append_devlog_from_reports.py --devlog ../../개발일지.md --complex-report ../../logs/excel_complex_verify_report.json --release-gate ../../logs/eval_release_gate.json --from-staged --skip-if-devlog-staged && node ../../scripts/check-devlog-update.mjs --staged
+      run: cd services/sidecar && sh ../../scripts/py-run.sh scripts/append_devlog_from_reports.py --devlog ../../개발일지.md --complex-report "${OFFICE_CLAW_REPORTS_DIR:-$LOCALAPPDATA/office_claw/reports}/excel_complex_verify_report.json" --release-gate "${OFFICE_CLAW_REPORTS_DIR:-$LOCALAPPDATA/office_claw/reports}/eval_release_gate.json" --from-staged --skip-if-devlog-staged && node ../../scripts/check-devlog-update.mjs --staged
     # 커밋마다 도는 **빠른 회귀 핀**(약 2초). 전체 pytest는 4~5분이라 pre-push 몫이고,
     # 이 파일에는 실측으로 잡은 파괴·오실행 핀이 모여 있어 되돌아가는 걸 즉시 막는다
     # (2026-08-22 결정 5: 게이트 자동화의 가장 앞단).

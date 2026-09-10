@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from office_claw_sidecar.config import get_reports_dir
 from office_claw_sidecar.routers.harness import HarnessReplayRequest, post_replay_failures
 from office_claw_sidecar.services.llm_service import get_llm_service
 
@@ -35,7 +36,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-json",
         type=Path,
-        default=Path(__file__).resolve().parents[3] / "logs" / "harness_replay_once.json",
+        # 산출물은 저장소 logs/ 가 아니라 reports 로(2026-09-10: logs/ 에는 chat_log.jsonl 만).
+        default=get_reports_dir() / "harness_replay_once.json",
     )
     return parser.parse_args()
 

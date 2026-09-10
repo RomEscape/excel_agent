@@ -4,12 +4,15 @@
     python scripts/run_verifier_suite.py --stage V2 # 현재 검증기만
     python scripts/run_verifier_suite.py --diff     # 단계 간 변화만
 
-결과는 `logs/`에 단계별로 남는다. 나중에 "어느 수정이 무엇을 고쳤는지"를
+결과는 `<reports>/`에 단계별로 남는다. 나중에 "어느 수정이 무엇을 고쳤는지"를
 되짚으려면 한 파일에 덮어쓰면 안 된다.
 
-    logs/verifier_baseline.json            V0 — 검증 강화 이전
-    logs/verifier_after_write_range.json   V1
-    logs/verifier_after_clear_range.json   V2 — 현재
+    <reports>/verifier_baseline.json            V0 — 검증 강화 이전
+    <reports>/verifier_after_write_range.json   V1
+    <reports>/verifier_after_clear_range.json   V2 — 현재
+
+`<reports>` 는 `office_claw_sidecar.config.get_reports_dir()` — 기본 %LOCALAPPDATA%/office_claw/reports,
+환경변수 OFFICE_CLAW_REPORTS_DIR 로 바꾼다. 저장소 `logs/` 에는 `chat_log.jsonl` 만 둔다(2026-09-10).
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from office_claw_sidecar.config import get_logs_dir
+from office_claw_sidecar.config import get_reports_dir
 from tests.excel_e2e.verifier_mutants import (
     STAGES,
     all_cases,
@@ -84,8 +87,9 @@ def main() -> int:
     args = parser.parse_args()
 
     stages = [args.stage] if args.stage else list(STAGES)
-    logs = get_logs_dir()
-    logs.mkdir(parents=True, exist_ok=True)
+    # 산출물은 저장소 logs/ 가 아니라 reports 로(2026-09-10: logs/ 에는 chat_log.jsonl 만).
+    out_dir = get_reports_dir()
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     reports = []
     for stage in stages:
@@ -94,7 +98,7 @@ def main() -> int:
         if not args.diff:
             print_stage(report)
         if not args.no_save:
-            path = logs / _FILENAME[stage]
+            path = out_dir / _FILENAME[stage]
             path.write_text(
                 json.dumps(report, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
             )

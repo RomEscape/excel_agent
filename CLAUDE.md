@@ -24,7 +24,7 @@
 
 지킬 것:
 
-- **수치는 실측만.** 실행 id(`0811-171221-after-guards`)를 함께 남겨 나중에 같은 로그로 재확인할 수 있게 한다. 지어낸 숫자는 이 체계를 통째로 무용지물로 만든다.
+- **수치는 실측만.** 실행 id(`0811-171221-after-guards`)를 함께 남겨 나중에 같은 로그로 재확인할 수 있게 한다. 실행 id 가 가리키는 산출물은 저장소 `logs/` 가 아니라 reports 폴더에 있다(`docs/logs.md`). 지어낸 숫자는 이 체계를 통째로 무용지물로 만든다.
 - **반증된 것도 남긴다.** 외부 지적이 이미 구현된 기능을 가리키는 경우가 잦다(2026-08-11에 9개 중 3개가 그랬다).
 - **날짜는 절대 표기로.** "어제", "지난주" 금지.
 - **제목에 한국시간(KST)을 함께 적는다.** 하루에 항목이 여러 개 쌓이면 날짜만으로는
@@ -189,7 +189,7 @@ PR 만들기 직전 `oc-precheck` 한 번 — 넷 다 통과하면 CI도 통과.
 한 턴에 모델을 여러 번 부르는 경로(재계획·관측 루프)는 `show_turns.py`로 부족하다 — **첫 호출만** 보여 준다.
 
 ```powershell
-& $PY services\sidecar\scripts\dump_turn_llm_calls.py logs\diagnostics\<실행id>.jsonl <turn_id> logs\turn.txt
+& $PY services\sidecar\scripts\dump_turn_llm_calls.py $env:LOCALAPPDATA\office_claw\reports\diagnostics\<실행id>.jsonl <turn_id> scratch\turn.txt
 ```
 
 ### 진행률 보기
@@ -205,11 +205,11 @@ Ollama를 부르는 긴 작업(평가·진단)의 남은 시간:
 ### 야간 게이트 — **세션을 시작하면 이것부터 본다**
 
 매일 03:00에 pytest·파괴 게이트 72·말투 게이트 624가 자동으로 돈다(약 70분).
-결과는 `logs/nightly/LATEST.md`에 남고, 기준선(`config/gate_baseline.json`)보다
+결과는 `%LOCALAPPDATA%\office_claw\reports\nightly\LATEST.md`(저장소 `logs/` 밖 — `docs/logs.md`)에 남고, 기준선(`config/gate_baseline.json`)보다
 **나빠지면 맨 위에 ❌와 항목이 뜬다. 그러면 그게 그 세션의 첫 작업이다.**
 
 ```powershell
-Get-Content logs\nightly\LATEST.md -TotalCount 20   # 세션 시작 시
+Get-Content $env:LOCALAPPDATA\office_claw\reports\nightly\LATEST.md -TotalCount 20   # 세션 시작 시
 .\scripts\nightly-gates.ps1 -Only guard             # 손으로 하나만
 .\scripts\nightly-gates.ps1 -UpdateBaseline         # 좋아진 값을 기준선으로 승격
 .\scripts\nightly-gates.ps1 -Register / -Unregister # 예약 등록·해제
@@ -219,7 +219,7 @@ Get-Content logs\nightly\LATEST.md -TotalCount 20   # 세션 시작 시
 무용지물이 된다. `silent_max`(미검출 오실행)는 0에서 절대 올리지 않는다.
 
 > 게이트와 대화 배터리는 **동시에 돌면 안 된다**(결과가 뒤섞인다).
-> 야간 게이트는 `logs/nightly/.running.lock`으로 겹침을 막지만, 배터리를 손으로
+> 야간 게이트는 `reports/nightly/.running.lock`(`get_reports_dir()` 아래)으로 겹침을 막지만, 배터리를 손으로
 > 돌릴 때는 사람이 시간을 피해야 한다.
 
 ### 측정
@@ -234,11 +234,12 @@ cd services/sidecar
 
 ```powershell
 cd services/sidecar
+$REPORTS = "$env:LOCALAPPDATA\office_claw\reports"   # 산출물은 저장소 logs/ 밖 (docs/logs.md)
 & $PY scripts\eval_ax7b_shadow.py --input-jsonl ..\..\datasets\eval\planner_eval_v1.jsonl `
-  --output-json ..\..\logs\eval_shadow.json `
+  --output-json $REPORTS\eval_shadow.json `
   --baseline-model ax7bplanner-v3:latest --candidate-model <후보>
-& $PY scripts\eval_release_gate.py --shadow-report ..\..\logs\eval_shadow.json `
-  --output-json ..\..\logs\eval_gate.json --thresholds-json config\planner_gate_thresholds.json
+& $PY scripts\eval_release_gate.py --shadow-report $REPORTS\eval_shadow.json `
+  --output-json $REPORTS\eval_gate.json --thresholds-json config\planner_gate_thresholds.json
 ```
 
 ---
@@ -307,6 +308,7 @@ cd services/sidecar
 | 결과 검증 | — | `excel_result_verifier.py` — 워크북을 다시 읽어 사후조건 확인 | — |
 | 고수준 분해 | — | `excel_macro_planner.py` — 한 문장을 하위 명령들로 | — |
 | 턴 트레이스 | — | `decision_trace.py` · `trace_report.py` · `trace_digest.py` | `scripts/show_turns.py` |
+| 로그 경로 | — | `config.py` — `get_chat_log_path` · `get_chat_log_archive_dir` · `get_reports_dir`. `logs/` 에는 `chat_log.jsonl` 하나, 산출물은 reports(`docs/logs.md`) | — |
 
 > **LLM 경로**: Ollama OpenAI 호환 API(`/v1/chat/completions`) 단일 경로.
 > 계획은 `planner_model`(`ax7bplanner-*`, 계획 JSON 전용 SFT), 고수준 분해와 일반 대화는

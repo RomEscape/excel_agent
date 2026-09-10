@@ -36,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from openpyxl import Workbook, load_workbook
 
+from office_claw_sidecar.config import get_reports_dir
 from office_claw_sidecar.models.approval import ApprovalResponse
 from office_claw_sidecar.routers import excel_live as router
 from office_claw_sidecar.routers.excel_live import ExcelLiveCommandRequest
@@ -179,11 +180,13 @@ async def main() -> int:
         lines += ["", "## 실패 상세", ""]
         for r in bad:
             lines.append(f"- [{r['outcome']}] {r['task']} · {r['text'][:50]} → `{r['action']}` {r['detail'][:90]}")
-    report_dir = ROOT / "logs"
-    (report_dir / f"coverage_v2_{run_id}.md").write_text("\n".join(lines), encoding="utf-8")
+    # 산출물은 저장소 logs/ 가 아니라 reports 로(2026-09-10: logs/ 에는 chat_log.jsonl 만).
+    report_dir = get_reports_dir()
+    report_path = report_dir / f"coverage_v2_{run_id}.md"
+    report_path.write_text("\n".join(lines), encoding="utf-8")
     (CASES.with_name("coverage_v2_report.json")).write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
     print("\n" + "\n".join(lines[:4]))
-    print(f"\nrun_id={run_id} → logs/coverage_v2_{run_id}.md")
+    print(f"\nrun_id={run_id} → {report_path}")
     return 0 if total["MISREAD"] == 0 else 1
 
 

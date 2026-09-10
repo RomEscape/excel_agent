@@ -11,8 +11,8 @@
 
 | 엔진 | 구현 | 하네스 | 결과 |
 |---|---|---|---|
-| file (openpyxl) | `excel_live_file_service.py` | `verify_excel_complex_scenarios.py` | 3대본 3/3 (`logs/demo_file_after.json`) |
-| **xlwings (COM)** | `excel_live_service.py` | `verify_demo_on_excel_com.py` | **3회 × 3대본 9/9** (`logs/demo_com_final1~3.json`) |
+| file (openpyxl) | `excel_live_file_service.py` | `verify_excel_complex_scenarios.py` | 3대본 3/3 (`logs/demo_file_after.json` — 옛 위치, 지금은 `reports/`) |
+| **xlwings (COM)** | `excel_live_service.py` | `verify_demo_on_excel_com.py` | **3회 × 3대본 9/9** (`logs/demo_com_final1~3.json` — 옛 위치, 지금은 `reports/`) |
 
 ```bash
 cd python-sidecar
@@ -20,7 +20,7 @@ cd python-sidecar
 # 파일 엔진 (엑셀 없이, CI/빠른 확인용)
 uv run python scripts/verify_excel_complex_scenarios.py \
   --scenario-pack ../datasets/excel_demo_scenarios_v1.json \
-  --artifact-dir ../logs/demo_artifacts
+  --artifact-dir "$LOCALAPPDATA/office_claw/reports/demo_artifacts"   # 저장소 logs/ 밖 (docs/logs.md)
 
 # COM 엔진 (실제 시연 조건 — 워크북을 엑셀에 띄운 채로 돌린다)
 uv run python scripts/verify_demo_on_excel_com.py
@@ -91,7 +91,7 @@ LLM을 아예 호출하지 않는 경로(quick rule)다. 나머지는 로컬 LLM
 ## 절대 시연하지 말 것
 
 실측에서 **결과가 틀리게 나오는** 명령들이다. 되묻지 않고 자신 있게 틀린 답을 내므로
-시연에서 가장 위험하다. (근거: `logs/diagnostics/0811-204214-after-task7.report.json`,
+시연에서 가장 위험하다. (근거: `logs/diagnostics/0811-204214-after-task7.report.json` — 옛 위치, 지금은 `reports/diagnostics/`,
 관측 케이스 5건 3회 반복 전부 오라클 불일치)
 
 | 명령 유형 | 실제로 일어난 일 |

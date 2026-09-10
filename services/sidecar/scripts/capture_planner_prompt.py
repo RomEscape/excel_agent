@@ -6,6 +6,9 @@
 
 사용:
     python scripts/capture_planner_prompt.py <출력경로>
+
+출력경로를 생략하면 `get_reports_dir()/planner_prompt_capture.json`
+(기본 %LOCALAPPDATA%/office_claw/reports) 에 쓴다 — 저장소 `logs/` 에는 chat_log 만 둔다.
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from office_claw_sidecar.config import get_reports_dir
 from office_claw_sidecar.services.excel_live_agent import parse_command_plan_with_llm
 
 # 다양한 분기(개인화·다이제스트·reasoning_mode·플래그)를 모두 태우는 케이스
@@ -83,7 +87,7 @@ class _CapturingLLM:
 
 
 async def main_async() -> None:
-    out_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("logs/planner_prompt_capture.json")
+    out_path = Path(sys.argv[1]) if len(sys.argv) > 1 else get_reports_dir() / "planner_prompt_capture.json"
     results = []
 
     for case in CASES:

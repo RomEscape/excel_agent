@@ -14,7 +14,10 @@
 ## 사용
 
     python scripts/run_excel_basicbench.py --model ax7b-planner-v3
-    python scripts/run_excel_basicbench.py --model ax7b-planner-v5r --output-json ../../logs/bench_v5r.json
+    python scripts/run_excel_basicbench.py --model ax7b-planner-v5r --output-json <reports>/bench_v5r.json
+
+`<reports>` 는 `office_claw_sidecar.config.get_reports_dir()` — 기본 %LOCALAPPDATA%/office_claw/reports.
+저장소 `logs/` 에는 `chat_log.jsonl` 만 둔다(2026-09-10).
 
 Ollama가 떠 있어야 한다. 학습 중에는 GPU가 물려 있어 돌리지 말 것.
 """

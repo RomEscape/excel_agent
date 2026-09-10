@@ -21,6 +21,10 @@
 - **에스컬레이션은 곧 학습 데이터다.** 로컬이 틀리고 강한 모델이 맞힌 순간이
   가장 값진 증류 샘플이라, 전부 실패 큐에 적재한다. 사람이 사례를 손으로
   만들지 않아도 다음 라운드 학습셋이 쌓인다.
+
+실패 큐는 별도 파일이 아니다(2026-09-10). 저장소 `logs/` 에는 `chat_log.jsonl` 하나만
+두기로 해서, `record_escalation()` 은 같은 파일에 `record: planner_escalation` 줄을
+붙인다. 읽을 때는 `decision_trace.iter_records(record="planner_escalation")`.
 """
 
 from __future__ import annotations
@@ -33,7 +37,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from office_claw_sidecar.config import get_logs_dir
+from office_claw_sidecar.services import decision_trace
 
 # 계획 후보를 실행 직전 형태로 검증하는 콜백.
 # (ok, 오류 문구)를 돌려준다 — 오류 문구는 자가 수정 프롬프트에 그대로 들어간다.
@@ -47,6 +51,9 @@ TIER_REPAIR = "local_repair"
 TIER_STRONG = "strong"
 TIER_FAILED = "failed"
 
+# chat_log 에 붙는 줄의 `record` 값. 스크립트가 이 이름으로 골라 읽는다.
+RECORD_PLANNER_ESCALATION = "planner_escalation"
+# `log_dir` 를 따로 준 경우(테스트·손 실행)에만 쓰는 파일 이름.
 _FAILURE_LOG_NAME = "planner_escalations.jsonl"
 
 
@@ -255,10 +262,25 @@ def record_escalation(
     workbook_digest: dict[str, Any] | None = None,
     log_dir: Path | None = None,
 ) -> Path | None:
-    """에스컬레이션·최종 실패를 큐에 적재한다.
+    """에스컬레이션·최종 실패를 학습 후보 큐에 적재한다.
 
     로컬이 틀리고 상위 단계가 맞힌 사례가 다음 학습 라운드의 정답이 된다.
     이걸 쌓아야 "사람이 실패를 하나씩 발견해서 규칙을 추가하는" 고리에서 벗어난다.
+
+    어디에 남기나:
+
+    - `log_dir` 가 **없으면**(런타임 기본) `chat_log.jsonl` 에
+      `{"record": "planner_escalation", "at": <KST ISO>, ...아래 payload...}` 한 줄.
+      저장소 `logs/` 에 다른 파일을 만들지 않는다(2026-09-10).
+    - `log_dir` 가 **있으면** 그 폴더의 `planner_escalations.jsonl` 에 payload 한 줄
+      (테스트·손 실행용 — 결과를 따로 모아 보고 싶을 때).
+
+    반환값:
+
+    - 적재하지 않았으면(로컬 1단계 성공) `None`.
+    - chat_log 에 붙였으면 그 chat_log 경로. 기록 실패는 `decision_trace` 가 삼키고
+      세기만 하므로 이 경로는 예외 없이 돌아온다.
+    - `log_dir` 파일에 붙였으면 그 파일 경로, 쓰다 `OSError` 가 나면 `None`.
     """
     if result.final_tier == TIER_LOCAL:
         return None
@@ -275,10 +297,13 @@ def record_escalation(
         "digest": workbook_digest or None,
     }
 
-    target_dir = log_dir or get_logs_dir()
+    if log_dir is None:
+        decision_trace.append_record(RECORD_PLANNER_ESCALATION, payload)
+        return decision_trace.get_chat_log_path()
+
     try:
-        target_dir.mkdir(parents=True, exist_ok=True)
-        path = target_dir / _FAILURE_LOG_NAME
+        log_dir.mkdir(parents=True, exist_ok=True)
+        path = log_dir / _FAILURE_LOG_NAME
         with path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(payload, ensure_ascii=False) + "\n")
         return path

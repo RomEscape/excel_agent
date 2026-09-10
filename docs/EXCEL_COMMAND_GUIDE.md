@@ -127,7 +127,7 @@ B열 삭제해줘
 
 ## 4. 무슨 일이 일어났는지 확인하는 법
 
-턴마다 `logs/chat_log.jsonl`에 JSON 한 줄이 쌓인다. 필드는 이렇다.
+턴마다 `logs/chat_log.jsonl`에 JSON 한 줄이 쌓인다. 같은 파일에 턴이 아닌 줄(`record=event`·`record=planner_escalation`)도 섞여 있다 — `turn_id` 가 있는 줄만 턴이다(docs/logs.md). 턴 줄의 필드는 이렇다.
 
 | 필드 | 내용 |
 |---|---|

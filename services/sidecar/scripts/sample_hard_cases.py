@@ -218,7 +218,12 @@ def build_manifest(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="distill hard-case 샘플링 + split 고정")
-    parser.add_argument("--all-events", type=Path, default=None, help="all_events.jsonl 경로")
+    parser.add_argument(
+        "--all-events",
+        type=Path,
+        default=None,
+        help="harness 이벤트 줄이 든 JSONL 경로 (지금은 chat_log.jsonl 의 record=event 줄; 옛 all_events.jsonl 도 됨)",
+    )
     parser.add_argument("--input-jsonl", type=Path, default=None, help="기존 distill JSONL 입력")
     parser.add_argument("--output-dir", type=Path, default=Path("../../datasets/distill"))
     parser.add_argument("--preferred-locale", type=str, default="ko")

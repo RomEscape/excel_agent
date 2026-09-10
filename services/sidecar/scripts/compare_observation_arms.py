@@ -6,7 +6,9 @@
 같은 케이스가 팔마다 어떤 경로를 타고 어떤 액션으로 끝났으며 결과 파일이 맞았는지를
 한 표에 놓는다. 이게 있어야 "금지 규칙을 푼 효과"와 "읽은 값을 돌려준 효과"를 가른다.
 
-결과는 `logs/observation_arms.md`에 쓴다 — 콘솔은 한글이 깨지는 환경이 있다.
+결과는 `<reports>/observation_arms.md`에 쓴다 — 콘솔은 한글이 깨지는 환경이 있다.
+진단 실행 파일은 `<reports>/diagnostics/<실행id>.jsonl` 에서 읽는다.
+`<reports>` 는 `office_claw_sidecar.config.get_reports_dir()` (기본 %LOCALAPPDATA%/office_claw/reports).
 """
 
 from __future__ import annotations
@@ -20,8 +22,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-DIAG_DIR = ROOT.parent / "logs" / "diagnostics"
-OUT_PATH = ROOT.parent / "logs" / "observation_arms.md"
+from office_claw_sidecar.config import get_reports_dir
+
+# 저장소 logs/ 에는 chat_log.jsonl 만 둔다(2026-09-10) — 산출물은 reports 로.
+DIAG_DIR = get_reports_dir() / "diagnostics"
+OUT_PATH = get_reports_dir() / "observation_arms.md"
 
 
 def _load(run_id: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:

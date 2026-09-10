@@ -1,5 +1,9 @@
 """chat_log.jsonl을 사람이 읽는 형태로 출력한다.
 
+위치는 `office_claw_sidecar.config.get_chat_log_path()` (= <저장소>/logs/chat_log.jsonl).
+2026-09-10 부터 그 파일에는 턴 줄 말고도 이벤트·플래너 승격 줄(`record` 필드)이 섞이는데,
+이 뷰어는 `turn_id` 있는 턴만 보여 준다.
+
 사용 예:
     uv run python scripts/show_chat_log.py                 # 최근 10턴
     uv run python scripts/show_chat_log.py -n 30           # 최근 30턴
@@ -42,9 +46,12 @@ def _load(path: Path) -> list[dict[str, Any]]:
             if not line:
                 continue
             try:
-                rows.append(json.loads(line))
+                rec = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            # 턴 줄만 — 이벤트·플래너 승격 줄(`turn_id` 없음)은 건너뛴다.
+            if isinstance(rec, dict) and "turn_id" in rec:
+                rows.append(rec)
     return rows
 
 

@@ -27,6 +27,7 @@ from office_claw_sidecar.services.excel_live_service import (
     get_excel_live_service,
     invalidate_excel_engine_cache,
 )
+from office_claw_sidecar.config import get_chat_log_path
 from office_claw_sidecar.services.llm_service import get_llm_service
 
 def _workspace_root():
@@ -37,7 +38,8 @@ def _workspace_root():
 
 WS = _workspace_root()
 WB = WS / "trace_probe.xlsx"
-CHAT_LOG = Path(__file__).resolve().parents[3] / "logs" / "chat_log.jsonl"
+# chat_log 위치는 config 가 정한다(= <저장소>/logs/chat_log.jsonl).
+CHAT_LOG = get_chat_log_path()
 SESSION = "test-trace-probe"
 
 SEED = [
@@ -71,9 +73,12 @@ def _tail_records(n: int = 400) -> list[dict]:
     out = []
     for ln in lines:
         try:
-            out.append(json.loads(ln))
+            rec = json.loads(ln)
         except Exception:
             continue
+        # 2026-09-10 부터 이벤트·플래너 승격 줄이 같은 파일에 들어온다 — 턴만 고른다.
+        if isinstance(rec, dict) and "turn_id" in rec:
+            out.append(rec)
     return out
 
 

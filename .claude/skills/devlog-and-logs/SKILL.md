@@ -21,6 +21,7 @@ $PY = "$env:LOCALAPPDATA\officeclaw\venvs\python-sidecar\Scripts\python.exe"
 ```
 
 로그에서 무엇을 읽는지, 한 턴을 더 깊게 보는 법은 → [references/log-reading.md](references/log-reading.md)
+로그가 어디에 무엇으로 있는지(`logs/` 에는 `chat_log.jsonl` 하나, 산출물은 저장소 밖 `reports/`) → `docs/logs.md`
 
 **가장 중요한 한 줄**: `routes[].at`이 `quick_rule:hit`이면 **그 턴에 LLM은 호출되지도 않았다.**
 프롬프트·모델을 아무리 고쳐도 그 경로는 안 바뀐다.

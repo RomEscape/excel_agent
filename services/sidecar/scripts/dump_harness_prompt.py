@@ -6,6 +6,9 @@ SFT 데이터를 프로덕션과 동일한 형식으로 만들기 위한 기준 
 
 사용:
     python scripts/dump_harness_prompt.py [출력경로]
+
+출력경로를 생략하면 `get_reports_dir()/harness_prompt_dump.json`
+(기본 %LOCALAPPDATA%/office_claw/reports) 에 쓴다 — 저장소 `logs/` 에는 chat_log 만 둔다.
 """
 
 from __future__ import annotations
@@ -16,12 +19,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from office_claw_sidecar.config import get_reports_dir
 from office_claw_sidecar.services.excel_tool_agent import _SYSTEM_PROMPT_TEMPLATE
 from office_claw_sidecar.services.excel_tool_schemas import get_excel_tools
 
 
 def main() -> None:
-    out_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("logs/harness_prompt_dump.json")
+    out_path = Path(sys.argv[1]) if len(sys.argv) > 1 else get_reports_dir() / "harness_prompt_dump.json"
     tools = get_excel_tools()
 
     # Excel 미실행 환경에서도 재현 가능하도록 컨텍스트는 고정 문자열을 넣는다.

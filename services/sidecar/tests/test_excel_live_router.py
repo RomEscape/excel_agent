@@ -2,15 +2,39 @@
 
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 from office_claw_sidecar.main import app
 from office_claw_sidecar.routers import excel_live as excel_live_router
 from office_claw_sidecar.services.excel_live_service import AmbiguousWorkbookError
-from office_claw_sidecar.services import excel_actions
+from office_claw_sidecar.services import excel_actions, excel_live_agent
 
 HEADERS = {"Authorization": "Bearer dev-token"}
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _intent_normalizer_declines(monkeypatch):
+    """의도 정규화(통역 AI)가 물러난 것으로 고정한다 — 이 파일은 규칙 경로를 검증한다.
+
+    2026-09-10 `_intent_first_enabled()` 기본이 켜짐으로 바뀌면서, 빠른 규칙이 확정한
+    턴도 먼저 `excel_live_agent.normalize_intent` → `llm_service.chat` 으로 **실제
+    Ollama** 를 부른다. Ollama 가 떠 있는 개발기에서는 범용 모델의 답이 계획을 바꾼다
+    (2026-09-11 실측: "요약 시트 B2에 원본 시트 E2 값을 연결해줘" → write_range,
+    기대는 set_formula). CI 처럼 Ollama 가 없으면 예외 폴백으로 규칙 계획이 복원돼
+    통과한다 — 즉 모델 답에 좌우되는 실패다.
+
+    정규화가 물러난 것(None)으로 목을 세워 어느 환경에서든 같은 경로
+    (`intent_first_rule_plan` 복귀, excel_live_agent.py)를 밟게 한다. 켜짐 기본은
+    그대로 둔다 — `OFFICECLAW_INTENT_FIRST=0` 으로 끄면 제품 기본과 다른 경로를
+    검증하게 된다. 정규화 자체는 test_intent_normalizer.py 가 목 LLM 으로 본다.
+    """
+
+    async def _declines(message, digest, llm):
+        return None
+
+    monkeypatch.setattr(excel_live_agent, "normalize_intent", _declines)
 
 
 def _range_address(start_cell: str, rows: int, cols: int) -> str:
@@ -814,6 +838,11 @@ def test_command_rule_based_delete_sheet(monkeypatch):
 
 
 def test_command_cross_sheet_link_formula(monkeypatch):
+    """'연결'은 값 복사(write_range)가 아니라 수식 링크(set_formula)다.
+
+    의도 정규화는 모듈 공통 픽스처가 물러나게 해 두었다 — 개발기에서 실제 모델이
+    write_range 를 내면서 떨어졌던 테스트(2026-09-11).
+    """
     fake = _FakeExcelService()
     monkeypatch.setattr(excel_live_router, "get_excel_live_service", lambda: fake)
 

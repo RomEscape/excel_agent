@@ -5,22 +5,38 @@
 
 턴 단위로 묶기 때문에 요청·판단·실행·응답이 흩어지지 않는다. 라우터가 어디서 반환하든
 `turn_scope()`를 빠져나가는 순간 한 줄이 완성된다.
+
+**이 파일이 런타임 기록의 전부다(2026-09-10 사용자 지시).** "로그는 모든 작업을 다
+chat_log 에만 남기고, 깃 클론한 사람도 chat_log.jsonl 하나만 남게" — 예전엔 이벤트가
+`all_events.jsonl`, 플래너 승격이 `planner_escalations.jsonl` 로 따로 쌓여 `logs/` 에
+파일이 셋이었고, 어느 파일을 봐야 하는지부터 설명해야 했다. 지금은 턴이 아닌 기록도
+`append_record()` 로 같은 파일에 들어간다. 줄 종류는 두 가지뿐이다.
+
+    턴 줄     — `turn_id` 가 있다. 13키 스키마는 그대로다(키를 늘리지 않는다).
+    기록 줄   — `{"record": "event"|"planner_escalation", "at": KST, ...}`. `turn_id` 가 없다.
+
+읽는 쪽은 `"turn_id" in rec` 하나로 턴을 고른다(`iter_turns()`). 64MB 를 넘어 옆으로
+치운 조각은 저장소 `logs/` 가 아니라 `get_chat_log_archive_dir()` 로 간다 — `logs/`
+에는 `chat_log.jsonl` 하나만 남는다.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import shutil
 import threading
 import time
 import uuid
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
-from office_claw_sidecar.config import get_chat_log_path
+from office_claw_sidecar.config import get_chat_log_archive_dir, get_chat_log_path
 
 logger = logging.getLogger(__name__)
 
@@ -238,10 +254,26 @@ def _lock_file(handle, lock: bool) -> None:
 
 
 def _rotate_if_needed(path) -> None:
+    """64MB 를 넘으면 KST 스탬프를 붙여 보관 폴더로 옮기고, 다음 쓰기가 새 파일을 만든다.
+
+    조각은 `get_chat_log_archive_dir()`(저장소 `logs/` 밖)로 간다 — `logs/` 에는
+    `chat_log.jsonl` 하나만 둔다(2026-09-10). 다른 폴더(다른 드라이브일 수도 있다)로의
+    이동이라 `rename` 이 아니라 `shutil.move` 다. 같은 초에 두 번 회전하는 일은 없지만,
+    이름이 겹치면 덮어쓰지 않고 번호를 붙인다.
+    """
     try:
         if path.exists() and path.stat().st_size >= _ROTATE_BYTES:
             stamp = datetime.now(KST).strftime("%Y%m%d-%H%M%S")
-            path.rename(path.with_name(f"{path.stem}.{stamp}{path.suffix}"))
+            archive_dir = get_chat_log_archive_dir()
+            # config 가 만들어 주지만, 켜 둔 사이에 폴더가 지워지면 회전이 매번 실패하고
+            # 파일은 계속 자란다 — 여기서 한 번 더 보장한다.
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            target = archive_dir / f"{path.stem}.{stamp}{path.suffix}"
+            serial = 1
+            while target.exists():
+                target = archive_dir / f"{path.stem}.{stamp}-{serial}{path.suffix}"
+                serial += 1
+            shutil.move(str(path), str(target))
     except Exception as exc:
         logger.warning("대화 추적 로그 회전 실패(무시): %s", exc)
 
@@ -264,6 +296,63 @@ def _write(entry: dict[str, Any]) -> None:
     except Exception as exc:
         write_failures += 1
         logger.warning("대화 추적 로그 기록 실패(무시, 누적 %d): %s", write_failures, exc)
+
+
+def append_record(record: str, payload: dict[str, Any]) -> None:
+    """턴이 아닌 기록 한 줄을 **같은** chat_log 에 붙인다.
+
+    형태는 `{"record": <종류>, "at": <KST ISO>, **payload}` 다. 턴 줄과 같은 락·같은
+    회전을 타므로 GUI 사이드카와 스크립트가 동시에 써도 줄이 섞이지 않는다.
+    `turn_id` 는 턴 줄만의 표식이라 payload 에 들어 있어도 떼어 낸다 — 읽는 쪽이
+    `"turn_id" in rec` 하나로 턴을 고르기 때문이다. 기록 실패는 턴 줄과 같이
+    삼키고 `write_failures` 만 올린다(로그 때문에 사용자 요청을 실패시키지 않는다).
+    """
+    body = {str(k): v for k, v in dict(payload or {}).items() if k != "turn_id"}
+    _write({"record": str(record or "unknown"), "at": _now_iso(), **body})
+
+
+def _iter_lines(path: Path | None = None) -> Iterator[dict[str, Any]]:
+    """chat_log 를 위에서부터 읽어 JSON 으로 풀린 dict 만 낸다. 깨진 줄은 건너뛴다."""
+    log_path = path or get_chat_log_path()
+    if not log_path.exists():
+        return
+    # 다른 프로세스가 쓰는 도중에 읽을 수 있다 — 반 토막 난 멀티바이트 글자 하나 때문에
+    # 파일 전체를 못 읽게 되면 안 되므로 디코딩 오류는 치환한다.
+    with log_path.open("r", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(entry, dict):
+                yield entry
+
+
+def iter_turns(path: Path | None = None) -> Iterator[dict[str, Any]]:
+    """chat_log 의 **턴 줄만** 낸다. 읽는 쪽은 전부 이 함수를 거친다.
+
+    같은 파일에 `record` 줄(이벤트·플래너 승격)이 섞여 있으므로 `turn_id` 가 없는 줄과
+    JSON 이 깨진 줄은 건너뛴다.
+    """
+    for entry in _iter_lines(path):
+        if "turn_id" in entry:
+            yield entry
+
+
+def iter_records(path: Path | None = None, *, record: str | None = None) -> Iterator[dict[str, Any]]:
+    """chat_log 의 **턴이 아닌 줄**을 낸다. `record` 를 주면 그 종류만.
+
+    옛 `planner_escalations.jsonl` 을 읽던 스크립트는 `iter_records(record="planner_escalation")`
+    로, 옛 `all_events.jsonl` 을 읽던 스크립트는 `iter_records(record="event")` 로 바꾼다.
+    """
+    for entry in _iter_lines(path):
+        if "turn_id" in entry:
+            continue
+        if record is None or entry.get("record") == record:
+            yield entry
 
 
 @contextmanager

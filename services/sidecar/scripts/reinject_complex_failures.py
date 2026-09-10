@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from office_claw_sidecar.config import get_reports_dir
 from office_claw_sidecar.services.user_harness_service import (
     record_user_feedback_event,
     record_user_harness_event,
@@ -139,7 +140,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--cluster-report-output",
         type=Path,
-        default=Path(__file__).resolve().parents[3] / "logs" / "excel_complex_failure_clusters.json",
+        # 산출물은 저장소 logs/ 가 아니라 reports 로(2026-09-10: logs/ 에는 chat_log.jsonl 만).
+        default=get_reports_dir() / "excel_complex_failure_clusters.json",
     )
     parser.add_argument(
         "--teacher-queue-output",

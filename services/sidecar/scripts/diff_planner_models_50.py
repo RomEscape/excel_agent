@@ -7,6 +7,9 @@ test_excel_live_50_commands는 첫 실패에서 멈추기 때문에, 모델을 �
 사용:
     uv run python scripts/diff_planner_models_50.py \
         --models skt/A.X-4.0-Light:latest ax7bplanner-v2:latest
+
+결과 JSON 은 기본으로 `get_reports_dir()/planner_50_diff.json`
+(기본 %LOCALAPPDATA%/office_claw/reports) 에 쓴다 — 저장소 `logs/` 에는 chat_log 만 둔다.
 """
 
 from __future__ import annotations
@@ -20,11 +23,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests"))
 
+from office_claw_sidecar.config import get_reports_dir
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="플래너 모델별 50개 명령 액션 비교")
     parser.add_argument("--models", nargs="+", required=True)
-    parser.add_argument("--output-json", type=Path, default=Path("../../logs/planner_50_diff.json"))
+    parser.add_argument("--output-json", type=Path, default=get_reports_dir() / "planner_50_diff.json")
     return parser.parse_args()
 
 
