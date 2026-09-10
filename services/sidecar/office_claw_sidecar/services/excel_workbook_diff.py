@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""통합문서를 두 번 떠서 **실제로 바뀐 칸**을 고른다 — 채점 눈금용.
+"""통합문서를 두 번 떠서 **실제로 바뀐 칸**을 고른다 — 채점 기준용.
 
 ## 왜 필요한가
 
@@ -186,8 +186,8 @@ def _sheet_meta(ws: Any) -> dict[str, Any]:
     # `ws.tables` 는 dict 가 아니라 `TableList` 이고 `items()` 가 (이름, **범위 문자열**)
     # 을 준다. `tbl.ref` 로 다루면 AttributeError 가 나는데, 그걸 except 가 삼켜
     # 전·후 모두 빈 목록이 되어 **표 생성을 영영 못 봤다** — 서비스는 `created: True`
-    # 를 냈고 파일에도 표가 있었는데 발자국은 "바뀐 것 없음"이었다(2026-09-10 실측).
-    # 삼키는 except 는 이렇게 눈금을 조용히 멀게 만든다.
+    # 를 냈고 파일에도 표가 있었는데 대조 결과는 "바뀐 것 없음"이었다(2026-09-10 실측).
+    # 삼키는 except 는 이렇게 검사를 조용히 무력화한다.
     meta["tables"] = sorted(
         f"{name}={ref}" for name, ref in dict(getattr(ws, "tables", {}) or {}).items()
     )

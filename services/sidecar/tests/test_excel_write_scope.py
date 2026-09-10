@@ -236,7 +236,7 @@ class TestBlastRadius:
         assert verdict.checked is False
 
     def test_only_the_cells_outside_the_scope_are_read(self):
-        # 넓은 쓰기에서 발자국 전체가 아니라 지목 밖의 바운딩 박스만 읽는다(왕복 비용).
+        # 넓은 쓰기에서 쓰기 범위 전체가 아니라 지목 밖의 바운딩 박스만 읽는다(왕복 비용).
         data = {"데이터": [["a"] * 10 for _ in range(10)]}
         seen: list[str] = []
 

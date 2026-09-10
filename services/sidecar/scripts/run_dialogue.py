@@ -55,14 +55,14 @@ _router_src = ROUTER.read_text(encoding="utf-8")
 EXECUTABLE = set(re.findall(r'action == "(excel_live\.[a-z_]+)"', _router_src))
 EXECUTABLE |= set(re.findall(r'"(excel_live\.[a-z_]+)"', _router_src))
 
-#: **파일을 안 바꾸는 것이 정상인 액션.** 이 액션들에는 발자국을 요구하지 않는다.
+#: **파일을 안 바꾸는 것이 정상인 액션.** 이 액션들에는 '실제로 바뀐 셀'을 요구하지 않는다.
 #:
 #: 나머지 액션이 `expect=ok` 로 성공했다면서 워크북에 흔적이 하나도 없으면 그건
 #: 무실행이다 — 시스템이 자기 입으로 "0개 셀 치환"이라 말하면서 합격한 사례가 있다
 #: (2026-09-08 seedD t1·t4 실측).
 #:
 #: 분류 근거는 `_save_wb` 호출 유무가 **아니다.** 그 기준으로는 `sort_range`·
-#: `filter_rows`·`pivot_table` 이 읽기 전용으로 잡히는데, 실측에서 이들은 발자국을
+#: `filter_rows`·`pivot_table` 이 읽기 전용으로 잡히는데, 실측에서 이들은 바뀐 셀을
 #: 남긴다(정렬 4칸 등). 액션이 하는 일과 53턴 실측을 함께 보고 손으로 골랐다.
 #: 목록에는 **라우터가 실제로 내놓는 이름만** 둔다. 서비스 내부 헬퍼 이름을 넣어 두면
 #: 판정에 아무 영향이 없으면서 목록을 못 믿게 만든다(2026-09-10 감사: 죽은 항목 11개,
@@ -411,7 +411,7 @@ async def run_once(round_no: int) -> list[dict]:
                     good = False
                     why = "오실행(집계를 값으로 씀)"
 
-        # ── 파일에서 잰 발자국을 판정에 물린다 ──────────────────────────────
+        # ── 파일에서 잰 '실제로 바뀐 셀'을 판정에 쓴다 ──────────────────────────────
         # 응답의 자기보고만 보면 "0개 셀 치환"이라고 말하면서도 합격했다
         # (2026-09-08 실측: seedD t1·t4). 시스템이 무엇을 했다고 말했는지가 아니라
         # **파일이 무엇을 겪었는지**로 가른다(CLAUDE.md §3-7).
@@ -435,7 +435,7 @@ async def run_once(round_no: int) -> list[dict]:
             "action": action, "ok": good, "why": why, "asked": asked, "interpretation": interpretation,
             "reply": reply[:600], "secs": round(time.time() - t0, 1),
             "parts": len(parts), "context_range": ctx or "",
-            # 파일에서 잰 실제 발자국. **판정에 쓴다**(위 무실행·미검출 오실행 검사).
+            # 파일에서 잰 '실제로 바뀐 셀'. **판정에 쓴다**(위 무실행·미검출 오실행 검사).
             "wrote": wrote_desc, "wrote_cells": wrote_cells,
         }
         log.append(entry)
@@ -456,7 +456,7 @@ async def run_once(round_no: int) -> list[dict]:
         a1 = wb[name]["A1"].value
         if isinstance(a1, str) and len(a1) > 14 and ("줘" in a1 or "해" in a1[-2:]):
             print(f"  !! {name}!A1 오염: {a1[:40]}")
-            # 그 칸을 실제로 건드린 턴을 찾아 그 턴을 실패로 만든다. 발자국이
+            # 그 칸을 실제로 건드린 턴을 찾아 그 턴을 실패로 만든다. 대조 결과가
             # 알려 주므로 더 이상 마지막 턴에 뒤집어씌우지 않는다.
             # 경계를 붙인다 — `작업물!A1` 을 그냥 `in` 으로 찾으면 `작업물!A10:A12` 에
             # 걸려서, A1 은 안 건드리고 A10 만 건드린 턴이 범인으로 지목된다

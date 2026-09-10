@@ -406,7 +406,7 @@ def assess(
         ]
         if not outside:
             continue
-        # 발자국 전체가 아니라 **지목 밖 칸의 바운딩 박스만** 읽는다 — 넓은 쓰기에서 왕복 비용을 줄인다.
+        # 쓰기 범위 전체가 아니라 **지목 밖 칸의 바운딩 박스만** 읽는다 — 넓은 쓰기에서 왕복 비용을 줄인다.
         br1 = min(r for r, _ in outside)
         br2 = max(r for r, _ in outside)
         bc1 = min(c for _, c in outside)

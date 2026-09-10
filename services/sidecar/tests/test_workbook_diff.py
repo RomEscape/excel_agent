@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""채점 눈금(`excel_workbook_diff`)이 **안 바뀐 것을 바뀌었다고 하지 않는지** 못박는다.
+"""채점 기준(`excel_workbook_diff`)이 **안 바뀐 것을 바뀌었다고 하지 않는지** 못박는다.
 
-2026-09-08 조사에서 실측으로 확인한 오탐 함정들이다. 이 눈금이 오탐을 내면
+2026-09-08 조사에서 실측으로 확인한 오탐 함정들이다. 이 검사가 오탐을 내면
 "미검출 오실행 0" 이 다시 무의미해진다 — 사람이 잡음에 파묻혀 진짜를 못 본다.
 """
 
@@ -38,7 +38,7 @@ def _book(tmp_path, name="wb.xlsx"):
 def test_저장만_다시_해도_바뀐_것이_없다(tmp_path):
     """openpyxl 로 열었다 그대로 저장하면 수식 캐시·실수 정밀도가 흔들린다(함정 1·2).
 
-    그걸 '바뀌었다'로 세면 모든 턴이 오염돼 눈금을 못 쓴다.
+    그걸 '바뀌었다'로 세면 모든 턴이 오염돼 검사를 못 쓴다.
     """
     path = _book(tmp_path)
     before = fingerprint_workbook(path)
@@ -119,7 +119,7 @@ def test_한_칸을_쓰면_한_칸으로_잡힌다(tmp_path):
 
 
 def test_여덟_칸을_칠하면_한_칸과_구분된다(tmp_path):
-    """이 눈금을 만든 이유 그 자체 — 1칸과 8칸이 지금 채점에선 똑같이 `ok` 였다."""
+    """이 검사를 만든 이유 그 자체 — 1칸과 8칸이 지금 채점에선 똑같이 `ok` 였다."""
     path = _book(tmp_path)
     before = fingerprint_workbook(path)
     yellow = PatternFill(start_color="FFFFFF00", end_color="FFFFFF00", fill_type="solid")
@@ -240,7 +240,7 @@ def test_엑셀_표를_만들면_잡힌다(tmp_path):
     """`ws.tables` 는 dict 가 아니라 TableList 다 — `items()` 가 (이름, **범위 문자열**)을
     준다. `tbl.ref` 로 다루면 AttributeError 가 나고, 그걸 except 가 삼켜 전·후 모두
     빈 목록이 되어 **표 생성을 영영 못 봤다**(2026-09-10 실측: 서비스는 created:True,
-    파일에도 표가 있는데 발자국은 "바뀐 것 없음"). 삼키는 except 는 눈금을 조용히 멀게 한다."""
+    파일에도 표가 있는데 대조 결과는 "바뀐 것 없음"). 삼키는 except 는 검사를 조용히 무력화한다."""
     from openpyxl.worksheet.table import Table
 
     path = _book(tmp_path)
@@ -269,7 +269,7 @@ def test_시트_메타를_읽다_조용히_실패하지_않는다(tmp_path):
 
 def test_시트보호_인쇄영역_데이터유효성_정의된이름을_잡는다(tmp_path):
     """`_save_wb` 는 부르는데 지문에 안 보이던 넷 — 정상 동작이 "무실행"으로
-    뒤집히던 자리다(2026-09-10 조사). 면제하지 않고 지문에 넣어 눈금을 넓혔다."""
+    뒤집히던 자리다(2026-09-10 조사). 면제하지 않고 지문에 넣어 검사 범위를 넓혔다."""
     from openpyxl.worksheet.datavalidation import DataValidation
 
     for label, mutate, expect in (
